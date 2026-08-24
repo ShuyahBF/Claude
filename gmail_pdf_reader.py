@@ -162,6 +162,8 @@ class GmailPDFReader:
     @staticmethod
     def _extract_text(pdf_bytes: bytes) -> str:
         reader = PdfReader(io.BytesIO(pdf_bytes))
+        if reader.is_encrypted and reader.decrypt("") == 0:
+            return ""
         return "\n".join(page.extract_text() or "" for page in reader.pages)
 
     @staticmethod
@@ -170,7 +172,10 @@ class GmailPDFReader:
             return pdf_bytes_list[0]
         writer = PdfWriter()
         for pdf_bytes in pdf_bytes_list:
-            for page in PdfReader(io.BytesIO(pdf_bytes)).pages:
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            if reader.is_encrypted and reader.decrypt("") == 0:
+                continue  # PDF protégé par mot de passe : impossible d'en fusionner les pages
+            for page in reader.pages:
                 writer.add_page(page)
         buffer = io.BytesIO()
         writer.write(buffer)
