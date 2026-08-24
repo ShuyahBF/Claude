@@ -24,6 +24,12 @@ pip install -r requirements.txt
 python gmail_pdf_reader.py
 ```
 
+Dans un environnement sans navigateur (session distante, serveur headless), utilisez le flux OAuth manuel : une URL d'autorisation est affichée, à ouvrir dans votre propre navigateur ; collez ensuite l'URL de redirection (ou juste le code) dans le terminal.
+
+```bash
+python gmail_pdf_reader.py --manual-auth
+```
+
 Ou en tant que module dans un autre script :
 
 ```python

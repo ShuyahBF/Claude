@@ -5,10 +5,11 @@ import io
 import os
 from dataclasses import dataclass
 from typing import Iterator, Optional
+from urllib.parse import parse_qs, urlparse
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import Flow, InstalledAppFlow
 from googleapiclient.discovery import build
 from pypdf import PdfReader
 
@@ -27,9 +28,15 @@ class EmailPDFAttachment:
 
 
 class GmailPDFReader:
-    def __init__(self, credentials_path: str = "credentials.json", token_path: str = "token.json"):
+    def __init__(
+        self,
+        credentials_path: str = "credentials.json",
+        token_path: str = "token.json",
+        manual_auth: bool = False,
+    ):
         self.credentials_path = credentials_path
         self.token_path = token_path
+        self.manual_auth = manual_auth
         self.service = self._authenticate()
 
     def _authenticate(self):
@@ -39,12 +46,34 @@ class GmailPDFReader:
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
+            elif self.manual_auth:
+                creds = self._manual_auth_flow()
             else:
                 flow = InstalledAppFlow.from_client_secrets_file(self.credentials_path, SCOPES)
                 creds = flow.run_local_server(port=0)
             with open(self.token_path, "w") as f:
                 f.write(creds.to_json())
         return build("gmail", "v1", credentials=creds)
+
+    def _manual_auth_flow(self) -> Credentials:
+        """Flow OAuth sans navigateur local : l'utilisateur ouvre l'URL lui-même et renvoie le code."""
+        flow = Flow.from_client_secrets_file(
+            self.credentials_path, scopes=SCOPES, redirect_uri="http://localhost"
+        )
+        auth_url, _ = flow.authorization_url(prompt="consent")
+        print(f"Ouvrez cette URL dans votre navigateur et autorisez l'accès :\n{auth_url}\n")
+        print(
+            "Vous serez redirigé vers une page qui ne charge pas (http://localhost/...) "
+            "— copiez l'URL complète depuis la barre d'adresse (ou juste la valeur du "
+            "paramètre 'code')."
+        )
+        response = input("Collez ici l'URL ou le code : ").strip()
+        if response.startswith("http"):
+            code = parse_qs(urlparse(response).query)["code"][0]
+        else:
+            code = response
+        flow.fetch_token(code=code)
+        return flow.credentials
 
     def iter_pdf_attachments(
         self, query: str = "has:attachment filename:pdf", max_results: Optional[int] = None
@@ -124,7 +153,17 @@ class GmailPDFReader:
 
 
 def main():
-    reader = GmailPDFReader()
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--manual-auth",
+        action="store_true",
+        help="Flow OAuth sans navigateur local (URL à ouvrir soi-même + code à coller).",
+    )
+    args = parser.parse_args()
+
+    reader = GmailPDFReader(manual_auth=args.manual_auth)
     for item in reader.iter_pdf_attachments(max_results=20):
         print(f"--- {item.subject} ({item.filename}) ---")
         print(f"De: {item.sender} | Date: {item.date}")
