@@ -18,6 +18,17 @@ pip install -r requirements.txt
 
 `credentials.json` et `token.json` sont des secrets : ne pas les committer (déjà exclus via `.gitignore`).
 
+## Configuration Supabase
+
+Le script enregistre chaque email traité dans la table `factures_gmail` (colonne `PDF`, type `bytea`, contient le ou les PDF fusionnés en un seul fichier binaire). Définissez ces deux variables d'environnement :
+
+```bash
+export SUPABASE_URL="https://<project-ref>.supabase.co"
+export SUPABASE_KEY="<clé service_role ou anon selon les policies RLS>"
+```
+
+Pour désactiver l'écriture Supabase (affichage console uniquement), utilisez `--no-supabase`.
+
 ## Utilisation
 
 ```bash
@@ -36,11 +47,12 @@ Ou en tant que module dans un autre script :
 from gmail_pdf_reader import GmailPDFReader
 
 reader = GmailPDFReader()
-for item in reader.iter_pdf_attachments(query="has:attachment filename:pdf", max_results=50):
-    print(item.subject, item.filename)
-    print(item.text)  # texte extrait du PDF, disponible seulement le temps de l'itération
+for bundle in reader.iter_email_pdfs(query="has:attachment filename:pdf", max_results=50):
+    print(bundle.subject, bundle.filenames)
+    print(bundle.text)  # texte extrait de tous les PDF de l'email
+    # bundle.pdf_bytes : PDF fusionné (toutes pièces jointes de l'email), disponible en mémoire
 ```
 
-`iter_pdf_attachments` est un générateur : à chaque itération, un seul email est traité, son PDF est téléchargé en mémoire (`bytes`), le texte en est extrait via `pypdf`, puis l'objet est renvoyé. Rien n'est conservé une fois l'itération suivante démarrée, sauf si vous stockez `item` vous-même.
+`iter_email_pdfs` est un générateur : à chaque itération, un seul email est traité, ses PDF sont téléchargés en mémoire (`bytes`) et fusionnés en un seul fichier si plusieurs, le texte en est extrait via `pypdf`, puis l'objet est renvoyé. Rien n'est conservé une fois l'itération suivante démarrée, sauf si vous stockez `bundle` vous-même.
 
 Le paramètre `query` accepte la syntaxe de recherche Gmail habituelle (`from:`, `after:`, `is:unread`, etc.).
