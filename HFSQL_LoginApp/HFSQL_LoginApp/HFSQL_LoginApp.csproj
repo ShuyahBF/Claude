@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- Projet créé pour Visual Studio Community 2026. Adaptez le TargetFramework
+         (ex: net9.0-windows, net10.0-windows) selon le SDK .NET installé si besoin. -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>HFSQL_LoginApp</RootNamespace>
+    <AssemblyName>HFSQL_LoginApp</AssemblyName>
+    <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Fournit System.Data.Odbc, utilisé pour se connecter au serveur HFSQL via le pilote ODBC HFSQL. -->
+    <PackageReference Include="System.Data.Odbc" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
