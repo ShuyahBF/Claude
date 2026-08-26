@@ -79,6 +79,26 @@ Si `appsettings.json` est absent, les valeurs par défaut codées dans
    volontairement simple (agrandir / restaurer / fermer uniquement) ; elle
    sera enrichie au fil du projet.
 
+## Découvrir la structure réelle de votre base (HFSQL_SchemaExplorer)
+
+Si vous n'avez pas d'outil d'export sous la main (Centre de Contrôle HFSQL, etc.) mais
+que vous avez un accès ODBC au serveur, le projet console `HFSQL_SchemaExplorer` (inclus
+dans la même solution) permet de lister les tables et colonnes disponibles :
+
+```
+HFSQL_SchemaExplorer.exe                              # liste toutes les tables
+HFSQL_SchemaExplorer.exe --table UTILISATEURS          # liste les colonnes de la table
+HFSQL_SchemaExplorer.exe --table UTILISATEURS --sample 5   # + 5 lignes d'exemple (mots de passe masqués)
+```
+
+Il lit sa configuration de connexion dans son propre `appsettings.json` (section `HFSQL`,
+même format que celui de `HFSQL_LoginApp`), surchargeable via `--server`, `--port`,
+`--database`, `--driver`, `--user`, `--password`. Voir `HFSQL_SchemaExplorer/README.md`
+pour le détail.
+
+Une fois les vrais noms de table/colonnes identifiés, reportez-les dans le
+`appsettings.json` de `HFSQL_LoginApp` (section `TableUtilisateurs`).
+
 ## Adapter le projet à votre base
 
 - Renommez/ajustez la table et les colonnes utilisées dans
