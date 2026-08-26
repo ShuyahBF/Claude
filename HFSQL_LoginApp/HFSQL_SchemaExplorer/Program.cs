@@ -4,6 +4,8 @@ using System.Data;
 using System.Data.Odbc;
 using System.IO;
 using System.Text.Json;
+using HFSQL_Shared;
+using HFSQL_Shared.Modeles;
 
 namespace HFSQL_SchemaExplorer
 {
@@ -25,6 +27,8 @@ namespace HFSQL_SchemaExplorer
     ///       -> liste les colonnes + affiche 5 lignes d'exemple (mots de passe masqués).
     ///   HFSQL_SchemaExplorer.exe --server 192.168.1.10 --port 4900 --database MaBase --table UTILISATEURS
     ///       -> surcharge les paramètres de connexion sans toucher à appsettings.json.
+    ///   HFSQL_SchemaExplorer.exe --export hfsql_schema.json
+    ///       -> parcourt toute la base et exporte le catalogue complet (tables + colonnes) en JSON.
     /// </summary>
     internal static class Program
     {
@@ -60,11 +64,15 @@ namespace HFSQL_SchemaExplorer
                 Console.WriteLine("Connexion réussie.");
                 Console.WriteLine();
 
-                if (string.IsNullOrWhiteSpace(options.Table))
+                if (!string.IsNullOrWhiteSpace(options.CheminExport))
+                {
+                    ExporterCatalogueComplet(connexion, options.CheminExport);
+                }
+                else if (string.IsNullOrWhiteSpace(options.Table))
                 {
                     ListerTables(connexion);
                     Console.WriteLine();
-                    Console.WriteLine("Astuce : relancez avec --table <NomDeLaTable> pour voir ses colonnes.");
+                    Console.WriteLine("Astuce : relancez avec --table <NomDeLaTable> pour voir ses colonnes, ou --export <fichier> pour tout exporter.");
                 }
                 else
                 {
@@ -105,31 +113,32 @@ namespace HFSQL_SchemaExplorer
 
         private static void ListerColonnes(OdbcConnection connexion, string table)
         {
-            DataTable colonnes = connexion.GetSchema("Columns", new[] { null, null, table, null });
+            List<InfoColonne> colonnes = CatalogueHfsqlService.ChargerColonnes(connexion, table);
 
-            if (colonnes.Rows.Count == 0)
+            if (colonnes.Count == 0)
             {
                 Console.WriteLine($"Aucune colonne trouvée pour la table \"{table}\". Vérifiez son nom (voir la liste sans --table).");
                 return;
             }
 
-            DataRow[] lignesTriees = colonnes.Select(string.Empty, "ORDINAL_POSITION ASC");
-
             Console.WriteLine($"Colonnes de la table \"{table}\" :");
             Console.WriteLine();
-            Console.WriteLine($"{"#",-4}{"COLONNE",-30}{"TYPE",-18}{"TAILLE",-10}NULLABLE");
-            Console.WriteLine(new string('-', 75));
+            Console.WriteLine($"{"COLONNE",-30}{"TYPE",-18}{"TAILLE",-10}NULLABLE");
+            Console.WriteLine(new string('-', 70));
 
-            foreach (DataRow ligne in lignesTriees)
+            foreach (InfoColonne colonne in colonnes)
             {
-                string position = ligne["ORDINAL_POSITION"]?.ToString() ?? string.Empty;
-                string nom = ligne["COLUMN_NAME"]?.ToString() ?? string.Empty;
-                string type = ligne["TYPE_NAME"]?.ToString() ?? string.Empty;
-                string taille = ligne["COLUMN_SIZE"]?.ToString() ?? string.Empty;
-                string nullable = colonnes.Columns.Contains("IS_NULLABLE") ? ligne["IS_NULLABLE"]?.ToString() ?? string.Empty : string.Empty;
-
-                Console.WriteLine($"{position,-4}{nom,-30}{type,-18}{taille,-10}{nullable}");
+                string taille = colonne.Taille?.ToString() ?? string.Empty;
+                Console.WriteLine($"{colonne.Nom,-30}{colonne.Type,-18}{taille,-10}{(colonne.Nullable ? "YES" : "NO")}");
             }
+        }
+
+        private static void ExporterCatalogueComplet(OdbcConnection connexion, string chemin)
+        {
+            Console.WriteLine("Parcours de toutes les tables de la base...");
+            List<InfoTable> catalogue = CatalogueHfsqlService.ChargerCatalogueComplet(connexion);
+            CatalogueHfsqlService.SauvegarderEnJson(catalogue, chemin);
+            Console.WriteLine($"{catalogue.Count} table(s) exportée(s) vers \"{chemin}\".");
         }
 
         private static void AfficherExemple(OdbcConnection connexion, string table, int nombreLignes)
@@ -190,12 +199,14 @@ namespace HFSQL_SchemaExplorer
                 HFSQL_SchemaExplorer - explore le catalogue d'un serveur HFSQL via ODBC.
 
                 Usage :
-                  HFSQL_SchemaExplorer [--table <nom>] [--sample <n>] [options de connexion]
+                  HFSQL_SchemaExplorer [--table <nom>] [--sample <n>] [--export <fichier>] [options de connexion]
 
-                Sans --table : liste toutes les tables de la base.
+                Sans --table ni --export : liste toutes les tables de la base.
                 Avec --table : liste les colonnes de la table indiquée.
                 Avec --sample <n> (nécessite --table) : affiche en plus les n premières lignes
                                                           (colonnes contenant PASS/PWD/MDP masquées).
+                Avec --export <fichier> : parcourt TOUTES les tables et colonnes de la base et
+                                           exporte le catalogue complet en JSON (ignore --table).
 
                 Options de connexion (surchargent appsettings.json) :
                   --server <serveur>      Nom ou IP du serveur HFSQL
@@ -229,6 +240,7 @@ namespace HFSQL_SchemaExplorer
 
         public string? Table { get; set; }
         public int NombreLignesExemple { get; set; }
+        public string? CheminExport { get; set; }
         public bool AfficherAide { get; set; }
 
         public string ConstruireChaineConnexion() =>
@@ -262,6 +274,10 @@ namespace HFSQL_SchemaExplorer
 
                     case "--sample":
                         options.NombreLignesExemple = int.Parse(ValeurSuivante(args, ref i, argument));
+                        break;
+
+                    case "--export":
+                        options.CheminExport = ValeurSuivante(args, ref i, argument);
                         break;
 
                     case "--server":

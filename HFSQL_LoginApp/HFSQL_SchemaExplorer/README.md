@@ -18,15 +18,20 @@ ponctuellement via les options de la ligne de commande.
 ## Utilisation
 
 ```
-HFSQL_SchemaExplorer.exe [--table <nom>] [--sample <n>] [options de connexion]
+HFSQL_SchemaExplorer.exe [--table <nom>] [--sample <n>] [--export <fichier>] [options de connexion]
 ```
 
-- **Sans `--table`** : liste toutes les tables de la base.
+- **Sans `--table` ni `--export`** : liste toutes les tables de la base.
 - **Avec `--table <nom>`** : liste les colonnes de cette table (nom, type, taille,
   nullable).
 - **Avec `--sample <n>`** (nécessite `--table`) : affiche en plus les `n` premières
   lignes de la table. Les colonnes dont le nom contient `PASS`, `PWD`, `MDP` ou
   `MOTDEPASSE` sont automatiquement masquées (`***`).
+- **Avec `--export <fichier>`** : parcourt **toutes** les tables et colonnes de la base
+  (ignore `--table`) et exporte le catalogue complet au format JSON — le même format que
+  celui généré automatiquement par `HFSQL_LoginApp` au démarrage (voir sa documentation).
+  Pratique pour obtenir la structure complète en une seule commande, sans lancer
+  l'application WinForms.
 
 Options de connexion (surchargent `appsettings.json` pour cette exécution) :
 
@@ -55,6 +60,9 @@ HFSQL_SchemaExplorer.exe --table UTILISATEURS --sample 5
 
 # Se connecter à un autre serveur sans modifier appsettings.json
 HFSQL_SchemaExplorer.exe --server 192.168.1.10 --port 4900 --database MaBase --table UTILISATEURS
+
+# Exporter la structure complète de la base (toutes les tables/colonnes) en JSON
+HFSQL_SchemaExplorer.exe --export hfsql_schema.json
 ```
 
 Une fois les vrais noms identifiés, reportez-les dans le `appsettings.json` de

@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using HFSQL_LoginApp.Models;
+using HFSQL_Shared.Modeles;
 
 namespace HFSQL_LoginApp.Config
 {
@@ -35,6 +38,18 @@ namespace HFSQL_LoginApp.Config
 
         // ----- Session en cours -----
         public static Utilisateur? UtilisateurConnecte { get; set; }
+
+        // ----- Catalogue de la base (tables + colonnes), chargé au démarrage -----
+        // Voir Data/CatalogueInitialisation.cs. Permet de connaître la structure des tables
+        // HFSQL sans repasser par le serveur à chaque nouvelle fenêtre.
+        public static List<InfoTable> Catalogue { get; set; } = new();
+
+        /// <summary>
+        /// Retrouve la description d'une table dans le catalogue en cache, ou null si elle
+        /// n'y figure pas (catalogue non chargé, ou nom de table incorrect).
+        /// </summary>
+        public static InfoTable? ObtenirTable(string nomTable) =>
+            Catalogue.FirstOrDefault(table => string.Equals(table.Nom, nomTable, StringComparison.OrdinalIgnoreCase));
 
         /// <summary>
         /// Chaîne de connexion ODBC construite à partir des paramètres ci-dessus.

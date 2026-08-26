@@ -63,8 +63,11 @@ Si `appsettings.json` est absent, les valeurs par défaut codées dans
 ## Fonctionnement
 
 1. **`Program.cs`** initialise l'application : chargement de la
-   configuration globale (`AppConfig.Charger()`), puis démarrage sur
-   `LoginApplicationContext`, qui gère l'enchaînement des fenêtres.
+   configuration globale (`AppConfig.Charger()`), puis **connexion au
+   serveur HFSQL et mise en cache de la structure de toute la base**
+   (`CatalogueInitialisation.Initialiser()` — voir ci-dessous), puis
+   démarrage sur `LoginApplicationContext`, qui gère l'enchaînement des
+   fenêtres.
 2. **`Forms/LoginForm`** : fenêtre de connexion au style moderne
    (bandeau latéral, formulaire épuré, sans bordure système). Au chargement,
    elle interroge la table des utilisateurs via
@@ -78,6 +81,32 @@ Si `appsettings.json` est absent, les valeurs par défaut codées dans
    affichée après authentification réussie. Pour l'instant, elle est
    volontairement simple (agrandir / restaurer / fermer uniquement) ; elle
    sera enrichie au fil du projet.
+
+## Catalogue de la base, mis en cache au démarrage
+
+Juste après le chargement de la configuration, `Program.cs` appelle
+`CatalogueInitialisation.Initialiser()` (`Data/CatalogueInitialisation.cs`) qui :
+
+1. ouvre une connexion au serveur HFSQL ;
+2. parcourt **toutes** les tables de la base et charge leurs colonnes
+   (nom, type, taille, nullable) via `HFSQL_Shared.CatalogueHfsqlService` ;
+3. garde ce catalogue en mémoire dans `AppConfig.Catalogue` (utilisable par
+   n'importe quelle fenêtre via `AppConfig.ObtenirTable("NOM_TABLE")`) ;
+4. l'écrit aussi sur disque dans **`hfsql_schema.json`**, à côté de
+   l'exécutable.
+
+Si le serveur est injoignable au démarrage, cette étape échoue silencieusement
+(le catalogue reste vide) : la fenêtre de connexion affichera de toute façon
+l'erreur au moment de charger la liste des utilisateurs.
+
+**Pour l'implémentation de nouvelles fenêtres** : lancez l'application une
+fois (ou utilisez `HFSQL_SchemaExplorer.exe --export hfsql_schema.json`, plus
+rapide, sans passer par l'UI), puis indiquez-moi les tables concernées — leur
+structure exacte (colonnes, types) est déjà dans `hfsql_schema.json` et n'a
+pas besoin d'être redécouverte à chaque fois. Le code partagé vit dans le
+projet `HFSQL_Shared` (`Modeles/InfoTable.cs`, `Modeles/InfoColonne.cs`,
+`CatalogueHfsqlService.cs`), référencé par `HFSQL_LoginApp` et
+`HFSQL_SchemaExplorer`.
 
 ## Découvrir la structure réelle de votre base (HFSQL_SchemaExplorer)
 
