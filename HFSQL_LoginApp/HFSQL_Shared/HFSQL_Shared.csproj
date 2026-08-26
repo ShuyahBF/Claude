@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>HFSQL_Shared</RootNamespace>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Fournit System.Data.Odbc, utilisé pour interroger le catalogue ODBC du serveur HFSQL. -->
+    <PackageReference Include="System.Data.Odbc" Version="8.0.1" />
+  </ItemGroup>
+
+</Project>
