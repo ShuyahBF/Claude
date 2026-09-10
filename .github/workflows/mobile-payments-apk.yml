@@ -12,6 +12,13 @@ on:
   push:
     branches: [feat/mobile-payments-apk]
   workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: >-
+          URL de l'API backend en production (ex: https://mobile-payments-backend.onrender.com/).
+          Laisser vide pour garder l'URL de dev (http://10.0.2.2:3000/, émulateur uniquement).
+        required: false
+        default: ''
 
 jobs:
   build:
@@ -38,7 +45,13 @@ jobs:
           gradle-version: '8.7'
 
       - name: Compiler l'APK de debug (installable directement, non signé)
-        run: gradle assembleDebug --stacktrace
+        run: |
+          if [ -n "${{ github.event.inputs.api_base_url }}" ]; then
+            echo "Compilation avec API_BASE_URL=${{ github.event.inputs.api_base_url }}"
+            gradle assembleDebug --stacktrace -PapiBaseUrl="${{ github.event.inputs.api_base_url }}"
+          else
+            gradle assembleDebug --stacktrace
+          fi
 
       - name: Publier l'APK comme fichier téléchargeable (onglet Actions -> Artifacts)
         uses: actions/upload-artifact@v4

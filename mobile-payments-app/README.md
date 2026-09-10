@@ -58,7 +58,20 @@ npm run dev              # démarre l'API sur http://localhost:3000
 | POST | `/api/merchants` | Enregistrer un nouveau code marchand avec son intitulé |
 | POST | `/api/users` | Enregistrer/mettre à jour le profil utilisateur (upsert par `telephone`), route publique (voir mode hors-ligne ci-dessous) |
 
-Déploiement : n'importe quel hébergeur Node (Render, Railway, Fly.io, un VPS...) + un cluster MongoDB Atlas (un tier gratuit M0 suffit largement pour démarrer).
+### Déployer le backend (obligatoire pour tester sur un vrai téléphone)
+
+`10.0.2.2` (l'adresse par défaut de l'app) n'existe que **dans l'émulateur Android
+Studio** — c'est un alias interne vers la machine hôte, invisible depuis un vrai
+téléphone. Sans backend déployé quelque part de joignable sur Internet, un test
+sur appareil physique échoue toujours, quelle que soit la configuration réseau
+de l'appli.
+
+1. **MongoDB Atlas** (gratuit) : créer un compte sur [mongodb.com/atlas](https://www.mongodb.com/atlas), un cluster **M0** (gratuit), un utilisateur DB, autoriser l'accès réseau `0.0.0.0/0` (ou l'IP sortante de Render), puis copier la chaîne de connexion (`mongodb+srv://...`).
+2. **Render** : *New +* → *Blueprint* → connecter ce dépôt GitHub → Render détecte `mobile-payments-app/render.yaml` et propose le service `mobile-payments-backend`. Renseigner `MONGODB_URI` (chaîne Atlas de l'étape 1) quand demandé, puis déployer.
+3. Une fois déployé, noter l'URL Render (ex. `https://mobile-payments-backend.onrender.com/`), puis peupler le catalogue une fois via l'onglet *Shell* de Render : `npm run seed`.
+4. Recompiler l'APK avec cette URL : dans GitHub → *Actions* → *Build APK - Raccourcis Paiement Mobile* → *Run workflow* → renseigner `api_base_url` avec l'URL Render (terminée par `/`). L'APK généré pointera alors sur le backend réel, plus besoin d'émulateur ni d'exception réseau en clair (HTTPS).
+
+N'importe quel autre hébergeur Node convient aussi (Railway, Fly.io, un VPS...) — `render.yaml` est fourni en confort mais n'est pas obligatoire.
 
 ## Application Android
 
