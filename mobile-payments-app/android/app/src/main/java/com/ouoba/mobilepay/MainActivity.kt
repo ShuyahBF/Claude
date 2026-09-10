@@ -27,17 +27,24 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ouoba.mobilepay.data.model.Service
+import com.ouoba.mobilepay.data.repository.ProfileRepository
 import com.ouoba.mobilepay.ui.PaymentViewModel
 import com.ouoba.mobilepay.ui.Step
 import com.ouoba.mobilepay.ui.UiState
+import com.ouoba.mobilepay.ui.onboarding.OnboardingFlow
 import com.ouoba.mobilepay.util.callUssdDirectly
 import com.ouoba.mobilepay.util.openDialerWithUssd
 
@@ -62,7 +69,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    PaymentApp(
+                    RootApp(
                         onOpenDialer = { code -> openDialerWithUssd(this, code) },
                         onCallDirectly = { code ->
                             pendingUssdCode = code
@@ -72,6 +79,29 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+}
+
+/**
+ * Point d'entrée de l'UI : affiche l'accueil (3 étapes) une seule fois, tant qu'aucun
+ * profil n'est encore enregistré localement, puis bascule sur le parcours de paiement.
+ * La vérification (lecture Room) est locale et quasi instantanée, jamais de dépendance
+ * réseau à cet endroit.
+ */
+@Composable
+fun RootApp(onOpenDialer: (String) -> Unit, onCallDirectly: (String) -> Unit) {
+    val context = LocalContext.current
+    // null = vérification en cours, true = accueil à afficher, false = profil déjà présent
+    var showOnboarding by remember { mutableStateOf<Boolean?>(null) }
+
+    LaunchedEffect(Unit) {
+        showOnboarding = !ProfileRepository(context).hasProfile()
+    }
+
+    when (showOnboarding) {
+        null -> CenteredLoader()
+        true -> OnboardingFlow(onFinished = { showOnboarding = false })
+        false -> PaymentApp(onOpenDialer = onOpenDialer, onCallDirectly = onCallDirectly)
     }
 }
 

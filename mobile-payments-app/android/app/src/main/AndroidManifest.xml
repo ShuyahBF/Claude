@@ -3,6 +3,9 @@
 
     <!-- Nécessaire pour appeler l'API backend -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Permet de savoir si une connexion est disponible avant de tenter une synchro
+         (voir util/ConnectivityUtils.kt) : ne demande aucune autorisation à l'utilisateur. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Demandée à l'exécution uniquement si l'utilisateur active "Appel direct" -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
 

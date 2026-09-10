@@ -3,6 +3,7 @@ package com.ouoba.mobilepay.data.remote
 import com.ouoba.mobilepay.data.model.Merchant
 import com.ouoba.mobilepay.data.model.NewMerchantRequest
 import com.ouoba.mobilepay.data.model.Service
+import com.ouoba.mobilepay.data.model.UserProfileRequest
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -26,4 +27,8 @@ interface ApiService {
 
     @POST("api/merchants")
     suspend fun createMerchant(@Body request: NewMerchantRequest): Merchant
+
+    // Réponse ignorée (Void) : on ne s'intéresse qu'au succès HTTP de la synchro du profil.
+    @POST("api/users")
+    suspend fun registerUser(@Body request: UserProfileRequest): Response<Void>
 }
