@@ -56,6 +56,7 @@ npm run dev              # démarre l'API sur http://localhost:3000
 | POST | `/api/services` | Créer un service (protégé par `API_KEY` si définie) |
 | GET | `/api/merchants/:operator/:code` | Recherche d'un code marchand (`404` si inconnu) |
 | POST | `/api/merchants` | Enregistrer un nouveau code marchand avec son intitulé |
+| POST | `/api/users` | Enregistrer/mettre à jour le profil utilisateur (upsert par `telephone`), route publique (voir mode hors-ligne ci-dessous) |
 
 Déploiement : n'importe quel hébergeur Node (Render, Railway, Fly.io, un VPS...) + un cluster MongoDB Atlas (un tier gratuit M0 suffit largement pour démarrer).
 
@@ -78,8 +79,17 @@ Déploiement : n'importe quel hébergeur Node (Render, Railway, Fly.io, un VPS..
 
 - Remplacer l'icône placeholder (`app/src/main/res/drawable/ic_launcher.xml`) par une vraie identité visuelle (icône adaptative recommandée).
 - Configurer une URL d'API en HTTPS de production (pas `10.0.2.2`).
-- Déclarer dans la fiche Play Console l'usage de la permission `CALL_PHONE` (fonctionnalité "appel direct") et la politique de confidentialité (l'app transmet code marchand/montant à votre backend).
-- Envisager d'ajouter : un historique des paiements récents (côté app, en local), une recherche/filtrage des services, un mode hors-ligne avec cache des services déjà consultés.
+- Déclarer dans la fiche Play Console l'usage de la permission `CALL_PHONE` (fonctionnalité "appel direct") et la politique de confidentialité (l'app transmet code marchand/montant à votre backend, ainsi que le profil saisi à l'accueil).
+- Envisager d'ajouter : un historique des paiements récents (côté app, en local), une recherche/filtrage des services.
+
+## Mode hors-ligne
+
+L'app est **hors-ligne d'abord** : l'interface lit toujours une base locale (Room/SQLite embarquée sur l'appareil), jamais le réseau directement. Objectif : rester utilisable en zone rurale ou en cas de faible couverture, où une connexion n'est pas garantie au premier lancement.
+
+- **Catalogue opérateurs/services** : un catalogue de secours (Orange, Moov Africa, Telecel Faso — miroir de `seed.js`) est embarqué dans l'app et charge la base locale dès le tout premier lancement, sans réseau. Dès qu'une connexion existe, il est rafraîchi silencieusement depuis le backend.
+- **Codes marchands** : la recherche/création d'un code marchand se fait d'abord en local ; hors-ligne, un nouveau marchand est enregistré immédiatement sur l'appareil (l'utilisateur peut continuer sans attendre) et marqué "à synchroniser".
+- **Rattrapage** : une tâche de fond (WorkManager), contrainte à une connexion active, pousse vers le backend tout ce qui a été créé hors-ligne (profil, marchands) dès que le réseau revient, puis toutes les 6h.
+- **Accueil en 3 étapes** (au tout premier lancement) : 1) saisie nom/prénom/téléphone (email facultatif) ; 2) tentative de synchronisation du profil, plafonnée à quelques secondes ; 3) écran de bienvenue, affiché dans tous les cas — la synchro non aboutie est simplement reprogrammée en tâche de fond, elle ne bloque jamais l'accès à l'app.
 
 ## Sécurité et limites à connaître
 

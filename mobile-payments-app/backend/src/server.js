@@ -4,6 +4,7 @@ const cors = require('cors');
 const { connectDB } = require('./config/db');
 const servicesRouter = require('./routes/services');
 const merchantsRouter = require('./routes/merchants');
+const usersRouter = require('./routes/users');
 
 const app = express();
 app.use(cors());
@@ -21,9 +22,16 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 app.use(
   '/api',
-  (req, res, next) => (['POST', 'PUT', 'DELETE'].includes(req.method) ? requireApiKey(req, res, next) : next()),
+  (req, res, next) => {
+    // L'inscription/synchronisation du profil (POST /api/users) est faite par l'app elle-même
+    // à l'accueil : elle reste publique, contrairement aux autres écritures (services, marchands)
+    // qui nécessitent la clé d'administration.
+    if (req.path.startsWith('/users')) return next();
+    return ['POST', 'PUT', 'DELETE'].includes(req.method) ? requireApiKey(req, res, next) : next();
+  },
   servicesRouter,
-  merchantsRouter
+  merchantsRouter,
+  usersRouter
 );
 
 app.use((req, res) => res.status(404).json({ error: 'Route inconnue' }));

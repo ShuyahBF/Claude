@@ -32,3 +32,11 @@ data class NewMerchantRequest(
 )
 
 data class ApiError(val error: String)
+
+/** Profil saisi à l'accueil (étape 1/3), envoyé au backend pour synchronisation. */
+data class UserProfileRequest(
+    val nom: String,
+    val prenom: String,
+    val email: String?,
+    val telephone: String
+)

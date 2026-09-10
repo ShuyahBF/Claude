@@ -1,6 +1,7 @@
 package com.ouoba.mobilepay.ui
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.ouoba.mobilepay.data.model.Merchant
 import com.ouoba.mobilepay.data.model.Service
@@ -38,15 +39,23 @@ data class UiState(
     val ussdCode: String? = null
 )
 
-class PaymentViewModel(
-    private val repository: PaymentRepository = PaymentRepository()
-) : ViewModel() {
+class PaymentViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val repository = PaymentRepository(application)
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState
 
     init {
-        loadOperators()
+        // Le catalogue local (Room) est la source de vérité : il fonctionne dès le premier
+        // lancement hors-ligne grâce à DefaultCatalog, puis se met à jour silencieusement
+        // dès qu'une connexion existe (sans jamais bloquer l'affichage des opérateurs).
+        viewModelScope.launch {
+            repository.ensureCatalogSeeded()
+            loadOperators()
+            repository.refreshCatalogIfOnline()
+            loadOperators()
+        }
     }
 
     fun loadOperators() {
