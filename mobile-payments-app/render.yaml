@@ -1,0 +1,33 @@
+# Déploiement Render — backend Node/Express de "Raccourcis Paiement Mobile".
+#
+# L'appli Android ne se connecte jamais directement à MongoDB (par sécurité) :
+# elle passe par cette API REST. Sans ce backend déployé quelque part de
+# joignable depuis Internet, un vrai téléphone (contrairement à l'émulateur
+# Android Studio) ne peut jamais atteindre l'API — c'est la cause du blocage
+# observé lors des tests sur appareil physique.
+#
+# Variables marquées "sync: false" ne sont PAS stockées ici (donc pas dans
+# git) : Render les demande une fois via son dashboard au premier déploiement,
+# puis les garde chiffrées côté plateforme.
+
+services:
+  - type: web
+    name: mobile-payments-backend
+    runtime: node
+    plan: starter
+    autoDeploy: true
+    rootDir: mobile-payments-app/backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      # --- MongoDB Atlas ---
+      - key: MONGODB_URI
+        sync: false
+      # --- Protection optionnelle des routes d'écriture (POST/PUT/DELETE) :
+      # laisser vide désactive la protection (l'appli Android actuelle
+      # n'envoie pas d'en-tête x-api-key — ne définir cette clé qu'après
+      # avoir aussi mis à jour l'appli pour l'envoyer, sinon la création de
+      # marchand échouera avec 401). ---
+      - key: API_KEY
+        sync: false
