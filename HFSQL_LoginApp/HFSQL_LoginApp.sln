@@ -1,0 +1,34 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HFSQL_LoginApp", "HFSQL_LoginApp\HFSQL_LoginApp.csproj", "{88AC4B5F-DDF0-435B-8785-9D08A6600863}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HFSQL_SchemaExplorer", "HFSQL_SchemaExplorer\HFSQL_SchemaExplorer.csproj", "{469008E7-CE79-4824-A2E9-CB110900A373}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HFSQL_Shared", "HFSQL_Shared\HFSQL_Shared.csproj", "{BDF0DC2A-F314-4138-8178-041495411C99}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{88AC4B5F-DDF0-435B-8785-9D08A6600863}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{88AC4B5F-DDF0-435B-8785-9D08A6600863}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{88AC4B5F-DDF0-435B-8785-9D08A6600863}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{88AC4B5F-DDF0-435B-8785-9D08A6600863}.Release|Any CPU.Build.0 = Release|Any CPU
+		{469008E7-CE79-4824-A2E9-CB110900A373}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{469008E7-CE79-4824-A2E9-CB110900A373}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{469008E7-CE79-4824-A2E9-CB110900A373}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{469008E7-CE79-4824-A2E9-CB110900A373}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BDF0DC2A-F314-4138-8178-041495411C99}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BDF0DC2A-F314-4138-8178-041495411C99}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BDF0DC2A-F314-4138-8178-041495411C99}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BDF0DC2A-F314-4138-8178-041495411C99}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

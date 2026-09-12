@@ -1,0 +1,9 @@
+## .NET / Visual Studio
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
+## Catalogue HFSQL généré au démarrage / via --export (contient la structure réelle de la base)
+hfsql_schema.json
