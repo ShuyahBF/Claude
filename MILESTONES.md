@@ -25,9 +25,15 @@ concerné.
 - **Module commun `ocr-core/`** (ce dépôt, v1.0.0) : source unique de l'OCR,
   copiée à l'identique dans chaque site par `ocr-core/sync.sh` ; chaque site
   ne garde qu'un adaptateur (droits, stockage, collections). Sawali l'utilise
-  dès le lot 19 ; Albarka garde sa version intégrée du lot 1 jusqu'à sa
-  migration (futur lot Albarka). Toute évolution de l'OCR se fait dans
+  dès le lot 19 ; Albarka migre au lot 2 (ci-dessous). Toute évolution de l'OCR se fait dans
   `ocr-core/`, puis un lot par site.
+- **Albarka lot 2 — migration sur `ocr-core`** livré le 2026-09-23, **en
+  attente de publication** (base `28d9176` de `conflict_030926_0658` ;
+  `albarka-portal-livraisons/albarka-portal-corrections_2_aaf483b.patch` +
+  `albarka-portal-prompt_2.md`). Comportement constant (mêmes routes,
+  réponses et collections ; KYC inchangé), sauf correctif : les Word/Excel ne
+  sont plus envoyés à l'IA comme texte illisible. Après publication, les deux
+  sites utilisent ocr-core 1.0.0.
 - **À refaire pour** : `Site-Albarka` — **lot 1 publié et déployé en production le
   2026-09-23** (commit Emergent `ccab0b2`, identique au patch ; routes et
   frontend vérifiés sur albarka-bf.com ; premier retour réel de l'utilisateur

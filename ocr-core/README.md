@@ -6,7 +6,7 @@ comptables) partagé par les sites :
 | Site | Dépôt / branche | Copie du backend | Copie du frontend | Adaptateur du site |
 |---|---|---|---|---|
 | Sawali (`Site-SawaliSmartSystems`) | `ShuyahBF/Emergent` · `Site-SawaliSmartSystems` | `backend/ocr_core/` | `frontend/src/components/ocr-core/` | `backend/routes/ocr_pieces.py` + `frontend/src/pages/portal/OcrPieces.jsx` (lot 19, v1.0.0) |
-| Albarka (`Site-Albarka`) | `ShuyahBF/albarka-portal` · `conflict_030926_0658` | *(à migrer — utilise encore sa version intégrée du lot 1)* | | `backend/albarka_documents.py` |
+| Albarka (`Site-Albarka`) | `ShuyahBF/albarka-portal` · `conflict_030926_0658` | `backend/ocr_core/` | `frontend/src/components/ocr-core/` | `backend/albarka_ai.py` + `backend/albarka_documents.py` + `frontend/src/pages/portal/Documents.jsx` (lot 2, v1.0.0) |
 
 Version courante : voir `VERSION` (doit être identique à `__version__` dans
 `backend/ocr_core/__init__.py`).
