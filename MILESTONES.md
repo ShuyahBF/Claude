@@ -24,9 +24,9 @@ concerné.
   réelle diffère.
 - **Sawali lot 20 — Explorateur R2 de Gestion de Stocks** livré le 2026-09-23,
   **en attente de publication** (base : lot 19 appliqué sur `bd6b16b` ;
-  `sawali-portal-livraisons/sawali-portal-corrections_20_d2217eb.patch` +
-  `sawali-portal-prompt_20.md` — remplace `bac3898` et `55df89f`, jamais
-  soumises). Contenu : fil d'Ariane « Compartiment › client › dossier » ;
+  `sawali-portal-livraisons/sawali-portal-corrections_20_8f2b3ac.patch` +
+  `sawali-portal-prompt_20.md` — remplace `bac3898`, `55df89f` et `d2217eb`,
+  jamais soumises). Contenu : fil d'Ariane « Compartiment › client › dossier » ;
   dépôt multi-fichiers (bouton, glisser-déposer, progression) ; accès
   superviseur aux routes admin du module ; dépôt par utilisateur suivi
   autorisé par l'admin avec taille max par utilisateur (1,5 Mo par défaut,
@@ -36,7 +36,9 @@ concerné.
   Pharmacien suivi et dans l'explorateur ; contenu réel du compartiment
   (tuile « Racine (hors dossier) », sous-dossiers existants) et création des
   6 dossiers standard dans R2 à la 1re ouverture (choix de l'utilisateur ;
-  compartiment réel `gestionstocks`, un dossier par code client, ex. WDD).
+  compartiment réel `gestionstocks`, un dossier par code client, ex. WDD ;
+  nom par défaut du code corrigé en `gestionstocks` ; légende des couleurs
+  de dossiers).
   Clés R2_STOCKS_* renseignées et
   explorateur vérifié par l'utilisateur le 2026-09-23.
 - **Module commun `ocr-core/`** (ce dépôt, v1.0.0) : source unique de l'OCR,

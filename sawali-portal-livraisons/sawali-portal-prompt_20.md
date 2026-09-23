@@ -1,8 +1,9 @@
 # Sawali — Lot 20 : Explorateur R2 de Gestion de Stocks (emplacement, dépôts autorisés, espace alloué)
 
-Applique `sawali-portal-corrections_20_d2217eb.patch` sur la branche
+Applique `sawali-portal-corrections_20_8f2b3ac.patch` sur la branche
 `Site-SawaliSmartSystems`. Ce patch remplace entièrement les versions
-précédentes du lot 20 (`…_20_bac3898.patch`, `…_20_55df89f.patch`) que je
+précédentes du lot 20 (`…_20_bac3898.patch`, `…_20_55df89f.patch`,
+`…_20_d2217eb.patch`) que je
 t'avais peut-être transmises : ne tiens compte que de celle-ci.
 
 La base attendue est le commit où tu as appliqué le lot 19
@@ -25,8 +26,8 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 
 **Fichiers modifiés**
 - `backend/routes/gestion_stocks.py` — accès superviseur, dépôt par les utilisateurs suivis autorisés, espace alloué par tenant, contenu réel du compartiment, nouvelles routes
-- `backend/r2_stocks_client.py` — nouvelle fonction `list_folder_markers` (dossiers vides)
-- `frontend/src/pages/portal/GestionStocks.jsx` — fil d'Ariane, dépôt multi-fichiers (glisser-déposer, progression), jauge, tuile « Racine (hors dossier) » et sous-dossiers réels
+- `backend/r2_stocks_client.py` — nouvelle fonction `list_folder_markers` (dossiers vides) ; compartiment par défaut `gestionstocks`
+- `frontend/src/pages/portal/GestionStocks.jsx` — fil d'Ariane, dépôt multi-fichiers (glisser-déposer, progression), jauge, tuile « Racine (hors dossier) », sous-dossiers réels, légende des couleurs de dossiers
 - `frontend/src/pages/portal/Dashboard.jsx` — jauge sur le tableau de bord du Pharmacien suivi
 - `frontend/src/pages/admin/AdminTrackedUsers.jsx` — bouton « Dépôt R2 » par utilisateur suivi (autorisation + taille max)
 - `frontend/src/pages/admin/AdminClientFeatures.jsx` — section « Espace de stockage R2 (Gestion de Stocks) » dans SMART Communications du client
@@ -45,10 +46,12 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 
 - **Déjà présentes, réutilisées telles quelles** : `R2_STOCKS_ACCOUNT_ID`,
   `R2_STOCKS_ACCESS_KEY_ID`, `R2_STOCKS_SECRET_ACCESS_KEY` et, si je l'ai
-  définie, `R2_STOCKS_BUCKET` (sinon `gestion-stocks`). Je viens de les
-  renseigner : l'explorateur s'affiche bien. Mon compartiment s'appelle
-  `gestionstocks` (sans tiret) : `R2_STOCKS_BUCKET` doit donc valoir
-  exactement `gestionstocks`. Vérifie-le sans modifier les autres valeurs.
+  définie, `R2_STOCKS_BUCKET`. Je viens de les renseigner : l'explorateur
+  s'affiche bien. Mon compartiment s'appelle **`gestionstocks`** (sans
+  tiret). Le nom par défaut du code était `gestion-stocks`, avec un tiret :
+  ce lot le remplace par `gestionstocks` dans `r2_stocks_client._bucket()`.
+  Si `R2_STOCKS_BUCKET` est définie, elle doit donc valoir exactement
+  `gestionstocks`. Ne modifie pas les autres valeurs.
 - Aucune nouvelle variable. Les nouveaux réglages (droit de dépôt par
   utilisateur suivi, espace alloué par client) se font à l'écran et sont
   stockés en base. Ce ne sont pas des variables d'environnement.
@@ -58,7 +61,7 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 1. **On sait toujours où l'on est.** Avec mes vraies clés R2, rien
    n'indiquait de quel compartiment ni de quel dossier venait le contenu
    affiché. Un fil d'Ariane apparaît au-dessus des dossiers : « Compartiment
-   `gestion-stocks` › PMT — Pharmacie … › Inventaires ». Le compartiment et
+   `gestionstocks` › PMT — Pharmacie … › Inventaires ». Le compartiment et
    le client sont cliquables pour revenir à la grille des dossiers.
    `/gestion-stocks/context` renvoie maintenant `bucket`, c'est-à-dire la
    valeur de `r2_stocks_client._bucket()`, uniquement si R2 est configuré.
@@ -167,6 +170,13 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
      n'est créé si le code ne correspond à aucun client. Les marqueurs ne
      comptent ni comme fichiers ni dans l'espace occupé.
 
+   Sous la grille des dossiers, une **légende** explique les trois couleurs :
+   - jaune : dossier standard, créé automatiquement pour chaque client ;
+   - bleu : autre dossier présent dans le compartiment, créé par exemple
+     depuis Cloudflare ;
+   - gris : racine, c'est-à-dire les fichiers posés directement sous le code
+     client, hors dossier (consultation seule).
+
    Les noms de dossiers sont contrôlés côté serveur : pas de « / », pas de
    « .. », préfixe `<client_code>/` toujours ajouté par le serveur. Il est
    impossible de sortir de l'espace du client.
@@ -211,7 +221,9 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 8. Toujours avec ce Pharmacien suivi du client **WDD**, la grille affiche
    **« Racine (hors dossier) — 1 fichier »**. En l'ouvrant, on voit
    `INV DEC 2024 - WDD.pdf`, sans bouton de dépôt. Dans Cloudflare, sous
-   `gestionstocks / WDD /`, les 6 dossiers standard existent maintenant.
+   `gestionstocks / WDD /`, les 6 dossiers standard existent maintenant. Le
+   fil d'Ariane affiche « Compartiment `gestionstocks` », et la légende des
+   couleurs figure sous les dossiers.
 9. Active l'option « Tableau de bord » sur sa fiche (Admin → Utilisateurs suivis → Modifier) : son tableau de
    bord affiche la carte d'espace de stockage.
 
