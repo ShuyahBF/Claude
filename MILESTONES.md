@@ -11,8 +11,9 @@ concerné.
 - **À refaire pour** : `Site-Albarka` — **lot 1 publié et déployé en production le
   2026-09-23** (commit Emergent `ccab0b2`, identique au patch ; routes et
   frontend vérifiés sur albarka-bf.com ; premier retour réel de l'utilisateur
-  le 2026-09-23 : « l'OCR avec Sonnet donne très bien » — Sonnet 5 reste le
-  modèle par défaut). ⚠️ Le code réellement déployé d'Albarka est
+  le 2026-09-23 : « l'OCR avec Sonnet donne très bien » (1 facture manuscrite + 1 facture
+  avec filigrane évaluées) — Sonnet 5 reste le modèle par défaut ; étape
+  suivante : évaluation d'un gros volume de pièces par une secrétaire). ⚠️ Le code réellement déployé d'Albarka est
   sur la branche `conflict_030926_0658` de `ShuyahBF/albarka-portal` (et non
   `main`, qui ne contient qu'un ancien pilote) : toujours partir de cette
   branche. Base du lot 1 : `ab2926e` ; livraison :
