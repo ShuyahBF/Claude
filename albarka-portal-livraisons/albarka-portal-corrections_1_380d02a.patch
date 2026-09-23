@@ -1,29 +1,26 @@
-From 0408e93328c6b19a2c4d52729f24835b5a5e7e88 Mon Sep 17 00:00:00 2001
-From: Claude <noreply@anthropic.com>
-Date: Wed, 23 Sep 2026 09:01:02 +0000
+From 380d02ac981a226f177efa9a18824953de18f6a6 Mon Sep 17 00:00:00 2001
+From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
+Date: Wed, 23 Sep 2026 09:19:44 +0000
 Subject: [PATCH] =?UTF-8?q?Lot=201=20OCR=20:=20choix=20du=20mod=C3=A8le,?=
- =?UTF-8?q?=20co=C3=BBt=20r=C3=A9el=20FCFA,=20=C3=A9valuation=20=C3=A9toil?=
- =?UTF-8?q?es=20+=20corrections,=20tableau=20de=20bord?=
+ =?UTF-8?q?=20co=C3=BBt=20r=C3=A9el=20en=20FCFA,=20=C3=A9valuation=20?=
+ =?UTF-8?q?=C3=A9toiles=20+=20corrections,=20tableau=20de=20bord?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-- albarka_ai : appel Claude via EMERGENT_LLM_KEY (emergentintegrations),
-  catalogue Opus 5 / Sonnet 5 / Haiku 4.5, tokens réels lus dans la réponse
-  du proxy et convertis en FCFA (USD_TO_XOF_RATE), PDF convertis en images
-  page par page (PyMuPDF, 10 pages max), photos réduites à 1568 px et
-  redressées (EXIF), confiance auto-déclarée + champs incertains.
-- albarka_documents : modèle choisi au dépôt (staff), une exécution par
-  analyse (relance avec un autre modèle pour comparer), évaluation 1-5
-  étoiles + corrections des champs -> précision réelle, tableau de bord
-  par période et par modèle ; modèle/coût/évaluations masqués aux clients.
-- Frontend cabinet : dépôt avec liste déroulante des modèles, tableau des
-  pièces avec coût/note par analyse, fenêtre d'évaluation, lien vers la
-  pièce originale, onglet « Tableau de bord OCR ».
-- Tests autonomes : backend/tests/test_albarka_ocr_lot1.py (17 tests).
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_011VmxMAu9x8zDdrK5A7Suky
+J'ajoute au pilote la mesure et l'optimisation de l'OCR des pièces :
+- l'analyse passe par EMERGENT_LLM_KEY (emergentintegrations) au lieu
+  d'ANTHROPIC_API_KEY ; les PDF sont convertis en images page par page
+  (PyMuPDF, 10 pages max), les photos redressées et réduites à 1568 px ;
+- je choisis le modèle avant le dépôt (Opus 5, Sonnet 5, Haiku 4.5) et je
+  vois le coût réel de chaque pièce en FCFA, calculé sur les tokens
+  réellement consommés (USD_TO_XOF_RATE) ;
+- chaque analyse est conservée : je peux relancer une pièce avec un autre
+  modèle pour comparer ;
+- je note chaque analyse de 1 à 5 étoiles et je corrige les champs, ce qui
+  donne la précision réelle, distincte de la confiance du modèle ;
+- un onglet « Tableau de bord OCR » compare les modèles par période ;
+- mes clients ne voient ni le modèle, ni le coût, ni les évaluations.
 ---
  backend/albarka_ai.py                      | 369 +++++++++++++++++----
  backend/albarka_documents.py               | 328 +++++++++++++++++-

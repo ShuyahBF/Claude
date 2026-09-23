@@ -1,6 +1,6 @@
 # Albarka — Lot 1 : mesure et optimisation de l'OCR des pièces comptables
 
-Applique le patch `albarka-portal-corrections_1_0408e93.patch` sur la branche
+Applique le patch `albarka-portal-corrections_1_380d02a.patch` sur la branche
 `main` du portail ALBARKA. Base attendue : le commit `1d6e2e8` (« Restreindre
 CORS au domaine réel avant mise en production »). C'est un `git format-patch`
 d'un seul commit : applique-le en UN SEUL `git am`, puis déploie.

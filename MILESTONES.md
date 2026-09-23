@@ -10,7 +10,7 @@ concerné.
   (ce dépôt, commit `93259d8`, branche `fix/mobile-payments-deploy-render`).
 - **À refaire pour** : `Site-Albarka` — **lot 1 livré le 2026-09-23, publication
   Emergent non encore confirmée**. Dépôt `ShuyahBF/albarka-portal`, base
-  `1d6e2e8` ; livraison : `albarka-portal-livraisons/albarka-portal-corrections_1_0408e93.patch`
+  `1d6e2e8` ; livraison : `albarka-portal-livraisons/albarka-portal-corrections_1_380d02a.patch`
   + `albarka-portal-prompt_1.md` (ce dépôt). Différences avec Sawali : intégré
   directement au pilote (`backend/albarka_ai.py`, `albarka_documents.py`,
   `frontend/src/pilot/ocr/`), appel via `EMERGENT_LLM_KEY` (plus
