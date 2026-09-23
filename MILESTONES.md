@@ -9,16 +9,21 @@ concerné.
 - **Fait pour** : `Site-SawaliSmartSystems` — voir `document-extraction-prototype/`
   (ce dépôt, commit `93259d8`, branche `fix/mobile-payments-deploy-render`).
 - **À refaire pour** : `Site-Albarka` — **lot 1 livré le 2026-09-23, publication
-  Emergent non encore confirmée**. Dépôt `ShuyahBF/albarka-portal`, base
-  `1d6e2e8` ; livraison : `albarka-portal-livraisons/albarka-portal-corrections_1_380d02a.patch`
-  + `albarka-portal-prompt_1.md` (ce dépôt). Différences avec Sawali : intégré
-  directement au pilote (`backend/albarka_ai.py`, `albarka_documents.py`,
-  `frontend/src/pilot/ocr/`), appel via `EMERGENT_LLM_KEY` (plus
-  d'`ANTHROPIC_API_KEY`), PDF → images (PyMuPDF), évaluation 1-5 étoiles +
-  corrections des champs, relance d'une même pièce avec un autre modèle,
-  modèle/coût/évaluations masqués aux clients. Point à surveiller au 1er test
-  réel : identifiant `claude-opus-5` jamais encore appelé via le proxy
-  Emergent (Sonnet 5 et Haiku daté le sont déjà sur Sawali).
+  Emergent non encore confirmée**. ⚠️ Le code réellement déployé d'Albarka est
+  sur la branche `conflict_030926_0658` de `ShuyahBF/albarka-portal` (et non
+  `main`, qui ne contient qu'un ancien pilote) : toujours partir de cette
+  branche. Base du lot 1 : `ab2926e` ; livraison :
+  `albarka-portal-livraisons/albarka-portal-corrections_1_65b42c1.patch` +
+  `albarka-portal-prompt_1.md` (ce dépôt). Une 1ʳᵉ version ciblant `main` a été
+  refusée à juste titre par Emergent (structure absente du pod). Contenu :
+  choix du modèle (Opus 5 / Sonnet 5 / Haiku 4.5 daté) sur `/admin/documents`,
+  PDF scannés convertis en images (avant : « PDF illisible »), coût réel FCFA
+  via `send_message_with_tools().usage` (emergentintegrations 0.2.0),
+  historique `document_ocr_runs` (synthèse courante inchangée dans
+  `document_syntheses` pour les rapports), évaluation 1-5 étoiles +
+  corrections, tableau de bord, modèle/coût masqués aux clients. Modèle par
+  défaut inchangé (Sonnet 5). Point à surveiller au 1er test réel : identifiant
+  `claude-opus-5` jamais encore appelé via le proxy Emergent.
 - **Contenu de l'étape** : comparer les modèles Claude (Opus 5 / Sonnet 5 /
   Haiku 4.5) sur l'extraction de pièces comptables scannées transmises par
   les clients d'un cabinet comptable — imprimées et manuscrites, souvent
