@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Extraction pièces comptables — Prototype Albarka</title>
+<style>
+  :root {
+    --bg: #f4f6f8; --card: #ffffff; --border: #e2e6ea; --text: #1c2530;
+    --muted: #6b7684; --accent: #1f6f4a; --accent-dark: #164f35;
+    --danger: #b3261e; --warn: #9a6a00;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding-block: 24px; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding-inline: 16px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 24px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px; margin-bottom: 20px; }
+  .card h2 { font-size: 15px; margin: 0 0 14px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  label { display: block; font-size: 12px; font-weight: 600; color: var(--muted);
+    margin-bottom: 4px; text-transform: uppercase; letter-spacing: .03em; }
+  select, input[type=file], input[type=text], input[type=number] {
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+    font-size: 14px; background: #fff; color: var(--text); }
+  select { min-width: 320px; }
+  .modelnote { font-size: 12px; color: var(--muted); margin-top: 4px; max-width: 420px; }
+  button { background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  button:hover { background: var(--accent-dark); }
+  button.secondary { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px; }
+  .stat-tile { background: #fbfcfd; border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px; }
+  .stat-tile .label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted); margin-bottom: 6px; }
+  .stat-tile .value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .period-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .period-tabs button { background: #fff; color: var(--muted); border: 1px solid var(--border);
+    font-weight: 500; padding: 6px 14px; }
+  .period-tabs button.active { background: var(--text); color: #fff; border-color: var(--text); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  .field-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px 16px; margin-bottom: 14px; }
+  .field { display: flex; flex-direction: column; gap: 3px; }
+  .field input { width: 100%; }
+  .field.uncertain input { border-color: var(--warn); background: #fffaf0; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px;
+    border-radius: 999px; }
+  .badge.ok { background: #e6f4ec; color: var(--accent-dark); }
+  .badge.warn { background: #fff3d9; color: var(--warn); }
+  .badge.bad { background: #fbe9e7; color: var(--danger); }
+  #dropzone { border: 2px dashed var(--border); border-radius: 10px; padding: 24px;
+    text-align: center; color: var(--muted); font-size: 13px; cursor: pointer; }
+  #dropzone.drag { border-color: var(--accent); background: #f2f8f4; }
+  #result { display: none; }
+  #err { color: var(--danger); font-size: 13px; margin-top: 8px; display: none; }
+  .footnote { font-size: 11px; color: var(--muted); margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Extraction de pièces comptables scannées</h1>
+  <p class="sub">Prototype — comparaison des modèles Claude sur les pièces réelles du cabinet, coûts affichés en FCFA.</p>
+
+  <div class="card">
+    <h2>1. Choisir le modèle et téléverser une pièce</h2>
+    <div class="row" style="margin-bottom:14px">
+      <div>
+        <label for="model">Modèle IA</label>
+        <select id="model"></select>
+        <div class="modelnote" id="modelnote"></div>
+      </div>
+    </div>
+    <div id="dropzone">
+      Glisser-déposer une image ou un PDF ici, ou cliquer pour choisir un fichier
+      <input type="file" id="file" accept="image/*,application/pdf" style="display:none">
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button id="extractBtn" disabled>Extraire</button>
+      <span id="filename" style="font-size:13px;color:var(--muted)"></span>
+    </div>
+    <div id="err"></div>
+  </div>
+
+  <div class="card" id="result">
+    <h2>2. Résultat de l'extraction</h2>
+    <div class="row" style="margin-bottom:14px; gap:20px">
+      <div class="stat-tile" style="min-width:160px">
+        <div class="label">Coût de cette pièce</div>
+        <div class="value" id="pieceCost">—</div>
+      </div>
+      <div class="stat-tile" style="min-width:160px">
+        <div class="label">Confiance du modèle</div>
+        <div class="value" id="pieceConfidence">—</div>
+      </div>
+    </div>
+    <div class="field-grid" id="fields"></div>
+    <table id="lignesTable" style="margin-bottom:14px">
+      <thead><tr><th>Désignation</th><th>Qté</th><th>Prix unit.</th><th>Total</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <button class="secondary" id="validateBtn">✓ J'ai relu — valider (aucune correction)</button>
+    <button class="secondary" id="markCorrectedBtn">Signaler des corrections</button>
+    <p class="footnote">La case d'un champ passe en orange si le modèle lui-même le juge incertain.
+      Corrige directement les valeurs ci-dessus si besoin avant de valider — la précision
+      affichée dans le tableau de bord se base sur les champs que tu corriges ici.</p>
+  </div>
+
+  <div class="card">
+    <h2>3. Tableau de bord</h2>
+    <div class="period-tabs">
+      <button data-period="today" class="active">Aujourd'hui</button>
+      <button data-period="week">7 jours</button>
+      <button data-period="month">30 jours</button>
+      <button data-period="all">Tout</button>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-tile">
+        <div class="label">Coût cumulé</div>
+        <div class="value" id="statCost">—</div>
+      </div>
+      <div class="stat-tile">
+        <div class="label">Précision moyenne</div>
+        <div class="value" id="statPrecision">—</div>
+      </div>
+      <div class="stat-tile">
+        <div class="label">Pièces traitées</div>
+        <div class="value" id="statCount">—</div>
+      </div>
+      <div class="stat-tile">
+        <div class="label">Coût moyen / pièce</div>
+        <div class="value" id="statAvgCost">—</div>
+      </div>
+    </div>
+    <p class="footnote" id="precisionNote"></p>
+  </div>
+
+  <div class="card">
+    <h2>Historique récent</h2>
+    <table>
+      <thead><tr><th>Date</th><th>Fichier</th><th>Modèle</th><th>Coût</th><th>Précision</th></tr></thead>
+      <tbody id="historyBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const FIELD_LABELS = {
+  type_piece: "Type de pièce", numero_piece: "N° pièce", date: "Date",
+  emetteur_nom: "Émetteur", emetteur_ifu: "IFU émetteur", emetteur_rccm: "RCCM émetteur",
+  client_nom: "Client", sous_total: "Sous-total", taxes: "Taxes",
+  montant_total: "Montant total", devise: "Devise",
+};
+
+let currentModels = [];
+let currentExtractionId = null;
+let currentExtracted = null;
+let selectedFile = null;
+
+async function loadModels() {
+  const models = await fetch("/api/models").then(r => r.json());
+  currentModels = models;
+  const sel = document.getElementById("model");
+  sel.innerHTML = models.map(m => `<option value="${m.id}">${m.label}</option>`).join("");
+  sel.addEventListener("change", updateModelNote);
+  updateModelNote();
+}
+function updateModelNote() {
+  const id = document.getElementById("model").value;
+  const m = currentModels.find(x => x.id === id);
+  document.getElementById("modelnote").textContent = m ? m.note : "";
+}
+
+const dropzone = document.getElementById("dropzone");
+const fileInput = document.getElementById("file");
+dropzone.addEventListener("click", () => fileInput.click());
+["dragover", "dragleave", "drop"].forEach(evt => {
+  dropzone.addEventListener(evt, e => {
+    e.preventDefault();
+    dropzone.classList.toggle("drag", evt === "dragover");
+  });
+});
+dropzone.addEventListener("drop", e => {
+  if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener("change", () => { if (fileInput.files.length) setFile(fileInput.files[0]); });
+
+function setFile(f) {
+  selectedFile = f;
+  document.getElementById("filename").textContent = f.name;
+  document.getElementById("extractBtn").disabled = false;
+}
+
+document.getElementById("extractBtn").addEventListener("click", runExtraction);
+
+async function runExtraction() {
+  const btn = document.getElementById("extractBtn");
+  const errBox = document.getElementById("err");
+  errBox.style.display = "none";
+  btn.disabled = true;
+  btn.textContent = "Extraction en cours…";
+
+  const fd = new FormData();
+  fd.append("file", selectedFile);
+  fd.append("model_id", document.getElementById("model").value);
+
+  try {
+    const res = await fetch("/api/extract", { method: "POST", body: fd });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `Erreur HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    renderResult(data);
+    loadStats();
+    loadHistory();
+  } catch (e) {
+    errBox.textContent = e.message;
+    errBox.style.display = "block";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Extraire";
+  }
+}
+
+function renderResult(data) {
+  currentExtractionId = data.id;
+  currentExtracted = data.extracted;
+  document.getElementById("result").style.display = "block";
+  document.getElementById("pieceCost").textContent = data.cost.cost_xof_formatted;
+  const conf = data.extracted.confiance_globale;
+  const confEl = document.getElementById("pieceConfidence");
+  confEl.textContent = (conf ?? "—") + (conf != null ? " %" : "");
+  confEl.className = "value " + (conf >= 80 ? "" : conf >= 50 ? "" : "");
+
+  const uncertain = new Set(data.extracted.champs_incertains || []);
+  const fieldsEl = document.getElementById("fields");
+  fieldsEl.innerHTML = Object.entries(FIELD_LABELS).map(([key, label]) => {
+    const val = data.extracted[key];
+    const isUncertain = uncertain.has(key);
+    return `<div class="field ${isUncertain ? 'uncertain' : ''}">
+      <label>${label}${isUncertain ? ' ⚠' : ''}</label>
+      <input type="text" data-field="${key}" value="${val ?? ''}">
+    </div>`;
+  }).join("");
+
+  const tbody = document.querySelector("#lignesTable tbody");
+  tbody.innerHTML = (data.extracted.lignes || []).map(l => `
+    <tr>
+      <td><input type="text" value="${l.designation ?? ''}" data-line="designation"></td>
+      <td><input type="text" value="${l.quantite ?? ''}" data-line="quantite" style="width:60px"></td>
+      <td><input type="text" value="${l.prix_unitaire ?? ''}" data-line="prix_unitaire" style="width:90px"></td>
+      <td><input type="text" value="${l.prix_total ?? ''}" data-line="prix_total" style="width:90px"></td>
+    </tr>`).join("");
+}
+
+document.getElementById("validateBtn").addEventListener("click", () => submitValidation({}));
+document.getElementById("markCorrectedBtn").addEventListener("click", () => {
+  // Compare les valeurs actuelles des champs à l'extraction d'origine :
+  // tout champ dont la valeur a été modifiée dans le formulaire est traité
+  // comme "corrigé" par le comptable.
+  const corrected = {};
+  document.querySelectorAll('#fields input[data-field]').forEach(inp => {
+    const key = inp.dataset.field;
+    const original = currentExtracted[key];
+    const originalStr = (original ?? "").toString();
+    if (inp.value !== originalStr) corrected[key] = inp.value;
+  });
+  submitValidation(corrected);
+});
+
+async function submitValidation(correctedFields) {
+  if (!currentExtractionId) return;
+  const res = await fetch(`/api/validate/${currentExtractionId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ corrected_fields: correctedFields }),
+  });
+  const data = await res.json();
+  alert(`Précision réelle enregistrée : ${data.validated_precision}%`);
+  loadStats();
+  loadHistory();
+}
+
+let currentPeriod = "today";
+document.querySelectorAll(".period-tabs button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".period-tabs button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentPeriod = btn.dataset.period;
+    loadStats();
+  });
+});
+
+async function loadStats() {
+  const s = await fetch(`/api/stats?period=${currentPeriod}`).then(r => r.json());
+  document.getElementById("statCost").textContent = s.cost_total_xof_formatted;
+  document.getElementById("statPrecision").textContent = s.avg_precision != null ? s.avg_precision + " %" : "—";
+  document.getElementById("statCount").textContent = s.nb_pieces;
+  document.getElementById("statAvgCost").textContent = s.avg_cost_xof_formatted;
+  document.getElementById("precisionNote").textContent =
+    s.nb_pieces > 0
+      ? `${s.nb_validated} / ${s.nb_pieces} pièce(s) relue(s) par un comptable — les autres comptent sur la confiance auto-déclarée du modèle, à prendre avec prudence.`
+      : "";
+}
+
+async function loadHistory() {
+  const rows = await fetch("/api/history").then(r => r.json());
+  document.getElementById("historyBody").innerHTML = rows.map(r => `
+    <tr>
+      <td>${new Date(r.created_at).toLocaleString("fr-FR")}</td>
+      <td>${r.filename}</td>
+      <td>${r.model_id}</td>
+      <td>${r.cost_xof_formatted}</td>
+      <td>${r.validated ? r.validated_precision + ' % (validé)' : (r.self_confidence != null ? r.self_confidence + ' % (auto)' : '—')}</td>
+    </tr>`).join("");
+}
+
+loadModels();
+loadStats();
+loadHistory();
+</script>
+</body>
+</html>
