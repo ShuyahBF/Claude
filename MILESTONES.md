@@ -22,6 +22,15 @@ concerné.
   la Fiche produit VIDAL ouverte au Pharmacien suivi (en plus de Posologie). Numéro de
   lot 19 déduit (Gestion de Stocks = lot 18) : à corriger si la numérotation
   réelle diffère.
+- **Sawali lot 20 — Explorateur R2 de Gestion de Stocks** livré le 2026-09-23,
+  **en attente de publication** (base : lot 19 appliqué sur `bd6b16b` ;
+  `sawali-portal-livraisons/sawali-portal-corrections_20_bac3898.patch` +
+  `sawali-portal-prompt_20.md`). Fil d'Ariane « Compartiment › client ›
+  dossier » (bucket renvoyé par `/gestion-stocks/context`), dépôt admin
+  depuis l'ordinateur (bouton visible, glisser-déposer, multi-fichiers avec
+  progression, refus > 25 Mo avant envoi). Dépôt réservé au rôle admin
+  (choix de l'utilisateur) ; clés R2_STOCKS_* renseignées et explorateur
+  vérifié par l'utilisateur le 2026-09-23.
 - **Module commun `ocr-core/`** (ce dépôt, v1.0.0) : source unique de l'OCR,
   copiée à l'identique dans chaque site par `ocr-core/sync.sh` ; chaque site
   ne garde qu'un adaptateur (droits, stockage, collections). Sawali l'utilise
