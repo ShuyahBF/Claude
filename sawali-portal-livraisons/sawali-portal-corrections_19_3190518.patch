@@ -1,0 +1,2246 @@
+From 3190518cddc2892d09cd7965b92a227d8bfbb767 Mon Sep 17 00:00:00 2001
+From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
+Date: Wed, 23 Sep 2026 15:55:32 +0000
+Subject: [PATCH] =?UTF-8?q?feat(ocr-pieces):=20page=20=C2=AB=20OCR=20sur?=
+ =?UTF-8?q?=20Pi=C3=A8ces=20=C2=BB=20sur=20le=20module=20commun=20ocr=5Fco?=
+ =?UTF-8?q?re?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+J'ajoute l'analyse IA des pièces (factures fournisseurs, bons de livraison,
+avoirs, reçus, relevés) dans une nouvelle page « OCR sur Pièces », visible
+de l'administration et des pharmacies clientes.
+
+- backend/ocr_core/ : copie identique du module commun d'OCR que je
+  maintiens pour tous mes sites (catalogue Opus 5 / Sonnet 5 / Haiku 4.5,
+  PDF scannés convertis en images, photos redimensionnées, coût réel en
+  FCFA, précision réelle calculée sur les corrections, statistiques par
+  modèle). Compatible emergentintegrations 0.1.0.
+- backend/routes/ocr_pieces.py : adaptateur Sawali, routes /api/ocr-pieces.
+  Admin/superviseur : choix de la pharmacie et du modèle, historique des
+  analyses avec coût, évaluation 1-5 étoiles + corrections, relance avec
+  un autre modèle, tableau de bord. Pharmacies (rôle pharmacien ou
+  Pharmacien suivi) : dépôt et consultation de leurs seules pièces, tenant
+  résolu côté serveur depuis la session, sans modèle, coût ni évaluation.
+  Fichiers dans l'Object Storage (kind "ocr_pieces"), collections
+  ocr_pieces et ocr_piece_runs.
+- frontend : page OcrPieces.jsx, composants communs
+  components/ocr-core/, liens sidebar (admin, pharmacien, Pharmacien
+  suivi) et routes /portal/ocr-pieces et /admin/ocr-pieces.
+- backend/tests/test_ocr_pieces.py : cloisonnement et parcours admin.
+---
+ backend/ocr_core/__init__.py                  |  35 ++
+ backend/ocr_core/engine.py                    | 220 ++++++++++
+ backend/ocr_core/models.py                    |  98 +++++
+ backend/ocr_core/prepare.py                   |  72 ++++
+ backend/ocr_core/review.py                    |  60 +++
+ backend/ocr_core/stats.py                     |  64 +++
+ backend/routes/ocr_pieces.py                  | 320 ++++++++++++++
+ backend/server.py                             |   7 +
+ backend/tests/test_ocr_pieces.py              | 225 ++++++++++
+ frontend/src/App.js                           |   6 +
+ frontend/src/components/PortalLayout.jsx      |  17 +-
+ .../src/components/ocr-core/OcrDashboard.jsx  | 130 ++++++
+ .../src/components/ocr-core/OcrRunsPanel.jsx  | 267 ++++++++++++
+ .../src/components/ocr-core/StarRating.jsx    |  32 ++
+ frontend/src/components/ocr-core/format.js    |  59 +++
+ frontend/src/pages/portal/OcrPieces.jsx       | 408 ++++++++++++++++++
+ 16 files changed, 2019 insertions(+), 1 deletion(-)
+ create mode 100644 backend/ocr_core/__init__.py
+ create mode 100644 backend/ocr_core/engine.py
+ create mode 100644 backend/ocr_core/models.py
+ create mode 100644 backend/ocr_core/prepare.py
+ create mode 100644 backend/ocr_core/review.py
+ create mode 100644 backend/ocr_core/stats.py
+ create mode 100644 backend/routes/ocr_pieces.py
+ create mode 100644 backend/tests/test_ocr_pieces.py
+ create mode 100644 frontend/src/components/ocr-core/OcrDashboard.jsx
+ create mode 100644 frontend/src/components/ocr-core/OcrRunsPanel.jsx
+ create mode 100644 frontend/src/components/ocr-core/StarRating.jsx
+ create mode 100644 frontend/src/components/ocr-core/format.js
+ create mode 100644 frontend/src/pages/portal/OcrPieces.jsx
+
+diff --git a/backend/ocr_core/__init__.py b/backend/ocr_core/__init__.py
+new file mode 100644
+index 0000000..617095c
+--- /dev/null
++++ b/backend/ocr_core/__init__.py
+@@ -0,0 +1,35 @@
++"""ocr_core — module commun d'OCR des pièces (factures, reçus, pièces comptables).
++
++SOURCE UNIQUE : ce dossier est maintenu dans le dépôt ShuyahBF/Claude
++(`ocr-core/backend/ocr_core/`) et COPIÉ À L'IDENTIQUE dans chaque site
++(Albarka, Sawali, …) par `ocr-core/sync.sh`. Ne jamais le modifier
++directement dans un site : corriger ici, monter la version, puis
++resynchroniser tous les sites (voir ocr-core/README.md).
++
++Ce module ne connaît AUCUN site : ni base de données, ni authentification,
++ni stockage, ni route HTTP. Chaque site fournit une fine couche
++d'« adaptateur » (ex. Sawali : backend/routes/ocr_pieces.py) qui gère qui a
++le droit de voir quoi, où sont stockés les fichiers et les collections Mongo.
++
++Contenu :
++  - models   : catalogue des modèles Claude + calcul du coût réel en FCFA
++  - prepare  : préparation de la pièce (PDF texte / PDF scanné → images / photo)
++  - engine   : appel au modèle via EMERGENT_LLM_KEY + lecture de la réponse
++  - review   : précision réelle à partir des corrections humaines
++  - stats    : indicateurs du tableau de bord (par modèle, par période)
++"""
++from .models import (  # noqa: F401
++    DEFAULT_USD_TO_XOF,
++    OCR_MODELS,
++    OcrModel,
++    compute_cost,
++    default_model_id,
++    get_model,
++    public_catalog,
++    usd_to_xof_rate,
++)
++from .engine import analyze_document, build_system_prompt  # noqa: F401
++from .review import build_review, compute_accuracy, normalize_value  # noqa: F401
++from .stats import PERIODS, period_start, stats_block, stats_by_model  # noqa: F401
++
++__version__ = "1.0.0"   # garder identique au fichier ocr-core/VERSION
+diff --git a/backend/ocr_core/engine.py b/backend/ocr_core/engine.py
+new file mode 100644
+index 0000000..7141863
+--- /dev/null
++++ b/backend/ocr_core/engine.py
+@@ -0,0 +1,220 @@
++"""Appel au modèle Claude via la clé universelle EMERGENT_LLM_KEY.
++
++Compatible avec les deux versions d'emergentintegrations en service :
++  - 0.2.0 (Albarka) : `LlmChat.send_message_with_tools()` est la méthode
++    publique qui renvoie l'usage réel en tokens (`ChatResponse.usage`) ;
++  - 0.1.0 (Sawali) : `send_message()` ne renvoie que le texte ; on appelle
++    donc `_execute_completion()` (réponse brute LiteLLM, avec `usage`) dans un
++    thread dédié, car en 0.1.0 cet appel est synchrone et bloquerait le serveur.
++Dans les deux cas, le coût est calculé sur les tokens RÉELLEMENT consommés.
++"""
++from __future__ import annotations
++
++import asyncio
++import base64
++import json
++import logging
++import os
++import secrets
++import time
++from typing import Any, Dict, List, Optional, Tuple
++
++from .models import OCR_MODELS, OcrModel, compute_cost, default_model_id, get_model
++from .prepare import prepare_document
++
++logger = logging.getLogger("ocr_core")
++
++MODEL_PROVIDER = "anthropic"
++MAX_OUTPUT_TOKENS = 8192
++
++# Format de réponse imposé au modèle — identique sur tous les sites, pour
++# que la précision et le tableau de bord se comparent d'un site à l'autre.
++_RESPONSE_FORMAT = (
++    "Analyse le document et réponds UNIQUEMENT avec un objet JSON strict, sans "
++    "aucun texte avant ou après ni bloc de code, au format :\n"
++    "{\n"
++    '  "document_type": "<type précis en français>",\n'
++    '  "summary": "<synthèse claire en 3-6 phrases, en français>",\n'
++    '  "extracted_fields": { <clés/valeurs pertinents : numéro, date, émetteur, IFU, RCCM, client, '
++    "lignes, sous-total, taxes, montant total, période... — montants en nombres sans séparateur "
++    'de milliers, dates au format AAAA-MM-JJ> },\n'
++    '  "flags": ["<alerte éventuelle : pièce illisible, information manquante, incohérence...>"],\n'
++    '  "confidence": <nombre entre 0 et 1 : ta confiance globale dans l\'extraction>,\n'
++    '  "uncertain_fields": ["<clés de extracted_fields dont tu n\'es pas sûr (écriture peu lisible, tampon...)>"]\n'
++    "}\n"
++    "Si une information est illisible, mets null plutôt que de la deviner et cite la clé dans "
++    "\"uncertain_fields\". Si le document est illisible ou d'un type non reconnaissable, dis-le "
++    "dans \"flags\" plutôt que d'inventer."
++)
++
++
++def build_system_prompt(organisation: str, documents: str) -> str:
++    """Consigne système : seule partie propre à chaque site (qui on est, quelles pièces).
++
++    organisation : ex. « le cabinet ALBARKA (cabinet d'assistance fiscale et
++                   comptable au Burkina Faso) »
++    documents    : ex. « facture, reçu, relevé bancaire, bulletin de paie… »
++    """
++    return (
++        f"Tu es l'assistant d'analyse documentaire de {organisation}. On te soumet une pièce "
++        f"téléversée ({documents}), souvent scannée ou photographiée, parfois manuscrite, avec "
++        "tampon, cachet ou filigrane. Si le document a plusieurs pages, elles te sont transmises "
++        "dans l'ordre. " + _RESPONSE_FORMAT
++    )
++
++
++# ---------------------------------------------------------------------
++# Lecture de la réponse
++# ---------------------------------------------------------------------
++def parse_json(text: str) -> Dict[str, Any]:
++    """Tolère un éventuel bloc ```json``` ou du texte parasite autour du JSON."""
++    text = (text or "").strip()
++    if text.startswith("```"):
++        text = text.strip("`")
++        if text.lower().startswith("json"):
++            text = text[4:]
++    try:
++        return json.loads(text)
++    except json.JSONDecodeError:
++        start, end = text.find("{"), text.rfind("}")
++        if start == -1 or end == -1:
++            raise
++        return json.loads(text[start:end + 1])
++
++
++def _clamp_confidence(value: Any) -> Optional[float]:
++    try:
++        return max(0.0, min(1.0, float(value)))
++    except (TypeError, ValueError):
++        return None
++
++
++def empty_result(model_id: str, flag: str, error: Optional[str] = None) -> Dict[str, Any]:
++    """Résultat vide (analyse impossible) — même forme qu'un résultat normal."""
++    result: Dict[str, Any] = {
++        "summary": "", "extracted_fields": {}, "document_type": None, "flags": [flag],
++        "confidence": None, "uncertain_fields": [], "model": model_id, "input_mode": None,
++        "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0, "cost_xof": 0.0,
++        "pages_analyzed": 0, "duration_ms": 0,
++    }
++    if error:
++        result["error"] = error
++    return result
++
++
++# ---------------------------------------------------------------------
++# Appel au modèle
++# ---------------------------------------------------------------------
++def _usage_of(raw: Any) -> Tuple[int, int]:
++    """Tokens (entrée, sortie) d'une réponse LiteLLM, noms OpenAI ou Anthropic."""
++    u = getattr(raw, "usage", None)
++    if u is None:
++        return 0, 0
++    tin = getattr(u, "prompt_tokens", None) or getattr(u, "input_tokens", 0) or 0
++    tout = getattr(u, "completion_tokens", None) or getattr(u, "output_tokens", 0) or 0
++    return int(tin), int(tout)
++
++
++async def call_llm(model: OcrModel, system_prompt: str, text: str, images: List[bytes], filename: str) -> Tuple[str, int, int]:
++    """Envoie texte ou images au modèle ; renvoie (réponse, tokens_entrée, tokens_sortie)."""
++    from emergentintegrations.llm.chat import ImageContent, LlmChat, UserMessage
++
++    api_key = os.environ.get("EMERGENT_LLM_KEY", "")
++    if not api_key:
++        raise RuntimeError("Clé LLM non configurée (EMERGENT_LLM_KEY)")
++    chat = LlmChat(
++        api_key=api_key,
++        session_id=f"ocr-core-{secrets.token_urlsafe(8)}",
++        system_message=system_prompt,
++    ).with_model(MODEL_PROVIDER, model.id).with_params(max_tokens=MAX_OUTPUT_TOKENS)
++
++    if images:
++        message = UserMessage(
++            text=f"Nom du fichier : {filename}. Analyse cette pièce ({len(images)} page(s)).",
++            file_contents=[ImageContent(image_base64=base64.b64encode(img).decode("ascii")) for img in images],
++        )
++    else:
++        message = UserMessage(text=(
++            f"Nom du fichier : {filename}\n\nContenu extrait du document :\n---\n{text}\n---\n\n"
++            "Analyse ce document et réponds uniquement en JSON strict."
++        ))
++
++    # emergentintegrations 0.2.0 : méthode publique avec usage réel
++    if hasattr(chat, "send_message_with_tools"):
++        response = await chat.send_message_with_tools(message)
++        return response.content or "", int(response.usage.input_tokens or 0), int(response.usage.output_tokens or 0)
++
++    # emergentintegrations 0.1.0 : même construction de message que send_message(),
++    # puis réponse brute (avec usage) calculée dans un thread (appel synchrone en 0.1.0).
++    messages = await chat.get_messages()
++    await chat._add_user_message(messages, message)
++    raw = await asyncio.to_thread(lambda: asyncio.run(chat._execute_completion(messages)))
++    content = raw.choices[0].message.content or ""
++    tin, tout = _usage_of(raw)
++    return content, tin, tout
++
++
++async def analyze_document(
++    data: bytes,
++    content_type: str,
++    filename: str,
++    model_id: Optional[str] = None,
++    *,
++    system_prompt: str,
++    default_model: Optional[str] = None,
++) -> Dict[str, Any]:
++    """Analyse une pièce ; ne lève jamais — retourne toujours un dict.
++
++    Résultat : summary, extracted_fields, document_type, flags, confidence,
++    uncertain_fields, model, input_mode ("texte"/"images"), input_tokens,
++    output_tokens, cost_usd, cost_xof, pages_analyzed, duration_ms (+ error).
++    """
++    model = get_model(model_id) or get_model(default_model) or OCR_MODELS[default_model_id()]
++
++    # 1. Préparation : texte, images ou refus (format non analysable)
++    try:
++        text, images, notes = prepare_document(data, content_type)
++    except ValueError as exc:
++        return empty_result(model.id, str(exc))
++    except Exception as exc:  # noqa: BLE001 — image corrompue, PDF protégé...
++        logger.exception("Préparation impossible pour %s", filename)
++        return empty_result(model.id, f"Fichier illisible : {exc}", error=str(exc))
++
++    # 2. Appel au modèle
++    started = time.monotonic()
++    try:
++        reply, input_tokens, output_tokens = await call_llm(model, system_prompt, text, images, filename)
++    except Exception as exc:  # noqa: BLE001 — réseau, quota, clé absente, modèle inconnu du proxy...
++        logger.exception("Erreur analyse IA (%s) pour %s", model.id, filename)
++        return empty_result(model.id, f"Erreur d'analyse : {exc}", error=str(exc))
++
++    # 3. Coût calculé AVANT le parsing : les tokens sont facturés même si la
++    #    réponse est inexploitable.
++    cost_usd, cost_xof = compute_cost(model, input_tokens, output_tokens)
++    metrics = {
++        "model": model.id, "input_mode": "images" if images else "texte",
++        "input_tokens": input_tokens, "output_tokens": output_tokens,
++        "cost_usd": cost_usd, "cost_xof": cost_xof,
++        "pages_analyzed": len(images) if images else 1,
++        "duration_ms": int((time.monotonic() - started) * 1000),
++    }
++    try:
++        parsed = parse_json(reply)
++    except json.JSONDecodeError as exc:
++        logger.exception("Réponse IA non-JSON (%s) pour %s", model.id, filename)
++        result = empty_result(model.id, "Réponse de l'IA au format inattendu", error=str(exc))
++        result.update(metrics)
++        return result
++
++    fields = parsed.get("extracted_fields") or {}
++    if not isinstance(fields, dict):
++        fields = {"valeur": fields}
++    return {
++        "summary": parsed.get("summary", ""),
++        "extracted_fields": fields,
++        "document_type": parsed.get("document_type"),
++        "flags": list(parsed.get("flags") or []) + notes,
++        "confidence": _clamp_confidence(parsed.get("confidence")),
++        "uncertain_fields": [k for k in (parsed.get("uncertain_fields") or []) if isinstance(k, str)],
++        **metrics,
++    }
+diff --git a/backend/ocr_core/models.py b/backend/ocr_core/models.py
+new file mode 100644
+index 0000000..d4ed7b8
+--- /dev/null
++++ b/backend/ocr_core/models.py
+@@ -0,0 +1,98 @@
++"""Catalogue des modèles Claude proposés pour l'OCR + coût réel en FCFA.
++
++Tarifs officiels Anthropic en USD pour 1 million de tokens (2026-09).
++Ajouter un modèle = ajouter une entrée dans OCR_MODELS, rien d'autre.
++"""
++from __future__ import annotations
++
++import os
++from dataclasses import dataclass
++from typing import Any, Dict, List, Optional, Tuple
++
++
++@dataclass(frozen=True)
++class OcrModel:
++    id: str                       # identifiant exact transmis au proxy Emergent
++    label: str                    # libellé affiché dans la liste déroulante
++    price_input_per_mtok: float   # USD / 1M tokens en entrée (images/texte + consigne)
++    price_output_per_mtok: float  # USD / 1M tokens en sortie (JSON + réflexion)
++    note: str                     # conseil d'usage affiché sous la liste
++
++    def public(self) -> Dict[str, Any]:
++        """Version sérialisable renvoyée au frontend."""
++        return {
++            "id": self.id, "label": self.label, "note": self.note,
++            "price_input_per_mtok": self.price_input_per_mtok,
++            "price_output_per_mtok": self.price_output_per_mtok,
++        }
++
++
++OCR_MODELS: Dict[str, OcrModel] = {
++    "claude-opus-5": OcrModel(
++        id="claude-opus-5",
++        label="Claude Opus 5 — le plus précis (manuscrit, tampons)",
++        price_input_per_mtok=5.00, price_output_per_mtok=25.00,
++        note="Meilleure précision, notamment sur l'écriture manuscrite. Coût le plus élevé.",
++    ),
++    "claude-sonnet-5": OcrModel(
++        id="claude-sonnet-5",
++        label="Claude Sonnet 5 — bon compromis coût/précision",
++        price_input_per_mtok=2.00, price_output_per_mtok=10.00,
++        note="Modèle recommandé : validé en production sur manuscrit et filigrane (Albarka).",
++    ),
++    # Identifiant daté : c'est celui déjà éprouvé en production via le proxy
++    # Emergent (Sawali : Liluvine, SMS, bannières…).
++    "claude-haiku-4-5-20251001": OcrModel(
++        id="claude-haiku-4-5-20251001",
++        label="Claude Haiku 4.5 — le moins cher (imprimé net, gros volume)",
++        price_input_per_mtok=1.00, price_output_per_mtok=5.00,
++        note="Le plus économique. À réserver aux pièces imprimées nettes, sans manuscrit.",
++    ),
++}
++
++# Modèle par défaut commun à tous les sites (surchargeable par la variable
++# d'environnement OCR_DEFAULT_MODEL, ou par l'adaptateur du site).
++FALLBACK_DEFAULT_MODEL = "claude-sonnet-5"
++
++# Taux USD → FCFA (XOF). Le FCFA est arrimé à l'EURO (655,957 XOF/EUR), pas
++# au dollar : ce taux suit l'EUR/USD et doit être ajusté périodiquement.
++DEFAULT_USD_TO_XOF = 600.0
++
++
++def get_model(model_id: Optional[str]) -> Optional[OcrModel]:
++    """Modèle du catalogue, ou None si l'identifiant est inconnu."""
++    return OCR_MODELS.get(model_id or "")
++
++
++def default_model_id(env_var: str = "OCR_DEFAULT_MODEL") -> str:
++    """Modèle par défaut : variable d'environnement si valide, sinon Sonnet 5."""
++    value = os.environ.get(env_var, "")
++    return value if value in OCR_MODELS else FALLBACK_DEFAULT_MODEL
++
++
++def public_catalog(default_model: Optional[str] = None) -> Dict[str, Any]:
++    """Réponse de la route « liste des modèles » : identique sur tous les sites."""
++    return {
++        "models": [m.public() for m in OCR_MODELS.values()],
++        "default_model": default_model or default_model_id(),
++        "usd_to_xof_rate": usd_to_xof_rate(),
++    }
++
++
++def usd_to_xof_rate() -> float:
++    """Taux USD→XOF lu à chaque appel (modifiable sans toucher au code)."""
++    try:
++        rate = float(os.environ.get("USD_TO_XOF_RATE", DEFAULT_USD_TO_XOF))
++        return rate if rate > 0 else DEFAULT_USD_TO_XOF
++    except ValueError:
++        return DEFAULT_USD_TO_XOF
++
++
++def compute_cost(model: OcrModel, input_tokens: int, output_tokens: int) -> Tuple[float, float]:
++    """Coût réel d'un appel : (USD, FCFA), à partir des tokens effectivement consommés."""
++    cost_usd = (input_tokens * model.price_input_per_mtok + output_tokens * model.price_output_per_mtok) / 1_000_000
++    return round(cost_usd, 6), round(cost_usd * usd_to_xof_rate(), 2)
++
++
++def model_ids() -> List[str]:
++    return list(OCR_MODELS)
+diff --git a/backend/ocr_core/prepare.py b/backend/ocr_core/prepare.py
+new file mode 100644
+index 0000000..7590079
+--- /dev/null
++++ b/backend/ocr_core/prepare.py
+@@ -0,0 +1,72 @@
++"""Préparation d'une pièce avant l'envoi au modèle (optimisation OCR).
++
++  - PDF avec une vraie couche texte (généré par un logiciel) → texte extrait
++    par PyMuPDF : le mode le moins cher ;
++  - PDF scanné (pas ou peu de texte) → chaque page convertie en image ;
++  - photo → redressée (EXIF) et réduite à 1568 px sur le grand côté, taille à
++    laquelle Claude la réduit de toute façon (requête plus légère, même lisibilité) ;
++  - txt / csv → texte brut ; Word / Excel → non analysable (ValueError).
++"""
++from __future__ import annotations
++
++import io
++from typing import List, Tuple
++
++MAX_IMAGE_EDGE_PX = 1568       # au-delà, Claude réduit lui-même l'image
++PDF_RENDER_DPI = 150           # suffisant pour lire un scan A4
++MAX_PDF_PAGES = 10             # pages suivantes non analysées (une alerte le signale)
++MIN_TEXT_CHARS_PER_PAGE = 200  # en dessous : PDF considéré comme scanné
++MAX_TEXT_CHARS = 20000
++JPEG_QUALITY = 85
++
++IMAGE_MIMES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
++TEXT_MIMES = {"text/plain", "text/csv"}
++
++
++def shrink_image(data: bytes) -> bytes:
++    """Redresse (EXIF), réduit à MAX_IMAGE_EDGE_PX et ré-encode en JPEG."""
++    from PIL import Image, ImageOps
++
++    with Image.open(io.BytesIO(data)) as img:
++        img = ImageOps.exif_transpose(img)          # photos de téléphone prises « de côté »
++        if img.mode not in ("RGB", "L"):
++            img = img.convert("RGB")                # JPEG : ni transparence ni palette
++        img.thumbnail((MAX_IMAGE_EDGE_PX, MAX_IMAGE_EDGE_PX))  # proportions gardées, jamais agrandie
++        out = io.BytesIO()
++        img.save(out, format="JPEG", quality=JPEG_QUALITY, optimize=True)
++        return out.getvalue()
++
++
++def prepare_pdf(data: bytes) -> Tuple[str, List[bytes], List[str]]:
++    """PDF → (texte, [], notes) si la couche texte est exploitable, sinon
++    ("", [pages en JPEG], notes) pour un PDF scanné."""
++    import fitz  # PyMuPDF
++
++    notes: List[str] = []
++    with fitz.open(stream=data, filetype="pdf") as pdf:
++        total = pdf.page_count
++        pages = list(pdf.pages(0, min(total, MAX_PDF_PAGES)))
++        if total > MAX_PDF_PAGES:
++            notes.append(f"Seules les {MAX_PDF_PAGES} premières pages sur {total} ont été analysées.")
++        text = "\n".join(p.get_text() for p in pages).strip()
++        if pages and len(text) / len(pages) >= MIN_TEXT_CHARS_PER_PAGE:
++            return text[:MAX_TEXT_CHARS], [], notes
++        images = [shrink_image(p.get_pixmap(dpi=PDF_RENDER_DPI).tobytes("png")) for p in pages]
++    if not images:
++        raise ValueError("PDF vide ou illisible")
++    return "", images, notes
++
++
++def prepare_document(data: bytes, content_type: str) -> Tuple[str, List[bytes], List[str]]:
++    """Pièce → (texte, images, alertes). Exactement l'un de texte/images est rempli.
++
++    Lève ValueError pour un format non analysable (Word, Excel…)."""
++    if content_type == "application/pdf":
++        return prepare_pdf(data)
++    if content_type in IMAGE_MIMES:
++        return "", [shrink_image(data)], []
++    if content_type in TEXT_MIMES or content_type.startswith("text/"):
++        text = data.decode("utf-8", errors="ignore")[:MAX_TEXT_CHARS]
++        if text.strip():
++            return text, [], []
++    raise ValueError(f"Type de fichier non pris en charge pour l'analyse : {content_type}")
+diff --git a/backend/ocr_core/review.py b/backend/ocr_core/review.py
+new file mode 100644
+index 0000000..cbe13e2
+--- /dev/null
++++ b/backend/ocr_core/review.py
+@@ -0,0 +1,60 @@
++"""Évaluation humaine : précision réelle à partir des corrections.
++
++précision réelle = (champs extraits − champs corrigés) ÷ (champs extraits + champs oubliés)
++Les différences de simple mise en forme ne comptent pas comme des erreurs.
++"""
++from __future__ import annotations
++
++import json
++from datetime import datetime, timezone
++from typing import Any, Dict, Optional
++
++
++def normalize_value(value: Any) -> Any:
++    """Forme comparable : ignore espaces, casse et format des nombres
++    ("150 000", "150000" et 150000.0 sont égaux)."""
++    if value is None:
++        return ""
++    if isinstance(value, (dict, list)):
++        return json.dumps(value, sort_keys=True, ensure_ascii=False)
++    text = " ".join(str(value).split())
++    compact = text.replace(" ", "").replace(" ", "").replace(",", ".")
++    try:
++        return float(compact)
++    except ValueError:
++        return text.lower()
++
++
++def compute_accuracy(extracted: Dict[str, Any], corrected: Dict[str, Any]) -> Dict[str, Any]:
++    """Part des champs que le relecteur n'a PAS eu à corriger + détail des corrections.
++
++    `corrected` peut contenir tous les champs (le formulaire les renvoie tous) :
++    seuls ceux qui diffèrent réellement, ou qui manquaient, comptent."""
++    changed = {
++        k: v for k, v in corrected.items()
++        if k not in extracted or normalize_value(v) != normalize_value(extracted.get(k))
++    }
++    total = len(set(extracted) | set(corrected))
++    accuracy = round((total - len(changed)) / total, 4) if total else None
++    return {"changed": changed, "fields_total": total, "fields_corrected": len(changed), "accuracy": accuracy}
++
++
++def build_review(
++    extracted: Dict[str, Any], rating: int, comment: Optional[str],
++    corrected: Dict[str, Any], reviewer_id: str, reviewer_name: Optional[str],
++) -> Dict[str, Any]:
++    """Document « review » à enregistrer sur une analyse (identique sur tous les sites)."""
++    if not 1 <= int(rating) <= 5:
++        raise ValueError("La note doit être comprise entre 1 et 5")
++    acc = compute_accuracy(extracted or {}, corrected or {})
++    return {
++        "rating": int(rating),
++        "comment": (comment or "").strip() or None,
++        "corrected_fields": acc["changed"],      # seulement ce qui a vraiment changé
++        "fields_total": acc["fields_total"],
++        "fields_corrected": acc["fields_corrected"],
++        "accuracy": acc["accuracy"],
++        "reviewed_by": reviewer_id,
++        "reviewed_by_name": reviewer_name,
++        "reviewed_at": datetime.now(timezone.utc).isoformat(),
++    }
+diff --git a/backend/ocr_core/stats.py b/backend/ocr_core/stats.py
+new file mode 100644
+index 0000000..826a6b1
+--- /dev/null
++++ b/backend/ocr_core/stats.py
+@@ -0,0 +1,64 @@
++"""Indicateurs du tableau de bord OCR (par modèle, par période)."""
++from __future__ import annotations
++
++from datetime import datetime, timedelta, timezone
++from typing import Any, Dict, List, Optional
++
++from .models import get_model, usd_to_xof_rate
++
++PERIODS = {"today", "7d", "30d", "all"}
++
++
++def period_start(period: str) -> Optional[str]:
++    """Date ISO (UTC) de début de période ; None = depuis toujours.
++
++    Lève ValueError pour une période inconnue."""
++    if period not in PERIODS:
++        raise ValueError(f"period invalide (attendu : {sorted(PERIODS)})")
++    now = datetime.now(timezone.utc)
++    if period == "today":
++        return now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
++    if period == "7d":
++        return (now - timedelta(days=7)).isoformat()
++    if period == "30d":
++        return (now - timedelta(days=30)).isoformat()
++    return None
++
++
++def _avg(values: List[float]) -> Optional[float]:
++    return round(sum(values) / len(values), 4) if values else None
++
++
++def stats_block(rows: List[dict]) -> Dict[str, Any]:
++    """Indicateurs d'un groupe d'analyses (un modèle, ou le total)."""
++    reviews = [r["review"] for r in rows if r.get("review")]
++    ok_rows = [r for r in rows if not r.get("error")]
++    total_cost = sum(float(r.get("cost_xof") or 0) for r in rows)
++    return {
++        "runs": len(rows),
++        "errors": len(rows) - len(ok_rows),
++        "total_cost_xof": round(total_cost, 2),
++        "avg_cost_xof": round(total_cost / len(rows), 2) if rows else None,
++        "total_input_tokens": sum(int(r.get("input_tokens") or 0) for r in rows),
++        "total_output_tokens": sum(int(r.get("output_tokens") or 0) for r in rows),
++        "avg_duration_ms": _avg([float(r.get("duration_ms") or 0) for r in ok_rows]),
++        # Confiance auto-déclarée par le modèle — indicative seulement
++        "avg_confidence": _avg([float(r["confidence"]) for r in ok_rows if r.get("confidence") is not None]),
++        # Mesures humaines (seules à faire foi)
++        "reviewed": len(reviews),
++        "avg_rating": _avg([float(rv["rating"]) for rv in reviews if rv.get("rating")]),
++        "avg_accuracy": _avg([float(rv["accuracy"]) for rv in reviews if rv.get("accuracy") is not None]),
++    }
++
++
++def stats_by_model(rows: List[dict], period: str) -> Dict[str, Any]:
++    """Réponse complète de la route « tableau de bord » : identique sur tous les sites."""
++    by_model: Dict[str, List[dict]] = {}
++    for r in rows:
++        by_model.setdefault(r.get("model") or "inconnu", []).append(r)
++    models = []
++    for model_id, model_rows in by_model.items():
++        cfg = get_model(model_id)
++        models.append({"model": model_id, "label": cfg.label if cfg else model_id, **stats_block(model_rows)})
++    models.sort(key=lambda m: m["runs"], reverse=True)
++    return {"period": period, "usd_to_xof_rate": usd_to_xof_rate(), "models": models, "total": stats_block(rows)}
+diff --git a/backend/routes/ocr_pieces.py b/backend/routes/ocr_pieces.py
+new file mode 100644
+index 0000000..4541f9d
+--- /dev/null
++++ b/backend/routes/ocr_pieces.py
+@@ -0,0 +1,320 @@
++"""OCR sur Pièces — adaptateur Sawali du module commun `ocr_core`.
++
++Page « OCR sur Pièces » (sidebar admin + pharmacies) : dépôt de pièces
++(factures fournisseurs, bons de livraison, reçus…), analyse IA, et pour
++l'admin/superviseur : choix du modèle, coût réel en FCFA, évaluation 1-5
++étoiles + corrections, relance avec un autre modèle, tableau de bord.
++
++Toute la logique d'OCR (modèles, préparation des pièces, appel IA, coût,
++précision, statistiques) vit dans `backend/ocr_core/`, COPIE IDENTIQUE du
++module commun maintenu dans le dépôt ShuyahBF/Claude (dossier ocr-core/).
++Ce fichier-ci ne contient que ce qui est propre à Sawali :
++  - qui a accès (admin/superviseur : tout ; pharmacies : leurs pièces) ;
++  - le cloisonnement par tenant (client lié), résolu côté serveur depuis la
++    session — jamais depuis un paramètre envoyé par le client
++    (TECHNICAL_RULES.md, règle multi-tenant) ;
++  - le stockage des fichiers (Emergent Object Storage, `object_storage.py`) ;
++  - les collections Mongo : `ocr_pieces` (une pièce + sa synthèse la plus
++    récente) et `ocr_piece_runs` (chaque analyse, avec coût et évaluation).
++Les pharmacies ne voient jamais le modèle, le coût ni les évaluations.
++"""
++from __future__ import annotations
++
++import asyncio
++import logging
++import uuid
++from datetime import datetime, timezone
++from typing import Any, Dict, List, Optional
++
++from fastapi import Depends, File, Form, HTTPException, Query, UploadFile
++from fastapi.responses import Response
++from pydantic import BaseModel, Field
++
++import ocr_core
++
++logger = logging.getLogger("sawali.ocr_pieces")
++
++# Consigne système propre à Sawali (le format de réponse est commun, dans ocr_core).
++SYSTEM_PROMPT = ocr_core.build_system_prompt(
++    organisation="SAWALI SMART SYSTEMS (plateforme de gestion pour pharmacies et officines, au Burkina Faso)",
++    documents=(
++        "facture fournisseur ou de grossiste-répartiteur, bon de livraison, avoir, reçu, "
++        "relevé bancaire, facture de charges, pièce comptable de la pharmacie, etc."
++    ),
++)
++
++PIECE_KINDS = ["facture", "bon_livraison", "avoir", "recu", "releve", "autre"]
++MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 Mo
++ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png", "webp", "txt", "csv"}
++
++# Champs internes, jamais renvoyés à une pharmacie.
++_INTERNAL_FIELDS = {
++    "run_id", "model", "input_mode", "input_tokens", "output_tokens", "cost_usd", "cost_xof",
++    "pages_analyzed", "duration_ms", "confidence", "uncertain_fields", "error", "requested_by",
++}
++
++
++def _now() -> str:
++    return datetime.now(timezone.utc).isoformat()
++
++
++def _is_staff(user: dict) -> bool:
++    """Admin/superviseur Sawali : accès complet (tous les tenants, outils OCR)."""
++    return (user.get("role") or "") in ("admin", "superviseur")
++
++
++def _is_pharmacy(user: dict) -> bool:
++    """Pharmacie cliente : compte à rôle `pharmacien`, ou utilisateur suivi Pharmacien."""
++    return (user.get("role") or "") == "pharmacien" or (user.get("tracked_role") or "") == "Pharmacien"
++
++
++def _own_tenant_id(user: dict) -> str:
++    """Tenant (client lié) d'une pharmacie, résolu depuis la session uniquement.
++
++    Même ordre que `_resolve_client_lie` (routes/cashier.py) : parent_client_id,
++    puis client_id ; à défaut, le compte pharmacie est lui-même le tenant."""
++    for key in ("parent_client_id", "client_id"):
++        ref = user.get(key)
++        if ref and ref != user.get("id"):
++            return ref
++    return user["id"]
++
++
++def _for_pharmacy(doc: dict) -> dict:
++    return {k: v for k, v in doc.items() if k not in _INTERNAL_FIELDS}
++
++
++def _ext_of(filename: str) -> str:
++    return (filename.rsplit(".", 1)[-1] if "." in filename else "").lower()
++
++
++class ReviewPayload(BaseModel):
++    rating: int = Field(..., ge=1, le=5, description="Note de 1 à 5 étoiles")
++    comment: Optional[str] = Field(None, max_length=2000)
++    corrected_fields: Dict[str, Any] = Field(default_factory=dict)
++
++
++class ReanalyzePayload(BaseModel):
++    model: str
++
++
++def attach_ocr_pieces_routes(*, api, db, get_current_user):
++    """Branche les routes /api/ocr-pieces (contrat commun décrit dans ocr-core/README.md)."""
++    import object_storage as storage   # Emergent Object Storage (déjà utilisé par la plateforme)
++
++    TAG = "Portail — OCR sur Pièces"
++
++    # --- Dépendances d'accès -------------------------------------------------
++    async def allowed_user(user: dict = Depends(get_current_user)) -> dict:
++        if not (_is_staff(user) or _is_pharmacy(user)):
++            raise HTTPException(status_code=403, detail="Accès réservé aux pharmacies et à l'administration")
++        return user
++
++    async def staff_user(user: dict = Depends(get_current_user)) -> dict:
++        if not _is_staff(user):
++            raise HTTPException(status_code=403, detail="Action réservée à l'administration Sawali")
++        return user
++
++    async def _get_piece(piece_id: str, user: dict) -> dict:
++        piece = await db.ocr_pieces.find_one({"id": piece_id}, {"_id": 0})
++        if not piece:
++            raise HTTPException(status_code=404, detail="Pièce introuvable")
++        if not _is_staff(user) and piece["tenant_id"] != _own_tenant_id(user):
++            raise HTTPException(status_code=403, detail="Accès refusé")
++        return piece
++
++    # --- Analyse en tâche de fond ---------------------------------------------
++    async def _analyze_and_store(piece_id: str, data: bytes, content_type: str, filename: str,
++                                 tenant_id: str, model_id: Optional[str], requested_by: str) -> None:
++        try:
++            result = await ocr_core.analyze_document(
++                data, content_type, filename, model_id,
++                system_prompt=SYSTEM_PROMPT, default_model=ocr_core.default_model_id(),
++            )
++            run = {
++                "id": str(uuid.uuid4()), "document_id": piece_id, "tenant_id": tenant_id,
++                "summary": result.get("summary", ""),
++                "extracted_fields": result.get("extracted_fields", {}),
++                "document_type_guess": result.get("document_type"),
++                "flags": result.get("flags", []),
++                "confidence": result.get("confidence"),
++                "uncertain_fields": result.get("uncertain_fields", []),
++                "model": result.get("model"), "input_mode": result.get("input_mode"),
++                "input_tokens": result.get("input_tokens", 0), "output_tokens": result.get("output_tokens", 0),
++                "cost_usd": result.get("cost_usd", 0.0), "cost_xof": result.get("cost_xof", 0.0),
++                "pages_analyzed": result.get("pages_analyzed", 0), "duration_ms": result.get("duration_ms", 0),
++                "error": result.get("error"), "requested_by": requested_by,
++                "review": None, "created_at": _now(),
++            }
++            await db.ocr_piece_runs.insert_one(run.copy())
++            # Synthèse la plus récente recopiée sur la pièce (liste et vue pharmacie).
++            latest = {k: run[k] for k in (
++                "summary", "extracted_fields", "document_type_guess", "flags", "confidence",
++                "uncertain_fields", "model", "cost_xof", "error",
++            )}
++            latest["run_id"] = run["id"]
++            latest["analyzed_at"] = run["created_at"]
++            latest["status"] = "erreur_analyse" if run["error"] else "analyse"
++            await db.ocr_pieces.update_one({"id": piece_id}, {"$set": latest})
++        except Exception:
++            logger.exception("[ocr_pieces] analyse impossible pour %s", piece_id)
++            await db.ocr_pieces.update_one({"id": piece_id}, {"$set": {"status": "erreur_analyse"}})
++
++    # --- Référentiels (admin) ----------------------------------------------------
++    @api.get("/ocr-pieces/ocr-models", tags=[TAG])
++    async def ocr_models(user: dict = Depends(staff_user)):
++        return ocr_core.public_catalog()
++
++    @api.get("/ocr-pieces/tenants", tags=[TAG])
++    async def ocr_tenants(user: dict = Depends(staff_user)):
++        """Pharmacies pour le compte desquelles l'admin peut déposer une pièce."""
++        rows = await db.users.find(
++            {"role": {"$in": ["pharmacien", "client"]}, "tracked_role": {"$in": [None, ""]},
++             "account_status": {"$ne": "suspended"}},
++            {"_id": 0, "id": 1, "full_name": 1, "company": 1, "client_code": 1, "role": 1},
++        ).sort("company", 1).to_list(2000)
++        return rows
++
++    @api.get("/ocr-pieces/ocr-stats", tags=[TAG])
++    async def ocr_stats(period: str = "30d", user: dict = Depends(staff_user)):
++        try:
++            start = ocr_core.period_start(period)
++        except ValueError as exc:
++            raise HTTPException(status_code=400, detail=str(exc)) from exc
++        query: dict = {"created_at": {"$gte": start}} if start else {}
++        rows = await db.ocr_piece_runs.find(query, {"_id": 0, "extracted_fields": 0, "summary": 0}).to_list(20000)
++        return ocr_core.stats_by_model(rows, period)
++
++    @api.post("/ocr-pieces/ocr-runs/{run_id}/review", tags=[TAG])
++    async def review_run(run_id: str, payload: ReviewPayload, user: dict = Depends(staff_user)):
++        run = await db.ocr_piece_runs.find_one({"id": run_id}, {"_id": 0})
++        if not run:
++            raise HTTPException(status_code=404, detail="Analyse introuvable")
++        review = ocr_core.build_review(
++            run.get("extracted_fields") or {}, payload.rating, payload.comment,
++            payload.corrected_fields, user["id"], user.get("full_name"),
++        )
++        await db.ocr_piece_runs.update_one({"id": run_id}, {"$set": {"review": review}})
++        return review
++
++    # --- Pièces --------------------------------------------------------------
++    @api.get("/ocr-pieces", tags=[TAG])
++    async def list_pieces(tenant_id: Optional[str] = Query(None), user: dict = Depends(allowed_user)):
++        query: dict = {}
++        if _is_staff(user):
++            if tenant_id:
++                query["tenant_id"] = tenant_id
++        else:
++            query["tenant_id"] = _own_tenant_id(user)   # jamais le paramètre du client
++        pieces = await db.ocr_pieces.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
++        if not _is_staff(user):
++            return [_for_pharmacy(p) for p in pieces]
++        if pieces:
++            runs = await db.ocr_piece_runs.find(
++                {"document_id": {"$in": [p["id"] for p in pieces]}},
++                {"_id": 0, "id": 1, "document_id": 1, "model": 1, "cost_xof": 1, "review": 1, "created_at": 1},
++            ).sort("created_at", 1).to_list(5000)
++            by_piece: Dict[str, List[dict]] = {}
++            for r in runs:
++                by_piece.setdefault(r["document_id"], []).append({
++                    "id": r["id"], "model": r.get("model"), "cost_xof": r.get("cost_xof"),
++                    "rating": (r.get("review") or {}).get("rating"),
++                })
++            for p in pieces:
++                p["ocr_runs"] = by_piece.get(p["id"], [])
++        return pieces
++
++    @api.post("/ocr-pieces", tags=[TAG])
++    async def upload_piece(
++        file: UploadFile = File(...),
++        kind: str = Form("facture"),
++        tenant_id: Optional[str] = Form(None),
++        model: Optional[str] = Form(None),
++        user: dict = Depends(allowed_user),
++    ):
++        if kind not in PIECE_KINDS:
++            raise HTTPException(status_code=400, detail=f"Type de pièce invalide (attendu : {PIECE_KINDS})")
++        ext = _ext_of(file.filename or "")
++        if ext not in ALLOWED_EXTENSIONS:
++            raise HTTPException(status_code=400, detail=f"Extension non autorisée : .{ext}")
++        data = await file.read()
++        if len(data) > MAX_UPLOAD_BYTES:
++            raise HTTPException(status_code=413, detail="Fichier trop volumineux (max 20 Mo)")
++
++        if _is_staff(user):
++            if not tenant_id:
++                raise HTTPException(status_code=400, detail="Choisissez la pharmacie concernée")
++            owner = await db.users.find_one({"id": tenant_id}, {"_id": 0, "id": 1, "company": 1, "full_name": 1, "client_code": 1})
++            if not owner:
++                raise HTTPException(status_code=404, detail="Pharmacie introuvable")
++            if model and not ocr_core.get_model(model):
++                raise HTTPException(status_code=400, detail=f"Modèle d'IA inconnu : {model}")
++            model_id = model or ocr_core.default_model_id()
++        else:
++            tenant_id = _own_tenant_id(user)            # une pharmacie ne choisit ni tenant ni modèle
++            owner = await db.users.find_one({"id": tenant_id}, {"_id": 0, "id": 1, "company": 1, "full_name": 1, "client_code": 1}) or {}
++            model_id = ocr_core.default_model_id()
++
++        content_type = storage.guess_content_type(ext, file.content_type or "application/octet-stream")
++        stored = await storage.save_and_log(
++            db, data=data, kind="ocr_pieces", tenant_id=tenant_id, ext=ext,
++            content_type=content_type, original_filename=file.filename, user_id=user["id"],
++        )
++        piece = {
++            "id": str(uuid.uuid4()), "tenant_id": tenant_id,
++            "tenant_label": owner.get("company") or owner.get("full_name"),
++            "client_code": owner.get("client_code"),
++            "uploaded_by": user["id"], "kind": kind,
++            "storage_path": stored["path"], "original_filename": file.filename,
++            "content_type": content_type, "size": stored.get("size") or len(data),
++            "status": "en_analyse", "created_at": _now(),
++        }
++        await db.ocr_pieces.insert_one(piece.copy())
++        asyncio.create_task(_analyze_and_store(
++            piece["id"], data, content_type, file.filename or "", tenant_id, model_id, user["id"],
++        ))
++        return piece
++
++    @api.get("/ocr-pieces/{piece_id}", tags=[TAG])
++    async def get_piece(piece_id: str, user: dict = Depends(allowed_user)):
++        piece = await _get_piece(piece_id, user)
++        if not _is_staff(user):
++            return _for_pharmacy(piece)
++        piece["ocr_runs"] = await db.ocr_piece_runs.find(
++            {"document_id": piece_id}, {"_id": 0},
++        ).sort("created_at", 1).to_list(200)
++        return piece
++
++    @api.post("/ocr-pieces/{piece_id}/reanalyze", tags=[TAG])
++    async def reanalyze_piece(piece_id: str, payload: ReanalyzePayload, user: dict = Depends(staff_user)):
++        piece = await _get_piece(piece_id, user)
++        if not ocr_core.get_model(payload.model):
++            raise HTTPException(status_code=400, detail=f"Modèle d'IA inconnu : {payload.model}")
++        try:
++            data, _ct = await storage.get_object(piece["storage_path"])
++        except Exception as exc:  # noqa: BLE001
++            logger.exception("[ocr_pieces] lecture impossible pour %s", piece_id)
++            raise HTTPException(status_code=502, detail=f"Pièce introuvable dans le stockage : {exc}") from exc
++        await db.ocr_pieces.update_one({"id": piece_id}, {"$set": {"status": "en_analyse"}})
++        asyncio.create_task(_analyze_and_store(
++            piece_id, data, piece.get("content_type") or "application/octet-stream",
++            piece.get("original_filename") or "", piece["tenant_id"], payload.model, user["id"],
++        ))
++        return {"status": "en_analyse", "model": payload.model}
++
++    @api.get("/ocr-pieces/{piece_id}/download", tags=[TAG])
++    async def download_piece(piece_id: str, user: dict = Depends(allowed_user)):
++        piece = await _get_piece(piece_id, user)
++        data, ct = await storage.get_object(piece["storage_path"])
++        filename = (piece.get("original_filename") or "piece").replace('"', "")
++        return Response(content=data, media_type=ct or piece.get("content_type") or "application/octet-stream",
++                        headers={"Content-Disposition": f'inline; filename="{filename}"'})
++
++    @api.delete("/ocr-pieces/{piece_id}", tags=[TAG])
++    async def delete_piece(piece_id: str, user: dict = Depends(allowed_user)):
++        piece = await _get_piece(piece_id, user)   # admin, ou pharmacie propriétaire
++        # Le stockage n'a pas d'API de suppression : on marque le fichier supprimé.
++        await storage.soft_delete(db, piece["storage_path"])
++        await db.ocr_pieces.delete_one({"id": piece_id})
++        await db.ocr_piece_runs.delete_many({"document_id": piece_id})
++        return {"ok": True, "id": piece_id}
+diff --git a/backend/server.py b/backend/server.py
+index 8c2f272..e54fe01 100644
+--- a/backend/server.py
++++ b/backend/server.py
+@@ -25622,6 +25622,13 @@ _attach_liluvine_send_webhook(api=api, db=db, wa_send_text=_wa_send_text)
+ from routes.gestion_stocks import attach_gestion_stocks_routes as _attach_gestion_stocks  # noqa: E402
+ _attach_gestion_stocks(api=api, db=db, get_current_user=get_current_user, get_current_admin=get_current_admin)
+ 
++# Lot OCR sur Pièces (2026-09) — analyse IA des pièces (factures, bons de
++# livraison, reçus…). Logique commune dans backend/ocr_core/ (copie du module
++# ocr-core, source unique : dépôt ShuyahBF/Claude) ; adaptateur Sawali
++# (accès admin + pharmacies, cloisonnement par tenant) dans routes/ocr_pieces.py.
++from routes.ocr_pieces import attach_ocr_pieces_routes as _attach_ocr_pieces  # noqa: E402
++_attach_ocr_pieces(api=api, db=db, get_current_user=get_current_user)
++
+ # S031 — Universal Key health monitoring & budget-exceeded banner
+ from routes.llm_health import make_router as _make_llm_health_router  # noqa: E402
+ api.include_router(_make_llm_health_router(db=db, get_current_user=get_current_user, send_email=send_email))
+diff --git a/backend/tests/test_ocr_pieces.py b/backend/tests/test_ocr_pieces.py
+new file mode 100644
+index 0000000..3d58d8c
+--- /dev/null
++++ b/backend/tests/test_ocr_pieces.py
+@@ -0,0 +1,225 @@
++"""Lot OCR sur Pièces — adaptateur Sawali du module commun ocr_core.
++
++Tests autonomes : MongoDB simulé (mongomock-motor), stockage objet et appel
++IA remplacés par des doublures — aucun serveur, aucune clé, aucun réseau.
++Vérifie surtout le cloisonnement : une pharmacie ne voit que ses pièces et
++jamais le modèle, le coût ni les évaluations ; les outils OCR sont réservés
++à l'administration.
++
++Lancer : cd backend && python -m pytest tests/test_ocr_pieces.py -q
++"""
++from __future__ import annotations
++
++import io
++import sys
++import time
++import types
++from pathlib import Path
++
++import pytest
++
++pytest.importorskip("mongomock_motor")
++from fastapi import APIRouter, FastAPI, Header, HTTPException  # noqa: E402
++from fastapi.testclient import TestClient  # noqa: E402
++from mongomock_motor import AsyncMongoMockClient  # noqa: E402
++from PIL import Image  # noqa: E402
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++import ocr_core  # noqa: E402
++
++# --- Utilisateurs de test ------------------------------------------------------
++USERS = {
++    "admin": {"id": "admin", "role": "admin", "full_name": "Admin Sawali"},
++    "pharma_a": {"id": "pharma_a", "role": "pharmacien", "company": "Pharmacie A", "client_code": "PA"},
++    "pharma_b": {"id": "pharma_b", "role": "pharmacien", "company": "Pharmacie B", "client_code": "PB"},
++    # Utilisateur suivi « Pharmacien » rattaché à la pharmacie A.
++    "suivi_a": {"id": "suivi_a", "role": "client", "tracked_role": "Pharmacien", "parent_client_id": "pharma_a"},
++    "secretaire": {"id": "secretaire", "role": "client", "tracked_role": "Secrétaire"},
++}
++
++
++def _png() -> bytes:
++    """Petite image PNG blanche servant de « photo de facture »."""
++    b = io.BytesIO()
++    Image.new("RGB", (200, 100), "white").save(b, format="PNG")
++    return b.getvalue()
++
++
++@pytest.fixture()
++def env(monkeypatch):
++    """Application FastAPI minimale avec les routes OCR sur Pièces branchées."""
++    # 1) Faux stockage objet (même API que backend/object_storage.py).
++    blobs: dict = {}
++    fake_storage = types.ModuleType("object_storage")
++
++    def guess_content_type(ext, fallback="application/octet-stream"):
++        return {"png": "image/png", "pdf": "application/pdf"}.get(ext, fallback)
++
++    async def save_and_log(db, *, data, kind, tenant_id, ext, content_type=None,
++                           original_filename=None, user_id=None, metadata=None):
++        path = f"sawali/{tenant_id}/{kind}/{len(blobs)}.{ext}"
++        blobs[path] = (data, content_type)
++        await db.stored_objects.insert_one({"storage_path": path, "is_deleted": False})
++        return {"path": path, "size": len(data)}
++
++    async def get_object(path):
++        return blobs[path]
++
++    async def soft_delete(db, path):
++        await db.stored_objects.update_one({"storage_path": path}, {"$set": {"is_deleted": True}})
++        return True
++
++    fake_storage.guess_content_type = guess_content_type
++    fake_storage.save_and_log = save_and_log
++    fake_storage.get_object = get_object
++    fake_storage.soft_delete = soft_delete
++    monkeypatch.setitem(sys.modules, "object_storage", fake_storage)
++
++    # 2) Faux appel IA : renvoie un résultat fixe et note le modèle demandé.
++    calls: list = []
++
++    async def fake_analyze(data, content_type, filename, model_id=None, *, system_prompt, default_model=None):
++        assert "SAWALI" in system_prompt
++        calls.append(model_id)
++        return {"summary": "Facture fournisseur", "document_type": "Facture",
++                "extracted_fields": {"numero": "F-12", "total": 150000}, "flags": [],
++                "confidence": 0.9, "uncertain_fields": [], "model": model_id or "claude-sonnet-5",
++                "input_mode": "images", "input_tokens": 1000, "output_tokens": 200,
++                "cost_usd": 0.004, "cost_xof": 2.4, "pages_analyzed": 1, "duration_ms": 900}
++
++    monkeypatch.setattr(ocr_core, "analyze_document", fake_analyze)
++
++    # 3) Base simulée + authentification par en-tête X-User.
++    db = AsyncMongoMockClient()["sawali_test"]
++
++    async def get_current_user(x_user: str = Header(...)):
++        if x_user not in USERS:
++            raise HTTPException(status_code=401)
++        return USERS[x_user]
++
++    from routes.ocr_pieces import attach_ocr_pieces_routes
++    api = APIRouter(prefix="/api")
++    attach_ocr_pieces_routes(api=api, db=db, get_current_user=get_current_user)
++    app = FastAPI()
++    app.include_router(api)
++
++    with TestClient(app) as client:
++        # Utilisateurs insérés dans la boucle asyncio du client de test.
++        client.portal.call(db.users.insert_many, [dict(u) for u in USERS.values()])
++        yield types.SimpleNamespace(client=client, db=db, calls=calls, blobs=blobs)
++
++
++def _h(user):
++    return {"X-User": user}
++
++
++def _upload(env, user, **form):
++    return env.client.post("/api/ocr-pieces", headers=_h(user),
++                           files={"file": ("facture.png", _png(), "image/png")}, data=form)
++
++
++def _wait_analysed(env, user, piece_id):
++    """L'analyse tourne en tâche de fond : on attend la fin (quelques ms)."""
++    for _ in range(100):
++        p = env.client.get(f"/api/ocr-pieces/{piece_id}", headers=_h(user)).json()
++        if p["status"] != "en_analyse":
++            return p
++        time.sleep(0.02)
++    raise AssertionError("analyse jamais terminée")
++
++
++def test_pharmacy_upload_is_scoped_and_stripped(env):
++    # La pharmacie ne peut pas imposer un autre tenant ni un modèle : ignorés.
++    r = _upload(env, "pharma_a", tenant_id="pharma_b", model="claude-opus-5")
++    assert r.status_code == 200, r.text
++    piece = r.json()
++    assert piece["tenant_id"] == "pharma_a"
++    done = _wait_analysed(env, "pharma_a", piece["id"])
++    assert done["status"] == "analyse" and done["summary"] == "Facture fournisseur"
++    # Jamais de modèle, coût, confiance ni analyses pour une pharmacie.
++    for key in ("model", "cost_xof", "confidence", "run_id", "ocr_runs"):
++        assert key not in done
++    assert env.calls == [ocr_core.default_model_id()]
++
++
++def test_tracked_pharmacist_shares_parent_tenant(env):
++    piece = _upload(env, "pharma_a").json()
++    rows = env.client.get("/api/ocr-pieces", headers=_h("suivi_a")).json()
++    assert [p["id"] for p in rows] == [piece["id"]]
++
++
++def test_other_pharmacy_cannot_see_or_delete(env):
++    piece = _upload(env, "pharma_a").json()
++    assert env.client.get("/api/ocr-pieces", headers=_h("pharma_b")).json() == []
++    # Le paramètre tenant_id est ignoré pour une pharmacie.
++    assert env.client.get("/api/ocr-pieces?tenant_id=pharma_a", headers=_h("pharma_b")).json() == []
++    for method, url in (("get", ""), ("get", "/download"), ("delete", "")):
++        r = getattr(env.client, method)(f"/api/ocr-pieces/{piece['id']}{url}", headers=_h("pharma_b"))
++        assert r.status_code == 403
++
++
++def test_other_roles_refused(env):
++    assert env.client.get("/api/ocr-pieces", headers=_h("secretaire")).status_code == 403
++
++
++def test_staff_tools_refused_to_pharmacy(env):
++    piece = _upload(env, "pharma_a").json()
++    _wait_analysed(env, "pharma_a", piece["id"])
++    for url in ("/api/ocr-pieces/ocr-models", "/api/ocr-pieces/ocr-stats", "/api/ocr-pieces/tenants"):
++        assert env.client.get(url, headers=_h("pharma_a")).status_code == 403
++    r = env.client.post(f"/api/ocr-pieces/{piece['id']}/reanalyze", headers=_h("pharma_a"),
++                        json={"model": "claude-opus-5"})
++    assert r.status_code == 403
++
++
++def test_admin_flow_upload_review_reanalyze_stats(env):
++    # L'admin doit choisir la pharmacie.
++    assert _upload(env, "admin").status_code == 400
++    assert _upload(env, "admin", tenant_id="pharma_a", model="gpt-4o").status_code == 400
++    piece = _upload(env, "admin", tenant_id="pharma_a", model="claude-haiku-4-5-20251001").json()
++    assert piece["tenant_label"] == "Pharmacie A" and piece["client_code"] == "PA"
++    done = _wait_analysed(env, "admin", piece["id"])
++    assert len(done["ocr_runs"]) == 1 and done["ocr_runs"][0]["cost_xof"] == 2.4
++    run_id = done["ocr_runs"][0]["id"]
++
++    # Évaluation 1-5 étoiles + correction d'un champ.
++    assert env.client.post(f"/api/ocr-pieces/ocr-runs/{run_id}/review", headers=_h("admin"),
++                           json={"rating": 6}).status_code == 422
++    rv = env.client.post(f"/api/ocr-pieces/ocr-runs/{run_id}/review", headers=_h("admin"),
++                         json={"rating": 4, "corrected_fields": {"total": "160000"}}).json()
++    assert rv["rating"] == 4 and rv["accuracy"] == 0.5
++
++    # Relance avec un autre modèle : deuxième analyse.
++    r = env.client.post(f"/api/ocr-pieces/{piece['id']}/reanalyze", headers=_h("admin"),
++                        json={"model": "claude-opus-5"})
++    assert r.status_code == 200
++    done = _wait_analysed(env, "admin", piece["id"])
++    assert [x["model"] for x in done["ocr_runs"]] == ["claude-haiku-4-5-20251001", "claude-opus-5"]
++
++    # Liste admin : résumé des analyses ; filtre par pharmacie.
++    rows = env.client.get("/api/ocr-pieces?tenant_id=pharma_a", headers=_h("admin")).json()
++    assert rows[0]["ocr_runs"][0]["rating"] == 4
++    assert env.client.get("/api/ocr-pieces?tenant_id=pharma_b", headers=_h("admin")).json() == []
++
++    # Tableau de bord.
++    stats = env.client.get("/api/ocr-pieces/ocr-stats?period=all", headers=_h("admin")).json()
++    assert stats["total"]["runs"] == 2
++    assert env.client.get("/api/ocr-pieces/ocr-stats?period=hier", headers=_h("admin")).status_code == 400
++
++    # Téléchargement puis suppression (fichier marqué supprimé).
++    dl = env.client.get(f"/api/ocr-pieces/{piece['id']}/download", headers=_h("admin"))
++    assert dl.status_code == 200 and dl.content == _png()
++    assert env.client.delete(f"/api/ocr-pieces/{piece['id']}", headers=_h("admin")).status_code == 200
++    assert env.client.get(f"/api/ocr-pieces/{piece['id']}", headers=_h("admin")).status_code == 404
++
++
++def test_tenants_list_for_admin(env):
++    rows = env.client.get("/api/ocr-pieces/tenants", headers=_h("admin")).json()
++    ids = {r["id"] for r in rows}
++    assert {"pharma_a", "pharma_b"} <= ids and "suivi_a" not in ids and "secretaire" not in ids
++
++
++def test_bad_extension_refused(env):
++    r = env.client.post("/api/ocr-pieces", headers=_h("pharma_a"),
++                        files={"file": ("macro.exe", b"MZ", "application/octet-stream")})
++    assert r.status_code == 400
+diff --git a/frontend/src/App.js b/frontend/src/App.js
+index e7838b2..75ee5e4 100644
+--- a/frontend/src/App.js
++++ b/frontend/src/App.js
+@@ -152,6 +152,8 @@ import VidalFicheProduit from "@/pages/portal/VidalFicheProduit";
+ import VidalPosologie from "@/pages/portal/VidalPosologie";
+ import VidalSecurisation from "@/pages/portal/VidalSecurisation";
+ import GestionStocks from "@/pages/portal/GestionStocks";
++// Lot OCR sur Pièces (2026-09) — module commun ocr-core + adaptateur Sawali
++import OcrPieces from "@/pages/portal/OcrPieces";
+ import PortalBrochures from "@/pages/portal/PortalBrochures";
+ import MeetingMinutes from "@/pages/portal/MeetingMinutes";
+ import ReceiptPrint from "@/pages/portal/ReceiptPrint";
+@@ -358,6 +360,8 @@ export default function App() {
+             <Route path="vidal-securisation" element={<VidalSecurisation />} />
+             {/* Lot Gestion Stocks (2026-09) — espace documentaire R2 + futur explorateur MongoDB Atlas */}
+             <Route path="gestion-stocks" element={<GestionStocks />} />
++            {/* Lot OCR sur Pièces (2026-09) — pharmacies (leurs pièces) + administration */}
++            <Route path="ocr-pieces" element={<OcrPieces />} />
+             {/* S-iter39b — Brochures & Guides en visionneuse PDF interne */}
+             <Route path="brochures" element={<PortalBrochures />} />
+             <Route path="meetings" element={<MeetingMinutes />} />
+@@ -377,6 +381,8 @@ export default function App() {
+             <Route path="appointments" element={<AdminAppointments />} />
+             <Route path="interventions" element={<AdminInterventions />} />
+             <Route path="documents" element={<AdminDocuments />} />
++            {/* Lot OCR sur Pièces (2026-09) — vue administration (modèles, coût, évaluations) */}
++            <Route path="ocr-pieces" element={<OcrPieces />} />
+             <Route path="contents" element={<AdminContents />} />
+             <Route path="contacts" element={<AdminContacts />} />
+             <Route path="tracked-users" element={<AdminTrackedUsers />} />
+diff --git a/frontend/src/components/PortalLayout.jsx b/frontend/src/components/PortalLayout.jsx
+index 81358a7..df0525b 100644
+--- a/frontend/src/components/PortalLayout.jsx
++++ b/frontend/src/components/PortalLayout.jsx
+@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
+ import { NavLink, useNavigate, Outlet, Link, useLocation } from "react-router-dom";
+ import {
+   LayoutDashboard, Calendar, FileText, Wrench, Users,
+-  Settings, LogOut, Menu, X, Inbox, Mail, ShieldCheck, Boxes, FileEdit, Star, Briefcase, Newspaper, Send, Activity, Globe2, ShieldAlert, History, GraduationCap, Bug, HeartPulse, Database, Link2, MessageCircle, MessageSquare, Zap, Shield, Wand2, FolderOpen, BarChart3, Wallet, Receipt, ShoppingBag, Banknote, Ticket, Tag, Bell, BellOff, Volume2, VolumeX, Bot, Megaphone, ClipboardList, ScrollText, Languages, AlertOctagon, AlertTriangle, Sparkles, CircleDollarSign, Factory, Moon, Sun, StickyNote, Pill, Stethoscope,
++  Settings, LogOut, Menu, X, Inbox, Mail, ShieldCheck, Boxes, FileEdit, Star, Briefcase, Newspaper, Send, Activity, Globe2, ShieldAlert, History, GraduationCap, Bug, HeartPulse, Database, Link2, MessageCircle, MessageSquare, Zap, Shield, Wand2, FolderOpen, BarChart3, Wallet, Receipt, ShoppingBag, Banknote, Ticket, Tag, Bell, BellOff, Volume2, VolumeX, Bot, Megaphone, ClipboardList, ScrollText, Languages, AlertOctagon, AlertTriangle, Sparkles, CircleDollarSign, Factory, Moon, Sun, StickyNote, Pill, Stethoscope, ScanText,
+ } from "lucide-react";
+ import { useAuth } from "@/contexts/AuthContext";
+ import { VidalUiSettingsProvider, useVidalUiSettings } from "@/contexts/VidalUiSettingsContext";
+@@ -97,6 +97,11 @@ const clientLinks = [
+   // S-iter39b — Brochures & Guides accessible aux modérateurs (lecture en
+   // ligne via la visionneuse PDF interne ; téléchargement réservé admin/sup).
+   { to: "/portal/brochures", label: "Brochures & Guides", icon: FileText, moderationOnly: true },
++  // Lot OCR sur Pièces (2026-09) — dépôt et analyse IA des pièces (factures
++  // fournisseurs, bons de livraison…). Visible des pharmacies (rôle
++  // pharmacien) et de l'administration ; les pharmacien(ne)s suivi(e)s ont
++  // le lien dans leur sidebar réduite plus bas.
++  { to: "/portal/ocr-pieces", label: "OCR sur Pièces", icon: ScanText, ocrPiecesOnly: true },
+ ];
+ 
+ const adminLinks = [
+@@ -142,6 +147,9 @@ const adminLinks = [
+   { to: "/admin/ad-banners", label: "Régie publicitaire", icon: Megaphone },
+   // Iter42 — Officines Registry (validation pharmacies inscrites au self-service)
+   { to: "/admin/officines-registry", label: "Officines (validation)", icon: HeartPulse, featureGate: "vidal_enabled" },
++  // Lot OCR sur Pièces (2026-09) — choix du modèle d'IA, coût réel en FCFA,
++  // évaluation 1-5 étoiles, tableau de bord par modèle.
++  { to: "/admin/ocr-pieces", label: "OCR sur Pièces", icon: ScanText },
+   // Iter43-fix22 — Planning des gardes (admin/superviseur)
+   { to: "/admin/garde-planning", label: "Planning des gardes", icon: Calendar, adminOrSup: true },
+   // Iter43-fix22 — Interrogations WhatsApp à Liluvine (admin/moderator/superviseur)
+@@ -306,6 +314,8 @@ function PortalLayoutInner({ admin = false }) {
+   const allowedPharmacienTrackedPaths = new Set([
+     "/portal/vidal-posologie",
+     "/portal/gestion-stocks",
++    // Lot OCR sur Pièces (2026-09)
++    "/portal/ocr-pieces",
+     "/portal/my-account",
+   ]);
+   const allowedSecretaireMedicalePaths = new Set([
+@@ -352,6 +362,8 @@ function PortalLayoutInner({ admin = false }) {
+                 // (inventaires, contrôle qualité, etc) + futur explorateur
+                 // MongoDB Atlas.
+                 { to: "/portal/gestion-stocks", label: "Gestion de Stocks", icon: Boxes },
++                // Lot OCR sur Pièces (2026-09) — dépôt + synthèse IA des pièces.
++                { to: "/portal/ocr-pieces", label: "OCR sur Pièces", icon: ScanText },
+               ]
+             : (isSecretaireMedicale
+                 ? [
+@@ -406,6 +418,9 @@ function PortalLayoutInner({ admin = false }) {
+     .filter((l) => !l.adminOrSup || isAdminOrSup)
+     .filter((l) => !l.moderatorPlus || isModerator || isAdminOrSup)
+     .filter((l) => !l.catalogStatsOnly || isAdminOrSup || isTracked)
++    // Lot OCR sur Pièces (2026-09) — pharmacies + administration uniquement
++    // (même règle que le backend routes/ocr_pieces.py).
++    .filter((l) => !l.ocrPiecesOnly || isPharmacien || isPharmacienTracked || isAdminOrSup)
+     // 2026-02 fork (P4) — Override de masquage explicite du Tableau de bord
+     .filter((l) => l.to !== "/portal" || p4ShowDashboard);
+ 
+diff --git a/frontend/src/components/ocr-core/OcrDashboard.jsx b/frontend/src/components/ocr-core/OcrDashboard.jsx
+new file mode 100644
+index 0000000..0222d6b
+--- /dev/null
++++ b/frontend/src/components/ocr-core/OcrDashboard.jsx
+@@ -0,0 +1,130 @@
++// ocr-core (module commun, source unique : dépôt ShuyahBF/Claude, dossier ocr-core/).
++// Ne pas modifier dans un site : corriger dans ocr-core puis resynchroniser.
++//
++// Tableau de bord OCR (cabinet) : par période et par modèle — nombre de
++// pièces analysées, coût cumulé et moyen en FCFA, note et précision
++// moyennes (évaluations humaines), confiance déclarée, durée moyenne.
++// Sert à choisir le modèle au meilleur rapport précision / coût.
++import React, { useCallback, useEffect, useState } from "react";
++import { toast } from "sonner";
++import { apiClient } from "@/lib/api";
++import {
++  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
++} from "@/components/ui/select";
++import {
++  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
++} from "@/components/ui/table";
++import StarRating from "./StarRating";
++import { errorMessage, formatDuration, formatPercent, formatXof } from "./format";
++
++const PERIODS = [
++  { value: "today", label: "Aujourd'hui" },
++  { value: "7d", label: "7 derniers jours" },
++  { value: "30d", label: "30 derniers jours" },
++  { value: "all", label: "Depuis le début" },
++];
++
++// Contrat d'API commun : GET {apiBase}/ocr-stats?period=today|7d|30d|all
++export default function OcrDashboard({ apiBase = "/documents" }) {
++  const [period, setPeriod] = useState("30d");
++  const [stats, setStats] = useState(null);
++
++  const load = useCallback(async () => {
++    try {
++      const { data } = await apiClient.get(`${apiBase}/ocr-stats`, { params: { period } });
++      setStats(data);
++    } catch (err) {
++      toast.error(errorMessage(err));
++    }
++  }, [apiBase, period]);
++
++  useEffect(() => { load(); }, [load]);
++  const total = stats?.total;
++
++  return (
++    <div className="space-y-4" data-testid="ocr-dashboard">
++      <div className="flex flex-wrap items-center justify-between gap-3">
++        <p className="text-sm text-muted-foreground">
++          Coûts calculés sur les tokens réellement consommés · 1 USD = {stats?.usd_to_xof_rate ?? "…"} FCFA
++        </p>
++        <Select value={period} onValueChange={setPeriod}>
++          <SelectTrigger className="w-56 bg-background" data-testid="ocr-period"><SelectValue /></SelectTrigger>
++          <SelectContent>
++            {PERIODS.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
++          </SelectContent>
++        </Select>
++      </div>
++
++      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
++        <Kpi title="Pièces analysées" value={total ? total.runs : "—"}
++          hint={total ? `${total.reviewed} évaluée(s) · ${total.errors} en erreur` : ""} />
++        <Kpi title="Coût cumulé" value={formatXof(total?.total_cost_xof)} />
++        <Kpi title="Coût moyen par pièce" value={formatXof(total?.avg_cost_xof)} />
++        <Kpi title="Précision réelle moyenne" value={formatPercent(total?.avg_accuracy)}
++          hint={total?.avg_rating ? `Note moyenne ${total.avg_rating.toFixed(1)} / 5` : "Aucune évaluation"} />
++      </div>
++
++      <div className="rounded-lg border bg-card overflow-x-auto">
++        <div className="p-4 border-b border-border">
++          <div className="font-semibold">Comparaison des modèles</div>
++          <div className="text-xs text-muted-foreground mt-1">
++            La note et la précision réelle viennent uniquement de vos évaluations. La confiance est
++            celle que le modèle s'attribue lui-même : elle n'est pas une garantie.
++          </div>
++        </div>
++        <Table>
++          <TableHeader>
++            <TableRow>
++              <TableHead>Modèle</TableHead>
++              <TableHead className="text-right">Pièces</TableHead>
++              <TableHead className="text-right">Coût cumulé</TableHead>
++              <TableHead className="text-right">Coût moyen</TableHead>
++              <TableHead>Note moyenne</TableHead>
++              <TableHead className="text-right">Précision réelle</TableHead>
++              <TableHead className="text-right">Confiance déclarée</TableHead>
++              <TableHead className="text-right">Durée moy.</TableHead>
++            </TableRow>
++          </TableHeader>
++          <TableBody>
++            {(stats?.models || []).map((m) => (
++              <TableRow key={m.model}>
++                <TableCell className="font-medium">{m.label}</TableCell>
++                <TableCell className="text-right">{m.runs}{m.errors ? ` (${m.errors} err.)` : ""}</TableCell>
++                <TableCell className="text-right">{formatXof(m.total_cost_xof)}</TableCell>
++                <TableCell className="text-right">{formatXof(m.avg_cost_xof)}</TableCell>
++                <TableCell>
++                  {m.avg_rating ? (
++                    <span className="inline-flex items-center gap-2">
++                      <StarRating value={m.avg_rating} size={14} />
++                      <span className="text-xs text-muted-foreground">{m.avg_rating.toFixed(1)} ({m.reviewed})</span>
++                    </span>
++                  ) : <span className="text-xs text-muted-foreground">non évalué</span>}
++                </TableCell>
++                <TableCell className="text-right">{formatPercent(m.avg_accuracy)}</TableCell>
++                <TableCell className="text-right">{formatPercent(m.avg_confidence)}</TableCell>
++                <TableCell className="text-right">{formatDuration(m.avg_duration_ms)}</TableCell>
++              </TableRow>
++            ))}
++            {stats && stats.models.length === 0 && (
++              <TableRow>
++                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
++                  Aucune analyse sur cette période.
++                </TableCell>
++              </TableRow>
++            )}
++          </TableBody>
++        </Table>
++      </div>
++    </div>
++  );
++}
++
++function Kpi({ title, value, hint }) {
++  return (
++    <div className="rounded-lg border bg-card p-4">
++      <div className="text-xs text-muted-foreground">{title}</div>
++      <div className="text-xl font-semibold">{value}</div>
++      {hint && <div className="text-xs text-muted-foreground mt-1">{hint}</div>}
++    </div>
++  );
++}
+diff --git a/frontend/src/components/ocr-core/OcrRunsPanel.jsx b/frontend/src/components/ocr-core/OcrRunsPanel.jsx
+new file mode 100644
+index 0000000..98dbd6b
+--- /dev/null
++++ b/frontend/src/components/ocr-core/OcrRunsPanel.jsx
+@@ -0,0 +1,267 @@
++// ocr-core (module commun, source unique : dépôt ShuyahBF/Claude, dossier ocr-core/).
++// Ne pas modifier dans un site : corriger dans ocr-core puis resynchroniser.
++//
++// Panneau « Analyses IA » d'une pièce, côté cabinet (staff) :
++//  - une puce par analyse (modèle · coût FCFA · note) pour comparer les modèles ;
++//  - relance de la même pièce avec un autre modèle ;
++//  - détail de l'analyse choisie + évaluation humaine (étoiles, corrections).
++// Le serveur calcule la précision réelle à partir des corrections ; les
++// simples différences de format ("150 000" vs 150000) ne comptent pas.
++import React, { useCallback, useEffect, useMemo, useState } from "react";
++import { RefreshCw } from "lucide-react";
++import { toast } from "sonner";
++import { apiClient } from "@/lib/api";
++import { Button } from "@/components/ui/button";
++import { Input } from "@/components/ui/input";
++import { Textarea } from "@/components/ui/textarea";
++import {
++  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
++} from "@/components/ui/select";
++import StarRating from "./StarRating";
++import { displayValue, errorMessage, formatDuration, formatPercent, formatXof, shortModel } from "./format";
++
++// Valeur éditable (texte) d'un champ : listes/objets en JSON.
++function toEditable(value) {
++  if (value === null || value === undefined) return "";
++  return typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
++}
++
++// Texte saisi → valeur : JSON si le champ d'origine était une liste/un objet.
++function fromEditable(text, original) {
++  if (original !== null && typeof original === "object") {
++    try {
++      return JSON.parse(text);
++    } catch {
++      return text;
++    }
++  }
++  return text;
++}
++
++// Contrat d'API commun (voir ocr-core/README.md) — `apiBase` vaut par ex.
++// "/documents" (Albarka) ou "/ocr-pieces" (Sawali) :
++//   GET  {apiBase}/{id}                      → { ..., ocr_runs: [analyses] }
++//   POST {apiBase}/{id}/reanalyze            ← { model }
++//   POST {apiBase}/ocr-runs/{runId}/review   ← { rating, comment, corrected_fields }
++export default function OcrRunsPanel({ apiBase = "/documents", doc, models, defaultModel, onChanged }) {
++  const [runs, setRuns] = useState([]);
++  const [selectedId, setSelectedId] = useState(null);
++  const [rerunModel, setRerunModel] = useState(defaultModel || "");
++
++  // Recharge les analyses de la pièce ; garde l'analyse affichée si elle
++  // existe encore, sinon montre la plus récente.
++  const load = useCallback(async (keepId = null) => {
++    try {
++      const { data } = await apiClient.get(`${apiBase}/${doc.id}`);
++      const list = data.ocr_runs || [];
++      setRuns(list);
++      const stillThere = keepId && list.some((r) => r.id === keepId);
++      setSelectedId(stillThere ? keepId : list.length ? list[list.length - 1].id : null);
++    } catch (err) {
++      toast.error(errorMessage(err));
++    }
++  }, [apiBase, doc.id]);
++
++  // Rechargé à l'ouverture et à chaque changement de statut (fin d'analyse).
++  useEffect(() => { load(); }, [load, doc.status]);
++  useEffect(() => { if (!rerunModel && defaultModel) setRerunModel(defaultModel); }, [defaultModel, rerunModel]);
++
++  const rerun = async () => {
++    try {
++      await apiClient.post(`${apiBase}/${doc.id}/reanalyze`, { model: rerunModel });
++      toast.success(`Analyse relancée avec ${shortModel(rerunModel)}…`);
++      onChanged?.();
++    } catch (err) {
++      toast.error(errorMessage(err, "Impossible de relancer l'analyse"));
++    }
++  };
++
++  const selected = runs.find((r) => r.id === selectedId);
++
++  return (
++    <div className="space-y-4" data-testid={`ocr-panel-${doc.id}`}>
++      {/* Puces des analyses + relance avec un autre modèle */}
++      <div className="flex flex-wrap items-center gap-2">
++        {runs.map((run, i) => (
++          <button
++            key={run.id}
++            type="button"
++            onClick={() => setSelectedId(run.id)}
++            className={`text-xs rounded-full border px-3 py-1 ${run.id === selectedId
++              ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"}`}
++          >
++            #{i + 1} {shortModel(run.model)} · {formatXof(run.cost_xof)}
++            {run.review ? ` · ${run.review.rating}★` : " · à évaluer"}
++          </button>
++        ))}
++        <div className="flex flex-wrap items-center gap-2 md:ml-auto">
++          <Select value={rerunModel} onValueChange={setRerunModel}>
++            <SelectTrigger className="w-64 h-9 bg-background" data-testid={`ocr-rerun-model-${doc.id}`}>
++              <SelectValue placeholder="Modèle d'IA" />
++            </SelectTrigger>
++            <SelectContent>
++              {models.map((m) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}
++            </SelectContent>
++          </Select>
++          <Button size="sm" variant="outline" onClick={rerun} disabled={doc.status === "en_analyse" || !rerunModel}
++            data-testid={`ocr-rerun-${doc.id}`}>
++            <RefreshCw className="w-4 h-4 mr-1" /> Relancer avec ce modèle
++          </Button>
++        </div>
++      </div>
++
++      {doc.status === "en_analyse" && (
++        <div className="text-sm text-muted-foreground">Analyse IA en cours…</div>
++      )}
++      {selected ? (
++        <RunReview key={selected.id} apiBase={apiBase} run={selected} onReviewed={() => { load(selected.id); onChanged?.(); }} />
++      ) : (
++        doc.status !== "en_analyse" && <div className="text-sm text-muted-foreground">Aucune analyse disponible.</div>
++      )}
++    </div>
++  );
++}
++
++// Détail d'UNE analyse + formulaire d'évaluation.
++function RunReview({ apiBase, run, onReviewed }) {
++  const extracted = useMemo(() => run.extracted_fields || {}, [run]);
++  const uncertain = useMemo(() => new Set(run.uncertain_fields || []), [run]);
++  const review = run.review;
++
++  const [rating, setRating] = useState(review?.rating || 0);
++  const [comment, setComment] = useState(review?.comment || "");
++  const [values, setValues] = useState(() => {
++    const corrected = review?.corrected_fields || {};
++    const init = {};
++    Object.entries(extracted).forEach(([k, v]) => { init[k] = toEditable(k in corrected ? corrected[k] : v); });
++    return init;
++  });
++  // Champs oubliés par l'IA (comptent comme erreurs dans la précision).
++  const [extra, setExtra] = useState(() => Object.entries(review?.corrected_fields || {})
++    .filter(([k]) => !(k in extracted)).map(([key, value]) => ({ key, value: toEditable(value) })));
++  const [saving, setSaving] = useState(false);
++
++  const submit = async () => {
++    if (!rating) {
++      toast.error("Choisissez une note de 1 à 5 étoiles");
++      return;
++    }
++    // Tous les champs sont envoyés : le serveur ne retient que ceux qui ont changé.
++    const corrected = {};
++    Object.entries(values).forEach(([k, text]) => { corrected[k] = fromEditable(text, extracted[k]); });
++    extra.forEach(({ key, value }) => { if (key.trim()) corrected[key.trim()] = value; });
++    setSaving(true);
++    try {
++      const { data } = await apiClient.post(`${apiBase}/ocr-runs/${run.id}/review`, {
++        rating, comment, corrected_fields: corrected,
++      });
++      toast.success(`Évaluation enregistrée — précision réelle : ${formatPercent(data.accuracy)}`);
++      onReviewed?.();
++    } catch (err) {
++      toast.error(errorMessage(err, "Échec de l'enregistrement"));
++    } finally {
++      setSaving(false);
++    }
++  };
++
++  return (
++    <div className="space-y-4">
++      {/* Métriques : modèle, coût réel, tokens, durée, mode d'envoi */}
++      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
++        <Metric label="Modèle" value={shortModel(run.model)} />
++        <Metric label="Coût réel" value={formatXof(run.cost_xof)} />
++        <Metric label="Tokens (entrée / sortie)" value={`${run.input_tokens ?? 0} / ${run.output_tokens ?? 0}`} />
++        <Metric label="Durée · envoi" value={`${formatDuration(run.duration_ms)} · ${run.input_mode === "texte" ? "texte" : `${run.pages_analyzed || 0} image(s)`}`} />
++      </div>
++
++      {run.document_type_guess && (
++        <div className="text-sm"><span className="text-muted-foreground">Type détecté : </span>
++          <span className="font-medium">{run.document_type_guess}</span></div>
++      )}
++      {run.summary && <div className="text-sm leading-relaxed">{run.summary}</div>}
++      <div className="text-xs text-muted-foreground">
++        Confiance déclarée par le modèle : {formatPercent(run.confidence)} — indicative ; seule votre
++        relecture ci-dessous mesure la précision réelle.
++      </div>
++      {run.flags?.length > 0 && (
++        <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
++          ⚠︎ {run.flags.join(" · ")}
++        </div>
++      )}
++
++      {/* Champs extraits, corrigeables — orange = jugé incertain par le modèle */}
++      {Object.keys(extracted).length > 0 && (
++        <div className="space-y-2">
++          <div className="text-sm font-semibold">Champs extraits (corrigez ce qui est faux)</div>
++          {Object.entries(extracted).map(([key, original]) => {
++            const isObject = original !== null && typeof original === "object";
++            const changed = (values[key] ?? "") !== toEditable(original);
++            const setVal = (e) => setValues((v) => ({ ...v, [key]: e.target.value }));
++            return (
++              <div key={key} className="grid grid-cols-1 md:grid-cols-3 gap-1 md:gap-3 items-start">
++                <label className={`text-xs uppercase tracking-wider pt-2 ${uncertain.has(key) ? "text-amber-700 font-semibold" : "text-muted-foreground"}`}>
++                  {key}{uncertain.has(key) && " (incertain)"}
++                </label>
++                <div className="md:col-span-2">
++                  {isObject ? (
++                    <Textarea rows={4} value={values[key] ?? ""} onChange={setVal}
++                      className={`font-mono text-xs bg-background ${changed ? "border-blue-500" : ""}`} />
++                  ) : (
++                    <Input value={values[key] ?? ""} onChange={setVal}
++                      className={`${uncertain.has(key) ? "bg-amber-50" : "bg-background"} ${changed ? "border-blue-500" : ""}`} />
++                  )}
++                  {changed && (
++                    <div className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">
++                      Extrait par l'IA : {displayValue(original)}
++                    </div>
++                  )}
++                </div>
++              </div>
++            );
++          })}
++        </div>
++      )}
++
++      <div className="space-y-2">
++        {extra.map((f, i) => (
++          <div key={i} className="grid grid-cols-1 md:grid-cols-3 gap-2">
++            <Input placeholder="Nom du champ (ex. ifu)" value={f.key} className="bg-background"
++              onChange={(e) => setExtra((l) => l.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)))} />
++            <Input placeholder="Valeur correcte" value={f.value} className="md:col-span-2 bg-background"
++              onChange={(e) => setExtra((l) => l.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} />
++          </div>
++        ))}
++        <Button type="button" variant="outline" size="sm" onClick={() => setExtra((l) => [...l, { key: "", value: "" }])}>
++          + Champ oublié par l'IA
++        </Button>
++      </div>
++
++      {/* Note globale + commentaire */}
++      <div className="border-t border-border pt-3 space-y-3">
++        <div className="flex flex-wrap items-center gap-3">
++          <span className="text-sm font-semibold">Votre note :</span>
++          <StarRating value={rating} onChange={setRating} size={22} />
++          {review && (
++            <span className="rounded-full px-2 py-0.5 text-xs bg-emerald-100 text-emerald-800">
++              Évaluée · précision {formatPercent(review.accuracy)} ({review.fields_corrected}/{review.fields_total} corrigés)
++            </span>
++          )}
++        </div>
++        <Textarea rows={2} className="bg-background" value={comment} onChange={(e) => setComment(e.target.value)}
++          placeholder="Commentaire (facultatif) : ce qui est faux, manuscrit mal lu, tampon…" />
++        <Button onClick={submit} disabled={saving} data-testid={`ocr-review-submit-${run.id}`}>
++          {saving ? "Enregistrement…" : review ? "Mettre à jour l'évaluation" : "Enregistrer l'évaluation"}
++        </Button>
++      </div>
++    </div>
++  );
++}
++
++function Metric({ label, value }) {
++  return (
++    <div className="rounded border border-border bg-background px-3 py-2">
++      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
++      <div className="font-medium">{value}</div>
++    </div>
++  );
++}
+diff --git a/frontend/src/components/ocr-core/StarRating.jsx b/frontend/src/components/ocr-core/StarRating.jsx
+new file mode 100644
+index 0000000..8ec6526
+--- /dev/null
++++ b/frontend/src/components/ocr-core/StarRating.jsx
+@@ -0,0 +1,32 @@
++// ocr-core (module commun, source unique : dépôt ShuyahBF/Claude, dossier ocr-core/).
++// Ne pas modifier dans un site : corriger dans ocr-core puis resynchroniser.
++//
++// Note de 1 à 5 étoiles. Cliquable si `onChange` est fourni, sinon simple
++// affichage (ex. note moyenne dans un tableau).
++import React from "react";
++import { Star } from "lucide-react";
++
++export default function StarRating({ value = 0, onChange, size = 20 }) {
++  const readOnly = !onChange;
++  return (
++    <div className="inline-flex items-center gap-0.5" role={readOnly ? "img" : "radiogroup"}
++      aria-label={`${value || 0} sur 5 étoiles`}>
++      {[1, 2, 3, 4, 5].map((n) => {
++        const filled = n <= Math.round(value || 0);
++        const star = (
++          <Star width={size} height={size}
++            className={filled ? "fill-amber-400 text-amber-400" : "text-slate-300"} />
++        );
++        return readOnly ? (
++          <span key={n}>{star}</span>
++        ) : (
++          <button key={n} type="button" role="radio" aria-checked={n === value}
++            aria-label={`${n} étoile${n > 1 ? "s" : ""}`} onClick={() => onChange(n)}
++            className="p-0.5 rounded hover:scale-110 transition-transform" data-testid={`ocr-star-${n}`}>
++            {star}
++          </button>
++        );
++      })}
++    </div>
++  );
++}
+diff --git a/frontend/src/components/ocr-core/format.js b/frontend/src/components/ocr-core/format.js
+new file mode 100644
+index 0000000..dca0fdb
+--- /dev/null
++++ b/frontend/src/components/ocr-core/format.js
+@@ -0,0 +1,59 @@
++// ocr-core (module commun, source unique : dépôt ShuyahBF/Claude, dossier ocr-core/).
++// Ne pas modifier dans un site : corriger dans ocr-core puis resynchroniser.
++//
++// Petites fonctions d'affichage partagées par les écrans OCR.
++
++// Montant en FCFA, avec 2 décimales sous 100 FCFA (le coût d'une pièce est
++// souvent de quelques FCFA : l'arrondir à l'entier ferait perdre l'info).
++export function formatXof(value) {
++  if (value === null || value === undefined) return "—";
++  const n = Number(value);
++  const digits = Math.abs(n) < 100 ? 2 : 0;
++  return `${n.toLocaleString("fr-FR", { minimumFractionDigits: digits, maximumFractionDigits: digits })} FCFA`;
++}
++
++// Ratio 0-1 affiché en pourcentage entier ("—" si pas encore mesuré).
++export function formatPercent(ratio) {
++  if (ratio === null || ratio === undefined) return "—";
++  return `${Math.round(Number(ratio) * 100)} %`;
++}
++
++// Durée en secondes avec une décimale.
++export function formatDuration(ms) {
++  if (!ms) return "—";
++  return `${(Number(ms) / 1000).toFixed(1)} s`;
++}
++
++// Nom court d'un modèle ("claude-sonnet-5" → "Sonnet 5",
++// "claude-haiku-4-5-20251001" → "Haiku 4.5" : la date de version est masquée).
++export function shortModel(modelId) {
++  if (!modelId) return "—";
++  return modelId
++    .replace(/^claude-/, "")
++    .replace(/-\d{8}$/, "")
++    .split("-")
++    .map((part, i) => (i === 0 ? part.charAt(0).toUpperCase() + part.slice(1) : part))
++    .join(" ")
++    .replace(/(\d) (\d)/, "$1.$2");
++}
++
++// Valeur d'un champ extrait affichée lisiblement (listes/objets en JSON
++// indenté au lieu de "[object Object]", "—" si vide au lieu de "null").
++export function displayValue(value) {
++  if (value === null || value === undefined || value === "") return "—";
++  if (typeof value === "object") return JSON.stringify(value, null, 2);
++  return String(value);
++}
++
++// Message d'erreur lisible d'une réponse d'API (FastAPI renvoie `detail`
++// en texte, ou en liste d'objets pour une erreur de validation 422).
++export function errorMessage(err, fallback = "Une erreur est survenue") {
++  const detail = err?.response?.data?.detail;
++  if (Array.isArray(detail)) {
++    const msgs = detail.map((d) => (typeof d === "string" ? d : d?.msg)).filter(Boolean);
++    if (msgs.length) return msgs.join(" · ");
++  } else if (typeof detail === "string" && detail) {
++    return detail;
++  }
++  return err?.message || fallback;
++}
+diff --git a/frontend/src/pages/portal/OcrPieces.jsx b/frontend/src/pages/portal/OcrPieces.jsx
+new file mode 100644
+index 0000000..7b6ab4d
+--- /dev/null
++++ b/frontend/src/pages/portal/OcrPieces.jsx
+@@ -0,0 +1,408 @@
++import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
++import { toast } from "sonner";
++import {
++  BarChart3, ChevronDown, ChevronRight, Download, FileText, Loader2, RefreshCw, ScanText, Trash2, Upload,
++} from "lucide-react";
++import { apiClient } from "@/lib/api";
++import { useAuth } from "@/contexts/AuthContext";
++import { Button } from "@/components/ui/button";
++import {
++  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
++} from "@/components/ui/select";
++// Module commun ocr-core (copie identique, source unique : dépôt ShuyahBF/Claude).
++import OcrRunsPanel from "@/components/ocr-core/OcrRunsPanel";
++import OcrDashboard from "@/components/ocr-core/OcrDashboard";
++import StarRating from "@/components/ocr-core/StarRating";
++import { displayValue, errorMessage, formatXof, shortModel } from "@/components/ocr-core/format";
++
++/*
++  Portail / Admin → « OCR sur Pièces » (lot 2026-09).
++  Dépôt de pièces (factures fournisseurs, bons de livraison, reçus…) et
++  analyse IA. Deux publics, une seule page :
++    - pharmacies (rôle pharmacien, ou Pharmacien suivi) : déposent leurs
++      pièces, voient la synthèse et les champs extraits, téléchargent ;
++      jamais le modèle, le coût ni les évaluations (le serveur ne les envoie pas) ;
++    - administration (admin/superviseur) : choisit la pharmacie et le modèle
++      d'IA, voit le coût réel en FCFA, évalue chaque analyse (1-5 étoiles +
++      corrections), relance avec un autre modèle, consulte le tableau de bord.
++  API : /ocr-pieces (backend/routes/ocr_pieces.py, contrat commun ocr-core).
++*/
++
++const API_BASE = "/ocr-pieces";
++const ALL_TENANTS = "__all__";   // valeur sentinelle : le Select shadcn refuse ""
++
++// Types de pièce (mêmes codes que PIECE_KINDS côté serveur).
++const KINDS = [
++  { value: "facture", label: "Facture" },
++  { value: "bon_livraison", label: "Bon de livraison" },
++  { value: "avoir", label: "Avoir" },
++  { value: "recu", label: "Reçu" },
++  { value: "releve", label: "Relevé" },
++  { value: "autre", label: "Autre" },
++];
++const KIND_LABEL = Object.fromEntries(KINDS.map((k) => [k.value, k.label]));
++
++// Statut d'une pièce → libellé + couleurs du badge.
++const STATUS = {
++  en_analyse: { label: "Analyse en cours", cls: "bg-amber-50 text-amber-700 border-amber-200" },
++  analyse: { label: "Analysée", cls: "bg-teal-50 text-teal-700 border-teal-200" },
++  erreur_analyse: { label: "Erreur d'analyse", cls: "bg-red-50 text-red-700 border-red-200" },
++};
++
++const ACCEPT = ".pdf,.jpg,.jpeg,.png,.webp,.txt,.csv";
++
++function formatDate(iso) {
++  if (!iso) return "";
++  try {
++    return new Date(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
++  } catch {
++    return iso;
++  }
++}
++
++function StatusBadge({ status }) {
++  const s = STATUS[status] || { label: status || "—", cls: "bg-slate-50 text-slate-600 border-slate-200" };
++  return (
++    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${s.cls}`}>
++      {status === "en_analyse" && <Loader2 className="w-3 h-3 animate-spin" />}
++      {s.label}
++    </span>
++  );
++}
++
++// Vue pharmacie d'une pièce analysée : synthèse + champs extraits + alertes.
++function PharmacySynthesis({ piece }) {
++  if (piece.status === "en_analyse") {
++    return <p className="text-sm text-slate-500">L'analyse de cette pièce est en cours…</p>;
++  }
++  const fields = Object.entries(piece.extracted_fields || {});
++  return (
++    <div className="space-y-3" data-testid={`ocr-synthesis-${piece.id}`}>
++      {piece.document_type_guess && (
++        <p className="text-sm"><span className="text-slate-500">Type reconnu : </span>{piece.document_type_guess}</p>
++      )}
++      <p className="text-sm text-slate-700 whitespace-pre-line">{piece.summary || "Aucune synthèse disponible."}</p>
++      {fields.length > 0 && (
++        <table className="w-full text-sm border border-slate-200 rounded">
++          <tbody>
++            {fields.map(([k, v]) => (
++              <tr key={k} className="border-t border-slate-100 align-top">
++                <td className="px-2 py-1 text-slate-500 w-1/3">{k}</td>
++                <td className="px-2 py-1 whitespace-pre-wrap break-words">{displayValue(v)}</td>
++              </tr>
++            ))}
++          </tbody>
++        </table>
++      )}
++      {(piece.flags || []).length > 0 && (
++        <ul className="text-sm text-amber-700 list-disc pl-5">
++          {piece.flags.map((f, i) => <li key={i}>{f}</li>)}
++        </ul>
++      )}
++    </div>
++  );
++}
++
++// Résumé des analyses d'une pièce (admin) : « Sonnet 5 · 2,40 FCFA · ★4 ».
++function RunsSummary({ runs }) {
++  if (!runs?.length) return <span className="text-slate-400">—</span>;
++  return (
++    <div className="flex flex-col gap-0.5">
++      {runs.map((r) => (
++        <span key={r.id} className="inline-flex items-center gap-1 text-xs text-slate-600">
++          {shortModel(r.model)} · {formatXof(r.cost_xof)}
++          {r.rating ? <StarRating value={r.rating} size={12} /> : <span className="text-slate-400">· non évaluée</span>}
++        </span>
++      ))}
++    </div>
++  );
++}
++
++export default function OcrPieces() {
++  const { user } = useAuth();
++  const isStaff = user?.role === "admin" || user?.role === "superviseur";
++
++  const [view, setView] = useState("pieces");          // "pieces" | "dashboard" (admin)
++  const [pieces, setPieces] = useState([]);
++  const [loading, setLoading] = useState(true);
++  const [expanded, setExpanded] = useState(null);       // id de la pièce dépliée
++
++  // Référentiels admin : pharmacies et modèles d'IA.
++  const [tenants, setTenants] = useState([]);
++  const [catalog, setCatalog] = useState({ models: [], default_model: "" });
++  const [tenantFilter, setTenantFilter] = useState(ALL_TENANTS);
++
++  // Formulaire de dépôt.
++  const fileRef = useRef(null);
++  const [file, setFile] = useState(null);
++  const [kind, setKind] = useState("facture");
++  const [uploadTenant, setUploadTenant] = useState("");
++  const [uploadModel, setUploadModel] = useState("");
++  const [uploading, setUploading] = useState(false);
++
++  // Liste des pièces (admin : filtrable par pharmacie ; pharmacie : les siennes, filtrées par le serveur).
++  const loadPieces = useCallback(async () => {
++    try {
++      const params = isStaff && tenantFilter !== ALL_TENANTS ? { tenant_id: tenantFilter } : {};
++      const { data } = await apiClient.get(API_BASE, { params });
++      setPieces(data || []);
++    } catch (err) {
++      toast.error(errorMessage(err, "Impossible de charger les pièces"));
++    } finally {
++      setLoading(false);
++    }
++  }, [isStaff, tenantFilter]);
++
++  useEffect(() => { loadPieces(); }, [loadPieces]);
++
++  // Référentiels admin chargés une fois.
++  useEffect(() => {
++    if (!isStaff) return;
++    apiClient.get(`${API_BASE}/tenants`).then((r) => setTenants(r.data || [])).catch(() => setTenants([]));
++    apiClient.get(`${API_BASE}/ocr-models`).then((r) => {
++      setCatalog(r.data || { models: [] });
++      setUploadModel(r.data?.default_model || "");
++    }).catch(() => {});
++  }, [isStaff]);
++
++  // Tant qu'une analyse tourne, la liste se rafraîchit toutes les 4 secondes.
++  const analysing = useMemo(() => pieces.some((p) => p.status === "en_analyse"), [pieces]);
++  useEffect(() => {
++    if (!analysing) return undefined;
++    const t = setInterval(loadPieces, 4000);
++    return () => clearInterval(t);
++  }, [analysing, loadPieces]);
++
++  const tenantName = (t) => [t.company || t.full_name, t.client_code].filter(Boolean).join(" · ");
++
++  // Dépôt d'une pièce : l'analyse démarre aussitôt côté serveur.
++  const upload = async () => {
++    if (!file) return;
++    if (isStaff && !uploadTenant) {
++      toast.error("Choisissez la pharmacie concernée");
++      return;
++    }
++    const form = new FormData();
++    form.append("file", file);
++    form.append("kind", kind);
++    if (isStaff) {
++      form.append("tenant_id", uploadTenant);
++      if (uploadModel) form.append("model", uploadModel);
++    }
++    setUploading(true);
++    try {
++      await apiClient.post(API_BASE, form);
++      toast.success("Pièce déposée — analyse en cours…");
++      setFile(null);
++      if (fileRef.current) fileRef.current.value = "";
++      loadPieces();
++    } catch (err) {
++      toast.error(errorMessage(err, "Dépôt impossible"));
++    } finally {
++      setUploading(false);
++    }
++  };
++
++  // Téléchargement authentifié (le jeton est ajouté par apiClient).
++  const download = async (piece) => {
++    try {
++      const res = await apiClient.get(`${API_BASE}/${piece.id}/download`, { responseType: "blob" });
++      const url = URL.createObjectURL(res.data);
++      const a = document.createElement("a");
++      a.href = url;
++      a.download = piece.original_filename || "piece";
++      document.body.appendChild(a);
++      a.click();
++      a.remove();
++      setTimeout(() => URL.revokeObjectURL(url), 10000);
++    } catch (err) {
++      toast.error(errorMessage(err, "Téléchargement impossible"));
++    }
++  };
++
++  const remove = async (piece) => {
++    if (!window.confirm(`Supprimer la pièce « ${piece.original_filename} » et ses analyses ?`)) return;
++    try {
++      await apiClient.delete(`${API_BASE}/${piece.id}`);
++      if (expanded === piece.id) setExpanded(null);
++      loadPieces();
++    } catch (err) {
++      toast.error(errorMessage(err, "Suppression impossible"));
++    }
++  };
++
++  const colCount = isStaff ? 7 : 6;
++
++  return (
++    <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6" data-testid="ocr-pieces-page">
++      {/* En-tête + bascule admin Pièces / Tableau de bord */}
++      <div className="flex flex-wrap items-center justify-between gap-3">
++        <h1 className="text-xl font-display font-bold text-slate-800 flex items-center gap-2">
++          <ScanText className="w-6 h-6 text-teal-600" /> OCR sur Pièces
++        </h1>
++        {isStaff && (
++          <div className="inline-flex rounded-md border border-slate-200 overflow-hidden">
++            <button type="button" onClick={() => setView("pieces")} data-testid="ocr-view-pieces"
++              className={`px-3 py-1.5 text-sm flex items-center gap-1 ${view === "pieces" ? "bg-teal-600 text-white" : "bg-white text-slate-600"}`}>
++              <FileText className="w-4 h-4" /> Pièces
++            </button>
++            <button type="button" onClick={() => setView("dashboard")} data-testid="ocr-view-dashboard"
++              className={`px-3 py-1.5 text-sm flex items-center gap-1 ${view === "dashboard" ? "bg-teal-600 text-white" : "bg-white text-slate-600"}`}>
++              <BarChart3 className="w-4 h-4" /> Tableau de bord OCR
++            </button>
++          </div>
++        )}
++      </div>
++
++      {view === "dashboard" && isStaff ? <OcrDashboard apiBase={API_BASE} /> : (
++        <>
++          {/* Dépôt d'une pièce */}
++          <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
++            <p className="text-sm text-slate-600">
++              Déposez une facture, un bon de livraison ou un reçu (PDF, photo JPG/PNG/WEBP, texte — 20 Mo max).
++              L'IA en extrait automatiquement les informations principales.
++            </p>
++            <div className="flex flex-wrap items-end gap-3">
++              <input ref={fileRef} type="file" accept={ACCEPT} data-testid="ocr-file-input"
++                onChange={(e) => setFile(e.target.files?.[0] || null)}
++                className="text-sm file:mr-3 file:px-3 file:py-1.5 file:rounded file:border-0 file:bg-slate-100 file:text-slate-700" />
++              <div className="w-44">
++                <Select value={kind} onValueChange={setKind}>
++                  <SelectTrigger data-testid="ocr-kind-select"><SelectValue /></SelectTrigger>
++                  <SelectContent>
++                    {KINDS.map((k) => <SelectItem key={k.value} value={k.value}>{k.label}</SelectItem>)}
++                  </SelectContent>
++                </Select>
++              </div>
++              {isStaff && (
++                <>
++                  <div className="w-56">
++                    <Select value={uploadTenant} onValueChange={setUploadTenant}>
++                      <SelectTrigger data-testid="ocr-tenant-select"><SelectValue placeholder="Pharmacie…" /></SelectTrigger>
++                      <SelectContent>
++                        {tenants.map((t) => <SelectItem key={t.id} value={t.id}>{tenantName(t)}</SelectItem>)}
++                      </SelectContent>
++                    </Select>
++                  </div>
++                  <div className="w-52">
++                    <Select value={uploadModel} onValueChange={setUploadModel}>
++                      <SelectTrigger data-testid="ocr-model-select"><SelectValue placeholder="Modèle d'IA" /></SelectTrigger>
++                      <SelectContent>
++                        {(catalog.models || []).map((m) => (
++                          <SelectItem key={m.id} value={m.id}>
++                            {m.label || shortModel(m.id)}{m.id === catalog.default_model ? " (défaut)" : ""}
++                          </SelectItem>
++                        ))}
++                      </SelectContent>
++                    </Select>
++                  </div>
++                </>
++              )}
++              <Button onClick={upload} disabled={!file || uploading} data-testid="ocr-upload-btn"
++                className="bg-teal-600 hover:bg-teal-700">
++                {uploading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Upload className="w-4 h-4 mr-1" />}
++                Déposer et analyser
++              </Button>
++            </div>
++          </div>
++
++          {/* Liste des pièces */}
++          <div className="bg-white border border-slate-200 rounded-lg">
++            <div className="flex flex-wrap items-center justify-between gap-3 p-3 border-b border-slate-100">
++              <span className="text-sm font-medium text-slate-700">{pieces.length} pièce(s)</span>
++              <div className="flex items-center gap-2">
++                {isStaff && (
++                  <div className="w-56">
++                    <Select value={tenantFilter} onValueChange={setTenantFilter}>
++                      <SelectTrigger data-testid="ocr-tenant-filter"><SelectValue /></SelectTrigger>
++                      <SelectContent>
++                        <SelectItem value={ALL_TENANTS}>Toutes les pharmacies</SelectItem>
++                        {tenants.map((t) => <SelectItem key={t.id} value={t.id}>{tenantName(t)}</SelectItem>)}
++                      </SelectContent>
++                    </Select>
++                  </div>
++                )}
++                <Button variant="outline" size="sm" onClick={loadPieces} data-testid="ocr-refresh-btn">
++                  <RefreshCw className="w-4 h-4" />
++                </Button>
++              </div>
++            </div>
++            <div className="overflow-x-auto">
++              <table className="w-full text-sm">
++                <thead className="bg-slate-50 text-slate-500 text-left">
++                  <tr>
++                    <th className="px-3 py-2 w-6" />
++                    <th className="px-3 py-2">Date</th>
++                    <th className="px-3 py-2">Pièce</th>
++                    {isStaff && <th className="px-3 py-2">Pharmacie</th>}
++                    <th className="px-3 py-2">Statut</th>
++                    <th className="px-3 py-2">{isStaff ? "Analyses" : "Synthèse"}</th>
++                    <th className="px-3 py-2 text-right">Actions</th>
++                  </tr>
++                </thead>
++                <tbody>
++                  {loading && (
++                    <tr><td colSpan={colCount} className="px-3 py-6 text-center text-slate-400">
++                      <Loader2 className="w-4 h-4 inline animate-spin mr-1" /> Chargement…
++                    </td></tr>
++                  )}
++                  {!loading && pieces.length === 0 && (
++                    <tr><td colSpan={colCount} className="px-3 py-6 text-center text-slate-400">Aucune pièce déposée.</td></tr>
++                  )}
++                  {pieces.map((p) => (
++                    <React.Fragment key={p.id}>
++                      <tr className="border-t border-slate-100 align-top hover:bg-slate-50/60" data-testid={`ocr-piece-row-${p.id}`}>
++                        <td className="px-3 py-2">
++                          <button type="button" onClick={() => setExpanded(expanded === p.id ? null : p.id)}
++                            aria-label="Détail" data-testid={`ocr-expand-${p.id}`} className="text-slate-500">
++                            {expanded === p.id ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
++                          </button>
++                        </td>
++                        <td className="px-3 py-2 whitespace-nowrap">{formatDate(p.created_at)}</td>
++                        <td className="px-3 py-2">
++                          <div className="font-medium text-slate-700 break-all">{p.original_filename}</div>
++                          <div className="text-xs text-slate-500">{KIND_LABEL[p.kind] || p.kind}</div>
++                        </td>
++                        {isStaff && (
++                          <td className="px-3 py-2">{[p.tenant_label, p.client_code].filter(Boolean).join(" · ") || "—"}</td>
++                        )}
++                        <td className="px-3 py-2"><StatusBadge status={p.status} /></td>
++                        <td className="px-3 py-2 max-w-xs">
++                          {isStaff ? <RunsSummary runs={p.ocr_runs} /> : (
++                            <span className="text-slate-600 line-clamp-2">{p.summary || "—"}</span>
++                          )}
++                        </td>
++                        <td className="px-3 py-2 text-right whitespace-nowrap">
++                          <Button variant="ghost" size="sm" onClick={() => download(p)} title="Télécharger"
++                            data-testid={`ocr-download-${p.id}`}>
++                            <Download className="w-4 h-4" />
++                          </Button>
++                          <Button variant="ghost" size="sm" onClick={() => remove(p)} title="Supprimer"
++                            data-testid={`ocr-delete-${p.id}`}>
++                            <Trash2 className="w-4 h-4 text-red-500" />
++                          </Button>
++                        </td>
++                      </tr>
++                      {expanded === p.id && (
++                        <tr className="bg-slate-50/60">
++                          <td colSpan={colCount} className="px-4 py-3">
++                            {isStaff ? (
++                              <OcrRunsPanel apiBase={API_BASE} doc={p} models={catalog.models}
++                                defaultModel={catalog.default_model} onChanged={loadPieces} />
++                            ) : (
++                              <PharmacySynthesis piece={p} />
++                            )}
++                          </td>
++                        </tr>
++                      )}
++                    </React.Fragment>
++                  ))}
++                </tbody>
++              </table>
++            </div>
++          </div>
++        </>
++      )}
++    </div>
++  );
++}
+-- 
+2.43.0
+

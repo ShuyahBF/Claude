@@ -8,6 +8,21 @@ concerné.
 
 - **Fait pour** : `Site-SawaliSmartSystems` — voir `document-extraction-prototype/`
   (ce dépôt, commit `93259d8`, branche `fix/mobile-payments-deploy-render`).
+  **Intégration réelle : lot 19 « OCR sur Pièces » livré le 2026-09-23, en
+  attente de publication** (base `bd6b16b` de `Site-SawaliSmartSystems` ;
+  livraison `sawali-portal-livraisons/sawali-portal-corrections_19_3190518.patch`
+  + `sawali-portal-prompt_19.md`). Page « OCR sur Pièces » (sidebar admin,
+  pharmacien, Pharmacien suivi) : admin/superviseur = choix pharmacie +
+  modèle, coût FCFA, étoiles + corrections, relance, tableau de bord ;
+  pharmacies = leurs seules pièces, sans modèle/coût/évaluation. Numéro de
+  lot 19 déduit (Gestion de Stocks = lot 18) : à corriger si la numérotation
+  réelle diffère.
+- **Module commun `ocr-core/`** (ce dépôt, v1.0.0) : source unique de l'OCR,
+  copiée à l'identique dans chaque site par `ocr-core/sync.sh` ; chaque site
+  ne garde qu'un adaptateur (droits, stockage, collections). Sawali l'utilise
+  dès le lot 19 ; Albarka garde sa version intégrée du lot 1 jusqu'à sa
+  migration (futur lot Albarka). Toute évolution de l'OCR se fait dans
+  `ocr-core/`, puis un lot par site.
 - **À refaire pour** : `Site-Albarka` — **lot 1 publié et déployé en production le
   2026-09-23** (commit Emergent `ccab0b2`, identique au patch ; routes et
   frontend vérifiés sur albarka-bf.com ; premier retour réel de l'utilisateur
