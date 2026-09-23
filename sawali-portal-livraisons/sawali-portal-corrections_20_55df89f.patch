@@ -1,0 +1,1168 @@
+From 55df89f7a3ac86062f1d08b03e5da37a592903fa Mon Sep 17 00:00:00 2001
+From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
+Date: Wed, 23 Sep 2026 22:35:35 +0000
+Subject: [PATCH] =?UTF-8?q?feat(gestion-stocks):=20explorateur=20R2=20?=
+ =?UTF-8?q?=E2=80=94=20emplacement,=20d=C3=A9p=C3=B4ts=20autoris=C3=A9s,?=
+ =?UTF-8?q?=20espace=20allou=C3=A9?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Explorateur Stockage R2 de Gestion de Stocks :
+- fil d'Ariane « Compartiment <bucket> › <client> › <dossier> » ; le
+  compartiment et le client sont cliquables pour revenir aux dossiers ;
+- dépôt depuis l'ordinateur : bouton « Déposer des fichiers », glisser-
+  déposer, plusieurs fichiers envoyés un par un avec leur progression ;
+- accès complet du superviseur aux routes admin du module (liste des
+  clients, dépôt, suppression) : admin OU superviseur ;
+- dépôt par un utilisateur suivi autorisé par l'administrateur, dans les
+  dossiers de son tenant uniquement, avec une taille maximale par fichier
+  réglable par utilisateur suivi (1,5 Mo par défaut) ; au-delà, refus avec
+  le motif ;
+- espace alloué par client/tenant (2 Go par défaut), réglable dans
+  SMART Communications du client ; tout dépôt qui le dépasserait est
+  refusé avec le motif ;
+- jauge « espace occupé / espace alloué » sur le tableau de bord du
+  Pharmacien suivi et dans l'explorateur.
+
+Nouvelles routes : GET /gestion-stocks/storage, POST
+/gestion-stocks/folders/{folder}/upload, GET/PUT
+/admin/gestion-stocks/tracked-users/{id}/upload-rights, GET/PUT
+/admin/gestion-stocks/tenants/{client_id}/storage. Champs :
+tracked_users.r2_upload_allowed / r2_upload_max_mb,
+users.gestion_stocks_quota_gb.
+---
+ backend/routes/gestion_stocks.py              | 258 +++++++++++++++++-
+ backend/tests/test_gestion_stocks_r2_lot20.py | 158 +++++++++++
+ frontend/src/components/R2StorageGauge.jsx    |  69 +++++
+ .../src/pages/admin/AdminClientFeatures.jsx   |  85 +++++-
+ .../src/pages/admin/AdminTrackedUsers.jsx     |  93 ++++++-
+ frontend/src/pages/portal/Dashboard.jsx       |   6 +
+ frontend/src/pages/portal/GestionStocks.jsx   | 194 +++++++++++--
+ 7 files changed, 830 insertions(+), 33 deletions(-)
+ create mode 100644 backend/tests/test_gestion_stocks_r2_lot20.py
+ create mode 100644 frontend/src/components/R2StorageGauge.jsx
+
+diff --git a/backend/routes/gestion_stocks.py b/backend/routes/gestion_stocks.py
+index 2b1ef37..cf6b81d 100644
+--- a/backend/routes/gestion_stocks.py
++++ b/backend/routes/gestion_stocks.py
+@@ -47,6 +47,16 @@ DEFAULT_FOLDERS: List[str] = [
+ 
+ MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 Mo par fichier
+ 
++# Lot 20 — dépôts par les utilisateurs suivis et espace alloué par tenant.
++# Taille max d'un fichier déposé par un utilisateur suivi autorisé (réglable
++# par utilisateur suivi dans Admin → Utilisateurs suivis → « Dépôt R2 »).
++DEFAULT_TRACKED_UPLOAD_MAX_MB = 1.5
++# Espace R2 alloué à un client/tenant (tous ses dossiers), réglable dans
++# Admin → Clients → SMART Communications → « Espace de stockage R2 ».
++DEFAULT_TENANT_QUOTA_GB = 2.0
++_MB = 1024 * 1024
++_GB = 1024 * 1024 * 1024
++
+ 
+ def _now() -> str:
+     return datetime.now(timezone.utc).isoformat()
+@@ -83,6 +93,92 @@ def _safe_filename(name: str) -> str:
+     return "".join(c for c in base if c.isalnum() or c in (" ", ".", "-", "_")).strip() or "fichier"
+ 
+ 
++# ----------------------------------------------------------------------
++# Lot 20 — droits de dépôt des utilisateurs suivis et quota par tenant
++# ----------------------------------------------------------------------
++def _is_staff(user: dict) -> bool:
++    """Administrateur ou superviseur SAWALI : accès complet au module."""
++    return (user.get("role") or "") in ("admin", "superviseur")
++
++
++def _fmt_mb(n_bytes: float) -> str:
++    """Taille lisible en Mo, virgule décimale française (« 1,5 Mo »)."""
++    return f"{n_bytes / _MB:.2f}".rstrip("0").rstrip(".").replace(".", ",") + " Mo"
++
++
++def _fmt_gb(n_bytes: float) -> str:
++    return f"{n_bytes / _GB:.2f}".rstrip("0").rstrip(".").replace(".", ",") + " Go"
++
++
++def _clean_max_mb(value) -> float:
++    """Taille max par fichier d'un utilisateur suivi : nombre > 0, sinon défaut."""
++    try:
++        v = float(value)
++        return v if v > 0 else DEFAULT_TRACKED_UPLOAD_MAX_MB
++    except (TypeError, ValueError):
++        return DEFAULT_TRACKED_UPLOAD_MAX_MB
++
++
++def _clean_quota_gb(value) -> float:
++    """Espace alloué au tenant : nombre > 0, sinon défaut (2 Go)."""
++    try:
++        v = float(value)
++        return v if v > 0 else DEFAULT_TENANT_QUOTA_GB
++    except (TypeError, ValueError):
++        return DEFAULT_TENANT_QUOTA_GB
++
++
++async def _tracked_upload_rights(db, user: dict) -> Dict[str, Any]:
++    """Droit de dépôt d'un utilisateur suivi, lu sur sa fiche `tracked_users`
++    (liée au compte de connexion par `tracked_user_id`) — jamais depuis la requête."""
++    tu_id = user.get("tracked_user_id")
++    tu = await db.tracked_users.find_one(
++        {"id": tu_id}, {"_id": 0, "r2_upload_allowed": 1, "r2_upload_max_mb": 1},
++    ) if tu_id else None
++    tu = tu or {}
++    return {
++        "allowed": bool(tu.get("r2_upload_allowed")),
++        "max_mb": _clean_max_mb(tu.get("r2_upload_max_mb", DEFAULT_TRACKED_UPLOAD_MAX_MB)),
++    }
++
++
++async def _tenant_by_code(db, code: str) -> Optional[dict]:
++    """Fiche du client/tenant (compte principal, pas un utilisateur suivi) qui porte ce client_code."""
++    return await db.users.find_one(
++        {"client_code": {"$in": [code, code.lower()]}, "tracked_user_id": {"$in": [None, ""]},
++         "tracked_role": {"$in": [None, ""]}},
++        {"_id": 0, "id": 1, "client_code": 1, "company": 1, "full_name": 1, "gestion_stocks_quota_gb": 1},
++    )
++
++
++async def _storage_usage(db, code: str) -> Dict[str, Any]:
++    """Espace occupé par tous les fichiers du tenant (préfixe `<client_code>/`) et espace alloué."""
++    from r2_stocks_client import list_objects
++    import asyncio
++    objects = await asyncio.to_thread(list_objects, f"{code}/")
++    used = sum(int(o.get("size") or 0) for o in objects)
++    tenant = await _tenant_by_code(db, code) or {}
++    quota_gb = _clean_quota_gb(tenant.get("gestion_stocks_quota_gb", DEFAULT_TENANT_QUOTA_GB))
++    return {
++        "client_code": code,
++        "files": len(objects),
++        "used_bytes": used,
++        "quota_gb": quota_gb,
++        "quota_bytes": int(quota_gb * _GB),
++    }
++
++
++def _quota_refusal(usage: Dict[str, Any], size: int) -> Optional[str]:
++    """Motif de refus si le fichier ferait dépasser l'espace alloué au tenant, sinon None."""
++    if usage["used_bytes"] + size <= usage["quota_bytes"]:
++        return None
++    return (
++        f"Fichier refusé : espace de stockage insuffisant. {_fmt_gb(usage['used_bytes'])} "
++        f"déjà utilisés sur {_fmt_gb(usage['quota_bytes'])} alloués ; ce fichier fait {_fmt_mb(size)}. "
++        "Libérez de l'espace ou demandez à votre administrateur SAWALI d'augmenter l'espace alloué."
++    )
++
++
+ # ======================================================================
+ # Explorateur BD MongoDB Atlas — agrégations sur le VRAI schéma HFSQL
+ # (fourni par l'utilisateur le 2026-09, "Structure_des_fichiers_HFSQL.zip"),
+@@ -363,6 +459,14 @@ async def _analyse_llm_send(session_id: str, system_text: str, user_text: str) -
+ 
+ 
+ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin):
++    # Lot 20 — les routes « admin » du module sont ouvertes au superviseur
++    # (demande explicite) : admin OU superviseur, jamais un autre rôle.
++    # `get_current_admin` reste accepté dans la signature (appel de server.py inchangé).
++    async def staff_user(user: dict = Depends(get_current_user)) -> dict:
++        if not _is_staff(user):
++            raise HTTPException(status_code=403, detail="Accès réservé à l'administrateur ou au superviseur SAWALI.")
++        return user
++
+ 
+     @api.get("/gestion-stocks/context", tags=["Portail — Gestion Stocks"])
+     async def gestion_stocks_context(user: dict = Depends(get_current_user)):
+@@ -370,7 +474,7 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+         frontend s'en sert pour savoir quoi afficher avant tout listing."""
+         if not _can_access_own_stocks(user):
+             raise HTTPException(status_code=403, detail="Accès réservé aux comptes Pharmacien suivis (et admin/superviseur).")
+-        from r2_stocks_client import is_configured
++        from r2_stocks_client import _bucket, is_configured
+         client_code = None
+         if (user.get("role") or "") in ("admin", "superviseur"):
+             client_code = None  # l'admin choisit un client_code explicitement (voir endpoints /admin/*)
+@@ -380,9 +484,86 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+             "client_code": client_code,
+             "folders": DEFAULT_FOLDERS,
+             "r2_configured": is_configured(),
++            # Lot 20 — nom du compartiment R2 affiché dans le fil d'Ariane de
++            # l'explorateur (information non sensible : ni clé ni compte).
++            "bucket": _bucket() if is_configured() else None,
++            "max_upload_mb": MAX_UPLOAD_BYTES // (1024 * 1024),
+             "is_admin": (user.get("role") or "") in ("admin", "superviseur"),
++            # Droit de dépôt de l'utilisateur courant : admin/superviseur
++            # toujours (25 Mo) ; utilisateur suivi selon sa fiche (défaut 1,5 Mo).
++            **(await _upload_rights_for(user)),
+         }
+ 
++    async def _upload_rights_for(user: dict) -> Dict[str, Any]:
++        if _is_staff(user):
++            return {"can_upload": True, "upload_max_mb": MAX_UPLOAD_BYTES // _MB}
++        rights = await _tracked_upload_rights(db, user)
++        return {"can_upload": rights["allowed"], "upload_max_mb": rights["max_mb"] if rights["allowed"] else None}
++
++    @api.get("/gestion-stocks/storage", tags=["Portail — Gestion Stocks"])
++    async def gestion_stocks_storage(
++        client_code: Optional[str] = Query(None, description="Admin/superviseur uniquement — ignoré pour un utilisateur suivi."),
++        user: dict = Depends(get_current_user),
++    ):
++        """Espace occupé par les fichiers du tenant sur l'espace alloué (tableau
++        de bord de l'utilisateur suivi, jauge de l'explorateur R2)."""
++        if not _can_access_own_stocks(user):
++            raise HTTPException(status_code=403, detail="Accès réservé aux comptes Pharmacien suivis (et admin/superviseur).")
++        code = (client_code or "").strip().upper() if _is_staff(user) else await _resolve_own_client_code(db, user)
++        if not code:
++            raise HTTPException(status_code=409, detail="Aucun code client (client_code) configuré pour ce tenant.")
++        from r2_stocks_client import is_configured
++        if not is_configured():
++            raise HTTPException(status_code=503, detail="Stockage R2 Gestion Stocks non configuré.")
++        try:
++            return await _storage_usage(db, code)
++        except Exception:
++            logger.exception("[gestion_stocks] storage usage failed code=%s", code)
++            raise HTTPException(status_code=502, detail="Erreur de lecture du stockage R2.")
++
++    @api.post("/gestion-stocks/folders/{folder}/upload", tags=["Portail — Gestion Stocks"])
++    async def gestion_stocks_tracked_upload(
++        folder: str,
++        file: UploadFile = File(...),
++        user: dict = Depends(get_current_user),
++    ):
++        """Dépôt par un utilisateur suivi AUTORISÉ, dans les dossiers de SON
++        tenant uniquement (client_code résolu côté serveur). Refus motivé si
++        la taille max de son compte ou l'espace alloué au tenant est dépassé."""
++        if _is_staff(user) or (user.get("tracked_role") or "") != "Pharmacien":
++            raise HTTPException(status_code=403, detail="Dépôt réservé aux utilisateurs suivis autorisés (l'administration utilise son propre espace de dépôt).")
++        rights = await _tracked_upload_rights(db, user)
++        if not rights["allowed"]:
++            raise HTTPException(status_code=403, detail="Dépôt refusé : votre compte n'est pas autorisé à déposer des fichiers. Demandez l'autorisation à votre administrateur SAWALI.")
++        if folder not in DEFAULT_FOLDERS:
++            raise HTTPException(status_code=404, detail="Dossier inconnu.")
++        code = await _resolve_own_client_code(db, user)
++        if not code:
++            raise HTTPException(status_code=409, detail="Aucun code client configuré pour votre société — contactez votre administrateur SAWALI.")
++        from r2_stocks_client import is_configured, put_bytes
++        import asyncio
++        if not is_configured():
++            raise HTTPException(status_code=503, detail="Stockage R2 Gestion Stocks non configuré.")
++        data = await file.read()
++        max_bytes = int(rights["max_mb"] * _MB)
++        if len(data) > max_bytes:
++            raise HTTPException(status_code=413, detail=(
++                f"Fichier refusé : « {file.filename} » fait {_fmt_mb(len(data))}, au-delà de la taille maximale "
++                f"autorisée pour votre compte ({_fmt_mb(max_bytes)} par fichier)."
++            ))
++        usage = await _storage_usage(db, code)
++        refusal = _quota_refusal(usage, len(data))
++        if refusal:
++            raise HTTPException(status_code=413, detail=refusal)
++        filename = _safe_filename(file.filename or "fichier")
++        key = f"{code}/{folder}/{filename}"
++        try:
++            await asyncio.to_thread(put_bytes, key, data, file.content_type or "application/octet-stream")
++        except Exception:
++            logger.exception("[gestion_stocks] tracked upload failed key=%s", key)
++            raise HTTPException(status_code=502, detail="Échec de l'envoi vers R2.")
++        return {"ok": True, "key": key, "size": len(data)}
++
+     @api.post("/gestion-stocks/analyse", tags=["Portail — Gestion Stocks"])
+     async def gestion_stocks_analyse(
+         payload: Dict[str, Any] = Body(...),
+@@ -521,7 +702,7 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+     # discuté ; en attendant, l'admin peut déposer des documents à la main).
+     # ------------------------------------------------------------------
+     @api.get("/admin/gestion-stocks/clients", tags=["Admin — Gestion Stocks"])
+-    async def admin_gestion_stocks_clients(_: dict = Depends(get_current_admin)):
++    async def admin_gestion_stocks_clients(_: dict = Depends(staff_user)):
+         cursor = db.users.find(
+             {"client_code": {"$exists": True, "$nin": [None, ""]}},
+             {"_id": 0, "id": 1, "client_code": 1, "company": 1, "full_name": 1},
+@@ -540,7 +721,7 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+         client_code: str,
+         folder: str,
+         file: UploadFile = File(...),
+-        _: dict = Depends(get_current_admin),
++        _: dict = Depends(staff_user),
+     ):
+         if folder not in DEFAULT_FOLDERS:
+             raise HTTPException(status_code=404, detail="Dossier inconnu.")
+@@ -554,6 +735,10 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+         data = await file.read()
+         if len(data) > MAX_UPLOAD_BYTES:
+             raise HTTPException(status_code=413, detail=f"Fichier trop volumineux (max {MAX_UPLOAD_BYTES // (1024*1024)} Mo).")
++        # Lot 20 — l'espace alloué au tenant vaut aussi pour les dépôts de l'administration.
++        refusal = _quota_refusal(await _storage_usage(db, code), len(data))
++        if refusal:
++            raise HTTPException(status_code=413, detail=refusal)
+         filename = _safe_filename(file.filename or "fichier")
+         key = f"{code}/{folder}/{filename}"
+         try:
+@@ -566,7 +751,7 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+     @api.delete("/admin/gestion-stocks/file", tags=["Admin — Gestion Stocks"])
+     async def admin_gestion_stocks_delete(
+         key: str = Query(...),
+-        _: dict = Depends(get_current_admin),
++        _: dict = Depends(staff_user),
+     ):
+         from r2_stocks_client import is_configured, delete_object
+         import asyncio
+@@ -579,6 +764,71 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+             raise HTTPException(status_code=502, detail="Échec de la suppression.")
+         return {"ok": True}
+ 
++    # ------------------------------------------------------------------
++    # Lot 20 — réglages : droit de dépôt par utilisateur suivi, espace alloué par tenant
++    # ------------------------------------------------------------------
++    @api.get("/admin/gestion-stocks/tracked-users/{tu_id}/upload-rights", tags=["Admin — Gestion Stocks"])
++    async def admin_get_upload_rights(tu_id: str, _: dict = Depends(staff_user)):
++        tu = await db.tracked_users.find_one({"id": tu_id}, {"_id": 0, "id": 1, "r2_upload_allowed": 1, "r2_upload_max_mb": 1})
++        if not tu:
++            raise HTTPException(status_code=404, detail="Utilisateur suivi introuvable.")
++        return {
++            "tracked_user_id": tu_id,
++            "allowed": bool(tu.get("r2_upload_allowed")),
++            "max_mb": _clean_max_mb(tu.get("r2_upload_max_mb", DEFAULT_TRACKED_UPLOAD_MAX_MB)),
++            "default_max_mb": DEFAULT_TRACKED_UPLOAD_MAX_MB,
++        }
++
++    @api.put("/admin/gestion-stocks/tracked-users/{tu_id}/upload-rights", tags=["Admin — Gestion Stocks"])
++    async def admin_set_upload_rights(tu_id: str, payload: Dict[str, Any] = Body(...), user: dict = Depends(staff_user)):
++        tu = await db.tracked_users.find_one({"id": tu_id}, {"_id": 0, "id": 1})
++        if not tu:
++            raise HTTPException(status_code=404, detail="Utilisateur suivi introuvable.")
++        try:
++            max_mb = float(payload.get("max_mb", DEFAULT_TRACKED_UPLOAD_MAX_MB))
++        except (TypeError, ValueError):
++            raise HTTPException(status_code=400, detail="Taille maximale invalide.")
++        if not 0 < max_mb <= MAX_UPLOAD_BYTES / _MB:
++            raise HTTPException(status_code=400, detail=f"La taille maximale doit être comprise entre 0 et {MAX_UPLOAD_BYTES // _MB} Mo.")
++        doc = {"r2_upload_allowed": bool(payload.get("allowed")), "r2_upload_max_mb": max_mb,
++               "r2_upload_updated_at": _now(), "r2_upload_updated_by": user["id"]}
++        await db.tracked_users.update_one({"id": tu_id}, {"$set": doc})
++        return {"tracked_user_id": tu_id, "allowed": doc["r2_upload_allowed"], "max_mb": max_mb}
++
++    @api.get("/admin/gestion-stocks/tenants/{client_id}/storage", tags=["Admin — Gestion Stocks"])
++    async def admin_get_tenant_storage(client_id: str, _: dict = Depends(staff_user)):
++        tenant = await db.users.find_one({"id": client_id}, {"_id": 0, "id": 1, "client_code": 1, "gestion_stocks_quota_gb": 1})
++        if not tenant:
++            raise HTTPException(status_code=404, detail="Client introuvable.")
++        code = (tenant.get("client_code") or "").strip().upper()
++        out = {
++            "client_id": client_id, "client_code": code or None,
++            "quota_gb": _clean_quota_gb(tenant.get("gestion_stocks_quota_gb", DEFAULT_TENANT_QUOTA_GB)),
++            "default_quota_gb": DEFAULT_TENANT_QUOTA_GB, "used_bytes": None, "files": None,
++        }
++        from r2_stocks_client import is_configured
++        if code and is_configured():
++            try:
++                usage = await _storage_usage(db, code)
++                out.update(used_bytes=usage["used_bytes"], files=usage["files"])
++            except Exception:  # noqa: BLE001 — l'affichage du réglage ne doit pas échouer
++                logger.exception("[gestion_stocks] storage usage failed code=%s", code)
++        return out
++
++    @api.put("/admin/gestion-stocks/tenants/{client_id}/storage", tags=["Admin — Gestion Stocks"])
++    async def admin_set_tenant_storage(client_id: str, payload: Dict[str, Any] = Body(...), _: dict = Depends(staff_user)):
++        tenant = await db.users.find_one({"id": client_id}, {"_id": 0, "id": 1})
++        if not tenant:
++            raise HTTPException(status_code=404, detail="Client introuvable.")
++        try:
++            quota_gb = float(payload.get("quota_gb"))
++        except (TypeError, ValueError):
++            raise HTTPException(status_code=400, detail="Espace alloué invalide.")
++        if not 0 < quota_gb <= 10000:
++            raise HTTPException(status_code=400, detail="L'espace alloué doit être compris entre 0 et 10 000 Go.")
++        await db.users.update_one({"id": client_id}, {"$set": {"gestion_stocks_quota_gb": quota_gb}})
++        return {"client_id": client_id, "quota_gb": quota_gb}
++
+     logger.info("[gestion_stocks] routes mounted under /api/gestion-stocks and /api/admin/gestion-stocks")
+ 
+ 
+diff --git a/backend/tests/test_gestion_stocks_r2_lot20.py b/backend/tests/test_gestion_stocks_r2_lot20.py
+new file mode 100644
+index 0000000..5fd6a0e
+--- /dev/null
++++ b/backend/tests/test_gestion_stocks_r2_lot20.py
+@@ -0,0 +1,158 @@
++"""Lot 20 — Explorateur R2 de Gestion de Stocks : accès superviseur, dépôt par
++les utilisateurs suivis autorisés (taille max par utilisateur, 1,5 Mo par
++défaut), espace alloué par tenant (2 Go par défaut) avec refus motivé.
++
++Tests autonomes : MongoDB simulé (mongomock-motor) et R2 simulé en mémoire —
++aucun serveur, aucune clé, aucun réseau.
++Lancer : cd backend && python -m pytest tests/test_gestion_stocks_r2_lot20.py -q
++"""
++from __future__ import annotations
++
++import sys
++import types
++from pathlib import Path
++
++import pytest
++
++pytest.importorskip("mongomock_motor")
++from fastapi import APIRouter, FastAPI, Header, HTTPException  # noqa: E402
++from fastapi.testclient import TestClient  # noqa: E402
++from mongomock_motor import AsyncMongoMockClient  # noqa: E402
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++MB = 1024 * 1024
++USERS = {
++    "admin": {"id": "admin", "role": "admin", "full_name": "Admin"},
++    "sup": {"id": "sup", "role": "superviseur", "full_name": "Superviseur"},
++    # Pharmacien suivi de la pharmacie PDP (tenant « t-pdp »), fiche tracked_users « tu-1 »
++    "suivi": {"id": "suivi", "role": "client", "tracked_role": "Pharmacien", "tracked_user_id": "tu-1",
++              "parent_client_id": "t-pdp", "full_name": "Pharmacien suivi"},
++    "secretaire": {"id": "sec", "role": "client", "tracked_role": "Secrétaire", "tracked_user_id": "tu-2",
++                   "parent_client_id": "t-pdp"},
++}
++
++
++@pytest.fixture()
++def env(monkeypatch):
++    objects: dict = {"PDP/Inventaires/ancien.xlsx": b"x" * 1000}
++    r2 = types.ModuleType("r2_stocks_client")
++    r2._bucket = lambda: "gestion-stocks"
++    r2.is_configured = lambda: True
++    r2.list_objects = lambda prefix: [
++        {"key": k, "size": len(v), "last_modified": "2026-09-23T10:00:00"} for k, v in objects.items() if k.startswith(prefix)
++    ]
++    r2.put_bytes = lambda key, data, ct="application/octet-stream": objects.__setitem__(key, data)
++    r2.get_presigned_url = lambda key, expires_in=300: "https://r2/signed"
++    r2.delete_object = lambda key: objects.pop(key, None)
++    monkeypatch.setitem(sys.modules, "r2_stocks_client", r2)
++
++    db = AsyncMongoMockClient()["sawali_test"]
++
++    async def get_current_user(x_user: str = Header(...)):
++        if x_user not in USERS:
++            raise HTTPException(status_code=401)
++        return USERS[x_user]
++
++    async def get_current_admin(x_user: str = Header(...)):
++        raise AssertionError("le module ne doit plus utiliser get_current_admin")
++
++    from routes.gestion_stocks import attach_gestion_stocks_routes
++    api = APIRouter(prefix="/api")
++    attach_gestion_stocks_routes(api=api, db=db, get_current_user=get_current_user, get_current_admin=get_current_admin)
++    app = FastAPI()
++    app.include_router(api)
++    with TestClient(app) as client:
++        client.portal.call(db.users.insert_many, [
++            {"id": "t-pdp", "role": "pharmacien", "company": "Pharmacie du Progrès", "client_code": "PDP"},
++            *[dict(u) for u in USERS.values()],
++        ])
++        client.portal.call(db.tracked_users.insert_many, [
++            {"id": "tu-1", "client_id": "t-pdp", "name": "Pharmacien suivi", "role": "Pharmacien"},
++            {"id": "tu-2", "client_id": "t-pdp", "name": "Secrétaire", "role": "Secrétaire"},
++        ])
++        yield types.SimpleNamespace(client=client, db=db, objects=objects)
++
++
++def _h(user):
++    return {"X-User": user}
++
++
++def _post_tracked(env, size, folder="Inventaires", name="f.pdf"):
++    return env.client.post(f"/api/gestion-stocks/folders/{folder}/upload", headers=_h("suivi"),
++                           files={"file": (name, b"a" * size, "application/pdf")})
++
++
++def _set_rights(env, allowed, max_mb=None, who="admin"):
++    body = {"allowed": allowed}
++    if max_mb is not None:
++        body["max_mb"] = max_mb
++    return env.client.put("/api/admin/gestion-stocks/tracked-users/tu-1/upload-rights", headers=_h(who), json=body)
++
++
++def test_superviseur_has_admin_access(env):
++    assert env.client.get("/api/admin/gestion-stocks/clients", headers=_h("sup")).status_code == 200
++    r = env.client.post("/api/admin/gestion-stocks/PDP/Rapports/upload", headers=_h("sup"),
++                        files={"file": ("r.pdf", b"z" * 10, "application/pdf")})
++    assert r.status_code == 200 and "PDP/Rapports/r.pdf" in env.objects
++    ctx = env.client.get("/api/gestion-stocks/context", headers=_h("sup")).json()
++    assert ctx["can_upload"] is True and ctx["upload_max_mb"] == 25 and ctx["bucket"] == "gestion-stocks"
++
++
++def test_tracked_user_not_allowed_by_default(env):
++    ctx = env.client.get("/api/gestion-stocks/context", headers=_h("suivi")).json()
++    assert ctx["can_upload"] is False
++    r = _post_tracked(env, 100)
++    assert r.status_code == 403 and "pas autorisé" in r.json()["detail"]
++
++
++def test_rights_default_1_5_mb_and_refusal_message(env):
++    got = env.client.get("/api/admin/gestion-stocks/tracked-users/tu-1/upload-rights", headers=_h("admin")).json()
++    assert got == {"tracked_user_id": "tu-1", "allowed": False, "max_mb": 1.5, "default_max_mb": 1.5}
++    assert _set_rights(env, True).status_code == 200
++    ctx = env.client.get("/api/gestion-stocks/context", headers=_h("suivi")).json()
++    assert ctx["can_upload"] is True and ctx["upload_max_mb"] == 1.5
++    r = _post_tracked(env, 2 * MB, name="gros.pdf")
++    assert r.status_code == 413
++    assert "gros.pdf" in r.json()["detail"] and "1,5 Mo" in r.json()["detail"]
++    ok = _post_tracked(env, MB, name="petit.pdf")
++    assert ok.status_code == 200 and ok.json()["key"] == "PDP/Inventaires/petit.pdf"
++
++
++def test_rights_are_configurable_per_tracked_user(env):
++    _set_rights(env, True, max_mb=3)
++    assert _post_tracked(env, 2 * MB).status_code == 200
++    assert _set_rights(env, True, max_mb=0).status_code == 400
++    assert _set_rights(env, True, max_mb=99).status_code == 400
++    # Seuls l'admin et le superviseur règlent les droits.
++    assert _set_rights(env, True, who="suivi").status_code == 403
++
++
++def test_other_tracked_roles_cannot_upload(env):
++    r = env.client.post("/api/gestion-stocks/folders/Inventaires/upload", headers=_h("secretaire"),
++                        files={"file": ("f.pdf", b"a", "application/pdf")})
++    assert r.status_code == 403
++
++
++def test_tenant_quota_default_2gb_and_refusal(env):
++    got = env.client.get("/api/admin/gestion-stocks/tenants/t-pdp/storage", headers=_h("admin")).json()
++    assert got["quota_gb"] == 2.0 and got["used_bytes"] == 1000 and got["client_code"] == "PDP"
++    # Espace réduit à ~1 Mo : un dépôt qui le dépasserait est refusé, avec le motif.
++    assert env.client.put("/api/admin/gestion-stocks/tenants/t-pdp/storage", headers=_h("admin"),
++                          json={"quota_gb": 0.001}).status_code == 200
++    _set_rights(env, True)
++    r = _post_tracked(env, int(1.2 * MB))
++    assert r.status_code == 413 and "espace de stockage insuffisant" in r.json()["detail"]
++    # Même règle pour un dépôt de l'administration.
++    r2 = env.client.post("/api/admin/gestion-stocks/PDP/Autres/upload", headers=_h("admin"),
++                         files={"file": ("g.pdf", b"a" * int(1.2 * MB), "application/pdf")})
++    assert r2.status_code == 413
++    assert env.client.put("/api/admin/gestion-stocks/tenants/t-pdp/storage", headers=_h("admin"),
++                          json={"quota_gb": -1}).status_code == 400
++
++
++def test_storage_endpoint_scoped_to_own_tenant(env):
++    st = env.client.get("/api/gestion-stocks/storage?client_code=AUTRE", headers=_h("suivi")).json()
++    assert st["client_code"] == "PDP" and st["files"] == 1 and st["quota_bytes"] == 2 * 1024 ** 3
++    staff = env.client.get("/api/gestion-stocks/storage?client_code=PDP", headers=_h("sup")).json()
++    assert staff["used_bytes"] == 1000
+diff --git a/frontend/src/components/R2StorageGauge.jsx b/frontend/src/components/R2StorageGauge.jsx
+new file mode 100644
+index 0000000..e7df28c
+--- /dev/null
++++ b/frontend/src/components/R2StorageGauge.jsx
+@@ -0,0 +1,69 @@
++import React, { useCallback, useEffect, useImperativeHandle, useState, forwardRef } from "react";
++import { HardDrive } from "lucide-react";
++import { apiClient } from "@/lib/api";
++
++/*
++  Lot 20 — Jauge « espace occupé / espace alloué » de l'espace R2 Gestion de
++  Stocks d'un tenant (tous ses dossiers). Utilisée :
++    - sur le tableau de bord du Pharmacien suivi (portal/Dashboard.jsx) ;
++    - dans l'Explorateur Stockage R2 (GestionStocks.jsx).
++  Données : GET /gestion-stocks/storage (le serveur résout lui-même le tenant
++  d'un utilisateur suivi ; `clientCode` n'est transmis que pour l'administration).
++  Si le module n'est pas accessible ou pas configuré, la jauge ne s'affiche pas.
++*/
++
++// Octets → « 1,2 Go » / « 350 Mo » / « 12 Ko » (format français).
++export function formatBytes(bytes) {
++  const n = Number(bytes) || 0;
++  const units = [["Go", 1024 ** 3], ["Mo", 1024 ** 2], ["Ko", 1024]];
++  for (const [unit, size] of units) {
++    if (n >= size) return `${(n / size).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} ${unit}`;
++  }
++  return `${n} o`;
++}
++
++const R2StorageGauge = forwardRef(function R2StorageGauge({ clientCode = null, compact = false }, ref) {
++  const [data, setData] = useState(null);
++
++  // Rechargement (exposé au parent pour rafraîchir après un dépôt).
++  const load = useCallback(async () => {
++    try {
++      const r = await apiClient.get("/gestion-stocks/storage", { params: clientCode ? { client_code: clientCode } : {} });
++      setData(r.data);
++    } catch {
++      setData(null);
++    }
++  }, [clientCode]);
++
++  useEffect(() => { load(); }, [load]);
++  useImperativeHandle(ref, () => ({ reload: load }), [load]);
++
++  if (!data) return null;
++  const pct = data.quota_bytes ? Math.min(100, Math.round((data.used_bytes / data.quota_bytes) * 100)) : 0;
++  const bar = pct >= 100 ? "bg-rose-600" : pct >= 80 ? "bg-amber-500" : "bg-teal-500";
++  const quotaLabel = `${Number(data.quota_gb).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} Go`;
++
++  return (
++    <div className={`rounded-xl ring-1 ring-teal-200 bg-white ${compact ? "px-3 py-2" : "p-4"} flex items-center gap-3`}
++      data-testid="r2-storage-gauge">
++      <div className="h-9 w-9 rounded-lg bg-teal-50 flex items-center justify-center shrink-0">
++        <HardDrive className="h-4 w-4 text-teal-600" />
++      </div>
++      <div className="flex-1 min-w-0">
++        <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
++          Espace de stockage Gestion de Stocks
++        </p>
++        <p className="text-sm text-slate-900 font-semibold tabular-nums" data-testid="r2-storage-text">
++          {formatBytes(data.used_bytes)} <span className="font-normal text-slate-500">utilisés sur {quotaLabel}</span>
++          <span className="font-normal text-slate-400"> · {data.files} fichier{data.files > 1 ? "s" : ""}</span>
++        </p>
++        <div className="mt-1 h-2 rounded-full bg-slate-100 overflow-hidden">
++          <div className={`h-full ${bar} transition-all`} style={{ width: `${pct}%` }} />
++        </div>
++      </div>
++      <span className="text-xs tabular-nums text-slate-500 shrink-0" data-testid="r2-storage-pct">{pct} %</span>
++    </div>
++  );
++});
++
++export default R2StorageGauge;
+diff --git a/frontend/src/pages/admin/AdminClientFeatures.jsx b/frontend/src/pages/admin/AdminClientFeatures.jsx
+index 94cbe30..63c1707 100644
+--- a/frontend/src/pages/admin/AdminClientFeatures.jsx
++++ b/frontend/src/pages/admin/AdminClientFeatures.jsx
+@@ -1,8 +1,9 @@
+ import React, { useEffect, useState } from "react";
+ import { useParams, Link } from "react-router-dom";
+ import { apiClient } from "@/lib/api";
++import { formatBytes } from "@/components/R2StorageGauge";
+ import { toast } from "sonner";
+-import { ArrowLeft, MessageCircle, Smartphone, Sparkles, CreditCard, Save, ShieldCheck, Webhook, Building2, Volume2, MessageSquareText, Facebook, Megaphone, Image as ImageIcon, Film, Gauge, Wallet, Download, FileSpreadsheet, FileText } from "lucide-react";
++import { ArrowLeft, MessageCircle, Smartphone, Sparkles, CreditCard, Save, ShieldCheck, Webhook, Building2, Volume2, MessageSquareText, Facebook, Megaphone, Image as ImageIcon, Film, Gauge, Wallet, Download, FileSpreadsheet, FileText, HardDrive } from "lucide-react";
+ 
+ /*
+   Admin → Fiche client → SMART Communications
+@@ -502,6 +503,9 @@ export default function AdminClientFeatures() {
+         </div>
+       )}
+ 
++      {/* Lot 20 — Espace de stockage R2 (Gestion de Stocks) alloué à ce client */}
++      <R2StorageQuotaSection clientId={id} />
++
+       {/* Iter41 Phase 2 — VIDAL mode selector (only shown when vidal_enabled=true) */}
+       {features.vidal_enabled && (
+         <div className="rounded-2xl ring-1 ring-rose-200 bg-rose-50/40 p-5 space-y-3" data-testid="vidal-client-config-section">
+@@ -950,3 +954,82 @@ function AiQuotasSection({ clientId, clientLabel }) {
+     </div>
+   );
+ }
++
++
++// ====================================================================
++// Lot 20 — Espace de stockage R2 (Gestion de Stocks) alloué au client/tenant
++// Partagé par tous ses dossiers et tous ses utilisateurs suivis ; 2 Go par
++// défaut. Enregistrement indépendant du bouton « Enregistrer » des
++// fonctionnalités (route dédiée /admin/gestion-stocks/tenants/{id}/storage).
++// ====================================================================
++function R2StorageQuotaSection({ clientId }) {
++  const [info, setInfo] = useState(null);
++  const [quota, setQuota] = useState("");
++  const [saving, setSaving] = useState(false);
++
++  const load = async () => {
++    try {
++      const r = await apiClient.get(`/admin/gestion-stocks/tenants/${clientId}/storage`);
++      setInfo(r.data);
++      setQuota(String(r.data.quota_gb));
++    } catch {
++      setInfo(null);
++    }
++  };
++  // Rechargement quand on change de client (load ne dépend que de clientId).
++  // eslint-disable-next-line react-hooks/exhaustive-deps
++  useEffect(() => { load(); }, [clientId]);
++
++  const save = async () => {
++    const value = parseFloat(String(quota).replace(",", "."));
++    if (!(value > 0)) { toast.error("Indiquez un espace supérieur à 0 Go"); return; }
++    setSaving(true);
++    try {
++      await apiClient.put(`/admin/gestion-stocks/tenants/${clientId}/storage`, { quota_gb: value });
++      toast.success("Espace de stockage enregistré");
++      load();
++    } catch (err) {
++      toast.error(err?.response?.data?.detail || "Erreur");
++    } finally {
++      setSaving(false);
++    }
++  };
++
++  if (!info) return null;
++  const usedGb = info.used_bytes != null ? info.used_bytes / (1024 ** 3) : null;
++  const pct = usedGb != null && info.quota_gb ? Math.min(100, Math.round((usedGb / info.quota_gb) * 100)) : null;
++  return (
++    <div className="rounded-2xl ring-1 ring-teal-200 bg-teal-50/40 p-5 space-y-3" data-testid="r2-storage-quota-section">
++      <div className="flex items-start gap-3">
++        <div className="h-10 w-10 rounded-xl bg-teal-100 flex items-center justify-center">
++          <HardDrive className="h-5 w-5 text-teal-600" />
++        </div>
++        <div className="flex-1">
++          <h3 className="font-display font-semibold text-slate-900">Espace de stockage R2 (Gestion de Stocks)</h3>
++          <p className="text-xs text-slate-500 mt-1">
++            Volume total alloué aux fichiers de ce client dans l'Explorateur Stockage R2 (tous dossiers, tous
++            utilisateurs suivis). Un dépôt qui le dépasserait est refusé avec le motif. {info.default_quota_gb} Go par défaut.
++            {!info.client_code && " Ce client n'a pas encore de code client : l'espace n'est pas encore utilisé."}
++          </p>
++        </div>
++      </div>
++      <div className="flex items-end gap-3 flex-wrap">
++        <label className="block">
++          <span className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Espace alloué (Go)</span>
++          <input type="number" min="0.1" step="0.5" value={quota} onChange={(e) => setQuota(e.target.value)}
++            className="mt-1 w-40 text-sm rounded-lg ring-1 ring-slate-300 px-3 py-2 bg-white" data-testid="r2-storage-quota-input" />
++        </label>
++        <button onClick={save} disabled={saving}
++          className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-60"
++          data-testid="r2-storage-quota-save">
++          <Save className="h-4 w-4" /> {saving ? "Enregistrement…" : "Enregistrer l'espace"}
++        </button>
++        {pct != null && (
++          <p className="text-xs text-slate-600 tabular-nums" data-testid="r2-storage-quota-usage">
++            Utilisé : {formatBytes(info.used_bytes)} ({pct} %) · {info.files} fichier(s)
++          </p>
++        )}
++      </div>
++    </div>
++  );
++}
+diff --git a/frontend/src/pages/admin/AdminTrackedUsers.jsx b/frontend/src/pages/admin/AdminTrackedUsers.jsx
+index eaf0469..e2ae197 100644
+--- a/frontend/src/pages/admin/AdminTrackedUsers.jsx
++++ b/frontend/src/pages/admin/AdminTrackedUsers.jsx
+@@ -1,6 +1,6 @@
+ import React, { useEffect, useMemo, useState } from "react";
+ import { apiClient } from "@/lib/api";
+-import { Plus, Trash2, Edit, X, KeyRound, ShieldCheck, ShieldOff, Copy } from "lucide-react";
++import { Plus, Trash2, Edit, X, KeyRound, ShieldCheck, ShieldOff, Copy, HardDriveUpload } from "lucide-react";
+ import { toast } from "sonner";
+ import PasswordInput from "@/components/PasswordInput";
+ 
+@@ -21,6 +21,8 @@ export default function AdminTrackedUsers() {
+   const [editing, setEditing] = useState(null);
+   const [form, setForm] = useState(empty);
+   const [pwdDialog, setPwdDialog] = useState(null); // tracked user being password-managed
++  // Lot 20 — utilisateur suivi dont on règle le droit de dépôt R2 (Gestion de Stocks)
++  const [r2Dialog, setR2Dialog] = useState(null);
+   // Iter35g — bulk transfer state
+   const [selectedIds, setSelectedIds] = useState(new Set());
+   const [transferTarget, setTransferTarget] = useState("");
+@@ -283,6 +285,15 @@ export default function AdminTrackedUsers() {
+                         <ShieldOff className="h-4 w-4 inline" />
+                       </button>
+                     )}
++                    {/* Lot 20 — droit de dépôt de fichiers sur R2 (Gestion de Stocks) ; vert si autorisé */}
++                    <button
++                      onClick={() => setR2Dialog(u)}
++                      className={`mr-3 ${u.r2_upload_allowed ? "text-emerald-600" : "text-slate-500"} hover:text-sawali-blue`}
++                      title={u.r2_upload_allowed ? `Dépôt R2 autorisé (${u.r2_upload_max_mb ?? 1.5} Mo max par fichier)` : "Dépôt R2 (Gestion de Stocks) : non autorisé"}
++                      data-testid={`r2-rights-${u.id}`}
++                    >
++                      <HardDriveUpload className="h-4 w-4 inline" />
++                    </button>
+                     <button onClick={() => open(u)} className="text-slate-500 hover:text-sawali-blue mr-3" title="Modifier"><Edit className="h-4 w-4 inline" /></button>
+                     <button onClick={() => del(u.id)} className="text-slate-500 hover:text-rose-600" title="Supprimer"><Trash2 className="h-4 w-4 inline" /></button>
+                   </td>
+@@ -450,6 +461,14 @@ export default function AdminTrackedUsers() {
+         </div>
+       )}
+ 
++      {r2Dialog && (
++        <R2UploadRightsDialog
++          user={r2Dialog}
++          onClose={() => setR2Dialog(null)}
++          onSaved={async () => { setR2Dialog(null); await load(); }}
++        />
++      )}
++
+       {pwdDialog && (
+         <PasswordDialog
+           user={pwdDialog}
+@@ -461,6 +480,78 @@ export default function AdminTrackedUsers() {
+   );
+ }
+ 
++// ====================================================================
++// Lot 20 — Droit de dépôt sur R2 (Gestion de Stocks) d'un utilisateur suivi
++// Autorisation + taille maximale par fichier (1,5 Mo par défaut). Le serveur
++// refuse, avec le motif, tout fichier plus gros ou dépassant l'espace alloué
++// au client (réglé dans SMART Communications du client).
++// ====================================================================
++function R2UploadRightsDialog({ user, onClose, onSaved }) {
++  const [allowed, setAllowed] = useState(false);
++  const [maxMb, setMaxMb] = useState("1.5");
++  const [loading, setLoading] = useState(true);
++  const [busy, setBusy] = useState(false);
++
++  useEffect(() => {
++    apiClient.get(`/admin/gestion-stocks/tracked-users/${user.id}/upload-rights`)
++      .then((r) => { setAllowed(!!r.data.allowed); setMaxMb(String(r.data.max_mb ?? r.data.default_max_mb ?? 1.5)); })
++      .catch((err) => toast.error(err?.response?.data?.detail || "Erreur de chargement"))
++      .finally(() => setLoading(false));
++  }, [user.id]);
++
++  const save = async () => {
++    const value = parseFloat(String(maxMb).replace(",", "."));
++    if (!(value > 0)) { toast.error("Indiquez une taille maximale supérieure à 0 Mo"); return; }
++    setBusy(true);
++    try {
++      await apiClient.put(`/admin/gestion-stocks/tracked-users/${user.id}/upload-rights`, { allowed, max_mb: value });
++      toast.success("Droit de dépôt enregistré");
++      onSaved();
++    } catch (err) {
++      toast.error(err?.response?.data?.detail || "Erreur");
++    } finally {
++      setBusy(false);
++    }
++  };
++
++  return (
++    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
++      <div className="bg-white rounded-xl w-full max-w-md" onClick={(e) => e.stopPropagation()} data-testid="r2-rights-dialog">
++        <div className="flex items-center justify-between p-4 border-b">
++          <h3 className="font-display font-semibold inline-flex items-center gap-2">
++            <HardDriveUpload className="h-4 w-4 text-sawali-blue" /> Dépôt de fichiers R2 — {user.name}
++          </h3>
++          <button onClick={onClose}><X className="h-4 w-4" /></button>
++        </div>
++        {loading ? <p className="p-4 text-sm text-slate-500">Chargement…</p> : (
++          <div className="p-4 space-y-4">
++            <p className="text-xs text-slate-500">
++              Autorise cet utilisateur suivi à déposer des fichiers dans les dossiers « Gestion de Stocks » de son
++              client (Explorateur Stockage R2). Seuls les utilisateurs suivis de rôle Pharmacien ont accès à ce module.
++            </p>
++            <label className="flex items-center gap-2 text-sm">
++              <input type="checkbox" checked={allowed} onChange={(e) => setAllowed(e.target.checked)} data-testid="r2-rights-allowed" />
++              Autoriser les dépôts
++            </label>
++            <label className="block">
++              <span className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Taille maximale par fichier (Mo)</span>
++              <input type="number" min="0.1" step="0.1" value={maxMb} onChange={(e) => setMaxMb(e.target.value)} disabled={!allowed}
++                className="mt-1 w-full text-sm rounded-lg ring-1 ring-slate-300 px-3 py-2 disabled:bg-slate-100" data-testid="r2-rights-max-mb" />
++              <span className="text-[11px] text-slate-400">1,5 Mo par défaut. Un fichier plus gros est refusé avec le motif.</span>
++            </label>
++            <div className="flex justify-end gap-2">
++              <button onClick={onClose} className="px-3 py-2 text-sm rounded-lg ring-1 ring-slate-300">Annuler</button>
++              <button onClick={save} disabled={busy} className="px-3 py-2 text-sm rounded-lg bg-sawali-blue text-white disabled:opacity-60" data-testid="r2-rights-save">
++                {busy ? "Enregistrement…" : "Enregistrer"}
++              </button>
++            </div>
++          </div>
++        )}
++      </div>
++    </div>
++  );
++}
++
+ // ====================================================================
+ // Password dialog — set or reset password for a tracked user
+ // ====================================================================
+diff --git a/frontend/src/pages/portal/Dashboard.jsx b/frontend/src/pages/portal/Dashboard.jsx
+index 9b4893b..8379459 100644
+--- a/frontend/src/pages/portal/Dashboard.jsx
++++ b/frontend/src/pages/portal/Dashboard.jsx
+@@ -6,6 +6,7 @@ import { Calendar, Wrench, FileText, ArrowRight, CheckCircle2, Clock, ClipboardL
+ import { useAuth } from "@/contexts/AuthContext";
+ import BrochuresWidget from "@/components/BrochuresWidget";
+ import WeatherWidget from "@/components/WeatherWidget";
++import R2StorageGauge from "@/components/R2StorageGauge";
+ 
+ const StatCard = ({ icon: Icon, label, value, hint, testid }) => (
+   <div className="rounded-xl border border-slate-200 bg-white p-5" data-testid={testid}>
+@@ -44,6 +45,9 @@ const NoteCard = ({ to, label, accent, count, lastUpdated, icon: Icon, testid })
+ );
+ 
+ export default function ClientDashboard() {
++  // Lot 20 — jauge d'espace Gestion de Stocks pour le Pharmacien suivi.
++  const { user } = useAuth();
++  const isPharmacienTracked = (user?.tracked_role || "") === "Pharmacien";
+   const [data, setData] = useState(null);
+   const [notes, setNotes] = useState({
+     reports: { count: 0, last_updated: null },
+@@ -149,6 +153,8 @@ export default function ClientDashboard() {
+           </ul>
+         </div>
+       </div>
++      {/* Lot 20 — espace occupé par les fichiers de la pharmacie / espace alloué */}
++      {isPharmacienTracked && <R2StorageGauge />}
+       {/* Iter35o — Tickets en attente */}
+       <TicketsPendingCard />
+       {/* Iter38c — Carte dépenses non justifiées (utilisateurs suivis avec accès Caisse) */}
+diff --git a/frontend/src/pages/portal/GestionStocks.jsx b/frontend/src/pages/portal/GestionStocks.jsx
+index b3a9eac..e634045 100644
+--- a/frontend/src/pages/portal/GestionStocks.jsx
++++ b/frontend/src/pages/portal/GestionStocks.jsx
+@@ -1,10 +1,12 @@
+-import React, { useEffect, useState } from "react";
++import React, { useEffect, useRef, useState } from "react";
+ import { apiClient } from "@/lib/api";
+ import { toast } from "sonner";
+ import { useAuth } from "@/contexts/AuthContext";
+ import {
+   Database, Folder, FileText, Upload, RefreshCw, ArrowLeft, Send, Loader2,
++  ChevronRight, CheckCircle2, AlertCircle, HardDrive,
+ } from "lucide-react";
++import R2StorageGauge from "@/components/R2StorageGauge";
+ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip } from "recharts";
+ 
+ /*
+@@ -72,11 +74,19 @@ function formatDate(iso) {
+ export default function GestionStocks() {
+   const { user } = useAuth();
+   const isAdmin = user?.role === "admin" || user?.role === "superviseur";
++  // Lot 20 — droit de dépôt renvoyé par le serveur (/gestion-stocks/context) :
++  // admin et superviseur toujours ; utilisateur suivi seulement si
++  // l'administrateur l'a autorisé (avec sa propre taille max par fichier).
++  const [canUpload, setCanUpload] = useState(false);
++  const gaugeRef = useRef(null);
+ 
+   const [loadingContext, setLoadingContext] = useState(true);
+   const [folders, setFolders] = useState([]);
+   const [clientCode, setClientCode] = useState(null);
+   const [r2Configured, setR2Configured] = useState(true);
++  // Lot 20 — nom du compartiment R2 (fil d'Ariane) et taille max d'un fichier.
++  const [bucket, setBucket] = useState(null);
++  const [maxUploadMb, setMaxUploadMb] = useState(25);
+ 
+   // Admin uniquement : liste des clients pour choisir lequel parcourir.
+   const [adminClients, setAdminClients] = useState([]);
+@@ -86,6 +96,10 @@ export default function GestionStocks() {
+   const [files, setFiles] = useState([]);
+   const [loadingFiles, setLoadingFiles] = useState(false);
+   const [uploading, setUploading] = useState(false);
++  // Lot 20 — dépôt depuis l'ordinateur : file d'envoi (un fichier à la fois,
++  // avec progression) et survol de la zone de glisser-déposer.
++  const [uploadQueue, setUploadQueue] = useState([]);
++  const [dragOver, setDragOver] = useState(false);
+ 
+   // Explorateur BD MongoDB Atlas
+   const [promptText, setPromptText] = useState("");
+@@ -134,6 +148,9 @@ export default function GestionStocks() {
+       setFolders(r.data?.folders || []);
+       setClientCode(r.data?.client_code || null);
+       setR2Configured(!!r.data?.r2_configured);
++      setBucket(r.data?.bucket || null);
++      setCanUpload(!!r.data?.can_upload);
++      if (r.data?.upload_max_mb) setMaxUploadMb(r.data.upload_max_mb);
+       if (r.data?.is_admin) {
+         const rc = await apiClient.get("/admin/gestion-stocks/clients");
+         setAdminClients(rc.data || []);
+@@ -172,28 +189,81 @@ export default function GestionStocks() {
+     }
+   };
+ 
+-  const handleUpload = async (e) => {
+-    const file = e.target.files?.[0];
+-    e.target.value = "";
+-    if (!file || !selectedFolder || !effectiveClientCode) return;
++  // Lot 20 — dépôt (admin) d'un ou plusieurs fichiers depuis l'ordinateur,
++  // via le bouton « Déposer des fichiers » ou par glisser-déposer. Les fichiers
++  // partent un par un sur la route existante (un fichier par requête), avec
++  // la progression de chacun ; un fichier trop gros est refusé avant l'envoi.
++  const uploadFiles = async (fileList) => {
++    const list = Array.from(fileList || []);
++    if (!list.length || !selectedFolder || !effectiveClientCode || uploading) return;
++    const maxBytes = maxUploadMb * 1024 * 1024;
++    const queue = list.map((f, idx) => ({
++      id: `${Date.now()}-${idx}`, name: f.name, size: f.size, progress: 0,
++      status: f.size > maxBytes ? "error" : "pending",
++      error: f.size > maxBytes
++        ? `Refusé : ${(f.size / 1048576).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} Mo, au-delà de la taille maximale autorisée (${Number(maxUploadMb).toLocaleString("fr-FR")} Mo par fichier)`
++        : null,
++    }));
++    setUploadQueue(queue);
+     setUploading(true);
+-    const form = new FormData();
+-    form.append("file", file);
+-    try {
+-      await apiClient.post(
+-        `/admin/gestion-stocks/${encodeURIComponent(effectiveClientCode)}/${encodeURIComponent(selectedFolder)}/upload`,
+-        form,
+-        { headers: { "Content-Type": "multipart/form-data" } },
+-      );
+-      toast.success("Document envoyé.");
++    const update = (id, patch) => setUploadQueue((q) => q.map((it) => (it.id === id ? { ...it, ...patch } : it)));
++    let sent = 0;
++    for (let idx = 0; idx < list.length; idx += 1) {
++      const item = queue[idx];
++      if (item.status === "error") continue;
++      update(item.id, { status: "uploading" });
++      const form = new FormData();
++      form.append("file", list[idx]);
++      try {
++        // Administration : route admin (client choisi) ; utilisateur suivi :
++        // route portail (son tenant est résolu par le serveur, jamais transmis).
++        const url = isAdmin
++          ? `/admin/gestion-stocks/${encodeURIComponent(effectiveClientCode)}/${encodeURIComponent(selectedFolder)}/upload`
++          : `/gestion-stocks/folders/${encodeURIComponent(selectedFolder)}/upload`;
++        await apiClient.post(
++          url,
++          form,
++          {
++            headers: { "Content-Type": "multipart/form-data" },
++            onUploadProgress: (ev) => {
++              if (ev.total) update(item.id, { progress: Math.round((ev.loaded * 100) / ev.total) });
++            },
++          },
++        );
++        update(item.id, { status: "done", progress: 100 });
++        sent += 1;
++      } catch (err) {
++        update(item.id, { status: "error", error: err?.response?.data?.detail || "Échec de l'envoi" });
++      }
++    }
++    setUploading(false);
++    gaugeRef.current?.reload();
++    if (sent) {
++      toast.success(`${sent} document${sent > 1 ? "s" : ""} déposé${sent > 1 ? "s" : ""} dans ${selectedFolder}.`);
+       openFolder(selectedFolder);
+-    } catch (err) {
+-      toast.error(err?.response?.data?.detail || "Échec de l'envoi");
+-    } finally {
+-      setUploading(false);
+     }
+   };
+ 
++  const handleUpload = (e) => {
++    const picked = e.target.files;
++    uploadFiles(picked).finally(() => { e.target.value = ""; });
++  };
++
++  const handleDrop = (e) => {
++    e.preventDefault();
++    setDragOver(false);
++    if (canUpload) uploadFiles(e.dataTransfer?.files);
++  };
++
++  // Libellé du client affiché dans le fil d'Ariane (admin : code + nom).
++  const clientLabel = (() => {
++    if (!effectiveClientCode) return null;
++    const c = adminClients.find((x) => x.client_code === effectiveClientCode);
++    return c?.label ? `${effectiveClientCode} — ${c.label}` : effectiveClientCode;
++  })();
++
++  const backToFolders = () => { setSelectedFolder(null); setFiles([]); setUploadQueue([]); };
++
+   return (
+     <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6" data-testid="gestion-stocks-page">
+       <h1 className="text-xl font-display font-bold text-slate-800 flex items-center gap-2">
+@@ -307,7 +377,7 @@ export default function GestionStocks() {
+             {isAdmin && (
+               <select
+                 value={adminSelectedCode}
+-                onChange={(e) => { setAdminSelectedCode(e.target.value); setSelectedFolder(null); setFiles([]); }}
++                onChange={(e) => { setAdminSelectedCode(e.target.value); setSelectedFolder(null); setFiles([]); setUploadQueue([]); }}
+                 className="w-full sm:w-72 px-3 py-2 rounded-lg ring-1 ring-slate-300 text-sm bg-white"
+                 data-testid="gestion-stocks-admin-client-select"
+               >
+@@ -318,6 +388,40 @@ export default function GestionStocks() {
+               </select>
+             )}
+ 
++            {/* Lot 20 — fil d'Ariane : compartiment R2 › client › dossier ouvert */}
++            {effectiveClientCode && (
++              <nav className="flex items-center flex-wrap gap-1 text-sm bg-white rounded-lg ring-1 ring-teal-200 px-3 py-2"
++                aria-label="Emplacement" data-testid="gestion-stocks-breadcrumb">
++                <HardDrive className="w-4 h-4 text-teal-600 shrink-0" />
++                <span className="text-slate-500">Compartiment</span>
++                <button type="button" onClick={backToFolders} className="font-mono font-semibold text-teal-800 hover:underline"
++                  data-testid="gestion-stocks-breadcrumb-bucket">
++                  {bucket || "—"}
++                </button>
++                <ChevronRight className="w-4 h-4 text-slate-400" />
++                <button type="button" onClick={backToFolders}
++                  className={`hover:underline ${selectedFolder ? "text-teal-800" : "font-semibold text-slate-800"}`}
++                  data-testid="gestion-stocks-breadcrumb-client">
++                  {clientLabel}
++                </button>
++                {selectedFolder && (
++                  <>
++                    <ChevronRight className="w-4 h-4 text-slate-400" />
++                    <span className="font-semibold text-slate-800" data-testid="gestion-stocks-breadcrumb-folder">{selectedFolder}</span>
++                  </>
++                )}
++              </nav>
++            )}
++
++            {/* Lot 20 — espace occupé par les fichiers du tenant / espace alloué */}
++            {effectiveClientCode && (
++              <R2StorageGauge key={effectiveClientCode} ref={gaugeRef} compact clientCode={isAdmin ? effectiveClientCode : null} />
++            )}
++
++            {effectiveClientCode && !selectedFolder && canUpload && (
++              <p className="text-xs text-slate-500">Ouvrez un dossier pour consulter ou déposer des documents.</p>
++            )}
++
+             {effectiveClientCode && !selectedFolder && (
+               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4" data-testid="gestion-stocks-folder-grid">
+                 {folders.map((f) => (
+@@ -336,23 +440,59 @@ export default function GestionStocks() {
+             )}
+ 
+             {effectiveClientCode && selectedFolder && (
+-              <div className="space-y-2" data-testid="gestion-stocks-file-list">
+-                <div className="flex items-center justify-between">
++              <div className="space-y-2" data-testid="gestion-stocks-file-list"
++                onDragOver={(e) => { if (canUpload) { e.preventDefault(); setDragOver(true); } }}
++                onDragLeave={() => setDragOver(false)}
++                onDrop={handleDrop}>
++                <div className="flex items-center justify-between gap-2 flex-wrap">
+                   <button
+                     type="button"
+-                    onClick={() => { setSelectedFolder(null); setFiles([]); }}
++                    onClick={backToFolders}
+                     className="text-xs text-slate-600 inline-flex items-center gap-1 hover:underline"
+                   >
+                     <ArrowLeft className="w-3.5 h-3.5" /> Retour aux dossiers
+                   </button>
+-                  <span className="text-xs font-semibold text-slate-500">{selectedFolder}</span>
+-                  {isAdmin && (
+-                    <label className="text-xs text-teal-700 inline-flex items-center gap-1 cursor-pointer hover:underline">
+-                      <Upload className="w-3.5 h-3.5" /> {uploading ? "Envoi…" : "Ajouter un document"}
+-                      <input type="file" className="hidden" disabled={uploading} onChange={handleUpload} />
++                  {canUpload && (
++                    <label className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-white ${uploading ? "bg-teal-400 cursor-wait" : "bg-teal-600 hover:bg-teal-700 cursor-pointer"}`}
++                      data-testid="gestion-stocks-upload-btn">
++                      {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
++                      {uploading ? "Envoi en cours…" : "Déposer des fichiers"}
++                      <input type="file" multiple className="hidden" disabled={uploading} onChange={handleUpload}
++                        data-testid="gestion-stocks-upload-input" />
+                     </label>
+                   )}
+                 </div>
++
++                {/* Zone de glisser-déposer (admin) : même envoi que le bouton */}
++                {canUpload && (
++                  <div className={`rounded-lg border-2 border-dashed px-3 py-4 text-center text-xs transition ${dragOver ? "border-teal-500 bg-teal-50 text-teal-800" : "border-slate-300 text-slate-500"}`}
++                    data-testid="gestion-stocks-dropzone">
++                    Glissez-déposez ici des fichiers depuis votre ordinateur (plusieurs à la fois, {Number(maxUploadMb).toLocaleString("fr-FR")} Mo max par fichier)
++                    — ils seront rangés dans <strong>{selectedFolder}</strong>.
++                  </div>
++                )}
++
++                {/* Suivi de l'envoi, fichier par fichier */}
++                {uploadQueue.length > 0 && (
++                  <ul className="space-y-1" data-testid="gestion-stocks-upload-queue">
++                    {uploadQueue.map((it) => (
++                      <li key={it.id} className="flex items-center gap-2 text-xs bg-white rounded ring-1 ring-slate-200 px-2 py-1.5">
++                        {it.status === "done" ? <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
++                          : it.status === "error" ? <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
++                          : <Loader2 className={`w-4 h-4 text-slate-400 shrink-0 ${it.status === "uploading" ? "animate-spin" : ""}`} />}
++                        <span className="truncate flex-1 text-slate-700">{it.name}</span>
++                        {it.status === "error" ? (
++                          <span className="text-rose-600">{it.error}</span>
++                        ) : (
++                          <span className="w-28 h-1.5 bg-slate-100 rounded overflow-hidden shrink-0">
++                            <span className="block h-full bg-teal-500 transition-all" style={{ width: `${it.progress}%` }} />
++                          </span>
++                        )}
++                      </li>
++                    ))}
++                  </ul>
++                )}
++
+                 {loadingFiles ? (
+                   <p className="text-sm text-slate-500">Chargement…</p>
+                 ) : files.length === 0 ? (
+-- 
+2.43.0
+

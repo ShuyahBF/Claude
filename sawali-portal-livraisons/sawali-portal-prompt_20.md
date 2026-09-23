@@ -1,9 +1,13 @@
-# Sawali — Lot 20 : Explorateur R2 de Gestion de Stocks (fil d'Ariane + dépôt depuis l'ordinateur)
+# Sawali — Lot 20 : Explorateur R2 de Gestion de Stocks (emplacement, dépôts autorisés, espace alloué)
 
-Applique `sawali-portal-corrections_20_bac3898.patch` sur la branche
-`Site-SawaliSmartSystems`. Base attendue : le commit où tu as appliqué le
-lot 19 (`sawali-portal-corrections_19_66b5ce6.patch`, « feat(ocr-pieces):
-page « OCR sur Pièces » sur le module commun ocr_core »), que tu as publié.
+Applique `sawali-portal-corrections_20_55df89f.patch` sur la branche
+`Site-SawaliSmartSystems`. Ce patch remplace entièrement la version
+`sawali-portal-corrections_20_bac3898.patch` que je t'avais peut-être
+transmise : ne tiens compte que de celle-ci.
+
+La base attendue est le commit où tu as appliqué le lot 19
+(`sawali-portal-corrections_19_66b5ce6.patch`, « feat(ocr-pieces): page
+« OCR sur Pièces » sur le module commun ocr_core »), que tu as déjà publié.
 C'est un `git format-patch` d'un seul commit : applique-le en UN SEUL
 `git am`, puis redéploie.
 
@@ -13,13 +17,28 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 
 ## Fichiers touchés
 
-**Fichiers modifiés**
-- `backend/routes/gestion_stocks.py` — `/gestion-stocks/context` renvoie en plus `bucket` et `max_upload_mb` (5 lignes)
-- `frontend/src/pages/portal/GestionStocks.jsx` — fil d'Ariane et dépôt multi-fichiers dans le bloc « Explorateur Stockage R2 »
+**Nouveaux fichiers backend**
+- `backend/tests/test_gestion_stocks_r2_lot20.py` — tests unitaires autonomes (Mongo simulé, R2 simulé). Tu ne les lances pas.
 
-Aucun nouveau fichier, aucune nouvelle dépendance, aucune nouvelle route :
-le dépôt réutilise la route existante
-`POST /admin/gestion-stocks/{client_code}/{folder}/upload`.
+**Nouveaux fichiers frontend**
+- `frontend/src/components/R2StorageGauge.jsx` — jauge « espace occupé / espace alloué »
+
+**Fichiers modifiés**
+- `backend/routes/gestion_stocks.py` — accès superviseur, dépôt par les utilisateurs suivis autorisés, espace alloué par tenant, nouvelles routes
+- `frontend/src/pages/portal/GestionStocks.jsx` — fil d'Ariane, dépôt multi-fichiers (glisser-déposer, progression), jauge
+- `frontend/src/pages/portal/Dashboard.jsx` — jauge sur le tableau de bord du Pharmacien suivi
+- `frontend/src/pages/admin/AdminTrackedUsers.jsx` — bouton « Dépôt R2 » par utilisateur suivi (autorisation + taille max)
+- `frontend/src/pages/admin/AdminClientFeatures.jsx` — section « Espace de stockage R2 (Gestion de Stocks) » dans SMART Communications du client
+
+**Côté livraison :**
+- aucune nouvelle dépendance ;
+- `server.py` n'est pas modifié : les nouvelles routes passent par `attach_gestion_stocks_routes`, déjà branché ;
+- aucune migration de données : les nouveaux champs prennent leur valeur par défaut tant qu'ils ne sont pas renseignés.
+
+**Nouveaux champs Mongo :**
+- `tracked_users.r2_upload_allowed` (non autorisé par défaut) ;
+- `tracked_users.r2_upload_max_mb` (1,5 par défaut) ;
+- `users.gestion_stocks_quota_gb`, sur la fiche du client (2 par défaut).
 
 ## Variables d'environnement
 
@@ -27,78 +46,139 @@ le dépôt réutilise la route existante
   `R2_STOCKS_ACCESS_KEY_ID`, `R2_STOCKS_SECRET_ACCESS_KEY` et, si je l'ai
   définie, `R2_STOCKS_BUCKET` (sinon `gestion-stocks`). Je viens de les
   renseigner : l'explorateur s'affiche bien.
-- Aucune nouvelle variable, aucun paramètre stocké en base (AdminSettings).
+- Aucune nouvelle variable. Les nouveaux réglages (droit de dépôt par
+  utilisateur suivi, espace alloué par client) se font à l'écran et sont
+  stockés en base. Ce ne sont pas des variables d'environnement.
 
 ## Ce que ça apporte, dans l'ordre
 
-1. **On sait toujours où l'on est.** En testant l'explorateur avec mes
-   vraies clés R2, rien n'indiquait de quel compartiment ni de quel dossier
-   venait le contenu affiché. Un fil d'Ariane apparaît maintenant au-dessus
-   des dossiers : « Compartiment `gestion-stocks` › PMT — Pharmacie … ›
-   Inventaires ». Le compartiment et le client sont cliquables pour revenir
-   à la grille des dossiers. Le nom du compartiment vient du serveur :
-   `/gestion-stocks/context` renvoie maintenant `bucket` (valeur de
-   `r2_stocks_client._bucket()`, donc `R2_STOCKS_BUCKET` ou `gestion-stocks`,
-   uniquement quand R2 est configuré). C'est un simple nom, ni clé ni
-   identifiant de compte. Pour un Pharmacien suivi, le client affiché est son
-   propre code client, toujours résolu côté serveur.
+1. **On sait toujours où l'on est.** Avec mes vraies clés R2, rien
+   n'indiquait de quel compartiment ni de quel dossier venait le contenu
+   affiché. Un fil d'Ariane apparaît au-dessus des dossiers : « Compartiment
+   `gestion-stocks` › PMT — Pharmacie … › Inventaires ». Le compartiment et
+   le client sont cliquables pour revenir à la grille des dossiers.
+   `/gestion-stocks/context` renvoie maintenant `bucket`, c'est-à-dire la
+   valeur de `r2_stocks_client._bucket()`, uniquement si R2 est configuré.
+   C'est un simple nom, ni clé ni identifiant de compte.
 
-2. **Déposer des fichiers depuis l'ordinateur, bien en vue (admin).** Le
-   dépôt existait déjà, mais sous la forme d'un petit lien « Ajouter un
-   document », un seul fichier à la fois, visible seulement après avoir
-   ouvert un dossier : je ne l'avais pas trouvé. Dans un dossier ouvert,
-   l'admin a maintenant :
-   - un bouton **« Déposer des fichiers »** bien visible ;
-   - une **zone de glisser-déposer** qui rappelle le dossier de destination ;
-   - la sélection de **plusieurs fichiers à la fois**. Ils partent un par un
-     sur la route existante, chacun avec sa barre de progression et son
-     statut (envoyé, ou message d'erreur) ;
-   - un fichier au-delà de la taille maximale (25 Mo, renvoyée par le serveur
-     dans `max_upload_mb`) est refusé avant l'envoi, avec un message clair.
+2. **Le superviseur a accès à tout le module.** Les routes « admin » de
+   Gestion de Stocks étaient protégées par `get_current_admin`, qui n'accepte
+   que le rôle `admin`. Un superviseur recevait donc un refus dès l'ouverture
+   de la page, sur `/admin/gestion-stocks/clients`. Elles utilisent
+   désormais une dépendance locale `staff_user` (admin OU superviseur) :
+   - la liste des clients ;
+   - le dépôt ;
+   - la suppression ;
+   - les nouveaux réglages.
 
-   Au niveau de la grille des dossiers, une phrase rappelle à l'admin qu'il
-   faut ouvrir un dossier pour y déposer des documents.
+   L'appel dans `server.py` reste identique : `get_current_admin` est
+   toujours accepté dans la signature de `attach_gestion_stocks_routes`.
 
-3. **Dépôt réservé au rôle admin, comme le serveur.** La route de dépôt est
-   protégée par `get_current_admin` (rôle `admin` uniquement). Le bouton, la
-   zone de glisser-déposer et le rappel ne s'affichent donc que pour le rôle
-   `admin` (`canUpload`), et non plus pour tout `isAdmin` (qui inclut
-   superviseur), pour ne pas proposer une action qui serait refusée. Le
-   Pharmacien suivi garde un accès en lecture seule, comme je le veux.
+3. **Déposer depuis l'ordinateur, bien en vue.** Le dépôt existait sous la
+   forme d'un petit lien « Ajouter un document », un fichier à la fois. Je ne
+   l'avais pas trouvé. Dans un dossier ouvert, quiconque a le droit de
+   déposer dispose maintenant :
+   - d'un bouton **« Déposer des fichiers »** ;
+   - d'une **zone de glisser-déposer** qui rappelle le dossier de destination ;
+   - de la sélection de **plusieurs fichiers à la fois**, envoyés un par un
+     avec leur barre de progression et leur statut (envoyé, ou motif du refus).
+
+   Un fichier trop gros est refusé dès le navigateur, avant tout envoi. Le
+   serveur refait de toute façon le contrôle. La route utilisée dépend du
+   profil :
+   - l'administration passe par la route admin existante ;
+   - l'utilisateur suivi passe par la nouvelle route portail.
+
+4. **Dépôt par un utilisateur suivi, sur autorisation de l'administrateur.**
+   Dans **Admin → Utilisateurs suivis**, un nouveau bouton « Dépôt R2 » (vert
+   quand l'utilisateur est autorisé) ouvre une fenêtre avec deux réglages :
+   - « Autoriser les dépôts », non coché par défaut ;
+   - « Taille maximale par fichier (Mo) », **1,5 Mo par défaut**, réglable
+     entre 0 et 25 Mo.
+
+   Les réglages sont stockés sur la fiche `tracked_users` via
+   `GET/PUT /admin/gestion-stocks/tracked-users/{id}/upload-rights`.
+
+   Un Pharmacien suivi autorisé dépose via
+   `POST /gestion-stocks/folders/{dossier}/upload`, uniquement dans les
+   dossiers de son tenant. Le `client_code` est résolu côté serveur depuis sa
+   session, jamais depuis la requête, et ses droits sont relus sur sa fiche à
+   chaque dépôt. Un fichier trop gros est refusé (413) avec le motif, par
+   exemple : « Fichier refusé : « facture.pdf » fait 2 Mo, au-delà de la
+   taille maximale autorisée pour votre compte (1,5 Mo par fichier). ».
+
+   Les autres cas sont refusés (403), chacun avec un message clair :
+   - un utilisateur suivi non autorisé ;
+   - un rôle suivi autre que Pharmacien.
+
+5. **Espace alloué par client/tenant, avec refus motivé.** Dans **Admin →
+   Clients → SMART Communications** (la fiche du client), une nouvelle
+   section « Espace de stockage R2 (Gestion de Stocks) » :
+   - fixe le volume total des fichiers du client, **2 Go par défaut**, tous
+     dossiers et tous utilisateurs suivis confondus ;
+   - affiche l'espace déjà utilisé ;
+   - s'enregistre avec son propre bouton, via
+     `GET/PUT /admin/gestion-stocks/tenants/{client_id}/storage`.
+
+   L'espace utilisé est la somme des tailles sous le préfixe
+   `<client_code>/` du compartiment. Tout dépôt qui ferait dépasser l'espace
+   alloué est refusé (413) avec le motif : espace déjà utilisé, espace alloué
+   et taille du fichier. La règle vaut aussi pour les dépôts de
+   l'administration : c'est une allocation du client, et il suffit de
+   l'augmenter au besoin.
+
+6. **Jauge d'espace sur le tableau de bord du Pharmacien suivi.** La carte
+   « Espace de stockage Gestion de Stocks » affiche par exemple « 350 Mo
+   utilisés sur 2 Go · 42 fichiers », avec une barre qui passe à l'orange à
+   80 % et au rouge à 100 %. Elle apparaît à deux endroits :
+   - sur le tableau de bord du Pharmacien suivi ;
+   - dans l'explorateur R2, avec rafraîchissement après chaque dépôt, pour
+     l'utilisateur suivi comme pour l'administration une fois le client
+     choisi.
+
+   Les données viennent de `GET /gestion-stocks/storage` (tenant résolu côté
+   serveur pour l'utilisateur suivi). Le tableau de bord d'un Pharmacien
+   suivi reste masqué par défaut, comme aujourd'hui : il s'affiche quand
+   l'option « Tableau de bord » de sa fiche (Admin → Utilisateurs suivis → Modifier) est activée. La
+   même jauge est de toute façon toujours visible dans Gestion de Stocks.
 
 ## Volontairement pas dans ce lot
 
-- **Dépôt par le Pharmacien suivi** : je garde le dépôt réservé à l'admin.
-- **Import d'un dossier entier du PC** et **suppression depuis l'interface**
-  (la route `DELETE /admin/gestion-stocks/file` existe mais n'est pas
-  branchée à l'écran) : pas demandés pour l'instant.
-- **Accès du superviseur à la liste des clients** :
-  `/admin/gestion-stocks/clients` est protégée par `get_current_admin`. Un
-  superviseur qui ouvre la page reçoit donc un refus sur cette liste. Je ne
-  change rien ici tant que je n'ai pas décidé du rôle du superviseur dans ce
-  module.
+- **Suppression de fichiers par un utilisateur suivi** et **bouton de
+  suppression à l'écran** : la route admin existe, mais je ne l'expose pas
+  encore.
+- **Import d'un dossier entier du PC** : pas demandé pour l'instant.
+- **Réglage de l'espace alloué par le client lui-même** : il reste un réglage
+  de l'administration SAWALI dans SMART Communications. C'est une allocation,
+  pas un paramètre du client.
+- **Accès du superviseur aux écrans /admin** (Utilisateurs suivis, SMART
+  Communications) : ces pages restent réservées au rôle admin par le routage
+  existant. Les routes serveur des réglages acceptent déjà le superviseur.
 
 ## À tester une fois déployé
 
-1. Connecte-toi en **admin** et ouvre **Gestion de Stocks**. Choisis un
-   client : le fil d'Ariane affiche « Compartiment `<nom du compartiment>` ›
-   `<code> — <nom du client>` ».
-2. Ouvre le dossier **Inventaires** : le fil d'Ariane se termine par
-   « Inventaires », avec un bouton **Déposer des fichiers** et une zone de
-   glisser-déposer.
-3. Clique sur **Déposer des fichiers** et choisis **plusieurs fichiers**
-   (un PDF, une photo, un Excel) : chacun affiche sa progression puis une
-   coche. Un message « n documents déposés dans Inventaires » apparaît et la
-   liste se met à jour.
-4. Glisse un fichier depuis l'explorateur de ton ordinateur sur la zone
-   pointillée : il est déposé de la même façon.
-5. Essaie un fichier de **plus de 25 Mo** : il est marqué « Trop volumineux
-   (max 25 Mo) » sans être envoyé.
-6. Double-clique un fichier déposé : il s'ouvre dans un nouvel onglet.
-7. Clique sur le nom du compartiment dans le fil d'Ariane : tu reviens à la
-   grille des dossiers.
-8. Connecte-toi en **Pharmacien suivi** : le fil d'Ariane affiche son code
-   client et le dossier ouvert, mais sans bouton ni zone de dépôt.
+1. En **superviseur**, ouvre **Gestion de Stocks** : la liste des clients se
+   charge sans erreur. Choisis un client et ouvre un dossier : le bouton
+   **Déposer des fichiers** est présent et un dépôt fonctionne.
+2. En **admin**, fiche d'un client → **SMART Communications** : la section
+   « Espace de stockage R2 (Gestion de Stocks) » affiche 2 Go et l'espace
+   utilisé. Change la valeur, clique sur « Enregistrer l'espace » et recharge
+   la page : la valeur est conservée.
+3. **Admin → Utilisateurs suivis** : sur un Pharmacien suivi de ce client,
+   clique sur l'icône « Dépôt R2 ». La taille maximale est à 1,5 Mo. Coche
+   « Autoriser les dépôts » et enregistre : l'icône passe au vert.
+4. Connecte-toi avec ce **Pharmacien suivi** et ouvre **Gestion de Stocks** :
+   - la jauge affiche l'espace utilisé sur 2 Go ;
+   - le fil d'Ariane affiche son code client ;
+   - dans un dossier, le bouton de dépôt est présent.
+5. Dépose un fichier de moins de 1,5 Mo : il est envoyé et la jauge augmente.
+   Dépose un fichier de 2 Mo : il est refusé avec le motif, sans être envoyé.
+6. Remets l'espace alloué du client à une toute petite valeur (0,001 Go)
+   puis redépose un fichier : il est refusé avec le motif « espace de
+   stockage insuffisant ». Remets ensuite la valeur voulue.
+7. Retire l'autorisation au Pharmacien suivi : le bouton de dépôt disparaît.
+8. Active l'option « Tableau de bord » sur sa fiche (Admin → Utilisateurs suivis → Modifier) : son tableau de
+   bord affiche la carte d'espace de stockage.
 
 Si quelque chose ne marche pas, renvoie-moi le message d'erreur exact (écran
 ou logs backend). Rappel : **aucun test, build, lint, Testing Agent ou
