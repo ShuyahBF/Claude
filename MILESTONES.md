@@ -10,11 +10,12 @@ concerné.
   (ce dépôt, commit `93259d8`, branche `fix/mobile-payments-deploy-render`).
   **Intégration réelle : lot 19 « OCR sur Pièces » livré le 2026-09-23, en
   attente de publication** (base `bd6b16b` de `Site-SawaliSmartSystems` ;
-  livraison `sawali-portal-livraisons/sawali-portal-corrections_19_3190518.patch`
+  livraison `sawali-portal-livraisons/sawali-portal-corrections_19_66b5ce6.patch`
   + `sawali-portal-prompt_19.md`). Page « OCR sur Pièces » (sidebar admin,
   pharmacien, Pharmacien suivi) : admin/superviseur = choix pharmacie +
   modèle, coût FCFA, étoiles + corrections, relance, tableau de bord ;
-  pharmacies = leurs seules pièces, sans modèle/coût/évaluation. Numéro de
+  pharmacies = leurs seules pièces, sans modèle/coût/évaluation. Inclut aussi
+  la Fiche produit VIDAL ouverte au Pharmacien suivi (en plus de Posologie). Numéro de
   lot 19 déduit (Gestion de Stocks = lot 18) : à corriger si la numérotation
   réelle diffère.
 - **Module commun `ocr-core/`** (ce dépôt, v1.0.0) : source unique de l'OCR,

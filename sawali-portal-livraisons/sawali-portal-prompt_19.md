@@ -1,6 +1,6 @@
-# Sawali — Lot 19 : page « OCR sur Pièces » (module commun d'OCR)
+# Sawali — Lot 19 : page « OCR sur Pièces » (module commun d'OCR) + Fiche produit VIDAL pour le Pharmacien suivi
 
-Applique `sawali-portal-corrections_19_3190518.patch` sur la branche
+Applique `sawali-portal-corrections_19_66b5ce6.patch` sur la branche
 `Site-SawaliSmartSystems`. Base attendue : le commit `bd6b16b` (« fix(gestion-stocks):
 détection de rupture sur Stock Avant - Qte Livrée, pas Seuil »), c'est-à-dire
 le dernier lot que tu as publié. C'est un `git format-patch` d'un seul commit :
@@ -27,7 +27,7 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 **Fichiers modifiés**
 - `backend/server.py` — branchement des routes, juste après celles de Gestion de Stocks (6 lignes)
 - `frontend/src/App.js` — routes `/portal/ocr-pieces` et `/admin/ocr-pieces`
-- `frontend/src/components/PortalLayout.jsx` — lien « OCR sur Pièces » dans la sidebar admin, dans celle des pharmacies (rôle `pharmacien`) et dans la sidebar réduite des Pharmaciens suivis (ajouté aussi à leur liste de chemins autorisés)
+- `frontend/src/components/PortalLayout.jsx` — lien « OCR sur Pièces » dans la sidebar admin, dans celle des pharmacies (rôle `pharmacien`) et dans la sidebar réduite des Pharmaciens suivis (ajouté aussi à leur liste de chemins autorisés) ; lien « Fiche produit VIDAL » ajouté à cette même sidebar réduite, avec les chemins `/portal/vidal-fiche` et `/portal/brochures` autorisés
 
 Aucune nouvelle dépendance : `emergentintegrations` 0.1.0, `PyMuPDF` et
 `Pillow` sont déjà dans `backend/requirements.txt`, et rien n'est ajouté au
@@ -121,6 +121,20 @@ premier enregistrement.
    analyses et marque le fichier comme supprimé dans `stored_objects`, puisque
    le stockage n'a pas d'API de suppression.
 
+9. **Fiche produit VIDAL pour le Pharmacien suivi.** Jusqu'ici, sa sidebar
+   réduite ne proposait que Posologie (plus Gestion de Stocks). J'y ajoute
+   « Fiche produit VIDAL », juste sous Posologie, avec le même
+   `featureGate: "vidal_enabled"`, et j'ajoute `/portal/vidal-fiche` à
+   `allowedPharmacienTrackedPaths`, sinon la redirection vers Posologie le
+   renverrait aussitôt. La fiche ouvre ses documents PDF (RCP, notices) dans
+   le lecteur interne `/portal/brochures` : j'autorise donc aussi ce chemin,
+   sans lien en sidebar. Il n'affiche que du contenu public
+   (`/public/docs`, `/public/media-library`) ou le document demandé. Rien ne
+   change côté backend : `/vidal/product/{id}/detail` et
+   `/vidal/vmp/{id}/equivalents` (`routes/vidal_fiche.py`) sont les routes
+   que Posologie appelle déjà, contrôlées par l'accès VIDAL du tenant
+   (`_ensure_tenant_can_access`) et par le quota, pas par le rôle.
+
 ## Volontairement pas dans ce lot
 
 - **Lien entre une pièce et le stock ou la caisse** (création automatique
@@ -132,6 +146,8 @@ premier enregistrement.
   d'environnement.
 - **Word / Excel** : refusés au dépôt sur cette page (extensions non
   autorisées), puisqu'ils ne seraient pas analysés.
+- **Sécurisation VIDAL pour le Pharmacien suivi** : elle reste réservée au
+  médecin ; je n'ouvre que la Fiche produit.
 - **Accès des autres rôles** (secrétaires, comptables, utilisateurs suivis
   non pharmaciens) : la page leur reste fermée pour l'instant.
 
@@ -158,9 +174,15 @@ premier enregistrement.
    la synthèse et les champs s'affichent sans modèle, coût ni note. La pièce
    déposée par l'admin pour cette pharmacie à l'étape 2 est visible aussi.
 8. Connecte-toi avec un **Pharmacien suivi** : sa sidebar réduite contient
-   Posologie, Gestion de Stocks et **OCR sur Pièces**, et il voit les pièces de
+   Posologie, **Fiche produit VIDAL**, Gestion de Stocks et **OCR sur Pièces**, et il voit les pièces de
    sa pharmacie de rattachement.
-9. Connecte-toi avec un autre compte pharmacien : il ne voit aucune des pièces
+9. Toujours en **Pharmacien suivi**, sur un tenant où VIDAL est activé :
+   ouvre **Fiche produit VIDAL**, cherche un médicament, puis affiche sa fiche
+   (voies d'administration, documents, équivalences). Clique sur un document
+   PDF : il s'ouvre dans le lecteur interne, sans redirection vers Posologie.
+   Une autre page (par exemple `/portal/cash` tapée dans la barre d'adresse)
+   le renvoie toujours vers Posologie.
+10. Connecte-toi avec un autre compte pharmacien : il ne voit aucune des pièces
    de la première pharmacie.
 
 Si quelque chose ne marche pas, renvoie-moi le message d'erreur exact (écran

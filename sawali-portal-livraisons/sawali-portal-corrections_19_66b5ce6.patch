@@ -1,6 +1,6 @@
-From 3190518cddc2892d09cd7965b92a227d8bfbb767 Mon Sep 17 00:00:00 2001
+From 66b5ce6d908a793580032175427965d010c1ccf5 Mon Sep 17 00:00:00 2001
 From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
-Date: Wed, 23 Sep 2026 15:55:32 +0000
+Date: Wed, 23 Sep 2026 16:13:11 +0000
 Subject: [PATCH] =?UTF-8?q?feat(ocr-pieces):=20page=20=C2=AB=20OCR=20sur?=
  =?UTF-8?q?=20Pi=C3=A8ces=20=C2=BB=20sur=20le=20module=20commun=20ocr=5Fco?=
  =?UTF-8?q?re?=
@@ -29,6 +29,12 @@ de l'administration et des pharmacies clientes.
   components/ocr-core/, liens sidebar (admin, pharmacien, Pharmacien
   suivi) et routes /portal/ocr-pieces et /admin/ocr-pieces.
 - backend/tests/test_ocr_pieces.py : cloisonnement et parcours admin.
+
+J'ouvre aussi la Fiche produit VIDAL au Pharmacien suivi, en plus de
+Posologie : lien dans sa sidebar réduite, chemin autorisé, ainsi que le
+lecteur PDF interne (/portal/brochures) où la fiche ouvre les documents
+VIDAL. Les routes backend /vidal/product/... étaient déjà contrôlées par
+l'accès VIDAL du tenant.
 ---
  backend/ocr_core/__init__.py                  |  35 ++
  backend/ocr_core/engine.py                    | 220 ++++++++++
@@ -40,13 +46,13 @@ de l'administration et des pharmacies clientes.
  backend/server.py                             |   7 +
  backend/tests/test_ocr_pieces.py              | 225 ++++++++++
  frontend/src/App.js                           |   6 +
- frontend/src/components/PortalLayout.jsx      |  17 +-
+ frontend/src/components/PortalLayout.jsx      |  26 +-
  .../src/components/ocr-core/OcrDashboard.jsx  | 130 ++++++
  .../src/components/ocr-core/OcrRunsPanel.jsx  | 267 ++++++++++++
  .../src/components/ocr-core/StarRating.jsx    |  32 ++
  frontend/src/components/ocr-core/format.js    |  59 +++
  frontend/src/pages/portal/OcrPieces.jsx       | 408 ++++++++++++++++++
- 16 files changed, 2019 insertions(+), 1 deletion(-)
+ 16 files changed, 2028 insertions(+), 1 deletion(-)
  create mode 100644 backend/ocr_core/__init__.py
  create mode 100644 backend/ocr_core/engine.py
  create mode 100644 backend/ocr_core/models.py
@@ -1253,7 +1259,7 @@ index e7838b2..75ee5e4 100644
              <Route path="contacts" element={<AdminContacts />} />
              <Route path="tracked-users" element={<AdminTrackedUsers />} />
 diff --git a/frontend/src/components/PortalLayout.jsx b/frontend/src/components/PortalLayout.jsx
-index 81358a7..df0525b 100644
+index 81358a7..971a9ce 100644
 --- a/frontend/src/components/PortalLayout.jsx
 +++ b/frontend/src/components/PortalLayout.jsx
 @@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
@@ -1287,16 +1293,32 @@ index 81358a7..df0525b 100644
    // Iter43-fix22 — Planning des gardes (admin/superviseur)
    { to: "/admin/garde-planning", label: "Planning des gardes", icon: Calendar, adminOrSup: true },
    // Iter43-fix22 — Interrogations WhatsApp à Liluvine (admin/moderator/superviseur)
-@@ -306,6 +314,8 @@ function PortalLayoutInner({ admin = false }) {
+@@ -303,9 +311,16 @@ function PortalLayoutInner({ admin = false }) {
+   // de Sécurisation, ni Fiche produit — accès volontairement plus étroit
+   // que le médecin, demandé explicitement par l'utilisateur).
+   // Lot Gestion Stocks (2026-09) — ajout du nouvel espace documentaire.
++  // Lot 19 (2026-09) — Fiche produit VIDAL ouverte aussi au Pharmacien suivi.
    const allowedPharmacienTrackedPaths = new Set([
      "/portal/vidal-posologie",
++    "/portal/vidal-fiche",
++    // Lecteur PDF interne où la Fiche produit ouvre les documents VIDAL (RCP) ;
++    // chemin autorisé mais pas de lien en sidebar (contenu public uniquement).
++    "/portal/brochures",
      "/portal/gestion-stocks",
 +    // Lot OCR sur Pièces (2026-09)
 +    "/portal/ocr-pieces",
      "/portal/my-account",
    ]);
    const allowedSecretaireMedicalePaths = new Set([
-@@ -352,6 +362,8 @@ function PortalLayoutInner({ admin = false }) {
+@@ -348,10 +363,16 @@ function PortalLayoutInner({ admin = false }) {
+                 // même session utilisateur suivi, sidebar réduite à Posologie
+                 // uniquement (pas de Sécurisation ni Fiche produit).
+                 { to: "/portal/vidal-posologie", label: "Posologie", icon: Stethoscope, featureGate: "vidal_enabled" },
++                // Lot 19 (2026-09) — Fiche produit VIDAL en plus de Posologie
++                // (mêmes routes backend /vidal/product/..., déjà contrôlées par
++                // l'accès VIDAL du tenant ; pas de Sécurisation).
++                { to: "/portal/vidal-fiche", label: "Fiche produit VIDAL", icon: Pill, featureGate: "vidal_enabled" },
+                 // Lot Gestion Stocks (2026-09) — espace documentaire R2
                  // (inventaires, contrôle qualité, etc) + futur explorateur
                  // MongoDB Atlas.
                  { to: "/portal/gestion-stocks", label: "Gestion de Stocks", icon: Boxes },
@@ -1305,7 +1327,7 @@ index 81358a7..df0525b 100644
                ]
              : (isSecretaireMedicale
                  ? [
-@@ -406,6 +418,9 @@ function PortalLayoutInner({ admin = false }) {
+@@ -406,6 +427,9 @@ function PortalLayoutInner({ admin = false }) {
      .filter((l) => !l.adminOrSup || isAdminOrSup)
      .filter((l) => !l.moderatorPlus || isModerator || isAdminOrSup)
      .filter((l) => !l.catalogStatsOnly || isAdminOrSup || isTracked)
