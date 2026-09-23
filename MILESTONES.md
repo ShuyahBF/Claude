@@ -27,8 +27,11 @@ concerné.
   ne garde qu'un adaptateur (droits, stockage, collections). Sawali l'utilise
   dès le lot 19 ; Albarka migre au lot 2 (ci-dessous). Toute évolution de l'OCR se fait dans
   `ocr-core/`, puis un lot par site.
-- **Albarka lot 2 — migration sur `ocr-core`** livré le 2026-09-23, **en
-  attente de publication** (base `28d9176` de `conflict_030926_0658` ;
+- **Albarka lot 2 — migration sur `ocr-core`** **publié et déployé en
+  production le 2026-09-23** (commit Emergent `77a05fc`, arbre identique au
+  patch hors `.emergent/emergent.yml` ; albarka-bf.com : routes OCR en 403
+  sans session au lieu de 404, bundle `main.05611f3e.js` avec les composants
+  communs) (base `28d9176` de `conflict_030926_0658` ;
   `albarka-portal-livraisons/albarka-portal-corrections_2_aaf483b.patch` +
   `albarka-portal-prompt_2.md`). Comportement constant (mêmes routes,
   réponses et collections ; KYC inchangé), sauf correctif : les Word/Excel ne
