@@ -8,8 +8,12 @@ concerné.
 
 - **Fait pour** : `Site-SawaliSmartSystems` — voir `document-extraction-prototype/`
   (ce dépôt, commit `93259d8`, branche `fix/mobile-payments-deploy-render`).
-  **Intégration réelle : lot 19 « OCR sur Pièces » livré le 2026-09-23, en
-  attente de publication** (base `bd6b16b` de `Site-SawaliSmartSystems` ;
+  **Intégration réelle : lot 19 « OCR sur Pièces » publié et déployé en
+  production le 2026-09-23** (vérifié sur sawalismartsystems.com : routes
+  `/api/ocr-pieces*` en 401 au lieu de 404, bundle `main.05a42d18.js`
+  contenant la page, le tableau de bord et la liste de chemins du Pharmacien
+  suivi avec `/portal/vidal-fiche` ; la branche GitHub
+  `Site-SawaliSmartSystems` n'était pas encore synchronisée à ce moment-là) (base `bd6b16b` de `Site-SawaliSmartSystems` ;
   livraison `sawali-portal-livraisons/sawali-portal-corrections_19_66b5ce6.patch`
   + `sawali-portal-prompt_19.md`). Page « OCR sur Pièces » (sidebar admin,
   pharmacien, Pharmacien suivi) : admin/superviseur = choix pharmacie +
