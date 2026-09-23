@@ -8,8 +8,10 @@ concerné.
 
 - **Fait pour** : `Site-SawaliSmartSystems` — voir `document-extraction-prototype/`
   (ce dépôt, commit `93259d8`, branche `fix/mobile-payments-deploy-render`).
-- **À refaire pour** : `Site-Albarka` — **lot 1 livré le 2026-09-23, publication
-  Emergent non encore confirmée**. ⚠️ Le code réellement déployé d'Albarka est
+- **À refaire pour** : `Site-Albarka` — **lot 1 publié et déployé en production le
+  2026-09-23** (commit Emergent `ccab0b2`, identique au patch ; routes et
+  frontend vérifiés sur albarka-bf.com ; test réel avec l'IA à faire par
+  l'utilisateur). ⚠️ Le code réellement déployé d'Albarka est
   sur la branche `conflict_030926_0658` de `ShuyahBF/albarka-portal` (et non
   `main`, qui ne contient qu'un ancien pilote) : toujours partir de cette
   branche. Base du lot 1 : `ab2926e` ; livraison :
