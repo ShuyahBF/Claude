@@ -24,16 +24,20 @@ concerné.
   réelle diffère.
 - **Sawali lot 20 — Explorateur R2 de Gestion de Stocks** livré le 2026-09-23,
   **en attente de publication** (base : lot 19 appliqué sur `bd6b16b` ;
-  `sawali-portal-livraisons/sawali-portal-corrections_20_55df89f.patch` +
-  `sawali-portal-prompt_20.md` — remplace la 1re version `bac3898`, jamais
-  soumise). Contenu : fil d'Ariane « Compartiment › client › dossier » ;
+  `sawali-portal-livraisons/sawali-portal-corrections_20_d2217eb.patch` +
+  `sawali-portal-prompt_20.md` — remplace `bac3898` et `55df89f`, jamais
+  soumises). Contenu : fil d'Ariane « Compartiment › client › dossier » ;
   dépôt multi-fichiers (bouton, glisser-déposer, progression) ; accès
   superviseur aux routes admin du module ; dépôt par utilisateur suivi
   autorisé par l'admin avec taille max par utilisateur (1,5 Mo par défaut,
   `tracked_users.r2_upload_*`) ; espace alloué par tenant (2 Go par défaut,
   `users.gestion_stocks_quota_gb`, réglé dans SMART Communications du
   client) ; refus motivés (413) ; jauge d'espace sur le tableau de bord du
-  Pharmacien suivi et dans l'explorateur. Clés R2_STOCKS_* renseignées et
+  Pharmacien suivi et dans l'explorateur ; contenu réel du compartiment
+  (tuile « Racine (hors dossier) », sous-dossiers existants) et création des
+  6 dossiers standard dans R2 à la 1re ouverture (choix de l'utilisateur ;
+  compartiment réel `gestionstocks`, un dossier par code client, ex. WDD).
+  Clés R2_STOCKS_* renseignées et
   explorateur vérifié par l'utilisateur le 2026-09-23.
 - **Module commun `ocr-core/`** (ce dépôt, v1.0.0) : source unique de l'OCR,
   copiée à l'identique dans chaque site par `ocr-core/sync.sh` ; chaque site

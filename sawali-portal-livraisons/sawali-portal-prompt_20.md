@@ -1,9 +1,9 @@
 # Sawali — Lot 20 : Explorateur R2 de Gestion de Stocks (emplacement, dépôts autorisés, espace alloué)
 
-Applique `sawali-portal-corrections_20_55df89f.patch` sur la branche
-`Site-SawaliSmartSystems`. Ce patch remplace entièrement la version
-`sawali-portal-corrections_20_bac3898.patch` que je t'avais peut-être
-transmise : ne tiens compte que de celle-ci.
+Applique `sawali-portal-corrections_20_d2217eb.patch` sur la branche
+`Site-SawaliSmartSystems`. Ce patch remplace entièrement les versions
+précédentes du lot 20 (`…_20_bac3898.patch`, `…_20_55df89f.patch`) que je
+t'avais peut-être transmises : ne tiens compte que de celle-ci.
 
 La base attendue est le commit où tu as appliqué le lot 19
 (`sawali-portal-corrections_19_66b5ce6.patch`, « feat(ocr-pieces): page
@@ -24,8 +24,9 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 - `frontend/src/components/R2StorageGauge.jsx` — jauge « espace occupé / espace alloué »
 
 **Fichiers modifiés**
-- `backend/routes/gestion_stocks.py` — accès superviseur, dépôt par les utilisateurs suivis autorisés, espace alloué par tenant, nouvelles routes
-- `frontend/src/pages/portal/GestionStocks.jsx` — fil d'Ariane, dépôt multi-fichiers (glisser-déposer, progression), jauge
+- `backend/routes/gestion_stocks.py` — accès superviseur, dépôt par les utilisateurs suivis autorisés, espace alloué par tenant, contenu réel du compartiment, nouvelles routes
+- `backend/r2_stocks_client.py` — nouvelle fonction `list_folder_markers` (dossiers vides)
+- `frontend/src/pages/portal/GestionStocks.jsx` — fil d'Ariane, dépôt multi-fichiers (glisser-déposer, progression), jauge, tuile « Racine (hors dossier) » et sous-dossiers réels
 - `frontend/src/pages/portal/Dashboard.jsx` — jauge sur le tableau de bord du Pharmacien suivi
 - `frontend/src/pages/admin/AdminTrackedUsers.jsx` — bouton « Dépôt R2 » par utilisateur suivi (autorisation + taille max)
 - `frontend/src/pages/admin/AdminClientFeatures.jsx` — section « Espace de stockage R2 (Gestion de Stocks) » dans SMART Communications du client
@@ -45,7 +46,9 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 - **Déjà présentes, réutilisées telles quelles** : `R2_STOCKS_ACCOUNT_ID`,
   `R2_STOCKS_ACCESS_KEY_ID`, `R2_STOCKS_SECRET_ACCESS_KEY` et, si je l'ai
   définie, `R2_STOCKS_BUCKET` (sinon `gestion-stocks`). Je viens de les
-  renseigner : l'explorateur s'affiche bien.
+  renseigner : l'explorateur s'affiche bien. Mon compartiment s'appelle
+  `gestionstocks` (sans tiret) : `R2_STOCKS_BUCKET` doit donc valoir
+  exactement `gestionstocks`. Vérifie-le sans modifier les autres valeurs.
 - Aucune nouvelle variable. Les nouveaux réglages (droit de dépôt par
   utilisateur suivi, espace alloué par client) se font à l'écran et sont
   stockés en base. Ce ne sont pas des variables d'environnement.
@@ -142,12 +145,40 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
    l'option « Tableau de bord » de sa fiche (Admin → Utilisateurs suivis → Modifier) est activée. La
    même jauge est de toute façon toujours visible dans Gestion de Stocks.
 
+7. **L'explorateur montre ce qu'il y a vraiment dans R2.** Mon compartiment
+   `gestionstocks` contient un dossier par code client (AMY, CMC, IPL, PHL,
+   PMT, WDD). Sous `WDD/`, mon fichier `INV DEC 2024 - WDD.pdf` est posé
+   directement à la racine. Or la page ne lisait que les 6 dossiers standard
+   (`DEFAULT_FOLDERS` : Inventaires, Rapports, Analyses, Controle qualite,
+   Factures, Autres), écrits en dur dans le code et inexistants dans R2. Je
+   voyais donc 6 dossiers vides, et mon fichier était invisible. Désormais :
+   - la nouvelle route `GET /gestion-stocks/folders` liste le contenu réel
+     sous `<client_code>/` ;
+   - une tuile **« Racine (hors dossier) »** apparaît quand des fichiers sont
+     posés directement sous le code client (pseudo-dossier `_racine`). Elle
+     est en lecture seule : on ne dépose pas à la racine ;
+   - les **autres sous-dossiers réellement présents** s'affichent à la suite
+     des 6 standard, avec une icône bleue ;
+   - les **6 dossiers standard manquants sont créés dans R2** à la première
+     ouverture de l'espace d'un client. Chacun est un objet marqueur vide
+     `<code>/<dossier>/`, comme ceux que crée le bouton « Ajouter un dossier »
+     de Cloudflare, pour que la page et le tableau de bord Cloudflare
+     montrent la même chose. Pour une consultation par l'administration, rien
+     n'est créé si le code ne correspond à aucun client. Les marqueurs ne
+     comptent ni comme fichiers ni dans l'espace occupé.
+
+   Les noms de dossiers sont contrôlés côté serveur : pas de « / », pas de
+   « .. », préfixe `<client_code>/` toujours ajouté par le serveur. Il est
+   impossible de sortir de l'espace du client.
+
 ## Volontairement pas dans ce lot
 
 - **Suppression de fichiers par un utilisateur suivi** et **bouton de
   suppression à l'écran** : la route admin existe, mais je ne l'expose pas
   encore.
-- **Import d'un dossier entier du PC** : pas demandé pour l'instant.
+- **Import d'un dossier entier du PC** et **création de dossiers
+  personnalisés depuis la page** : pas demandés pour l'instant (un dossier
+  créé dans Cloudflare apparaît automatiquement).
 - **Réglage de l'espace alloué par le client lui-même** : il reste un réglage
   de l'administration SAWALI dans SMART Communications. C'est une allocation,
   pas un paramètre du client.
@@ -177,7 +208,11 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
    puis redépose un fichier : il est refusé avec le motif « espace de
    stockage insuffisant ». Remets ensuite la valeur voulue.
 7. Retire l'autorisation au Pharmacien suivi : le bouton de dépôt disparaît.
-8. Active l'option « Tableau de bord » sur sa fiche (Admin → Utilisateurs suivis → Modifier) : son tableau de
+8. Toujours avec ce Pharmacien suivi du client **WDD**, la grille affiche
+   **« Racine (hors dossier) — 1 fichier »**. En l'ouvrant, on voit
+   `INV DEC 2024 - WDD.pdf`, sans bouton de dépôt. Dans Cloudflare, sous
+   `gestionstocks / WDD /`, les 6 dossiers standard existent maintenant.
+9. Active l'option « Tableau de bord » sur sa fiche (Admin → Utilisateurs suivis → Modifier) : son tableau de
    bord affiche la carte d'espace de stockage.
 
 Si quelque chose ne marche pas, renvoie-moi le message d'erreur exact (écran

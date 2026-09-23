@@ -1,6 +1,6 @@
-From 55df89f7a3ac86062f1d08b03e5da37a592903fa Mon Sep 17 00:00:00 2001
+From d2217ebff9d13ff14b3ee3e456a362b928c8d0a1 Mon Sep 17 00:00:00 2001
 From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
-Date: Wed, 23 Sep 2026 22:35:35 +0000
+Date: Wed, 23 Sep 2026 23:48:34 +0000
 Subject: [PATCH] =?UTF-8?q?feat(gestion-stocks):=20explorateur=20R2=20?=
  =?UTF-8?q?=E2=80=94=20emplacement,=20d=C3=A9p=C3=B4ts=20autoris=C3=A9s,?=
  =?UTF-8?q?=20espace=20allou=C3=A9?=
@@ -23,34 +23,69 @@ Explorateur Stockage R2 de Gestion de Stocks :
   SMART Communications du client ; tout dépôt qui le dépasserait est
   refusé avec le motif ;
 - jauge « espace occupé / espace alloué » sur le tableau de bord du
-  Pharmacien suivi et dans l'explorateur.
+  Pharmacien suivi et dans l'explorateur ;
+- l'explorateur reflète le contenu réel du compartiment : fichiers posés à
+  la racine du code client (tuile « Racine (hors dossier) », lecture seule)
+  et sous-dossiers existants en plus des 6 dossiers standard ; ces 6
+  dossiers sont créés dans R2 (marqueur vide) à la première ouverture.
 
-Nouvelles routes : GET /gestion-stocks/storage, POST
+Nouvelles routes : GET /gestion-stocks/folders, GET /gestion-stocks/storage, POST
 /gestion-stocks/folders/{folder}/upload, GET/PUT
 /admin/gestion-stocks/tracked-users/{id}/upload-rights, GET/PUT
 /admin/gestion-stocks/tenants/{client_id}/storage. Champs :
 tracked_users.r2_upload_allowed / r2_upload_max_mb,
 users.gestion_stocks_quota_gb.
 ---
- backend/routes/gestion_stocks.py              | 258 +++++++++++++++++-
- backend/tests/test_gestion_stocks_r2_lot20.py | 158 +++++++++++
- frontend/src/components/R2StorageGauge.jsx    |  69 +++++
- .../src/pages/admin/AdminClientFeatures.jsx   |  85 +++++-
- .../src/pages/admin/AdminTrackedUsers.jsx     |  93 ++++++-
+ backend/r2_stocks_client.py                   |  14 +
+ backend/routes/gestion_stocks.py              | 350 +++++++++++++++++-
+ backend/tests/test_gestion_stocks_r2_lot20.py | 200 ++++++++++
+ frontend/src/components/R2StorageGauge.jsx    |  69 ++++
+ .../src/pages/admin/AdminClientFeatures.jsx   |  85 ++++-
+ .../src/pages/admin/AdminTrackedUsers.jsx     |  93 ++++-
  frontend/src/pages/portal/Dashboard.jsx       |   6 +
- frontend/src/pages/portal/GestionStocks.jsx   | 194 +++++++++++--
- 7 files changed, 830 insertions(+), 33 deletions(-)
+ frontend/src/pages/portal/GestionStocks.jsx   | 229 ++++++++++--
+ 8 files changed, 1007 insertions(+), 39 deletions(-)
  create mode 100644 backend/tests/test_gestion_stocks_r2_lot20.py
  create mode 100644 frontend/src/components/R2StorageGauge.jsx
 
+diff --git a/backend/r2_stocks_client.py b/backend/r2_stocks_client.py
+index fcf0772..bc3b5d3 100644
+--- a/backend/r2_stocks_client.py
++++ b/backend/r2_stocks_client.py
+@@ -78,6 +78,20 @@ def list_objects(prefix: str) -> List[dict]:
+     return objects
+ 
+ 
++def list_folder_markers(prefix: str) -> List[str]:
++    """Clés des marqueurs de dossier (objets vides terminés par « / ») sous
++    `prefix` — `list_objects` les ignore volontairement (ce ne sont pas des
++    fichiers), mais ils matérialisent un dossier vide (lot 20)."""
++    client = _get_client()
++    keys: List[str] = []
++    paginator = client.get_paginator("list_objects_v2")
++    for page in paginator.paginate(Bucket=_bucket(), Prefix=prefix):
++        for item in page.get("Contents", []):
++            if item["Key"].endswith("/"):
++                keys.append(item["Key"])
++    return keys
++
++
+ def put_bytes(key: str, data: bytes, content_type: str = "application/octet-stream") -> None:
+     _get_client().put_object(Bucket=_bucket(), Key=key, Body=data, ContentType=content_type)
+ 
 diff --git a/backend/routes/gestion_stocks.py b/backend/routes/gestion_stocks.py
-index 2b1ef37..cf6b81d 100644
+index 2b1ef37..313eb88 100644
 --- a/backend/routes/gestion_stocks.py
 +++ b/backend/routes/gestion_stocks.py
-@@ -47,6 +47,16 @@ DEFAULT_FOLDERS: List[str] = [
+@@ -47,6 +47,21 @@ DEFAULT_FOLDERS: List[str] = [
  
  MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 Mo par fichier
  
++# Lot 20 — pseudo-dossier désignant la racine du code client (fichiers posés
++# directement sous `<client_code>/`, hors de tout sous-dossier, par exemple
++# via le tableau de bord Cloudflare). Lecture seule : on n'y dépose pas.
++ROOT_FOLDER = "_racine"
++
 +# Lot 20 — dépôts par les utilisateurs suivis et espace alloué par tenant.
 +# Taille max d'un fichier déposé par un utilisateur suivi autorisé (réglable
 +# par utilisateur suivi dans Admin → Utilisateurs suivis → « Dépôt R2 »).
@@ -64,13 +99,44 @@ index 2b1ef37..cf6b81d 100644
  
  def _now() -> str:
      return datetime.now(timezone.utc).isoformat()
-@@ -83,6 +93,92 @@ def _safe_filename(name: str) -> str:
+@@ -83,6 +98,123 @@ def _safe_filename(name: str) -> str:
      return "".join(c for c in base if c.isalnum() or c in (" ", ".", "-", "_")).strip() or "fichier"
  
  
 +# ----------------------------------------------------------------------
 +# Lot 20 — droits de dépôt des utilisateurs suivis et quota par tenant
 +# ----------------------------------------------------------------------
++def _check_folder(folder: str, *, allow_root: bool) -> None:
++    """Nom de dossier accepté : un des 6 dossiers standard, un sous-dossier
++    existant (nom simple, sans « / » ni « .. »), ou la racine si autorisée.
++    Le préfixe `<client_code>/` est toujours ajouté par le serveur : un nom de
++    dossier ne peut jamais sortir de l'espace du tenant."""
++    if folder == ROOT_FOLDER:
++        if allow_root:
++            return
++        raise HTTPException(status_code=400, detail="Déposez vos fichiers dans un dossier, pas à la racine.")
++    if folder in DEFAULT_FOLDERS:
++        return
++    if not folder or len(folder) > 100 or "/" in folder or "\\" in folder or folder in (".", "..") or folder.startswith("."):
++        raise HTTPException(status_code=404, detail="Dossier inconnu.")
++
++
++def _discover_folders(objects: List[dict], code: str) -> Dict[str, Any]:
++    """Dossiers réellement présents sous `<code>/` (1er niveau) et nombre de
++    fichiers posés directement à la racine."""
++    prefix = f"{code}/"
++    extra, root_files = set(), 0
++    for o in objects:
++        rest = o["key"][len(prefix):]
++        if "/" in rest:
++            extra.add(rest.split("/", 1)[0])
++        elif rest:
++            root_files += 1
++    others = sorted(f for f in extra if f and f not in DEFAULT_FOLDERS)
++    return {"folders": DEFAULT_FOLDERS + others, "extra_folders": others, "root_files": root_files,
++            "present": sorted(f for f in extra if f)}
++
++
 +def _is_staff(user: dict) -> bool:
 +    """Administrateur ou superviseur SAWALI : accès complet au module."""
 +    return (user.get("role") or "") in ("admin", "superviseur")
@@ -157,7 +223,7 @@ index 2b1ef37..cf6b81d 100644
  # ======================================================================
  # Explorateur BD MongoDB Atlas — agrégations sur le VRAI schéma HFSQL
  # (fourni par l'utilisateur le 2026-09, "Structure_des_fichiers_HFSQL.zip"),
-@@ -363,6 +459,14 @@ async def _analyse_llm_send(session_id: str, system_text: str, user_text: str) -
+@@ -363,6 +495,14 @@ async def _analyse_llm_send(session_id: str, system_text: str, user_text: str) -
  
  
  def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin):
@@ -172,7 +238,7 @@ index 2b1ef37..cf6b81d 100644
  
      @api.get("/gestion-stocks/context", tags=["Portail — Gestion Stocks"])
      async def gestion_stocks_context(user: dict = Depends(get_current_user)):
-@@ -370,7 +474,7 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+@@ -370,7 +510,7 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
          frontend s'en sert pour savoir quoi afficher avant tout listing."""
          if not _can_access_own_stocks(user):
              raise HTTPException(status_code=403, detail="Accès réservé aux comptes Pharmacien suivis (et admin/superviseur).")
@@ -181,7 +247,7 @@ index 2b1ef37..cf6b81d 100644
          client_code = None
          if (user.get("role") or "") in ("admin", "superviseur"):
              client_code = None  # l'admin choisit un client_code explicitement (voir endpoints /admin/*)
-@@ -380,9 +484,86 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+@@ -380,9 +520,131 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
              "client_code": client_code,
              "folders": DEFAULT_FOLDERS,
              "r2_configured": is_configured(),
@@ -200,6 +266,52 @@ index 2b1ef37..cf6b81d 100644
 +            return {"can_upload": True, "upload_max_mb": MAX_UPLOAD_BYTES // _MB}
 +        rights = await _tracked_upload_rights(db, user)
 +        return {"can_upload": rights["allowed"], "upload_max_mb": rights["max_mb"] if rights["allowed"] else None}
++
++    @api.get("/gestion-stocks/folders", tags=["Portail — Gestion Stocks"])
++    async def gestion_stocks_folders(
++        client_code: Optional[str] = Query(None, description="Admin/superviseur uniquement — ignoré pour un utilisateur suivi."),
++        user: dict = Depends(get_current_user),
++    ):
++        """Dossiers à afficher pour un tenant : les 6 dossiers standard, les
++        autres sous-dossiers réellement présents dans R2, et le nombre de
++        fichiers posés à la racine du code client (pseudo-dossier `_racine`).
++
++        Les 6 dossiers standard manquants sont CRÉÉS dans R2 à la première
++        ouverture (objet marqueur vide `<code>/<dossier>/`, comme le bouton
++        « Ajouter un dossier » de Cloudflare), pour que la page et le tableau
++        de bord Cloudflare affichent la même chose."""
++        if not _can_access_own_stocks(user):
++            raise HTTPException(status_code=403, detail="Accès réservé aux comptes Pharmacien suivis (et admin/superviseur).")
++        code = (client_code or "").strip().upper() if _is_staff(user) else await _resolve_own_client_code(db, user)
++        if not code:
++            raise HTTPException(status_code=409, detail="Aucun code client (client_code) configuré pour ce tenant.")
++        from r2_stocks_client import is_configured, list_folder_markers, put_bytes
++        from r2_stocks_client import list_objects
++        import asyncio
++        if not is_configured():
++            raise HTTPException(status_code=503, detail="Stockage R2 Gestion Stocks non configuré.")
++        try:
++            objects = await asyncio.to_thread(list_objects, f"{code}/")
++            markers = await asyncio.to_thread(list_folder_markers, f"{code}/")
++        except Exception:
++            logger.exception("[gestion_stocks] folder discovery failed code=%s", code)
++            raise HTTPException(status_code=502, detail="Erreur de lecture du stockage R2.")
++        # Les marqueurs de dossier vides comptent comme dossiers existants.
++        found = _discover_folders(objects + [{"key": m} for m in markers], code)
++        present = set(found.pop("present"))
++        # Création des dossiers standard manquants — seulement pour un vrai
++        # client (un code saisi par l'administration qui ne correspond à aucun
++        # client ne crée rien).
++        missing = [f for f in DEFAULT_FOLDERS if f not in present]
++        created: List[str] = []
++        if missing and (not _is_staff(user) or await _tenant_by_code(db, code)):
++            for folder in missing:
++                try:
++                    await asyncio.to_thread(put_bytes, f"{code}/{folder}/", b"", "application/x-directory")
++                    created.append(folder)
++                except Exception:  # noqa: BLE001 — l'affichage ne doit pas échouer pour autant
++                    logger.exception("[gestion_stocks] folder marker creation failed %s/%s", code, folder)
++        return {"client_code": code, "root_folder": ROOT_FOLDER, "created_folders": created, **found}
 +
 +    @api.get("/gestion-stocks/storage", tags=["Portail — Gestion Stocks"])
 +    async def gestion_stocks_storage(
@@ -236,8 +348,7 @@ index 2b1ef37..cf6b81d 100644
 +        rights = await _tracked_upload_rights(db, user)
 +        if not rights["allowed"]:
 +            raise HTTPException(status_code=403, detail="Dépôt refusé : votre compte n'est pas autorisé à déposer des fichiers. Demandez l'autorisation à votre administrateur SAWALI.")
-+        if folder not in DEFAULT_FOLDERS:
-+            raise HTTPException(status_code=404, detail="Dossier inconnu.")
++        _check_folder(folder, allow_root=False)
 +        code = await _resolve_own_client_code(db, user)
 +        if not code:
 +            raise HTTPException(status_code=409, detail="Aucun code client configuré pour votre société — contactez votre administrateur SAWALI.")
@@ -268,7 +379,34 @@ index 2b1ef37..cf6b81d 100644
      @api.post("/gestion-stocks/analyse", tags=["Portail — Gestion Stocks"])
      async def gestion_stocks_analyse(
          payload: Dict[str, Any] = Body(...),
-@@ -521,7 +702,7 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+@@ -461,8 +723,7 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+     ):
+         if not _can_access_own_stocks(user):
+             raise HTTPException(status_code=403, detail="Accès réservé aux comptes Pharmacien suivis (et admin/superviseur).")
+-        if folder not in DEFAULT_FOLDERS:
+-            raise HTTPException(status_code=404, detail="Dossier inconnu.")
++        _check_folder(folder, allow_root=True)
+         is_admin = (user.get("role") or "") in ("admin", "superviseur")
+         code = (client_code or "").strip().upper() if is_admin else await _resolve_own_client_code(db, user)
+         if not code:
+@@ -471,12 +732,15 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+         import asyncio
+         if not is_configured():
+             raise HTTPException(status_code=503, detail="Stockage R2 Gestion Stocks non configuré (variables R2_STOCKS_* manquantes).")
+-        prefix = f"{code}/{folder}/"
++        # Racine : fichiers posés directement sous `<code>/` (pas ceux des sous-dossiers).
++        prefix = f"{code}/" if folder == ROOT_FOLDER else f"{code}/{folder}/"
+         try:
+             objects = await asyncio.to_thread(list_objects, prefix)
+         except Exception:
+             logger.exception("[gestion_stocks] list_objects failed prefix=%s", prefix)
+             raise HTTPException(status_code=502, detail="Erreur de lecture du stockage R2.")
++        if folder == ROOT_FOLDER:
++            objects = [o for o in objects if "/" not in o["key"][len(prefix):]]
+         files = [
+             {
+                 "key": o["key"],
+@@ -521,7 +785,7 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
      # discuté ; en attendant, l'admin peut déposer des documents à la main).
      # ------------------------------------------------------------------
      @api.get("/admin/gestion-stocks/clients", tags=["Admin — Gestion Stocks"])
@@ -277,16 +415,20 @@ index 2b1ef37..cf6b81d 100644
          cursor = db.users.find(
              {"client_code": {"$exists": True, "$nin": [None, ""]}},
              {"_id": 0, "id": 1, "client_code": 1, "company": 1, "full_name": 1},
-@@ -540,7 +721,7 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+@@ -540,10 +804,9 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
          client_code: str,
          folder: str,
          file: UploadFile = File(...),
 -        _: dict = Depends(get_current_admin),
 +        _: dict = Depends(staff_user),
      ):
-         if folder not in DEFAULT_FOLDERS:
-             raise HTTPException(status_code=404, detail="Dossier inconnu.")
-@@ -554,6 +735,10 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+-        if folder not in DEFAULT_FOLDERS:
+-            raise HTTPException(status_code=404, detail="Dossier inconnu.")
++        _check_folder(folder, allow_root=False)
+         code = (client_code or "").strip().upper()
+         if not code:
+             raise HTTPException(status_code=400, detail="client_code manquant.")
+@@ -554,6 +817,10 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
          data = await file.read()
          if len(data) > MAX_UPLOAD_BYTES:
              raise HTTPException(status_code=413, detail=f"Fichier trop volumineux (max {MAX_UPLOAD_BYTES // (1024*1024)} Mo).")
@@ -297,7 +439,7 @@ index 2b1ef37..cf6b81d 100644
          filename = _safe_filename(file.filename or "fichier")
          key = f"{code}/{folder}/{filename}"
          try:
-@@ -566,7 +751,7 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+@@ -566,7 +833,7 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
      @api.delete("/admin/gestion-stocks/file", tags=["Admin — Gestion Stocks"])
      async def admin_gestion_stocks_delete(
          key: str = Query(...),
@@ -306,7 +448,7 @@ index 2b1ef37..cf6b81d 100644
      ):
          from r2_stocks_client import is_configured, delete_object
          import asyncio
-@@ -579,6 +764,71 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+@@ -579,6 +846,71 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
              raise HTTPException(status_code=502, detail="Échec de la suppression.")
          return {"ok": True}
  
@@ -380,10 +522,10 @@ index 2b1ef37..cf6b81d 100644
  
 diff --git a/backend/tests/test_gestion_stocks_r2_lot20.py b/backend/tests/test_gestion_stocks_r2_lot20.py
 new file mode 100644
-index 0000000..5fd6a0e
+index 0000000..9e46723
 --- /dev/null
 +++ b/backend/tests/test_gestion_stocks_r2_lot20.py
-@@ -0,0 +1,158 @@
+@@ -0,0 +1,200 @@
 +"""Lot 20 — Explorateur R2 de Gestion de Stocks : accès superviseur, dépôt par
 +les utilisateurs suivis autorisés (taille max par utilisateur, 1,5 Mo par
 +défaut), espace alloué par tenant (2 Go par défaut) avec refus motivé.
@@ -426,8 +568,10 @@ index 0000000..5fd6a0e
 +    r2._bucket = lambda: "gestion-stocks"
 +    r2.is_configured = lambda: True
 +    r2.list_objects = lambda prefix: [
-+        {"key": k, "size": len(v), "last_modified": "2026-09-23T10:00:00"} for k, v in objects.items() if k.startswith(prefix)
++        {"key": k, "size": len(v), "last_modified": "2026-09-23T10:00:00"}
++        for k, v in objects.items() if k.startswith(prefix) and not k.endswith("/")
 +    ]
++    r2.list_folder_markers = lambda prefix: [k for k in objects if k.startswith(prefix) and k.endswith("/")]
 +    r2.put_bytes = lambda key, data, ct="application/octet-stream": objects.__setitem__(key, data)
 +    r2.get_presigned_url = lambda key, expires_in=300: "https://r2/signed"
 +    r2.delete_object = lambda key: objects.pop(key, None)
@@ -542,6 +686,46 @@ index 0000000..5fd6a0e
 +    assert st["client_code"] == "PDP" and st["files"] == 1 and st["quota_bytes"] == 2 * 1024 ** 3
 +    staff = env.client.get("/api/gestion-stocks/storage?client_code=PDP", headers=_h("sup")).json()
 +    assert staff["used_bytes"] == 1000
++
++
++def test_real_folders_and_root_files_are_listed(env):
++    # Fichier déposé à la racine du code client (ex. via le tableau de bord Cloudflare)
++    # et sous-dossier non standard : tous deux doivent apparaître.
++    env.objects["PDP/INV DEC 2024 - PDP.pdf"] = b"p" * 500
++    env.objects["PDP/Archives 2024/vieux.pdf"] = b"q" * 10
++    env.objects["AUTRE/secret.pdf"] = b"s"
++    got = env.client.get("/api/gestion-stocks/folders", headers=_h("suivi")).json()
++    assert got["client_code"] == "PDP" and got["root_files"] == 1
++    assert got["extra_folders"] == ["Archives 2024"] and got["folders"][:6][0] == "Inventaires"
++    root = env.client.get("/api/gestion-stocks/folders/_racine/files", headers=_h("suivi")).json()
++    assert [f["name"] for f in root["files"]] == ["INV DEC 2024 - PDP.pdf"]
++    extra = env.client.get("/api/gestion-stocks/folders/Archives 2024/files", headers=_h("suivi")).json()
++    assert [f["name"] for f in extra["files"]] == ["vieux.pdf"]
++
++
++def test_folder_names_cannot_escape_tenant(env):
++    for bad in ("..", ".cache"):
++        assert env.client.get(f"/api/gestion-stocks/folders/{bad}/files", headers=_h("suivi")).status_code in (404, 405)
++    # Pas de dépôt à la racine.
++    _set_rights(env, True)
++    r = env.client.post("/api/gestion-stocks/folders/_racine/upload", headers=_h("suivi"),
++                        files={"file": ("f.pdf", b"a", "application/pdf")})
++    assert r.status_code == 400
++
++
++def test_standard_folders_are_created_once_in_r2(env):
++    got = env.client.get("/api/gestion-stocks/folders", headers=_h("suivi")).json()
++    # « Inventaires » existe déjà (un fichier dedans) : seuls les 5 autres sont créés.
++    assert got["created_folders"] == ["Rapports", "Analyses", "Controle qualite", "Factures", "Autres"]
++    assert "PDP/Rapports/" in env.objects and env.objects["PDP/Rapports/"] == b""
++    again = env.client.get("/api/gestion-stocks/folders", headers=_h("suivi")).json()
++    assert again["created_folders"] == [] and again["extra_folders"] == []
++    # Les marqueurs ne sont ni des fichiers listés ni de l'espace occupé.
++    assert env.client.get("/api/gestion-stocks/folders/Rapports/files", headers=_h("suivi")).json()["files"] == []
++    assert env.client.get("/api/gestion-stocks/storage", headers=_h("suivi")).json()["files"] == 1
++    # Un code saisi par l'administration qui ne correspond à aucun client ne crée rien.
++    none = env.client.get("/api/gestion-stocks/folders?client_code=XYZ", headers=_h("admin")).json()
++    assert none["created_folders"] == [] and not any(k.startswith("XYZ/") for k in env.objects)
 diff --git a/frontend/src/components/R2StorageGauge.jsx b/frontend/src/components/R2StorageGauge.jsx
 new file mode 100644
 index 0000000..e7df28c
@@ -888,7 +1072,7 @@ index 9b4893b..8379459 100644
        <TicketsPendingCard />
        {/* Iter38c — Carte dépenses non justifiées (utilisateurs suivis avec accès Caisse) */}
 diff --git a/frontend/src/pages/portal/GestionStocks.jsx b/frontend/src/pages/portal/GestionStocks.jsx
-index b3a9eac..e634045 100644
+index b3a9eac..0015610 100644
 --- a/frontend/src/pages/portal/GestionStocks.jsx
 +++ b/frontend/src/pages/portal/GestionStocks.jsx
 @@ -1,10 +1,12 @@
@@ -925,18 +1109,22 @@ index b3a9eac..e634045 100644
  
    // Admin uniquement : liste des clients pour choisir lequel parcourir.
    const [adminClients, setAdminClients] = useState([]);
-@@ -86,6 +96,10 @@ export default function GestionStocks() {
+@@ -86,6 +96,14 @@ export default function GestionStocks() {
    const [files, setFiles] = useState([]);
    const [loadingFiles, setLoadingFiles] = useState(false);
    const [uploading, setUploading] = useState(false);
 +  // Lot 20 — dépôt depuis l'ordinateur : file d'envoi (un fichier à la fois,
 +  // avec progression) et survol de la zone de glisser-déposer.
 +  const [uploadQueue, setUploadQueue] = useState([]);
++  // Lot 20 — contenu réel du compartiment pour le client affiché : sous-dossiers
++  // présents en plus des 6 standard, et fichiers posés à la racine du code client.
++  const [extraFolders, setExtraFolders] = useState([]);
++  const [rootFiles, setRootFiles] = useState(0);
 +  const [dragOver, setDragOver] = useState(false);
  
    // Explorateur BD MongoDB Atlas
    const [promptText, setPromptText] = useState("");
-@@ -134,6 +148,9 @@ export default function GestionStocks() {
+@@ -134,6 +152,9 @@ export default function GestionStocks() {
        setFolders(r.data?.folders || []);
        setClientCode(r.data?.client_code || null);
        setR2Configured(!!r.data?.r2_configured);
@@ -946,7 +1134,30 @@ index b3a9eac..e634045 100644
        if (r.data?.is_admin) {
          const rc = await apiClient.get("/admin/gestion-stocks/clients");
          setAdminClients(rc.data || []);
-@@ -172,28 +189,81 @@ export default function GestionStocks() {
+@@ -163,6 +184,22 @@ export default function GestionStocks() {
+     }
+   };
+ 
++  // Pseudo-dossier « racine » (fichiers hors de tout sous-dossier) — voir backend ROOT_FOLDER.
++  const ROOT_FOLDER = "_racine";
++  const folderLabel = (f) => (f === ROOT_FOLDER ? "Racine (hors dossier)" : f);
++
++  // Dossiers réellement présents dans R2 pour le client affiché.
++  useEffect(() => {
++    if (!effectiveClientCode || !r2Configured) { setExtraFolders([]); setRootFiles(0); return; }
++    apiClient.get("/gestion-stocks/folders", { params: isAdmin ? { client_code: effectiveClientCode } : {} })
++      .then((r) => {
++        if (r.data?.folders?.length) setFolders(r.data.folders);
++        setExtraFolders(r.data?.extra_folders || []);
++        setRootFiles(r.data?.root_files || 0);
++      })
++      .catch(() => { setExtraFolders([]); setRootFiles(0); });
++  }, [effectiveClientCode, r2Configured, isAdmin]);
++
+   const openFile = async (file) => {
+     try {
+       const r = await apiClient.get("/gestion-stocks/files/view-url", { params: { key: file.key } });
+@@ -172,28 +209,81 @@ export default function GestionStocks() {
      }
    };
  
@@ -1030,7 +1241,7 @@ index b3a9eac..e634045 100644
 +  const handleDrop = (e) => {
 +    e.preventDefault();
 +    setDragOver(false);
-+    if (canUpload) uploadFiles(e.dataTransfer?.files);
++    if (canUpload && selectedFolder !== ROOT_FOLDER) uploadFiles(e.dataTransfer?.files);
 +  };
 +
 +  // Libellé du client affiché dans le fil d'Ariane (admin : code + nom).
@@ -1045,7 +1256,7 @@ index b3a9eac..e634045 100644
    return (
      <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6" data-testid="gestion-stocks-page">
        <h1 className="text-xl font-display font-bold text-slate-800 flex items-center gap-2">
-@@ -307,7 +377,7 @@ export default function GestionStocks() {
+@@ -307,7 +397,7 @@ export default function GestionStocks() {
              {isAdmin && (
                <select
                  value={adminSelectedCode}
@@ -1054,7 +1265,7 @@ index b3a9eac..e634045 100644
                  className="w-full sm:w-72 px-3 py-2 rounded-lg ring-1 ring-slate-300 text-sm bg-white"
                  data-testid="gestion-stocks-admin-client-select"
                >
-@@ -318,6 +388,40 @@ export default function GestionStocks() {
+@@ -318,8 +408,55 @@ export default function GestionStocks() {
                </select>
              )}
  
@@ -1077,7 +1288,7 @@ index b3a9eac..e634045 100644
 +                {selectedFolder && (
 +                  <>
 +                    <ChevronRight className="w-4 h-4 text-slate-400" />
-+                    <span className="font-semibold text-slate-800" data-testid="gestion-stocks-breadcrumb-folder">{selectedFolder}</span>
++                    <span className="font-semibold text-slate-800" data-testid="gestion-stocks-breadcrumb-folder">{folderLabel(selectedFolder)}</span>
 +                  </>
 +                )}
 +              </nav>
@@ -1094,15 +1305,39 @@ index b3a9eac..e634045 100644
 +
              {effectiveClientCode && !selectedFolder && (
                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4" data-testid="gestion-stocks-folder-grid">
++                {rootFiles > 0 && (
++                  <button
++                    type="button"
++                    onClick={() => openFolder(ROOT_FOLDER)}
++                    className="flex flex-col items-center gap-1 p-3 rounded-lg hover:bg-white/70 transition"
++                    title="Fichiers posés directement à la racine du code client, hors de tout dossier"
++                    data-testid="gestion-stocks-folder-racine"
++                  >
++                    <Folder className="w-12 h-12 text-slate-400 fill-slate-100" strokeWidth={1.5} />
++                    <span className="text-xs font-medium text-slate-700 text-center">Racine (hors dossier)</span>
++                    <span className="text-[10px] text-slate-400">{rootFiles} fichier{rootFiles > 1 ? "s" : ""}</span>
++                  </button>
++                )}
                  {folders.map((f) => (
-@@ -336,23 +440,59 @@ export default function GestionStocks() {
+                   <button
+                     key={f}
+@@ -328,7 +465,7 @@ export default function GestionStocks() {
+                     className="flex flex-col items-center gap-1 p-3 rounded-lg hover:bg-white/70 transition"
+                     data-testid={`gestion-stocks-folder-${f.replace(/\s+/g, "-").toLowerCase()}`}
+                   >
+-                    <Folder className={`w-12 h-12 ${FOLDER_ICON_COLOR} fill-amber-100`} strokeWidth={1.5} />
++                    <Folder className={`w-12 h-12 ${extraFolders.includes(f) ? "text-sky-500 fill-sky-100" : `${FOLDER_ICON_COLOR} fill-amber-100`}`} strokeWidth={1.5} />
+                     <span className="text-xs font-medium text-slate-700 text-center">{f}</span>
+                   </button>
+                 ))}
+@@ -336,23 +473,59 @@ export default function GestionStocks() {
              )}
  
              {effectiveClientCode && selectedFolder && (
 -              <div className="space-y-2" data-testid="gestion-stocks-file-list">
 -                <div className="flex items-center justify-between">
 +              <div className="space-y-2" data-testid="gestion-stocks-file-list"
-+                onDragOver={(e) => { if (canUpload) { e.preventDefault(); setDragOver(true); } }}
++                onDragOver={(e) => { if (canUpload && selectedFolder !== ROOT_FOLDER) { e.preventDefault(); setDragOver(true); } }}
 +                onDragLeave={() => setDragOver(false)}
 +                onDrop={handleDrop}>
 +                <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -1119,7 +1354,7 @@ index b3a9eac..e634045 100644
 -                    <label className="text-xs text-teal-700 inline-flex items-center gap-1 cursor-pointer hover:underline">
 -                      <Upload className="w-3.5 h-3.5" /> {uploading ? "Envoi…" : "Ajouter un document"}
 -                      <input type="file" className="hidden" disabled={uploading} onChange={handleUpload} />
-+                  {canUpload && (
++                  {canUpload && selectedFolder !== ROOT_FOLDER && (
 +                    <label className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-white ${uploading ? "bg-teal-400 cursor-wait" : "bg-teal-600 hover:bg-teal-700 cursor-pointer"}`}
 +                      data-testid="gestion-stocks-upload-btn">
 +                      {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
@@ -1131,7 +1366,7 @@ index b3a9eac..e634045 100644
                  </div>
 +
 +                {/* Zone de glisser-déposer (admin) : même envoi que le bouton */}
-+                {canUpload && (
++                {canUpload && selectedFolder !== ROOT_FOLDER && (
 +                  <div className={`rounded-lg border-2 border-dashed px-3 py-4 text-center text-xs transition ${dragOver ? "border-teal-500 bg-teal-50 text-teal-800" : "border-slate-300 text-slate-500"}`}
 +                    data-testid="gestion-stocks-dropzone">
 +                    Glissez-déposez ici des fichiers depuis votre ordinateur (plusieurs à la fois, {Number(maxUploadMb).toLocaleString("fr-FR")} Mo max par fichier)
