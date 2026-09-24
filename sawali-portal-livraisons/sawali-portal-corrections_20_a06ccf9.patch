@@ -1,6 +1,6 @@
-From 8f2b3acade06c2b0f4b6262c0f5df123182cfe58 Mon Sep 17 00:00:00 2001
+From a06ccf9e417ad2492587e4b3ddc3af13a3e7e194 Mon Sep 17 00:00:00 2001
 From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
-Date: Wed, 23 Sep 2026 23:55:50 +0000
+Date: Thu, 24 Sep 2026 00:04:29 +0000
 Subject: [PATCH] =?UTF-8?q?feat(gestion-stocks):=20explorateur=20R2=20?=
  =?UTF-8?q?=E2=80=94=20emplacement,=20d=C3=A9p=C3=B4ts=20autoris=C3=A9s,?=
  =?UTF-8?q?=20espace=20allou=C3=A9?=
@@ -29,6 +29,8 @@ Explorateur Stockage R2 de Gestion de Stocks :
   et sous-dossiers existants en plus des 6 dossiers standard ; ces 6
   dossiers sont créés dans R2 (marqueur vide) à la première ouverture ;
   une légende explique la couleur des dossiers ;
+- Centre de Messagerie en pleine largeur (plafond max-w-6xl retiré de
+  Contacts.jsx) ;
 - compartiment par défaut « gestionstocks » (nom réel, sans tiret) si
   R2_STOCKS_BUCKET n'est pas défini.
 
@@ -45,9 +47,10 @@ users.gestion_stocks_quota_gb.
  frontend/src/components/R2StorageGauge.jsx    |  69 ++++
  .../src/pages/admin/AdminClientFeatures.jsx   |  85 ++++-
  .../src/pages/admin/AdminTrackedUsers.jsx     |  93 ++++-
+ frontend/src/pages/portal/Contacts.jsx        |   5 +-
  frontend/src/pages/portal/Dashboard.jsx       |   6 +
  frontend/src/pages/portal/GestionStocks.jsx   | 249 +++++++++++--
- 8 files changed, 1042 insertions(+), 40 deletions(-)
+ 9 files changed, 1046 insertions(+), 41 deletions(-)
  create mode 100644 backend/tests/test_gestion_stocks_r2_lot20.py
  create mode 100644 frontend/src/components/R2StorageGauge.jsx
 
@@ -1066,6 +1069,22 @@ index eaf0469..e2ae197 100644
  // ====================================================================
  // Password dialog — set or reset password for a tracked user
  // ====================================================================
+diff --git a/frontend/src/pages/portal/Contacts.jsx b/frontend/src/pages/portal/Contacts.jsx
+index 6441863..e1a5944 100644
+--- a/frontend/src/pages/portal/Contacts.jsx
++++ b/frontend/src/pages/portal/Contacts.jsx
+@@ -303,7 +303,10 @@ export default function Contacts() {
+   }, [items, companyFilter, filter, unread]);
+ 
+   return (
+-    <div className="max-w-6xl space-y-5" data-testid="contacts-page">
++    // Lot 20 — pleine largeur : l'ancien plafond max-w-6xl (1152 px) laissait
++    // un grand vide à droite sur les écrans larges et forçait le défilement
++    // horizontal du tableau des contacts.
++    <div className="w-full max-w-full space-y-5" data-testid="contacts-page">
+       <div className="flex items-center justify-between gap-4 flex-wrap">
+         <div className="min-w-0">
+           <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Communication</p>
 diff --git a/frontend/src/pages/portal/Dashboard.jsx b/frontend/src/pages/portal/Dashboard.jsx
 index 9b4893b..8379459 100644
 --- a/frontend/src/pages/portal/Dashboard.jsx

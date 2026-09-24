@@ -1,9 +1,9 @@
 # Sawali — Lot 20 : Explorateur R2 de Gestion de Stocks (emplacement, dépôts autorisés, espace alloué)
 
-Applique `sawali-portal-corrections_20_8f2b3ac.patch` sur la branche
+Applique `sawali-portal-corrections_20_a06ccf9.patch` sur la branche
 `Site-SawaliSmartSystems`. Ce patch remplace entièrement les versions
 précédentes du lot 20 (`…_20_bac3898.patch`, `…_20_55df89f.patch`,
-`…_20_d2217eb.patch`) que je
+`…_20_d2217eb.patch`, `…_20_8f2b3ac.patch`) que je
 t'avais peut-être transmises : ne tiens compte que de celle-ci.
 
 La base attendue est le commit où tu as appliqué le lot 19
@@ -31,6 +31,7 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 - `frontend/src/pages/portal/Dashboard.jsx` — jauge sur le tableau de bord du Pharmacien suivi
 - `frontend/src/pages/admin/AdminTrackedUsers.jsx` — bouton « Dépôt R2 » par utilisateur suivi (autorisation + taille max)
 - `frontend/src/pages/admin/AdminClientFeatures.jsx` — section « Espace de stockage R2 (Gestion de Stocks) » dans SMART Communications du client
+- `frontend/src/pages/portal/Contacts.jsx` — Centre de Messagerie en pleine largeur (1 ligne)
 
 **Côté livraison :**
 - aucune nouvelle dépendance ;
@@ -181,6 +182,16 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
    « .. », préfixe `<client_code>/` toujours ajouté par le serveur. Il est
    impossible de sortir de l'espace du client.
 
+8. **Centre de Messagerie en pleine largeur.** Sur un écran large, la zone
+   du Centre de Messagerie (`/portal/contacts`) s'arrêtait à 1152 px et
+   laissait un grand espace vide à droite, alors que le tableau des contacts
+   devait défiler horizontalement pour montrer ses boutons (WhatsApp, SMS,
+   Mess. Program., Hist. Mess.…). La cause : le conteneur racine de
+   `Contacts.jsx` portait `max-w-6xl`. Je le remplace par
+   `w-full max-w-full` : la page occupe toute la largeur disponible du
+   portail. Sur un écran de 1700 px, elle passe de 1152 px à toute la zone
+   de contenu (environ 1330 px). Le reste de la page n'est pas modifié.
+
 ## Volontairement pas dans ce lot
 
 - **Suppression de fichiers par un utilisateur suivi** et **bouton de
@@ -224,7 +235,10 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
    `gestionstocks / WDD /`, les 6 dossiers standard existent maintenant. Le
    fil d'Ariane affiche « Compartiment `gestionstocks` », et la légende des
    couleurs figure sous les dossiers.
-9. Active l'option « Tableau de bord » sur sa fiche (Admin → Utilisateurs suivis → Modifier) : son tableau de
+9. Ouvre le **Centre de Messagerie** sur un grand écran : la zone des
+   contacts occupe toute la largeur, sans espace vide à droite, et les
+   boutons d'action sont visibles avec moins de défilement horizontal.
+10. Active l'option « Tableau de bord » sur sa fiche (Admin → Utilisateurs suivis → Modifier) : son tableau de
    bord affiche la carte d'espace de stockage.
 
 Si quelque chose ne marche pas, renvoie-moi le message d'erreur exact (écran
