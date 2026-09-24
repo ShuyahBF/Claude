@@ -1,9 +1,9 @@
-# Sawali — Lots 20 à 21 : Explorateur R2 de Gestion de Stocks + prospects WhatsApp Liluvine
+# Sawali — Lots 20 à 22 : Explorateur R2 de Gestion de Stocks, prospects WhatsApp Liluvine, tags des documents R2
 
-Applique `sawali-portal-corrections_20_to_21_6dc688b.patch` sur la branche
-`Site-SawaliSmartSystems`. Ce patch regroupe les lots 20 et 21 en un seul
-commit. Il remplace entièrement toutes les versions du lot 20 que je t'avais
-peut-être transmises (`…_20_a06ccf9.patch`, `…_20_bac3898.patch`,
+Applique `sawali-portal-corrections_20_to_22_cd6c45a.patch` sur la branche
+`Site-SawaliSmartSystems`. Ce patch regroupe les lots 20, 21 et 22 en un seul
+commit. Il remplace entièrement toutes les versions précédentes que je t'avais
+peut-être transmises (`…_20_to_21_6dc688b.patch`, `…_20_a06ccf9.patch`, `…_20_bac3898.patch`,
 `…_20_55df89f.patch`, `…_20_d2217eb.patch`, `…_20_8f2b3ac.patch`) : ne tiens
 compte que de celui-ci.
 
@@ -22,17 +22,20 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 **Nouveaux fichiers backend**
 - `backend/tests/test_gestion_stocks_r2_lot20.py` — tests unitaires autonomes (Mongo simulé, R2 simulé). Tu ne les lances pas.
 - `backend/tests/test_liluvine_wa_prospects_lot21.py` — tests unitaires autonomes (Mongo simulé, IA et WhatsApp simulés). Tu ne les lances pas.
+- `backend/routes/gestion_stocks_tags.py` — lot 22 : index Mongo des fichiers R2 (tags, description), recherche, suggestions IA
+- `backend/tests/test_gestion_stocks_tags_lot22.py` — tests unitaires autonomes (Mongo, R2 et IA simulés). Tu ne les lances pas.
 
 **Nouveaux fichiers frontend**
 - `frontend/src/components/R2StorageGauge.jsx` — jauge « espace occupé / espace alloué »
+- `frontend/src/components/R2FileTags.jsx` — lot 22 : ligne de fichier avec tags, éditeur en ligne et suggestions IA
 
 **Fichiers modifiés**
-- `backend/routes/gestion_stocks.py` — accès superviseur, dépôt par les utilisateurs suivis autorisés, espace alloué par tenant, contenu réel du compartiment, nouvelles routes
-- `backend/r2_stocks_client.py` — nouvelle fonction `list_folder_markers` (dossiers vides) ; compartiment par défaut `gestionstocks`
-- `frontend/src/pages/portal/GestionStocks.jsx` — fil d'Ariane, dépôt multi-fichiers (glisser-déposer, progression), jauge, tuile « Racine (hors dossier) », sous-dossiers réels, légende des couleurs de dossiers
+- `backend/routes/gestion_stocks.py` — accès superviseur, dépôt par les utilisateurs suivis autorisés, espace alloué par tenant, contenu réel du compartiment, nouvelles routes ; lot 22 : tags au dépôt, routes de tags/recherche, option IA par client
+- `backend/r2_stocks_client.py` — nouvelle fonction `list_folder_markers` (dossiers vides) ; compartiment par défaut `gestionstocks` ; lot 22 : `get_bytes` (lecture d'un fichier pour l'analyse IA)
+- `frontend/src/pages/portal/GestionStocks.jsx` — fil d'Ariane, dépôt multi-fichiers (glisser-déposer, progression), jauge, tuile « Racine (hors dossier) », sous-dossiers réels, légende des couleurs de dossiers ; lot 22 : barre de recherche, pastilles de tags, tags et description au dépôt
 - `frontend/src/pages/portal/Dashboard.jsx` — jauge sur le tableau de bord du Pharmacien suivi
 - `frontend/src/pages/admin/AdminTrackedUsers.jsx` — bouton « Dépôt R2 » par utilisateur suivi (autorisation + taille max)
-- `frontend/src/pages/admin/AdminClientFeatures.jsx` — section « Espace de stockage R2 (Gestion de Stocks) » dans SMART Communications du client
+- `frontend/src/pages/admin/AdminClientFeatures.jsx` — section « Espace de stockage R2 (Gestion de Stocks) » dans SMART Communications du client ; lot 22 : case « Suggestions de tags par l'IA »
 - `frontend/src/pages/portal/Contacts.jsx` — Centre de Messagerie en pleine largeur (1 ligne)
 - `backend/routes/liluvine_wa_autoreply.py` — lot 21 : détection des prospects, prompt dédié, aucune donnée CRM pour un prospect, compte plateforme exempté des contrôles de contrat
 - `backend/routes/liluvine_pro.py` — lot 21 : textes par défaut (prompt prospect, consignes WhatsApp) et 3 nouveaux champs dans `GET/PUT /admin/liluvine-pro/wa-autoreply`
@@ -40,7 +43,7 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 - `frontend/src/pages/admin/sections/LiluvineSystemPromptSection.jsx` — lot 21 : une phrase précisant que ce prompt sert aux clients, pas aux prospects
 
 **Côté livraison :**
-- aucune nouvelle dépendance ;
+- aucune nouvelle dépendance (le lot 22 réutilise `ocr_core`, déjà livré au lot 19, sans le modifier) ;
 - `server.py` n'est pas modifié : les nouvelles routes passent par `attach_gestion_stocks_routes`, déjà branché, et le lot 21 réutilise les routes Liluvine existantes ;
 - aucune migration de données : les nouveaux champs prennent leur valeur par défaut tant qu'ils ne sont pas renseignés.
 
@@ -48,7 +51,8 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 - `tracked_users.r2_upload_allowed` (non autorisé par défaut) ;
 - `tracked_users.r2_upload_max_mb` (1,5 par défaut) ;
 - `users.gestion_stocks_quota_gb`, sur la fiche du client (2 par défaut) ;
-- lot 21 : `prospect` (vrai/faux) sur les documents `liluvine_pro_sessions` et `liluvine_pro_messages` créés par l'auto-réponse WhatsApp.
+- lot 21 : `prospect` (vrai/faux) sur les documents `liluvine_pro_sessions` et `liluvine_pro_messages` créés par l'auto-réponse WhatsApp ;
+- lot 22 : nouvelle collection **`stock_files`** (une fiche par fichier R2 : `key` unique, `client_code`, `folder`, `name`, `tags`, `description`, `uploaded_by`, suggestions IA), créée d'elle-même au premier dépôt ou à la première ouverture d'un dossier ; `users.gestion_stocks_ai_tags` sur la fiche du client (faux par défaut).
 
 ## Variables d'environnement
 
@@ -68,6 +72,9 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
   Auto-réponse WhatsApp » : `liluvine_wa_prospect_enabled` (absent = vrai),
   `liluvine_wa_prospect_system_prompt` et `liluvine_wa_mode_instructions`
   (vides = textes par défaut du code). Rien à renseigner au déploiement.
+- **Lot 22** : aucune nouvelle variable. Les suggestions IA utilisent
+  `EMERGENT_LLM_KEY` (déjà présente, comme l'OCR du lot 19) et restent
+  inactives tant que je ne les active pas pour un client.
 
 ## Ce que ça apporte, dans l'ordre
 
@@ -274,6 +281,73 @@ prompt n'était prévu pour les personnes qui ne sont pas encore clientes.
     concernées. La section « Prompt système » précise maintenant qu'elle
     s'applique aux clients sur WhatsApp, pas aux prospects.
 
+### Lot 22 — Tags et recherche des documents R2
+
+R2 ne sait lister un compartiment que par chemin (`WDD/Factures/…`) : il ne
+peut pas retrouver « tous les fichiers tagués facture ». Les tags sont donc
+gérés par Sawali, dans MongoDB, et R2 reste la source de vérité des fichiers.
+
+15. **Une fiche par fichier : la collection `stock_files`.** Elle est créée ou mise à
+    jour à chaque dépôt (`index_upload`). Elle est aussi créée d'office pour les
+    fichiers déjà présents, à la première ouverture de leur dossier
+    (`ensure_docs`), avec `uploaded_by` vide pour un fichier posé hors Sawali.
+    Supprimer un fichier supprime sa fiche. Un fichier supprimé dans
+    Cloudflare disparaît des résultats de recherche, même si sa fiche existe
+    encore : la recherche part toujours du contenu réel de R2.
+
+16. **Tags et description au dépôt.** Dans un dossier ouvert, deux champs
+    facultatifs apparaissent au-dessus de la zone de glisser-déposer :
+    « Tags du dépôt » (séparés par des virgules, avec en suggestion les tags
+    déjà utilisés par le client) et « Description ». Ils s'appliquent à
+    chaque fichier envoyé. Les deux routes de dépôt (admin et utilisateur
+    suivi) acceptent désormais les champs de formulaire `tags` et
+    `description`. Le serveur nettoie toujours les tags : minuscules,
+    espaces réduits, caractères spéciaux retirés, 40 caractères et 15 tags
+    au plus, sans doublon.
+
+17. **Tags modifiables après coup.** Chaque ligne de fichier affiche ses tags
+    et sa description. Un bouton « Tags » ouvre un éditeur en ligne :
+    ajouter ou retirer des tags, modifier la description, puis enregistrer
+    (`PUT /gestion-stocks/files/meta`). Le bouton n'apparaît que si le
+    serveur l'autorise (`can_edit`) :
+    - l'admin et le superviseur taguent tout ;
+    - un Pharmacien suivi autorisé à déposer tague ses propres fichiers ;
+    - les autres consultent seulement.
+
+    Le serveur refait le contrôle (403 avec le motif), et une clé hors du
+    tenant de l'utilisateur est toujours refusée.
+
+18. **Recherche dans tous les dossiers.** Une barre « Rechercher un document
+    (nom, tag, description) dans tous les dossiers… » s'affiche sous la
+    jauge (`GET /gestion-stocks/search`). Elle cherche chaque mot dans le
+    nom, le dossier, les tags et la description, sans tenir compte des
+    accents ni des majuscules. Sous la barre, les pastilles des tags du
+    client, avec leur nombre de fichiers (`GET /gestion-stocks/tags`),
+    servent de filtre : on peut en cocher plusieurs. Chaque résultat
+    indique son dossier et reste modifiable. Les résultats sont limités
+    à 200.
+
+19. **Suggestions de tags par l'IA (option, désactivée par défaut).** Dans
+    **Admin → Clients → SMART Communications**, la section « Espace de
+    stockage R2 » a une nouvelle case, « Suggestions de tags par l'IA »,
+    enregistrée dès le clic (`users.gestion_stocks_ai_tags`). Quand elle est
+    cochée :
+    - après chaque dépôt d'un PDF, d'une image, d'un .txt ou d'un .csv de
+      10 Mo au plus, une analyse part en arrière-plan : le dépôt répond tout
+      de suite, et l'écran relit le dossier 8 secondes plus tard ;
+    - dans l'éditeur, le bouton « Suggérer des tags (IA) » lance l'analyse à
+      la demande, par exemple pour les fichiers déjà présents
+      (`POST /gestion-stocks/files/suggest-tags`).
+
+    L'analyse réutilise le module commun `ocr_core` du lot 19, sans le
+    modifier, avec **Claude Haiku 4.5**, le modèle le moins cher. Les tags
+    sont déduits de sa réponse (type de document, fournisseur ou grossiste,
+    mois et année), avec une description proposée. Ils ne sont **jamais
+    appliqués d'office** : ils s'affichent en violet dans l'éditeur, et
+    l'utilisateur les ajoute d'un clic (ou « Tout ajouter »). Le coût en
+    FCFA est cumulé sur la fiche (`ai_cost_xof`). Un Word ou un Excel n'est
+    pas analysé.
+
 ## Volontairement pas dans ces lots
 
 - **Suppression de fichiers par un utilisateur suivi** et **bouton de
@@ -295,6 +369,12 @@ prompt n'était prévu pour les personnes qui ne sont pas encore clientes.
   ce qui n'y figure pas.
 - **Choix du tenant principal** (le premier superviseur trouvé, dans
   `server.py`) : inchangé.
+- **Tags copiés dans les métadonnées R2** (lot 22) : inutile pour la
+  recherche, puisque R2 ne sait pas chercher dessus. Ils restent dans
+  MongoDB.
+- **Renommer ou fusionner un tag pour tous les fichiers d'un coup**, et
+  **recherche dans le texte intégral des documents** (lot 22) : plus tard,
+  si le besoin se confirme.
 
 ## À tester une fois déployé
 
@@ -347,6 +427,27 @@ actif sur le compte SAWALI)
 14. Depuis le numéro d'un **contact client connu**, pose une question : la
     réponse suit toujours le prompt système du compte, sans badge
     « Prospect ».
+
+**Lot 22 — tags et recherche R2** (avec le Pharmacien suivi du client WDD autorisé à déposer)
+
+15. Ouvre **Gestion de Stocks** → dossier **Factures**. Saisis les tags
+    « facture, copharmed » et une description, puis dépose un PDF : la
+    ligne du fichier affiche les tags et la description.
+16. Clique sur **Tags** de ce fichier, ajoute « urgent » et enregistre : le
+    tag s'affiche. Sur `INV DEC 2024 - WDD.pdf` (Racine), le bouton « Tags »
+    n'apparaît pas pour le Pharmacien suivi. Il apparaît pour l'admin ou le
+    superviseur, qui peut le taguer « inventaire, 2024 ».
+17. Reviens à la grille et tape « copharmed » dans la recherche : le PDF
+    apparaît avec son dossier. Clique sur la pastille « inventaire » : seul
+    `INV DEC 2024 - WDD.pdf` s'affiche. La croix efface la recherche.
+18. En **admin**, fiche du client WDD → **SMART Communications** : coche
+    « Suggestions de tags par l'IA ». Côté Pharmacien suivi, dépose un
+    nouveau PDF sans tag : un message annonce les suggestions. Environ
+    10 secondes plus tard, la ligne indique « x tag(s) suggéré(s) par
+    l'IA ». Dans « Tags », les suggestions violettes s'ajoutent d'un clic.
+19. Sur un fichier existant, clique sur « Suggérer des tags (IA) » : les
+    suggestions arrivent avec leur coût en FCFA. Décoche ensuite l'option
+    côté admin : le bouton disparaît.
 
 Si quelque chose ne marche pas, renvoie-moi le message d'erreur exact (écran
 ou logs backend). Rappel : **aucun test, build, lint, Testing Agent ou

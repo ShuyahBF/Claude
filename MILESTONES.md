@@ -42,10 +42,8 @@ concerné.
   Clés R2_STOCKS_* renseignées et
   explorateur vérifié par l'utilisateur le 2026-09-23.
 - **Sawali lot 21 — Prospects WhatsApp Liluvine** livré le 2026-09-24,
-  **en attente de publication, cumulé avec le lot 20** dans
-  `sawali-portal-livraisons/sawali-portal-corrections_20_to_21_6dc688b.patch`
-  + `sawali-portal-prompt_20_to_21.md` (base : lot 19 publié ; remplace
-  `…_20_a06ccf9` + `prompt_20`, jamais soumis — crédits Emergent épuisés).
+  **en attente de publication, cumulé avec les lots 20 et 22** (voir
+  lot 22 ci-dessous pour la livraison en cours).
   Contenu : prospect = numéro inconnu (`contact=None`) ou contact étiqueté
   `prospect` ; prompt dédié `settings.global.liluvine_wa_prospect_system_prompt`
   (défaut `DEFAULT_WA_PROSPECT_SYSTEM_PROMPT`) ; aucune donnée CRM injectée
@@ -55,6 +53,18 @@ concerné.
   contrôle de contrat ; badge « Prospect » dans l'historique. Règle
   convenue : les lots suivants s'empilent dans une seule livraison
   cumulée `20_to_<N>` tant que rien n'est publié.
+- **Sawali lot 22 — Tags et recherche des documents R2** livré le
+  2026-09-24, **en attente de publication** ; livraison cumulée en cours :
+  `sawali-portal-livraisons/sawali-portal-corrections_20_to_22_cd6c45a.patch`
+  + `sawali-portal-prompt_20_to_22.md` (base : lot 19 publié ; remplace
+  `…_20_to_21_6dc688b`, jamais soumis). Contenu : collection Mongo
+  `stock_files` (une fiche par fichier R2 — R2 ne sait pas chercher par
+  tag), tags + description au dépôt et après coup, recherche tous dossiers
+  (accents/majuscules ignorés) + pastilles de filtre, droits (staff : tout ;
+  Pharmacien suivi autorisé : ses fichiers), suggestions IA facultatives
+  par client (`users.gestion_stocks_ai_tags`, ocr_core + Haiku 4.5, jamais
+  appliquées d'office). Dev : branche `claude/r2-explorer` du clone
+  Sawali, commits 6022065 (20), 60aaac0 (21), 780b226 (22).
 - **Module commun `ocr-core/`** (ce dépôt, v1.0.0) : source unique de l'OCR,
   copiée à l'identique dans chaque site par `ocr-core/sync.sh` ; chaque site
   ne garde qu'un adaptateur (droits, stockage, collections). Sawali l'utilise
