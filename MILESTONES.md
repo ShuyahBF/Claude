@@ -41,6 +41,20 @@ concerné.
   de dossiers ; Centre de Messagerie en pleine largeur).
   Clés R2_STOCKS_* renseignées et
   explorateur vérifié par l'utilisateur le 2026-09-23.
+- **Sawali lot 21 — Prospects WhatsApp Liluvine** livré le 2026-09-24,
+  **en attente de publication, cumulé avec le lot 20** dans
+  `sawali-portal-livraisons/sawali-portal-corrections_20_to_21_6dc688b.patch`
+  + `sawali-portal-prompt_20_to_21.md` (base : lot 19 publié ; remplace
+  `…_20_a06ccf9` + `prompt_20`, jamais soumis — crédits Emergent épuisés).
+  Contenu : prospect = numéro inconnu (`contact=None`) ou contact étiqueté
+  `prospect` ; prompt dédié `settings.global.liluvine_wa_prospect_system_prompt`
+  (défaut `DEFAULT_WA_PROSPECT_SYSTEM_PROMPT`) ; aucune donnée CRM injectée
+  pour un prospect (fuite corrigée) ; consignes « Mode WhatsApp »
+  modifiables (`liluvine_wa_mode_instructions`) ; case
+  `liluvine_wa_prospect_enabled` ; tenant admin/superviseur exempté du
+  contrôle de contrat ; badge « Prospect » dans l'historique. Règle
+  convenue : les lots suivants s'empilent dans une seule livraison
+  cumulée `20_to_<N>` tant que rien n'est publié.
 - **Module commun `ocr-core/`** (ce dépôt, v1.0.0) : source unique de l'OCR,
   copiée à l'identique dans chaque site par `ocr-core/sync.sh` ; chaque site
   ne garde qu'un adaptateur (droits, stockage, collections). Sawali l'utilise

@@ -1,14 +1,14 @@
-From a06ccf9e417ad2492587e4b3ddc3af13a3e7e194 Mon Sep 17 00:00:00 2001
+From 6dc688b5fd208f32bf74b8cb527f0a6c50afe0c8 Mon Sep 17 00:00:00 2001
 From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
-Date: Thu, 24 Sep 2026 00:04:29 +0000
-Subject: [PATCH] =?UTF-8?q?feat(gestion-stocks):=20explorateur=20R2=20?=
- =?UTF-8?q?=E2=80=94=20emplacement,=20d=C3=A9p=C3=B4ts=20autoris=C3=A9s,?=
- =?UTF-8?q?=20espace=20allou=C3=A9?=
+Date: Thu, 24 Sep 2026 12:12:23 +0000
+Subject: [PATCH] =?UTF-8?q?feat:=20lots=2020=20=C3=A0=2021=20=E2=80=94=20e?=
+ =?UTF-8?q?xplorateur=20R2=20de=20Gestion=20de=20Stocks,=20prospects=20Wha?=
+ =?UTF-8?q?tsApp=20Liluvine?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-Explorateur Stockage R2 de Gestion de Stocks :
+Lot 20 — Explorateur Stockage R2 de Gestion de Stocks :
 - fil d'Ariane « Compartiment <bucket> › <client> › <dossier> » ; le
   compartiment et le client sont cliquables pour revenir aux dossiers ;
 - dépôt depuis l'ordinateur : bouton « Déposer des fichiers », glisser-
@@ -40,18 +40,42 @@ Nouvelles routes : GET /gestion-stocks/folders, GET /gestion-stocks/storage, POS
 /admin/gestion-stocks/tenants/{client_id}/storage. Champs :
 tracked_users.r2_upload_allowed / r2_upload_max_mb,
 users.gestion_stocks_quota_gb.
+
+Lot 21 — Auto-réponse WhatsApp Liluvine pour les prospects (expéditeurs
+non contractuels : numéro inconnu du carnet et des comptes, ou contact
+étiqueté « prospect ») :
+- prompt système dédié aux prospects, modifiable dans Admin → Paramètres →
+  « Liluvine PRO — Auto-réponse WhatsApp » (vide = texte par défaut), et
+  case pour couper ces réponses ;
+- plus aucune donnée du CRM (contacts, paiements, tickets, RAG métier)
+  injectée dans le contexte d'une réponse à un prospect : seule la base de
+  connaissance reste ;
+- consignes « Mode auto-réponse WhatsApp » modifiables pour toutes les
+  réponses (vide = texte d'origine) ;
+- le compte de la plateforme (admin/superviseur) n'est plus soumis aux
+  contrôles de contrat/accès restreint, qui bloquaient toute réponse aux
+  numéros inconnus quand ce compte n'avait pas de numéro de contrat ;
+- réponses aux prospects marquées « Prospect » dans l'historique.
+Clés settings.global : liluvine_wa_prospect_enabled,
+liluvine_wa_prospect_system_prompt, liluvine_wa_mode_instructions.
 ---
  backend/r2_stocks_client.py                   |  18 +-
  backend/routes/gestion_stocks.py              | 350 +++++++++++++++++-
+ backend/routes/liluvine_pro.py                |  45 ++-
+ backend/routes/liluvine_wa_autoreply.py       |  94 ++++-
  backend/tests/test_gestion_stocks_r2_lot20.py | 212 +++++++++++
+ .../tests/test_liluvine_wa_prospects_lot21.py | 212 +++++++++++
  frontend/src/components/R2StorageGauge.jsx    |  69 ++++
  .../src/pages/admin/AdminClientFeatures.jsx   |  85 ++++-
  .../src/pages/admin/AdminTrackedUsers.jsx     |  93 ++++-
+ .../sections/LiluvineSystemPromptSection.jsx  |   3 +
+ .../sections/LiluvineWaAutoreplySection.jsx   |  90 ++++-
  frontend/src/pages/portal/Contacts.jsx        |   5 +-
  frontend/src/pages/portal/Dashboard.jsx       |   6 +
  frontend/src/pages/portal/GestionStocks.jsx   | 249 +++++++++++--
- 9 files changed, 1046 insertions(+), 41 deletions(-)
+ 14 files changed, 1470 insertions(+), 61 deletions(-)
  create mode 100644 backend/tests/test_gestion_stocks_r2_lot20.py
+ create mode 100644 backend/tests/test_liluvine_wa_prospects_lot21.py
  create mode 100644 frontend/src/components/R2StorageGauge.jsx
 
 diff --git a/backend/r2_stocks_client.py b/backend/r2_stocks_client.py
@@ -537,6 +561,259 @@ index 2b1ef37..313eb88 100644
      logger.info("[gestion_stocks] routes mounted under /api/gestion-stocks and /api/admin/gestion-stocks")
  
  
+diff --git a/backend/routes/liluvine_pro.py b/backend/routes/liluvine_pro.py
+index b89b06b..eb751c1 100644
+--- a/backend/routes/liluvine_pro.py
++++ b/backend/routes/liluvine_pro.py
+@@ -58,6 +58,34 @@ L'interface chat les affichera automatiquement sous forme de carrousel numérot
+ de quoi il parle. Ne fabrique jamais d'URL : utilise UNIQUEMENT celles fournies dans le
+ contexte. N'inclus pas d'image si aucune ne convient vraiment à la question."""
+ 
++# Lot 21 — Auto-réponse WhatsApp : textes par défaut, modifiables dans
++# Admin → Paramètres → « Liluvine PRO — Auto-réponse WhatsApp » (clés
++# settings.global `liluvine_wa_mode_instructions` et
++# `liluvine_wa_prospect_system_prompt`). Au scope module pour être importés
++# par routes/liluvine_wa_autoreply.py.
++
++# Consignes ajoutées à TOUTE réponse WhatsApp, sous l'en-tête fixe
++# « [IMPORTANT — Mode auto-réponse WhatsApp] » (texte identique à celui qui
++# était écrit en dur avant le lot 21 : rien ne change si l'admin n'y touche pas).
++DEFAULT_WA_MODE_INSTRUCTIONS = (
++    "Tu réponds à un message reçu sur WhatsApp. Sois courtois et concis (3-4 phrases max). "
++    "Ne réponds JAMAIS comme un humain — tu es Liluvine PRO, l'assistant SAWALI. "
++    "Si la question dépasse tes capacités, dis-lui qu'un agent humain va le recontacter rapidement."
++)
++
++# Prompt système des PROSPECTS : expéditeurs non contractuels (numéro inconnu
++# du carnet et des comptes, ou fiche contact étiquetée « prospect »). Il
++# remplace le prompt du tenant, qui décrit un accès aux données métier dont
++# un prospect ne doit rien recevoir.
++DEFAULT_WA_PROSPECT_SYSTEM_PROMPT = """Tu es Liluvine PRO, l'assistante virtuelle de SAWALI SMART SYSTEMS.
++La personne qui t'écrit n'est PAS encore cliente sous contrat : c'est un prospect.
++Tu réponds toujours en **français**, de façon chaleureuse et concise.
++- Présente simplement SAWALI et ses solutions (CRM, Caisse, Facturation, GRH, Tickets, WhatsApp Business, Liluvine) en t'appuyant UNIQUEMENT sur la base de connaissance fournie.
++- Tu n'as accès à AUCUNE donnée client : ne parle jamais de contacts, paiements, tickets, rendez-vous ou dossiers.
++- N'invente ni tarif, ni délai, ni engagement contractuel : si l'information n'est pas dans la base de connaissance, propose qu'un conseiller SAWALI le recontacte.
++- Invite la personne à indiquer son nom, sa structure et son besoin pour qu'un conseiller la rappelle."""
++
++
+ # Iter38r-fix9o (Item 1) — Tenant-configurable system prompt + escalation.
+ # Au SCOPE MODULE (pas dans une closure de attach_liluvine_pro_routes) —
+ # même raison que le hotfix Pydantic de vidal_securisation.py/vidal_patients.py :
+@@ -156,6 +184,10 @@ class AutoreplyConfigPayload(BaseModel):
+     brand_longitude: Optional[float] = Field(None, ge=-180, le=180)
+     brand_hours: Optional[str] = Field(None, max_length=2000)
+     brand_maps_url: Optional[str] = Field(None, max_length=500)
++    # Lot 21 — Prospects WhatsApp (expéditeurs non contractuels) + bloc « Mode WhatsApp » modifiable
++    prospect_enabled: Optional[bool] = None
++    prospect_system_prompt: Optional[str] = Field(None, max_length=20000)
++    mode_instructions: Optional[str] = Field(None, max_length=4000)
+ 
+ 
+ # Bypass list (2026-02) — Admin payload to overwrite the email allowlist.
+@@ -707,6 +739,10 @@ def setup_liluvine_pro_routes(*, db, api, get_current_user, wa_send_text=None):
+         "brand_longitude": "liluvine_wa_brand_longitude",
+         "brand_hours": "liluvine_wa_brand_hours",
+         "brand_maps_url": "liluvine_wa_brand_maps_url",
++        # Lot 21 — Prospects + bloc « Mode WhatsApp »
++        "prospect_enabled": "liluvine_wa_prospect_enabled",
++        "prospect_system_prompt": "liluvine_wa_prospect_system_prompt",
++        "mode_instructions": "liluvine_wa_mode_instructions",
+     }
+ 
+     @api.get("/admin/liluvine-pro/wa-autoreply", tags=["Admin — Liluvine PRO"])
+@@ -739,6 +775,12 @@ def setup_liluvine_pro_routes(*, db, api, get_current_user, wa_send_text=None):
+             "brand_longitude": s.get("liluvine_wa_brand_longitude"),
+             "brand_hours": s.get("liluvine_wa_brand_hours") or "",
+             "brand_maps_url": s.get("liluvine_wa_brand_maps_url") or "",
++            # Lot 21 — Prospects (réponse activée par défaut, comme avant le lot)
++            "prospect_enabled": s.get("liluvine_wa_prospect_enabled") is not False,
++            "prospect_system_prompt": s.get("liluvine_wa_prospect_system_prompt") or "",
++            "mode_instructions": s.get("liluvine_wa_mode_instructions") or "",
++            "default_mode_instructions": DEFAULT_WA_MODE_INSTRUCTIONS,
++            "default_prospect_system_prompt": DEFAULT_WA_PROSPECT_SYSTEM_PROMPT,
+         }
+ 
+     @api.put("/admin/liluvine-pro/wa-autoreply", tags=["Admin — Liluvine PRO"])
+@@ -770,7 +812,8 @@ def setup_liluvine_pro_routes(*, db, api, get_current_user, wa_send_text=None):
+         cursor = db.liluvine_pro_messages.find(
+             {"external_source": "whatsapp_native", "role": "assistant"},
+             {"_id": 0, "id": 1, "session_id": 1, "content": 1, "wa_message_id_out": 1,
+-             "tokens": 1, "created_at": 1, "context_injected": 1},
++             "tokens": 1, "created_at": 1, "context_injected": 1,
++             "prospect": 1},  # Lot 21 — badge « Prospect » dans l'historique
+         ).sort("created_at", -1).limit(min(max(limit, 1), 200))
+         items = await cursor.to_list(min(max(limit, 1), 200))
+         # Enrich with the originating session label
+diff --git a/backend/routes/liluvine_wa_autoreply.py b/backend/routes/liluvine_wa_autoreply.py
+index 36549b3..549a4d9 100644
+--- a/backend/routes/liluvine_wa_autoreply.py
++++ b/backend/routes/liluvine_wa_autoreply.py
+@@ -186,6 +186,33 @@ def _tenant_contract_validity(tenant_doc: Dict[str, Any], default_threshold: int
+     }
+ 
+ 
++async def _is_prospect_sender(db, contact: Optional[Dict[str, Any]]) -> bool:
++    """Lot 21 — Vrai si l'expéditeur WhatsApp n'est pas un client sous contrat :
++      - numéro inconnu : aucune fiche contact et aucun compte utilisateur
++        (le webhook passe alors `contact=None` et rattache le message au
++        tenant principal, c.-à-d. le compte SAWALI lui-même) ;
++      - OU fiche contact portant l'étiquette « prospect » (posée à la main
++        dans le carnet, insensible à la casse).
++    """
++    if not contact:
++        return True
++    tags = contact.get("tags")
++    if tags is None and contact.get("id"):
++        # Le webhook ne transmet pas les étiquettes : on relit la fiche.
++        doc = await db.directory_contacts.find_one({"id": contact["id"]}, {"_id": 0, "tags": 1}) or {}
++        tags = doc.get("tags")
++    return any(str(t).strip().lower() == "prospect" for t in (tags or []))
++
++
++def _is_platform_tenant(tenant_doc: Dict[str, Any]) -> bool:
++    """Lot 21 — Le tenant est le compte de la plateforme SAWALI (admin ou
++    superviseur), et non un client : il n'a pas de contrat avec lui-même, les
++    contrôles de contrat/accès restreint ne le concernent donc pas. Sans cette
++    exception, un compte SAWALI sans `contract_number` bloquait toute réponse
++    IA aux numéros inconnus (et notifiait ses décisionnaires à chaque message)."""
++    return (tenant_doc.get("role") or "") in ("admin", "superviseur")
++
++
+ async def _find_decision_maker_contacts(db, client_id: str) -> List[Dict[str, Any]]:
+     """Contacts marqués "décisionnaire" (Responsable/DG/Directeur, voir
+     is_decision_maker sur DirectoryContactCreate/Update) pour ce tenant —
+@@ -775,7 +802,10 @@ async def autoreply_to_inbound(
+ 
+     # Build the LLM context (reuse the same RAG helper as the chat UI)
+     try:
+-        from routes.liluvine_pro import _fetch_context_snippets, _resolve_base_system_prompt
++        from routes.liluvine_pro import (
++            DEFAULT_WA_MODE_INSTRUCTIONS, DEFAULT_WA_PROSPECT_SYSTEM_PROMPT,
++            _fetch_context_snippets, _resolve_base_system_prompt,
++        )
+     except Exception as exc:
+         logger.warning("[wa_autoreply] could not import liluvine helpers: %s", exc)
+         return {"ok": False, "reason": f"liluvine_import_failed: {exc!r}"}
+@@ -788,13 +818,22 @@ async def autoreply_to_inbound(
+     if not user_doc:
+         return {"ok": False, "reason": "tenant_user_not_found"}
+ 
++    # Lot 21 — Prospect (expéditeur non contractuel) : prompt dédié, aucune
++    # donnée du tenant dans le contexte, et possibilité de couper ces réponses
++    # (Admin → Paramètres → Auto-réponse WhatsApp → « Prospects »).
++    is_prospect = await _is_prospect_sender(db, contact)
++    if is_prospect and settings_doc.get("liluvine_wa_prospect_enabled") is False:
++        return {"ok": False, "reason": "prospect_replies_disabled"}
++    # Lot 21 — le compte de la plateforme n'est pas soumis aux contrôles de contrat.
++    platform_tenant = _is_platform_tenant(user_doc)
++
+     # Lot Liluvine (2026-09, point 3) — contrat invalide/expiré : plutôt que
+     # de générer une réponse IA normale, on notifie le(s) contact(s)
+     # décisionnaire(s) du tenant avec un message admin-configurable, et on
+     # s'arrête là (pas de réponse IA à l'expéditeur dans ce cas).
+     default_overdue_threshold = int(settings_doc.get("contract_overdue_days_default") or 5)
+     contract_status = _tenant_contract_validity(user_doc, default_overdue_threshold)
+-    if not contract_status["valid"]:
++    if not platform_tenant and not contract_status["valid"]:
+         decision_makers = await _find_decision_maker_contacts(db, scope_uid)
+         if not decision_makers:
+             logger.warning(
+@@ -838,7 +877,7 @@ async def autoreply_to_inbound(
+     # (montant de contrat sous le seuil, ou mode explicitement "restricted") :
+     # hors jours/heures ouvrées, on notifie les décisionnaires au lieu de
+     # répondre normalement.
+-    access_mode = _tenant_effective_access_mode(user_doc, settings_doc)
++    access_mode = None if platform_tenant else _tenant_effective_access_mode(user_doc, settings_doc)
+     if access_mode == "restricted":
+         try:
+             open_h = int(str(settings_doc.get("business_open_time") or "09:00").split(":", 1)[0])
+@@ -876,14 +915,21 @@ async def autoreply_to_inbound(
+                 )
+             return {"ok": False, "reason": "access_restricted_outside_hours", "notified_decision_makers": notified}
+ 
+-    ctx = await _fetch_context_snippets(db, user_doc, text)
+-    # Iter40 (2026-02) — Business RAG : queries on RDV/Tickets/HR/Caisse…
+-    # Filtré par ACL (liste blanche par module/numéro).
+-    try:
+-        from routes.liluvine_business_rag import build_business_rag_context
+-        biz_ctx = await build_business_rag_context(db, phone_digits=phone_digits, query=text)
+-    except Exception:  # noqa: BLE001
+-        biz_ctx = ""
++    # Lot 21 — Un prospect ne reçoit AUCUNE donnée du tenant : avant ce lot,
++    # un inconnu qui écrivait « mes contacts » ou « paiements » recevait dans
++    # le contexte de l'IA les 10 derniers contacts/paiements du compte SAWALI.
++    # Seule la base de connaissance (plus bas) reste injectée.
++    if is_prospect:
++        ctx, biz_ctx = "", ""
++    else:
++        ctx = await _fetch_context_snippets(db, user_doc, text)
++        # Iter40 (2026-02) — Business RAG : queries on RDV/Tickets/HR/Caisse…
++        # Filtré par ACL (liste blanche par module/numéro).
++        try:
++            from routes.liluvine_business_rag import build_business_rag_context
++            biz_ctx = await build_business_rag_context(db, phone_digits=phone_digits, query=text)
++        except Exception:  # noqa: BLE001
++            biz_ctx = ""
+     # Iter38r-fix9c — Also inject the Knowledge Base for WhatsApp auto-reply
+     try:
+         from routes.liluvine_kb import build_kb_context
+@@ -899,13 +945,25 @@ async def autoreply_to_inbound(
+     # avec l'auto-réponse WhatsApp. Version SANS règle d'escalade (celle du
+     # chat web) : la réponse WA a déjà son propre marqueur d'escalade
+     # `[ESCALATE: ...]`, ajouté séparément juste plus bas via ESCALATE_PROMPT_HINT.
+-    tenant_system_prompt = await _resolve_base_system_prompt(db, scope_uid)
++    # Lot 21 — Prospect : prompt dédié (settings.global
++    # `liluvine_wa_prospect_system_prompt`, sinon le prompt prospect par défaut).
++    # Client : prompt du tenant, comme avant.
++    if is_prospect:
++        base_prompt = (
++            (settings_doc.get("liluvine_wa_prospect_system_prompt") or "").strip()
++            or DEFAULT_WA_PROSPECT_SYSTEM_PROMPT
++        )
++    else:
++        base_prompt = await _resolve_base_system_prompt(db, scope_uid)
++    # Lot 21 — consignes « Mode WhatsApp » modifiables (vide = texte d'origine).
++    mode_instructions = (
++        (settings_doc.get("liluvine_wa_mode_instructions") or "").strip()
++        or DEFAULT_WA_MODE_INSTRUCTIONS
++    )
+     sys_text = (
+-        tenant_system_prompt
++        base_prompt
+         + "\n\n[IMPORTANT — Mode auto-réponse WhatsApp]\n"
+-        "Tu réponds à un message reçu sur WhatsApp. Sois courtois et concis (3-4 phrases max). "
+-        "Ne réponds JAMAIS comme un humain — tu es Liluvine PRO, l'assistant SAWALI. "
+-        "Si la question dépasse tes capacités, dis-lui qu'un agent humain va le recontacter rapidement."
++        + mode_instructions
+         + (("\n" + ctx) if ctx else "")
+         + (("\n" + biz_ctx) if biz_ctx else "")
+         + (("\n\n" + kb) if kb else "")
+@@ -1036,6 +1094,7 @@ async def autoreply_to_inbound(
+             "message_count": 0,
+             "external_source": "whatsapp_native",
+             "external_payload": {"phone_digits": phone_digits, "contact_id": (contact or {}).get("id")},
++            "prospect": is_prospect,  # Lot 21
+         })
+     await db.liluvine_pro_messages.insert_one({
+         "id": secrets.token_urlsafe(12),
+@@ -1052,6 +1111,7 @@ async def autoreply_to_inbound(
+         "user_id": user_doc["id"], "role": "assistant", "content": final_text,
+         "tokens": tokens, "model": "claude-haiku-4-5-20251001",
+         "context_injected": bool(ctx),
++        "prospect": is_prospect,  # Lot 21 — réponse faite avec le prompt prospect
+         "external_source": "whatsapp_native",
+         "wa_message_id_out": send_res.get("message_id"),
+         "created_at": _now_iso(),
+@@ -1104,7 +1164,7 @@ async def autoreply_to_inbound(
+         "ok": True, "reason": "sent",
+         "wa_out_message_id": send_res.get("message_id"),
+         "session_id": session_id, "reply_message_id": out_msg_id,
+-        "tokens": tokens,
++        "tokens": tokens, "prospect": is_prospect,
+     }
+ 
+ 
 diff --git a/backend/tests/test_gestion_stocks_r2_lot20.py b/backend/tests/test_gestion_stocks_r2_lot20.py
 new file mode 100644
 index 0000000..22f58f3
@@ -755,6 +1032,224 @@ index 0000000..22f58f3
 +    assert real._bucket() == "gestionstocks"
 +    monkeypatch.setenv("R2_STOCKS_BUCKET", "autre")
 +    assert real._bucket() == "autre"
+diff --git a/backend/tests/test_liluvine_wa_prospects_lot21.py b/backend/tests/test_liluvine_wa_prospects_lot21.py
+new file mode 100644
+index 0000000..e157e9f
+--- /dev/null
++++ b/backend/tests/test_liluvine_wa_prospects_lot21.py
+@@ -0,0 +1,212 @@
++"""Lot 21 — Auto-réponse WhatsApp Liluvine : prompt dédié aux prospects
++(expéditeurs non contractuels), consignes « Mode WhatsApp » modifiables,
++aucune donnée CRM transmise à un prospect, et compte plateforme exempté des
++contrôles de contrat.
++
++Tests autonomes : MongoDB simulé (mongomock-motor), IA et envois WhatsApp
++simulés — aucun serveur, aucune clé, aucun réseau.
++Lancer : cd backend && python -m pytest tests/test_liluvine_wa_prospects_lot21.py -q
++"""
++from __future__ import annotations
++
++import asyncio
++import sys
++import types
++from pathlib import Path
++
++import pytest
++
++pytest.importorskip("mongomock_motor")
++from mongomock_motor import AsyncMongoMockClient  # noqa: E402
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++# Numéros de test
++UNKNOWN = "22670000001"       # numéro absent du carnet et des comptes
++CLIENT_CONTACT = "22670000002"  # contact normal d'une pharmacie cliente
++TAGGED = "22670000003"        # contact étiqueté « prospect » chez la pharmacie
++
++
++class _FakeChat:
++    """Remplace LlmChat : mémorise le prompt système reçu, répond un texte fixe."""
++    last_system = None
++
++    def __init__(self, api_key=None, session_id=None, system_message=""):
++        _FakeChat.last_system = system_message
++
++    def with_model(self, *_a):
++        return self
++
++    async def send_message(self, _msg):
++        return "Bonjour, merci pour votre message."
++
++
++def _stub(monkeypatch, name, **attrs):
++    """Installe un faux module `name` (avec ses attributs) dans sys.modules."""
++    mod = types.ModuleType(name)
++    for k, v in attrs.items():
++        setattr(mod, k, v)
++    monkeypatch.setitem(sys.modules, name, mod)
++    return mod
++
++
++@pytest.fixture()
++def env(monkeypatch):
++    # --- Dépendances externes simulées ---------------------------------
++    monkeypatch.setenv("EMERGENT_LLM_KEY", "test-key")
++    _stub(monkeypatch, "server")  # pas de LILUVINE_REACTIONS_HELPERS
++    _stub(monkeypatch, "emergentintegrations")
++    _stub(monkeypatch, "emergentintegrations.llm")
++    _stub(monkeypatch, "emergentintegrations.llm.chat", LlmChat=_FakeChat, UserMessage=lambda text: text)
++
++    async def _kb(db, max_chars=0, query=""):
++        return "BASE_DE_CONNAISSANCE"
++
++    async def _biz(db, phone_digits="", query=""):
++        return "DONNEES_METIER_ACL"
++
++    async def _noop(*a, **k):
++        return None
++
++    async def _no_agents(db):
++        return []
++
++    _stub(monkeypatch, "routes.liluvine_kb", build_kb_context=_kb)
++    _stub(monkeypatch, "routes.liluvine_business_rag", build_business_rag_context=_biz)
++    _stub(monkeypatch, "routes.liluvine_escalation", ESCALATE_PROMPT_HINT="",
++          strip_escalation_marker=lambda r: (r, None), notify_admin=_noop)
++    _stub(monkeypatch, "routes.liluvine_agents", get_agents=_no_agents,
++          match_agent_for_message=lambda a, t: None, build_signature=lambda a: "")
++    _stub(monkeypatch, "routes.llm_health", record_llm_outcome=_noop)
++    _stub(monkeypatch, "routes.ai_quotas", track_ai_usage=_noop)
++
++    from routes import liluvine_pro
++    from routes import liluvine_wa_autoreply as autoreply
++
++    # Contexte CRM du tenant : marqueur reconnaissable
++    async def _ctx(db, user, text):
++        return "DONNEES_CRM_DU_TENANT"
++    monkeypatch.setattr(liluvine_pro, "_fetch_context_snippets", _ctx)
++
++    db = AsyncMongoMockClient()["sawali_test_lot21"]
++    loop = asyncio.new_event_loop()
++    loop.run_until_complete(db.users.insert_many([
++        # Compte SAWALI (tenant principal) : superviseur SANS numéro de contrat
++        {"id": "sawali", "role": "superviseur", "company": "SAWALI", "features": {"ai_liluvine_pro": True},
++         "liluvine_pro_system_prompt": "PROMPT_DU_COMPTE_SAWALI"},
++        # Pharmacie cliente sous contrat valable (paiement récent)
++        {"id": "pharma", "role": "pharmacien", "company": "Pharmacie Test", "features": {"ai_liluvine_pro": True},
++         "contract_number": "C-001", "last_payment_at": _today(),
++         "liluvine_pro_system_prompt": "PROMPT_DE_LA_PHARMACIE"},
++        # Pharmacie cliente SANS contrat
++        {"id": "pharma-sans", "role": "pharmacien", "company": "Sans Contrat", "features": {"ai_liluvine_pro": True}},
++    ]))
++    loop.run_until_complete(db.directory_contacts.insert_many([
++        {"id": "c-client", "client_id": "pharma", "name": "Client fidèle", "phone": f"+{CLIENT_CONTACT}"},
++        {"id": "c-tag", "client_id": "pharma-sans", "name": "Curieux", "phone": f"+{TAGGED}", "tags": ["Prospect"]},
++    ]))
++
++    sent: list = []
++
++    async def wa_send_text(to, text, reply_to_message_id=None):
++        sent.append({"to": to, "text": text})
++        return {"ok": True, "message_id": "wamid.out"}
++
++    def run(phone, tenant, contact=None, text="Bonjour, quels sont vos services ?", **settings):
++        """Simule un message WhatsApp entrant et renvoie le résultat de l'auto-réponse."""
++        _FakeChat.last_system = None
++        base = {
++            "liluvine_wa_autoreply_enabled": True,
++            "liluvine_wa_autoreply_cooldown_seconds": 0,
++        }
++        base.update(settings)
++        inbound = {"from": f"+{phone}", "phone_digits": phone, "body": text,
++                   "wa_message_id": f"wamid.in.{phone}", "client_id": tenant, "message_type": "text"}
++        return loop.run_until_complete(autoreply.autoreply_to_inbound(
++            db, inbound_doc=inbound, contact=contact, settings_doc=base, wa_send_text=wa_send_text,
++        ))
++
++    yield types.SimpleNamespace(run=run, sent=sent, db=db, loop=loop, liluvine_pro=liluvine_pro)
++    loop.close()
++
++
++def _today():
++    from datetime import date
++    return date.today().isoformat()
++
++
++def test_unknown_sender_gets_default_prospect_prompt_without_crm_data(env):
++    res = env.run(UNKNOWN, "sawali")
++    # Compte SAWALI sans contrat : la réponse part quand même (compte plateforme exempté).
++    assert res["ok"] is True and res["prospect"] is True
++    system = _FakeChat.last_system
++    assert system.startswith(env.liluvine_pro.DEFAULT_WA_PROSPECT_SYSTEM_PROMPT)
++    assert "PROMPT_DU_COMPTE_SAWALI" not in system
++    # Aucune donnée du CRM, seulement la base de connaissance.
++    assert "DONNEES_CRM_DU_TENANT" not in system and "DONNEES_METIER_ACL" not in system
++    assert "BASE_DE_CONNAISSANCE" in system
++    # Consignes « Mode WhatsApp » d'origine
++    assert env.liluvine_pro.DEFAULT_WA_MODE_INSTRUCTIONS in system
++    # Traçabilité : message assistant marqué « prospect »
++    msg = env.loop.run_until_complete(env.db.liluvine_pro_messages.find_one({"role": "assistant"}))
++    assert msg["prospect"] is True and msg["context_injected"] is False
++
++
++def test_custom_prospect_prompt_and_mode_instructions(env):
++    res = env.run(UNKNOWN, "sawali",
++                  liluvine_wa_prospect_system_prompt="  MON_PROMPT_PROSPECT  ",
++                  liluvine_wa_mode_instructions="MES_CONSIGNES_WA")
++    assert res["ok"] is True
++    system = _FakeChat.last_system
++    assert system.startswith("MON_PROMPT_PROSPECT")
++    assert "[IMPORTANT — Mode auto-réponse WhatsApp]\nMES_CONSIGNES_WA" in system
++    assert env.liluvine_pro.DEFAULT_WA_MODE_INSTRUCTIONS not in system
++
++
++def test_prospect_replies_can_be_disabled(env):
++    res = env.run(UNKNOWN, "sawali", liluvine_wa_prospect_enabled=False)
++    assert res == {"ok": False, "reason": "prospect_replies_disabled"}
++    assert env.sent == [] and _FakeChat.last_system is None
++
++
++def test_known_client_keeps_tenant_prompt_and_crm_context(env):
++    res = env.run(CLIENT_CONTACT, "pharma", contact={"id": "c-client", "client_id": "pharma", "name": "Client fidèle"},
++                  liluvine_wa_prospect_system_prompt="MON_PROMPT_PROSPECT",
++                  liluvine_wa_mode_instructions="MES_CONSIGNES_WA")
++    assert res["ok"] is True and res["prospect"] is False
++    system = _FakeChat.last_system
++    assert system.startswith("PROMPT_DE_LA_PHARMACIE") and "MON_PROMPT_PROSPECT" not in system
++    assert "DONNEES_CRM_DU_TENANT" in system and "DONNEES_METIER_ACL" in system
++    # Les consignes « Mode WhatsApp » s'appliquent aussi aux clients.
++    assert "MES_CONSIGNES_WA" in system
++
++
++def test_tagged_prospect_of_client_without_contract_is_still_gated(env):
++    # Le contrôle de contrat reste actif pour un tenant client, même pour un prospect.
++    res = env.run(TAGGED, "pharma-sans", contact={"id": "c-tag", "client_id": "pharma-sans", "name": "Curieux"})
++    assert res["ok"] is False and res["reason"].startswith("contract_invalid")
++    assert _FakeChat.last_system is None
++
++
++def test_client_tenant_without_contract_still_blocked_for_clients(env):
++    env.loop.run_until_complete(env.db.directory_contacts.insert_one(
++        {"id": "c-x", "client_id": "pharma-sans", "name": "Client X", "phone": "+22670000009"}))
++    res = env.run("22670000009", "pharma-sans", contact={"id": "c-x", "client_id": "pharma-sans", "name": "Client X"})
++    assert res["ok"] is False and res["reason"].startswith("contract_invalid")
++
++
++def test_is_prospect_sender_rules(env):
++    from routes.liluvine_wa_autoreply import _is_prospect_sender, _is_platform_tenant
++    run = env.loop.run_until_complete
++    assert run(_is_prospect_sender(env.db, None)) is True
++    assert run(_is_prospect_sender(env.db, {"id": "c-tag"})) is True          # étiquette relue en base
++    assert run(_is_prospect_sender(env.db, {"id": "c-client"})) is False
++    assert run(_is_prospect_sender(env.db, {"id": "x", "tags": ["vip"]})) is False
++    assert _is_platform_tenant({"role": "superviseur"}) and _is_platform_tenant({"role": "admin"})
++    assert not _is_platform_tenant({"role": "pharmacien"})
++
++
++def test_admin_payload_accepts_lot21_fields(env):
++    payload = env.liluvine_pro.AutoreplyConfigPayload(
++        prospect_enabled=False, prospect_system_prompt="P", mode_instructions="M")
++    assert payload.prospect_enabled is False and payload.mode_instructions == "M"
 diff --git a/frontend/src/components/R2StorageGauge.jsx b/frontend/src/components/R2StorageGauge.jsx
 new file mode 100644
 index 0000000..e7df28c
@@ -1069,6 +1564,156 @@ index eaf0469..e2ae197 100644
  // ====================================================================
  // Password dialog — set or reset password for a tracked user
  // ====================================================================
+diff --git a/frontend/src/pages/admin/sections/LiluvineSystemPromptSection.jsx b/frontend/src/pages/admin/sections/LiluvineSystemPromptSection.jsx
+index 20a1796..98318cd 100644
+--- a/frontend/src/pages/admin/sections/LiluvineSystemPromptSection.jsx
++++ b/frontend/src/pages/admin/sections/LiluvineSystemPromptSection.jsx
+@@ -59,6 +59,9 @@ const LiluvineSystemPromptSection = () => {
+           <h3 className="font-display font-bold text-slate-900">Liluvine PRO — Prompt système (assistant)</h3>
+           <p className="text-xs text-slate-500 mt-0.5">
+             Personnalisez le ton, le rôle et les règles de Liluvine pour votre entreprise. La règle d'escalade vers un humain est ajoutée automatiquement côté serveur (token <code className="rounded bg-slate-100 px-1">[ESCALATION_HUMAINE]</code>).
++            {/* Lot 21 — ce prompt ne s'applique plus aux prospects WhatsApp */}
++            {" "}Sur WhatsApp, ce prompt sert aux <strong>clients</strong> ; les <strong>prospects</strong> (numéros inconnus) ont
++            leur propre prompt dans « Liluvine PRO — Auto-réponse WhatsApp ».
+           </p>
+         </div>
+       </header>
+diff --git a/frontend/src/pages/admin/sections/LiluvineWaAutoreplySection.jsx b/frontend/src/pages/admin/sections/LiluvineWaAutoreplySection.jsx
+index 2eca35c..9d5d9c1 100644
+--- a/frontend/src/pages/admin/sections/LiluvineWaAutoreplySection.jsx
++++ b/frontend/src/pages/admin/sections/LiluvineWaAutoreplySection.jsx
+@@ -2,7 +2,7 @@
+ // Iter38r-fix9a — Liluvine PRO : Auto-réponse WhatsApp native
+ // =====================================================================
+ import React, { useCallback, useEffect, useState } from "react";
+-import { Sparkles, MessageCircle, Save, Copy, History, AlertCircle } from "lucide-react";
++import { Sparkles, MessageCircle, Save, Copy, History, AlertCircle, UserPlus, RotateCcw } from "lucide-react";
+ import { toast } from "sonner";
+ import { apiClient } from "@/lib/api";
+ 
+@@ -43,6 +43,10 @@ export default function LiluvineWaAutoreplySection() {
+         brand_longitude: r.data.brand_longitude == null ? "" : String(r.data.brand_longitude),
+         brand_hours: r.data.brand_hours || "",
+         brand_maps_url: r.data.brand_maps_url || "",
++        // Lot 21 — Prospects (expéditeurs non contractuels) + consignes « Mode WhatsApp »
++        prospect_enabled: r.data.prospect_enabled !== false,
++        prospect_system_prompt: r.data.prospect_system_prompt || "",
++        mode_instructions: r.data.mode_instructions || "",
+       });
+     } catch (e) {
+       toast.error("Erreur chargement config auto-réponse");
+@@ -76,6 +80,10 @@ export default function LiluvineWaAutoreplySection() {
+         brand_location_hint: form.brand_location_hint || "",
+         brand_hours: form.brand_hours || "",
+         brand_maps_url: form.brand_maps_url || "",
++        // Lot 21
++        prospect_enabled: !!form.prospect_enabled,
++        prospect_system_prompt: form.prospect_system_prompt || "",
++        mode_instructions: form.mode_instructions || "",
+       };
+       const latStr = (form.brand_latitude ?? "").toString().trim();
+       const lonStr = (form.brand_longitude ?? "").toString().trim();
+@@ -137,7 +145,8 @@ export default function LiluvineWaAutoreplySection() {
+ 
+       <p className="text-xs text-slate-600 leading-relaxed">
+         Quand cette option est activée, Liluvine PRO répond automatiquement aux messages WhatsApp entrants (sans passer par n8n).
+-        Le contexte de votre CRM est injecté via le RAG (contacts, tickets, paiements, RDV, notes).
++        Pour vos clients, le contexte de votre CRM est injecté via le RAG (contacts, tickets, paiements, RDV, notes) ;
++        les prospects, eux, n'en reçoivent rien (voir « Prospects » ci-dessous).
+         Un anti-flood limite à <strong>1 réponse / {form.cooldown_seconds || 60}s par numéro</strong>.
+       </p>
+ 
+@@ -250,6 +259,81 @@ export default function LiluvineWaAutoreplySection() {
+         <p className="text-[10px] text-slate-500 mt-1">Laissez vide pour conserver la valeur par défaut. Sera ajoutée à la fin de chaque réponse pour transparence.</p>
+       </div>
+ 
++      {/* Lot 21 — Prospects : expéditeurs non contractuels (numéro inconnu ou contact étiqueté « prospect ») */}
++      <div className="rounded-lg ring-1 ring-violet-200 bg-violet-50/40 p-3 space-y-2" data-testid="liluvine-prospect-section">
++        <h3 className="text-xs font-semibold text-violet-900 inline-flex items-center gap-1.5">
++          <UserPlus className="h-3.5 w-3.5" /> Prospects — expéditeurs non contractuels
++        </h3>
++        <p className="text-[10px] text-violet-900/80 leading-relaxed">
++          Un <strong>prospect</strong> est un numéro inconnu (absent du carnet de contacts et des comptes) ou un contact
++          portant l'étiquette <code>prospect</code>. Liluvine lui répond avec le prompt ci-dessous
++          (et non le prompt système de votre compte), en s'appuyant uniquement sur la base de connaissance :
++          <strong> aucune donnée de votre CRM</strong> (contacts, paiements, tickets…) ne lui est transmise.
++        </p>
++        <label className="flex items-center gap-2 text-[11px] text-violet-900 cursor-pointer">
++          <input
++            type="checkbox"
++            checked={!!form.prospect_enabled}
++            onChange={(e) => setForm({ ...form, prospect_enabled: e.target.checked })}
++            data-testid="liluvine-prospect-enabled"
++          />
++          <strong>Répondre automatiquement aux prospects</strong>
++        </label>
++        <div className="flex items-center justify-between">
++          <span className="text-[10px] uppercase tracking-wider font-semibold text-violet-900">Prompt système des prospects</span>
++          {/* Pré-remplit la zone avec le texte par défaut, pour le modifier plutôt que partir de zéro */}
++          <button
++            type="button"
++            onClick={() => setForm({ ...form, prospect_system_prompt: cfg.default_prospect_system_prompt || "" })}
++            className="text-[10px] inline-flex items-center gap-1 text-violet-700 hover:underline"
++            data-testid="liluvine-prospect-load-default"
++          >
++            <Copy className="h-3 w-3" /> Partir du texte par défaut
++          </button>
++        </div>
++        <textarea
++          value={form.prospect_system_prompt}
++          onChange={(e) => setForm({ ...form, prospect_system_prompt: e.target.value })}
++          rows={8}
++          maxLength={20000}
++          placeholder={cfg.default_prospect_system_prompt || ""}
++          className="w-full text-xs rounded-lg border border-violet-300 px-3 py-2 bg-white font-mono leading-relaxed"
++          data-testid="liluvine-prospect-prompt"
++        />
++        <p className="text-[10px] text-violet-900/70">Vide = texte par défaut (affiché en grisé).</p>
++      </div>
++
++      {/* Lot 21 — Consignes ajoutées à TOUTE réponse WhatsApp (clients et prospects) */}
++      <div className="rounded-lg ring-1 ring-sky-200 bg-sky-50/40 p-3 space-y-2" data-testid="liluvine-mode-section">
++        <div className="flex items-center justify-between">
++          <h3 className="text-xs font-semibold text-sky-900 inline-flex items-center gap-1.5">
++            <MessageCircle className="h-3.5 w-3.5" /> Consignes du mode WhatsApp (toutes les réponses)
++          </h3>
++          {/* Vider la zone = retour au texte d'origine */}
++          <button
++            type="button"
++            onClick={() => setForm({ ...form, mode_instructions: "" })}
++            className="text-[10px] inline-flex items-center gap-1 text-sky-700 hover:underline"
++            data-testid="liluvine-mode-reset"
++          >
++            <RotateCcw className="h-3 w-3" /> Texte d'origine
++          </button>
++        </div>
++        <p className="text-[10px] text-sky-900/80">
++          Ajoutées après le prompt système (du compte ou des prospects), sous l'en-tête
++          « [IMPORTANT — Mode auto-réponse WhatsApp] » : longueur, ton, renvoi vers un humain…
++        </p>
++        <textarea
++          value={form.mode_instructions}
++          onChange={(e) => setForm({ ...form, mode_instructions: e.target.value })}
++          rows={4}
++          maxLength={4000}
++          placeholder={cfg.default_mode_instructions || ""}
++          className="w-full text-xs rounded-lg border border-sky-300 px-3 py-2 bg-white font-mono leading-relaxed"
++          data-testid="liluvine-mode-instructions"
++        />
++      </div>
++
+       {/* Iter43-fix24h — Catch-all "…" pour commandes inconnues */}
+       <div className="rounded-lg ring-1 ring-orange-200 bg-orange-50/40 p-3 space-y-2" data-testid="liluvine-unknown-cmd-section">
+         <h3 className="text-xs font-semibold text-orange-900 inline-flex items-center gap-1.5">
+@@ -481,6 +565,8 @@ export default function LiluvineWaAutoreplySection() {
+                     <p className="text-xs text-slate-700 whitespace-pre-wrap">{m.content}</p>
+                     <div className="text-[10px] text-slate-400 mt-2 flex gap-2 flex-wrap">
+                       {m.context_injected && <span className="rounded-full bg-sky-50 ring-1 ring-sky-200 px-1.5 py-0.5 text-sky-700">RAG actif</span>}
++                      {/* Lot 21 — réponse faite avec le prompt des prospects */}
++                      {m.prospect && <span className="rounded-full bg-violet-50 ring-1 ring-violet-200 px-1.5 py-0.5 text-violet-700">Prospect</span>}
+                       {m.tokens && <span>~{m.tokens} tokens</span>}
+                       {m.wa_message_id_out && <span className="font-mono">wa: {m.wa_message_id_out.slice(-12)}</span>}
+                     </div>
 diff --git a/frontend/src/pages/portal/Contacts.jsx b/frontend/src/pages/portal/Contacts.jsx
 index 6441863..e1a5944 100644
 --- a/frontend/src/pages/portal/Contacts.jsx

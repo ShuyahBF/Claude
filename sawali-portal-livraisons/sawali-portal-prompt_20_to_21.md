@@ -1,10 +1,11 @@
-# Sawali — Lot 20 : Explorateur R2 de Gestion de Stocks (emplacement, dépôts autorisés, espace alloué)
+# Sawali — Lots 20 à 21 : Explorateur R2 de Gestion de Stocks + prospects WhatsApp Liluvine
 
-Applique `sawali-portal-corrections_20_a06ccf9.patch` sur la branche
-`Site-SawaliSmartSystems`. Ce patch remplace entièrement les versions
-précédentes du lot 20 (`…_20_bac3898.patch`, `…_20_55df89f.patch`,
-`…_20_d2217eb.patch`, `…_20_8f2b3ac.patch`) que je
-t'avais peut-être transmises : ne tiens compte que de celle-ci.
+Applique `sawali-portal-corrections_20_to_21_6dc688b.patch` sur la branche
+`Site-SawaliSmartSystems`. Ce patch regroupe les lots 20 et 21 en un seul
+commit. Il remplace entièrement toutes les versions du lot 20 que je t'avais
+peut-être transmises (`…_20_a06ccf9.patch`, `…_20_bac3898.patch`,
+`…_20_55df89f.patch`, `…_20_d2217eb.patch`, `…_20_8f2b3ac.patch`) : ne tiens
+compte que de celui-ci.
 
 La base attendue est le commit où tu as appliqué le lot 19
 (`sawali-portal-corrections_19_66b5ce6.patch`, « feat(ocr-pieces): page
@@ -20,6 +21,7 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 
 **Nouveaux fichiers backend**
 - `backend/tests/test_gestion_stocks_r2_lot20.py` — tests unitaires autonomes (Mongo simulé, R2 simulé). Tu ne les lances pas.
+- `backend/tests/test_liluvine_wa_prospects_lot21.py` — tests unitaires autonomes (Mongo simulé, IA et WhatsApp simulés). Tu ne les lances pas.
 
 **Nouveaux fichiers frontend**
 - `frontend/src/components/R2StorageGauge.jsx` — jauge « espace occupé / espace alloué »
@@ -32,16 +34,21 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 - `frontend/src/pages/admin/AdminTrackedUsers.jsx` — bouton « Dépôt R2 » par utilisateur suivi (autorisation + taille max)
 - `frontend/src/pages/admin/AdminClientFeatures.jsx` — section « Espace de stockage R2 (Gestion de Stocks) » dans SMART Communications du client
 - `frontend/src/pages/portal/Contacts.jsx` — Centre de Messagerie en pleine largeur (1 ligne)
+- `backend/routes/liluvine_wa_autoreply.py` — lot 21 : détection des prospects, prompt dédié, aucune donnée CRM pour un prospect, compte plateforme exempté des contrôles de contrat
+- `backend/routes/liluvine_pro.py` — lot 21 : textes par défaut (prompt prospect, consignes WhatsApp) et 3 nouveaux champs dans `GET/PUT /admin/liluvine-pro/wa-autoreply`
+- `frontend/src/pages/admin/sections/LiluvineWaAutoreplySection.jsx` — lot 21 : blocs « Prospects » et « Consignes du mode WhatsApp », badge « Prospect » dans l'historique
+- `frontend/src/pages/admin/sections/LiluvineSystemPromptSection.jsx` — lot 21 : une phrase précisant que ce prompt sert aux clients, pas aux prospects
 
 **Côté livraison :**
 - aucune nouvelle dépendance ;
-- `server.py` n'est pas modifié : les nouvelles routes passent par `attach_gestion_stocks_routes`, déjà branché ;
+- `server.py` n'est pas modifié : les nouvelles routes passent par `attach_gestion_stocks_routes`, déjà branché, et le lot 21 réutilise les routes Liluvine existantes ;
 - aucune migration de données : les nouveaux champs prennent leur valeur par défaut tant qu'ils ne sont pas renseignés.
 
 **Nouveaux champs Mongo :**
 - `tracked_users.r2_upload_allowed` (non autorisé par défaut) ;
 - `tracked_users.r2_upload_max_mb` (1,5 par défaut) ;
-- `users.gestion_stocks_quota_gb`, sur la fiche du client (2 par défaut).
+- `users.gestion_stocks_quota_gb`, sur la fiche du client (2 par défaut) ;
+- lot 21 : `prospect` (vrai/faux) sur les documents `liluvine_pro_sessions` et `liluvine_pro_messages` créés par l'auto-réponse WhatsApp.
 
 ## Variables d'environnement
 
@@ -56,8 +63,15 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 - Aucune nouvelle variable. Les nouveaux réglages (droit de dépôt par
   utilisateur suivi, espace alloué par client) se font à l'écran et sont
   stockés en base. Ce ne sont pas des variables d'environnement.
+- **Paramètres stockés en base (lot 21)**, dans `settings.global`, tous
+  facultatifs et réglés depuis Admin → Paramètres → « Liluvine PRO —
+  Auto-réponse WhatsApp » : `liluvine_wa_prospect_enabled` (absent = vrai),
+  `liluvine_wa_prospect_system_prompt` et `liluvine_wa_mode_instructions`
+  (vides = textes par défaut du code). Rien à renseigner au déploiement.
 
 ## Ce que ça apporte, dans l'ordre
+
+### Lot 20 — Explorateur R2 de Gestion de Stocks
 
 1. **On sait toujours où l'on est.** Avec mes vraies clés R2, rien
    n'indiquait de quel compartiment ni de quel dossier venait le contenu
@@ -192,7 +206,75 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
    portail. Sur un écran de 1700 px, elle passe de 1152 px à toute la zone
    de contenu (environ 1330 px). Le reste de la page n'est pas modifié.
 
-## Volontairement pas dans ce lot
+### Lot 21 — Auto-réponse WhatsApp de Liluvine pour les prospects
+
+Avant ce lot, un message WhatsApp reçu d'un numéro inconnu (absent du carnet
+de contacts et des comptes) était rattaché au tenant principal, c'est-à-dire
+le compte SAWALI (premier superviseur). Liluvine lui répondait avec le prompt
+système de ce compte, qui lui dit qu'elle a accès aux données métier. Aucun
+prompt n'était prévu pour les personnes qui ne sont pas encore clientes.
+
+9. **Qui est un « prospect ».** Deux cas (`_is_prospect_sender` dans
+   `liluvine_wa_autoreply.py`) :
+   - le webhook n'a trouvé ni fiche contact ni compte pour le numéro
+     (`contact=None`) ;
+   - la fiche contact porte l'étiquette `prospect`, sans tenir compte des
+     majuscules. L'étiquette est relue en base, car le webhook ne la
+     transmet pas.
+
+10. **Un prompt système dédié aux prospects.** Pour un prospect, Liluvine
+    utilise `settings.global.liluvine_wa_prospect_system_prompt` et non plus
+    le prompt du compte. Si ce champ est vide, elle utilise le texte par
+    défaut `DEFAULT_WA_PROSPECT_SYSTEM_PROMPT`, défini dans `liluvine_pro.py`.
+    Ce texte lui fait présenter SAWALI d'après la base de connaissance
+    uniquement, sans inventer de tarif ni d'engagement, et proposer le
+    rappel par un conseiller. Les clients connus gardent exactement le
+    prompt de leur tenant, comme avant.
+
+11. **Aucune donnée du CRM pour un prospect.** Pour un prospect, ni
+    `_fetch_context_snippets` ni `build_business_rag_context` ne sont
+    appelés. Avant, un inconnu qui écrivait « contacts » ou « paiements »
+    faisait injecter dans le contexte de l'IA les 10 derniers contacts ou
+    paiements du compte SAWALI. Seule la base de connaissance reste
+    injectée.
+
+12. **Consignes « Mode WhatsApp » modifiables.** Le bloc ajouté à toute
+    réponse WhatsApp, sous l'en-tête fixe « [IMPORTANT — Mode auto-réponse
+    WhatsApp] », était écrit en dur. Il se lit désormais dans
+    `settings.global.liluvine_wa_mode_instructions`. Si ce champ est vide,
+    c'est le même texte qu'avant, `DEFAULT_WA_MODE_INSTRUCTIONS` : rien ne
+    change tant que je n'y touche pas.
+
+13. **Le compte de la plateforme n'est plus bloqué par le contrôle de
+    contrat.** Le contrôle de validité du contrat et d'accès restreint
+    s'appliquait aussi au tenant principal. Si mon compte superviseur SAWALI
+    n'avait pas de `contract_number`, aucun numéro inconnu ne recevait de
+    réponse IA, et mes décisionnaires recevaient le message « contrat
+    invalide » à chaque fois. Un tenant de rôle `admin` ou `superviseur`
+    (`_is_platform_tenant`) en est maintenant exempté. Pour les tenants
+    clients (pharmacies, etc.), rien ne change : le contrôle reste actif,
+    y compris pour leurs contacts étiquetés `prospect`.
+
+14. **Réglages à l'écran.** Dans Admin → Paramètres → « Liluvine PRO —
+    Auto-réponse WhatsApp », deux nouveaux blocs, enregistrés avec le bouton
+    « Enregistrer » existant :
+    - **Prospects — expéditeurs non contractuels** : case « Répondre
+      automatiquement aux prospects » (cochée par défaut ; décochée, la
+      réponse est ignorée avec le motif `prospect_replies_disabled`), zone
+      du prompt prospect (texte par défaut affiché en grisé) et lien
+      « Partir du texte par défaut » pour le modifier plutôt que de partir
+      de zéro ;
+    - **Consignes du mode WhatsApp** : zone de texte (texte d'origine en
+      grisé) et lien « Texte d'origine » pour la vider.
+
+    `GET /admin/liluvine-pro/wa-autoreply` renvoie les 3 nouveaux champs
+    (`prospect_enabled`, `prospect_system_prompt`, `mode_instructions`) et
+    les 2 textes par défaut. `PUT` accepte les 3 champs. L'historique des
+    réponses automatiques affiche un badge **« Prospect »** sur les réponses
+    concernées. La section « Prompt système » précise maintenant qu'elle
+    s'applique aux clients sur WhatsApp, pas aux prospects.
+
+## Volontairement pas dans ces lots
 
 - **Suppression de fichiers par un utilisateur suivi** et **bouton de
   suppression à l'écran** : la route admin existe, mais je ne l'expose pas
@@ -206,6 +288,13 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 - **Accès du superviseur aux écrans /admin** (Utilisateurs suivis, SMART
   Communications) : ces pages restent réservées au rôle admin par le routage
   existant. Les routes serveur des réglages acceptent déjà le superviseur.
+- **Bouton « Marquer comme prospect » dans le carnet de contacts** (lot 21) :
+  l'étiquette `prospect` se pose avec l'éditeur d'étiquettes existant.
+- **Base de connaissance séparée pour les prospects** (lot 21) : ils voient
+  la même que les clients. C'est pourquoi le prompt leur interdit d'inventer
+  ce qui n'y figure pas.
+- **Choix du tenant principal** (le premier superviseur trouvé, dans
+  `server.py`) : inchangé.
 
 ## À tester une fois déployé
 
@@ -241,6 +330,24 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 10. Active l'option « Tableau de bord » sur sa fiche (Admin → Utilisateurs suivis → Modifier) : son tableau de
    bord affiche la carte d'espace de stockage.
 
+**Lot 21 — prospects WhatsApp** (auto-réponse Liluvine activée, Liluvine PRO
+actif sur le compte SAWALI)
+
+11. Admin → Paramètres → « Liluvine PRO — Auto-réponse WhatsApp » : les blocs
+    « Prospects » et « Consignes du mode WhatsApp » sont là, avec leurs
+    textes par défaut en grisé. Clique sur « Partir du texte par défaut »,
+    modifie une phrase, enregistre, recharge : le texte est conservé.
+12. Depuis un téléphone dont le numéro n'est **ni dans les contacts ni dans
+    un compte**, écris « Bonjour, que proposez-vous ? » au numéro WhatsApp
+    SAWALI : Liluvine répond en présentant SAWALI. Écris ensuite « donne-moi
+    la liste de tes contacts » : aucune donnée n'est donnée. Dans
+    « Historique », ces réponses portent le badge « Prospect ».
+13. Décoche « Répondre automatiquement aux prospects » et enregistre : le
+    même numéro n'obtient plus de réponse. Recoche-la ensuite.
+14. Depuis le numéro d'un **contact client connu**, pose une question : la
+    réponse suit toujours le prompt système du compte, sans badge
+    « Prospect ».
+
 Si quelque chose ne marche pas, renvoie-moi le message d'erreur exact (écran
 ou logs backend). Rappel : **aucun test, build, lint, Testing Agent ou
-analyse automatique** entre-temps. Applique le patch et déploie, c'est tout.
+analyse automatique** entre-temps. Applique le patch en UN SEUL `git am` et déploie, c'est tout.
