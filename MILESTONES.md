@@ -70,7 +70,7 @@ concerné.
   par client (`users.gestion_stocks_ai_tags`, ocr_core + Haiku 4.5, jamais
   appliquées d'office). Dev : branche `claude/r2-explorer` du clone
   Sawali, commits 6022065 (20), 60aaac0 (21), 780b226 (22).
-- **Sawali lot 23** livré le 2026-09-25, **en attente de publication**
+- **Sawali lot 23** livré le 2026-09-25, **publié et déployé le 2026-09-25** (commit Emergent `a708771` + `4c23f4b`, branche `conflict_230926_1008`, code identique à `689830c` ; production : bundle `main.57e162f4.js`, routes R2 en 401 ; lots 20-22 déployés en même temps)
   (base : `6ea933f` Emergent = `780b226` dev ;
   `sawali-portal-livraisons/sawali-portal-corrections_23_689830c.patch` +
   `sawali-portal-prompt_23.md` ; dev : branche `claude/lot23`, commit
@@ -135,3 +135,11 @@ concerné.
   (pas de clé API disponible dans l'environnement au moment du build) ;
   autres fournisseurs LLM (GPT-4o, Gemini, Mistral OCR) — non implémentés,
   à cadrer si demandé.
+- **Sawali lot 24** livré le 2026-09-25, **en attente de publication**
+  (base : `a708771`/`4c23f4b` Emergent = `689830c` dev ;
+  `sawali-portal-livraisons/sawali-portal-corrections_24_f4ddc14.patch` +
+  `sawali-portal-prompt_24.md` ; dev : branche `claude/lot24`). Contenu :
+  non-lus WhatsApp limités aux 30 derniers jours (47 anciens messages
+  apparus après le lot 23), bouton « Tout marquer comme lu »
+  (`POST /me/whatsapp/mark-all-read`), « Dernière interaction » en colonne
+  du tableau des contacts.

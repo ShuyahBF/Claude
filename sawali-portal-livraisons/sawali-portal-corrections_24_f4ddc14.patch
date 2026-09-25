@@ -1,0 +1,316 @@
+From f4ddc14be86d12a50db1be2cf5ec16c2f2634b7a Mon Sep 17 00:00:00 2001
+From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
+Date: Fri, 25 Sep 2026 21:13:19 +0000
+Subject: [PATCH] =?UTF-8?q?fix(messagerie):=20lot=2024=20=E2=80=94=20ancie?=
+ =?UTF-8?q?ns=20non-lus,=20=C2=AB=20Tout=20marquer=20comme=20lu=20=C2=BB,?=
+ =?UTF-8?q?=20colonne=20=C2=AB=20Derni=C3=A8re=20interaction=20=C2=BB?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Les messages WhatsApp non lus de plus de 30 jours ne sont plus comptés
+  comme nouveaux (badge, cloche, pastilles) : l'historique jamais marqué
+  comme lu — les messages reçus sans contact rattaché ne pouvaient pas l'être
+  avant le lot 23 — ne gonfle plus les compteurs. Ils restent non lus en base
+  et sont signalés à part (`older`).
+- Bouton « Tout marquer comme lu » dans le Centre de Messagerie
+  (POST /me/whatsapp/mark-all-read) : tous les non-lus rattachés à un
+  contact visible, quel que soit leur âge ; les expéditeurs inconnus (Inbox
+  unifiée) ne sont pas touchés.
+- La date/heure de la dernière interaction devient une colonne du tableau
+  des contacts (sous le nom seulement sur mobile).
+---
+ backend/server.py                            | 86 ++++++++++++++++----
+ backend/tests/test_messaging_center_lot23.py |  9 +-
+ backend/tests/test_messaging_center_lot24.py | 39 +++++++++
+ frontend/src/pages/portal/Contacts.jsx       | 48 ++++++++++-
+ 4 files changed, 159 insertions(+), 23 deletions(-)
+ create mode 100644 backend/tests/test_messaging_center_lot24.py
+
+diff --git a/backend/server.py b/backend/server.py
+index 2aa02e6..e36bb76 100644
+--- a/backend/server.py
++++ b/backend/server.py
+@@ -15628,17 +15628,17 @@ def _contact_phone_clauses(contact: Dict[str, Any]) -> List[Dict[str, Any]]:
+     return clauses
+ 
+ 
+-async def _wa_unread_summary(user: dict) -> Dict[str, Any]:
+-    """Non-lus WhatsApp du Centre de Messagerie — SOURCE UNIQUE pour la
+-    pastille de chaque contact, le total du badge de la sidebar et la cloche.
++# Lot 24 — un message non lu de plus de 30 jours n'est plus compté comme
++# « nouveau » : l'historique jamais marqué comme lu (avant le lot 23, les
++# messages reçus sans contact rattaché ne pouvaient pas l'être) ne gonfle plus
++# le badge. Il reste marqué comme non lu en base, et « Tout marquer comme lu »
++# le traite aussi.
++WA_UNREAD_MAX_AGE_DAYS = 30
+ 
+-    - périmètre : _resolve_visible_client_ids (celui de /me/contacts et de
+-      mark-read), pour TOUS les rôles, admin compris ;
+-    - un message sans contact_id est rattaché au contact dont le numéro
+-      correspond (8 derniers chiffres) ;
+-    - seuls comptent les messages rattachés à un contact VISIBLE (donc
+-      qu'on peut ouvrir et marquer comme lus) ; les autres (expéditeurs
+-      inconnus) sont renvoyés à part dans `unknown`, sans gonfler le total."""
++
++async def _wa_visible_contact_index(user: dict) -> Tuple[List[str], set, Dict[str, str]]:
++    """Périmètre visible, ids des contacts visibles et index « 8 derniers
++    chiffres du numéro → id du contact » (rattachement des messages)."""
+     visible_scope = await _resolve_visible_client_ids(user)
+     contacts = await db.directory_contacts.find(
+         {"client_id": {"$in": visible_scope}}, {"_id": 0, "id": 1, "whatsapp": 1, "phone": 1},
+@@ -15650,21 +15650,73 @@ async def _wa_unread_summary(user: dict) -> Dict[str, Any]:
+             suffix = _phone_suffix(raw)
+             if len(suffix) >= 6:
+                 by_suffix.setdefault(suffix, c["id"])
++    return visible_scope, ids, by_suffix
++
++
++def _wa_attribute(ids: set, by_suffix: Dict[str, str], contact_id: Optional[str], phone: Optional[str]) -> Optional[str]:
++    """Contact visible auquel rattacher un message (son contact_id, sinon son numéro), ou None."""
++    return contact_id if contact_id in ids else by_suffix.get(_phone_suffix(phone))
++
++
++async def _wa_unread_summary(user: dict) -> Dict[str, Any]:
++    """Non-lus WhatsApp du Centre de Messagerie — SOURCE UNIQUE pour la
++    pastille de chaque contact, le total du badge de la sidebar et la cloche.
++
++    - périmètre : _resolve_visible_client_ids (celui de /me/contacts et de
++      mark-read), pour TOUS les rôles, admin compris ;
++    - un message sans contact_id est rattaché au contact dont le numéro
++      correspond (8 derniers chiffres) ;
++    - seuls comptent les messages rattachés à un contact VISIBLE (donc
++      qu'on peut ouvrir et marquer comme lus) ; les autres (expéditeurs
++      inconnus) sont renvoyés à part dans `unknown`, sans gonfler le total ;
++    - Lot 24 : seuls comptent les messages des 30 derniers jours ; les non-lus
++      plus anciens sont renvoyés à part dans `older` (pour information)."""
++    visible_scope, ids, by_suffix = await _wa_visible_contact_index(user)
++    cutoff = (datetime.now(timezone.utc) - timedelta(days=WA_UNREAD_MAX_AGE_DAYS)).isoformat()
+     by_contact: Dict[str, int] = {}
+     unknown = 0
+-    pipeline = [
+-        {"$match": {"direction": "inbound", "read_by_us_at": None, "client_id": {"$in": visible_scope}}},
+-        {"$group": {"_id": {"c": "$contact_id", "p": "$phone_digits"}, "n": {"$sum": 1}}},
+-    ]
+-    async for row in db.whatsapp_messages.aggregate(pipeline):
++    older = 0
++    base = {"direction": "inbound", "read_by_us_at": None, "client_id": {"$in": visible_scope}}
++    group = {"$group": {"_id": {"c": "$contact_id", "p": "$phone_digits"}, "n": {"$sum": 1}}}
++    async for row in db.whatsapp_messages.aggregate([{"$match": {**base, "created_at": {"$gte": cutoff}}}, group]):
+         key = row.get("_id") or {}
+         n = int(row.get("n") or 0)
+-        cid = key.get("c") if key.get("c") in ids else by_suffix.get(_phone_suffix(key.get("p")))
++        cid = _wa_attribute(ids, by_suffix, key.get("c"), key.get("p"))
+         if cid:
+             by_contact[cid] = by_contact.get(cid, 0) + n
+         else:
+             unknown += n
+-    return {"total": sum(by_contact.values()), "by_contact": by_contact, "unknown": unknown}
++    async for row in db.whatsapp_messages.aggregate([{"$match": {**base, "created_at": {"$lt": cutoff}}}, group]):
++        key = row.get("_id") or {}
++        if _wa_attribute(ids, by_suffix, key.get("c"), key.get("p")):
++            older += int(row.get("n") or 0)
++    return {"total": sum(by_contact.values()), "by_contact": by_contact, "unknown": unknown,
++            "older": older, "max_age_days": WA_UNREAD_MAX_AGE_DAYS}
++
++
++@api.post("/me/whatsapp/mark-all-read", tags=["Portail Client"])
++async def me_whatsapp_mark_all_read(user: dict = Depends(get_current_user)):
++    """Lot 24 — « Tout marquer comme lu » dans le Centre de Messagerie : tous
++    les messages WhatsApp non lus rattachés à un contact visible, quel que soit
++    leur âge. Les messages d'expéditeurs inconnus ne sont pas touchés (ils se
++    traitent dans l'Inbox unifiée)."""
++    visible_scope, ids, by_suffix = await _wa_visible_contact_index(user)
++    to_mark: List[str] = []
++    async for m in db.whatsapp_messages.find(
++        {"direction": "inbound", "read_by_us_at": None, "client_id": {"$in": visible_scope}},
++        {"_id": 0, "id": 1, "contact_id": 1, "phone_digits": 1},
++    ):
++        if m.get("id") and _wa_attribute(ids, by_suffix, m.get("contact_id"), m.get("phone_digits")):
++            to_mark.append(m["id"])
++    updated = 0
++    now = _now()
++    for i in range(0, len(to_mark), 1000):
++        res = await db.whatsapp_messages.update_many(
++            {"id": {"$in": to_mark[i:i + 1000]}, "read_by_us_at": None},
++            {"$set": {"read_by_us_at": now, "read_by_us_id": user["id"]}},
++        )
++        updated += int(getattr(res, "modified_count", 0) or 0)
++    return {"ok": True, "updated": updated}
+ 
+ 
+ @api.get("/me/whatsapp/unread", tags=["Portail Client"])
+diff --git a/backend/tests/test_messaging_center_lot23.py b/backend/tests/test_messaging_center_lot23.py
+index 3e67a56..6d1dd6d 100644
+--- a/backend/tests/test_messaging_center_lot23.py
++++ b/backend/tests/test_messaging_center_lot23.py
+@@ -24,7 +24,10 @@ from mongomock_motor import AsyncMongoMockClient  # noqa: E402
+ 
+ SERVER = Path(__file__).resolve().parents[1] / "server.py"
+ FUNCS = {"_phone_suffix", "_contact_phone_clauses", "_wa_unread_summary", "me_whatsapp_unread",
+-         "me_contact_messages_mark_read", "me_contact_messages", "me_list_contacts"}
++         "me_contact_messages_mark_read", "me_contact_messages", "me_list_contacts",
++         # Lot 24
++         "_wa_visible_contact_index", "_wa_attribute", "me_whatsapp_mark_all_read"}
++CONSTS = {"WA_PHONE_SUFFIX_LEN", "WA_UNREAD_MAX_AGE_DAYS"}
+ SCOPE = ["t-pdp", "t-pdp-peer"]  # périmètre visible de l'utilisateur (tenant + pair de la même société)
+ 
+ 
+@@ -43,7 +46,7 @@ def _load(db) -> Dict[str, Any]:
+         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in FUNCS:
+             node.decorator_list = []
+             nodes.append(node)
+-        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == "WA_PHONE_SUFFIX_LEN" for t in node.targets):
++        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) in CONSTS for t in node.targets):
+             nodes.append(node)
+     assert {getattr(n, "name", None) for n in nodes} >= FUNCS
+     ns: Dict[str, Any] = {
+@@ -120,7 +123,7 @@ USER = {"id": "u1", "role": "client"}
+ def test_unread_summary_single_source(env):
+     got = env.run(env.ns["_wa_unread_summary"](USER))
+     assert got["by_contact"] == {"c-awa": 2, "c-ben": 1}
+-    assert got["total"] == 3 and got["unknown"] == 1
++    assert got["total"] == 3 and got["unknown"] == 1 and got["older"] == 0
+     # La route des pastilles renvoie exactement le même calcul (badge = pastilles = cloche).
+     assert env.run(env.ns["me_whatsapp_unread"](user=USER)) == got
+ 
+diff --git a/backend/tests/test_messaging_center_lot24.py b/backend/tests/test_messaging_center_lot24.py
+new file mode 100644
+index 0000000..2300bf7
+--- /dev/null
++++ b/backend/tests/test_messaging_center_lot24.py
+@@ -0,0 +1,39 @@
++"""Lot 24 — Centre de Messagerie : les non-lus de plus de 30 jours ne sont
++plus comptés comme nouveaux (historique jamais marqué comme lu), et « Tout
++marquer comme lu » traite tous les non-lus des contacts visibles.
++Réutilise l'environnement du lot 23 (fonctions extraites de server.py, Mongo simulé).
++Lancer : cd backend && python -m pytest tests/test_messaging_center_lot24.py -q
++"""
++from __future__ import annotations
++
++import sys
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parent))
++from test_messaging_center_lot23 import USER, _ts, env  # noqa: E402,F401 — fixture réutilisée
++
++
++def _add_old_unread(env, n=47):
++    """47 vieux messages jamais lus (45 jours), rattachés à Awa par son numéro."""
++    env.run(env.db.whatsapp_messages.insert_many([
++        {"id": f"old{i}", "client_id": "t-pdp", "direction": "inbound", "phone_digits": "22670111111",
++         "contact_id": None, "read_by_us_at": None, "created_at": _ts(60 * 24 * 45 + i)} for i in range(n)
++    ]))
++
++
++def test_old_unread_not_counted_but_reported(env):
++    _add_old_unread(env)
++    got = env.run(env.ns["_wa_unread_summary"](USER))
++    assert got["by_contact"] == {"c-awa": 2, "c-ben": 1} and got["total"] == 3
++    assert got["older"] == 47 and got["max_age_days"] == 30
++
++
++def test_mark_all_read_clears_contacts_but_not_unknown_senders(env):
++    _add_old_unread(env)
++    res = env.run(env.ns["me_whatsapp_mark_all_read"](user=USER))
++    assert res["updated"] == 2 + 1 + 47
++    got = env.run(env.ns["_wa_unread_summary"](USER))
++    assert got["total"] == 0 and got["older"] == 0
++    # L'expéditeur inconnu (Inbox unifiée) et l'autre tenant ne sont pas touchés.
++    assert env.run(env.db.whatsapp_messages.find_one({"id": "m5"}))["read_by_us_at"] is None
++    assert env.run(env.db.whatsapp_messages.find_one({"id": "m6"}))["read_by_us_at"] is None
+diff --git a/frontend/src/pages/portal/Contacts.jsx b/frontend/src/pages/portal/Contacts.jsx
+index 2ca7f42..b7c3f64 100644
+--- a/frontend/src/pages/portal/Contacts.jsx
++++ b/frontend/src/pages/portal/Contacts.jsx
+@@ -188,12 +188,27 @@ export default function Contacts() {
+     try {
+       const r = await apiClient.get("/me/whatsapp/unread");
+       const total = r.data?.total || 0;
+-      setUnread({ total, by_contact: r.data?.by_contact || {} });
++      setUnread({ total, by_contact: r.data?.by_contact || {}, older: r.data?.older || 0 });
+       if (lastUnreadTotalRef.current != null && total > lastUnreadTotalRef.current) load(true);
+       lastUnreadTotalRef.current = total;
+     } catch { /* noop */ }
+   };
+ 
++  // Lot 24 — « Tout marquer comme lu » : tous les non-lus des contacts
++  // (y compris l'historique de plus de 30 jours, qui n'est plus compté).
++  const markAllRead = async () => {
++    const n = (unread.total || 0) + (unread.older || 0);
++    if (!window.confirm(`Marquer comme lus les ${n} message(s) WhatsApp non lus de vos contacts ?`)) return;
++    try {
++      const r = await apiClient.post("/me/whatsapp/mark-all-read");
++      toast.success(`${r.data?.updated || 0} message(s) marqué(s) comme lu(s)`);
++      window.dispatchEvent(new Event("sawali:wa-messages-read"));
++      loadUnread();
++    } catch (err) {
++      toast.error(err?.response?.data?.detail || "Erreur");
++    }
++  };
++
+   const [pendingImports, setPendingImports] = useState([]);
+   const loadPending = async () => {
+     try {
+@@ -421,6 +436,16 @@ export default function Contacts() {
+             </button>
+           );
+         })}
++        {/* Lot 24 — tout marquer comme lu (non-lus récents + historique de plus de 30 jours) */}
++        {(unread.total > 0 || unread.older > 0) && (
++          <button type="button" onClick={markAllRead}
++            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ring-slate-200 bg-white text-slate-600 hover:bg-slate-50"
++            data-testid="contacts-mark-all-read"
++            title={unread.older > 0 ? `Dont ${unread.older} message(s) non lu(s) de plus de 30 jours, qui ne sont plus comptés` : "Marquer tous les messages non lus comme lus"}>
++            <CheckCheck className="h-3 w-3" /> Tout marquer comme lu
++            {unread.older > 0 && <span className="text-[10px] text-slate-400">(+{unread.older} anciens)</span>}
++          </button>
++        )}
+       </div>
+ 
+       {pendingImports.length > 0 && (
+@@ -445,6 +470,8 @@ export default function Contacts() {
+             <thead className="bg-slate-50 text-slate-600 text-xs uppercase">
+               <tr>
+                 <th className="text-left px-3 py-2">Nom</th>
++                {/* Lot 24 — date/heure de la dernière interaction en colonne */}
++                <th className="text-left px-3 py-2 hidden sm:table-cell whitespace-nowrap">Dernière interaction</th>
+                 <th className="text-left px-3 py-2 hidden sm:table-cell">Société</th>
+                 <th className="text-left px-3 py-2 hidden md:table-cell">Téléphone</th>
+                 <th className="text-left px-3 py-2">WhatsApp</th>
+@@ -590,8 +617,9 @@ const ContactRow = ({ c, onReload, onEdit, onWa, onSms, onSchedule, onHistory, o
+                 </span>
+               )}
+             </button>
+-            {/* Lot 23 — date/heure et sens du dernier échange (WhatsApp/SMS de ce tenant, hors envois en masse) */}
+-            <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1" data-testid={`contact-last-interaction-${c.id}`}>
++            {/* Lot 23 — date/heure et sens du dernier échange (WhatsApp/SMS de ce tenant, hors envois en masse).
++                Lot 24 — affichée en colonne ; ici seulement sur mobile, où la colonne est masquée. */}
++            <div className="sm:hidden text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
+               {c.last_interaction_at ? (
+                 <>
+                   {c.last_interaction_direction === "in"
+@@ -632,6 +660,20 @@ const ContactRow = ({ c, onReload, onEdit, onWa, onSms, onSchedule, onHistory, o
+           </div>
+         </div>
+       </td>
++      {/* Lot 24 — colonne « Dernière interaction » : date/heure + sens (reçu / envoyé) */}
++      <td className="px-3 py-2 hidden sm:table-cell whitespace-nowrap text-xs" data-testid={`contact-last-interaction-${c.id}`}>
++        {c.last_interaction_at ? (
++          <span className="inline-flex items-center gap-1 text-slate-700"
++            title={c.last_interaction_direction === "in" ? "Dernier message reçu" : "Dernier message envoyé"}>
++            {c.last_interaction_direction === "in"
++              ? <ArrowDownLeft className="h-3.5 w-3.5 text-emerald-600" aria-label="reçu" />
++              : <ArrowUpRight className="h-3.5 w-3.5 text-sky-600" aria-label="envoyé" />}
++            {formatLastInteraction(c.last_interaction_at)}
++          </span>
++        ) : (
++          <span className="italic text-slate-400">Aucun échange</span>
++        )}
++      </td>
+       <td className="px-3 py-2 hidden sm:table-cell text-slate-600">{c.company || "—"}</td>
+       <td className="px-3 py-2 hidden md:table-cell text-sky-600 font-mono text-[12px]" data-testid={`contact-phone-${c.id}`}>{c.phone || "—"}</td>
+       <td className="px-3 py-2 text-sky-600 font-mono text-[12px]">
+-- 
+2.43.0
+
