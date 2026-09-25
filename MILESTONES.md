@@ -100,6 +100,19 @@ concerné.
   réponses et collections ; KYC inchangé), sauf correctif : les Word/Excel ne
   sont plus envoyés à l'IA comme texte illisible. Après publication, les deux
   sites utilisent ocr-core 1.0.0.
+- **Module commun `forms-core/`** (ce dépôt, v1.0.0) : gestion de formulaires
+  réutilisable (constructeur 19 types, validation serveur, conditions,
+  invitations personnelles par client, lien public + QR, réponses, stats par
+  question, export CSV), copié par `forms-core/sync.sh` ; 10 tests.
+- **Albarka lot 3 — Formulaires (`/admin/forms`)** — **livré, en attente de
+  publication** (base `b545832` de `conflict_030926_0658` ;
+  `albarka-portal-livraisons/albarka-portal-corrections_3_7387b59.patch` +
+  `albarka-portal-prompt_3.md` ; dev `claude/forms-lot3` 21990c4 dans
+  `ShuyahBF/albarka-portal`). Rôle cumulable `formulaires` (case Personnels,
+  menu visible seulement pour ce rôle + superviseur), envoi e-mail/WhatsApp à
+  des clients choisis, lien public non-clients, « Mes formulaires » côté
+  client. 7 tests Albarka + parcours navigateur complet OK. Noté : la case
+  « Caissier » manque dans `AdminStaff.jsx` (à traiter à part).
 - **À refaire pour** : `Site-Albarka` — **lot 1 publié et déployé en production le
   2026-09-23** (commit Emergent `ccab0b2`, identique au patch ; routes et
   frontend vérifiés sur albarka-bf.com ; premier retour réel de l'utilisateur
