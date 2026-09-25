@@ -135,7 +135,7 @@ concerné.
   (pas de clé API disponible dans l'environnement au moment du build) ;
   autres fournisseurs LLM (GPT-4o, Gemini, Mistral OCR) — non implémentés,
   à cadrer si demandé.
-- **Sawali lot 24** livré le 2026-09-25, **en attente de publication**
+- **Sawali lot 24** livré le 2026-09-25, **publié et déployé le 2026-09-25** (commit Emergent `68a931c` + `399c63f`, branche `conflict_230926_1008`, code identique à `b98e5b1` ; production : bundle `main.0b1a8212.js`, routes doublons/décisions/mark-all-read en 401, CSS des fenêtres défilantes présent)
   (base : `a708771`/`4c23f4b` Emergent = `689830c` dev ;
   `sawali-portal-livraisons/sawali-portal-corrections_24_b98e5b1.patch` +
   `sawali-portal-prompt_24.md`, remplace `…_24_f4ddc14` jamais soumis ;
