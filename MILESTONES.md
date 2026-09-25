@@ -53,8 +53,13 @@ concerné.
   contrôle de contrat ; badge « Prospect » dans l'historique. Règle
   convenue : les lots suivants s'empilent dans une seule livraison
   cumulée `20_to_<N>` tant que rien n'est publié.
+- **Sawali lots 20 à 22** : patch consolidé **appliqué par Emergent le
+  2026-09-25** (commit Emergent `6ea933f`, sur le lot 19) ; au 2026-09-25
+  20:15 UTC la production servait encore le bundle du lot 19
+  (`main.05a42d18.js`, routes lots 20-22 en 404) → déploiement Emergent à
+  publier, vérification programmée.
 - **Sawali lot 22 — Tags et recherche des documents R2** livré le
-  2026-09-24, **en attente de publication** ; livraison cumulée en cours :
+  2026-09-24 ; livraison cumulée (appliquée, voir ci-dessus) :
   `sawali-portal-livraisons/sawali-portal-corrections_20_to_22_cd6c45a.patch`
   + `sawali-portal-prompt_20_to_22.md` (base : lot 19 publié ; remplace
   `…_20_to_21_6dc688b`, jamais soumis). Contenu : collection Mongo
@@ -65,6 +70,21 @@ concerné.
   par client (`users.gestion_stocks_ai_tags`, ocr_core + Haiku 4.5, jamais
   appliquées d'office). Dev : branche `claude/r2-explorer` du clone
   Sawali, commits 6022065 (20), 60aaac0 (21), 780b226 (22).
+- **Sawali lot 23** livré le 2026-09-25, **en attente de publication**
+  (base : `6ea933f` Emergent = `780b226` dev ;
+  `sawali-portal-livraisons/sawali-portal-corrections_23_689830c.patch` +
+  `sawali-portal-prompt_23.md` ; dev : branche `claude/lot23`, commit
+  689830c). Contenu : R2 — suppression depuis l'écran (staff / suivi sur
+  ses fichiers), « Nouveau dossier », renommage/fusion de tag, recherche
+  plein texte (PDF/Word/Excel/PPT/txt extraits sans IA, `ai_text` pour les
+  scans, réindexation) ; Liluvine — bouton « Prospect » sur les contacts,
+  base de connaissance par public (`liluvine_knowledge.audience`) ; Centre
+  de Messagerie — compteur de non-lus unique `_wa_unread_summary`
+  (badge = pastilles = cloche), rapprochement par 8 derniers chiffres,
+  dernière interaction scopée tenant hors `bulk` + date affichée,
+  conversation auto-actualisée (8 s) et 1000 messages les plus récents,
+  coller image/texte du presse-papiers. Point 5 (superviseur → écrans
+  admin) abandonné par l'utilisateur.
 - **Module commun `ocr-core/`** (ce dépôt, v1.0.0) : source unique de l'OCR,
   copiée à l'identique dans chaque site par `ocr-core/sync.sh` ; chaque site
   ne garde qu'un adaptateur (droits, stockage, collections). Sawali l'utilise
