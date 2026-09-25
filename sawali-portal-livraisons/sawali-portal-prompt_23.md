@@ -1,8 +1,10 @@
 # Sawali — Lot 23 : explorateur R2 complet, Liluvine prospects, Centre de Messagerie fiable
 
 Applique `sawali-portal-corrections_23_689830c.patch` sur la branche
-`Site-SawaliSmartSystems`. La base attendue est ton commit `6ea933f`, celui
-où tu viens d'appliquer le patch consolidé des lots 20 à 22. C'est un
+`conflict_230926_1008`. La base attendue est ton commit `6ea933f`, celui
+où tu viens d'appliquer le patch consolidé des lots 20 à 22 (suivi de
+`818f935 Auto-generated changes`, qui ne touche que `.emergent/emergent.yml` :
+le patch s'applique tel quel par-dessus). C'est un
 `git format-patch` d'un seul commit : applique-le en UN SEUL `git am`, puis
 redéploie. Pense aussi à publier le déploiement (bouton Deploy), sinon la
 production reste sur l'ancienne version : aujourd'hui, les routes des lots

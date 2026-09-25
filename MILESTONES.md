@@ -54,7 +54,7 @@ concerné.
   convenue : les lots suivants s'empilent dans une seule livraison
   cumulée `20_to_<N>` tant que rien n'est publié.
 - **Sawali lots 20 à 22** : patch consolidé **appliqué par Emergent le
-  2026-09-25** (commit Emergent `6ea933f`, sur le lot 19) ; au 2026-09-25
+  2026-09-25** (commit Emergent `6ea933f` sur la branche `conflict_230926_1008`, poussée sur GitHub le 2026-09-25 ; code identique à `780b226` dev, seuls `.emergent/*` diffèrent ; lot 23 vérifié applicable sur `818f935`) ; au 2026-09-25
   20:15 UTC la production servait encore le bundle du lot 19
   (`main.05a42d18.js`, routes lots 20-22 en 404) → déploiement Emergent à
   publier, vérification programmée.
