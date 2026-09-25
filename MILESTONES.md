@@ -137,9 +137,16 @@ concerné.
   à cadrer si demandé.
 - **Sawali lot 24** livré le 2026-09-25, **en attente de publication**
   (base : `a708771`/`4c23f4b` Emergent = `689830c` dev ;
-  `sawali-portal-livraisons/sawali-portal-corrections_24_f4ddc14.patch` +
-  `sawali-portal-prompt_24.md` ; dev : branche `claude/lot24`). Contenu :
-  non-lus WhatsApp limités aux 30 derniers jours (47 anciens messages
-  apparus après le lot 23), bouton « Tout marquer comme lu »
-  (`POST /me/whatsapp/mark-all-read`), « Dernière interaction » en colonne
-  du tableau des contacts.
+  `sawali-portal-livraisons/sawali-portal-corrections_24_b98e5b1.patch` +
+  `sawali-portal-prompt_24.md`, remplace `…_24_f4ddc14` jamais soumis ;
+  dev : branche `claude/lot24`). Contenu : non-lus limités à 30 jours +
+  « Tout marquer comme lu » ; « Dernière interaction » en colonne ;
+  doublons à l'enregistrement des contacts inconnus corrigés (import
+  idempotent, liste nettoyée, ajout auto Liluvine nettoie l'entrée, webhook
+  reconnaît les numéros sans indicatif) ; outil « Doublons » **réservé au
+  superviseur** (fiche la plus complète gardée, à égalité la plus ancienne,
+  suppression des seules fiches cochées, messages rattachés) ; tag
+  « Relayé » fond blanc/vert ; réponses Liluvine (annonces, corrections,
+  !reactions) copiées dans le fil ; journal `liluvine_wa_autoreply_log` +
+  écran « Pourquoi Liluvine n'a pas répondu ? » ; fenêtres modales hautes
+  défilantes (règle CSS globale + DialogContent max-h-90vh).
