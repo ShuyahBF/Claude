@@ -1,0 +1,1054 @@
+From 8e70384c138beee0d085b3ab4685d2dfa3346cc3 Mon Sep 17 00:00:00 2001
+From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
+Date: Sat, 26 Sep 2026 18:57:21 +0000
+Subject: [PATCH] =?UTF-8?q?Lot=2027=20:=20t=C3=A2ches=20planifi=C3=A9es=20?=
+ =?UTF-8?q?r=C3=A9activ=C3=A9es=20avec=20garde-fous=20+=20emojis=20dans=20?=
+ =?UTF-8?q?la=20messagerie?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+J'ai réactivé le planificateur : son bloc de démarrage se trouvait après le
+« return » d'une autre fonction et ne s'exécutait jamais, si bien qu'aucune
+des 26 tâches planifiées ne tournait (envois WhatsApp/SMS programmés, rappels
+de rendez-vous et de tâches, résumés, sauvegardes, contrôles).
+Garde-fous pour la réactivation :
+- envois WhatsApp/SMS programmés en retard de plus de 3 h : annulés avec un
+  motif visible, jamais envoyés d'un coup ;
+- relances automatiques de la Caisse : pas de nouvelle relance avant 6 jours,
+  pas de relance automatique d'une facture échue depuis plus de 90 jours ;
+- suspension automatique des comptes en retard : interrupteur général
+  (désactivé par défaut), jamais le super-admin ;
+- jamais dans l'environnement preview (copie des données de production) ;
+- chaque tâche préparée séparément ; page d'état /api/admin/scheduler/status ;
+- sauvegarde hebdomadaire et PDF du rapport exécutés dans un thread ;
+  contrôle de l'IA une fois par heure au lieu de tous les quarts d'heure.
+Messagerie : bouton emoji dans la conversation WhatsApp, l'envoi de SMS et la
+boîte de réception unifiée ; compteur de SMS (Unicode = 70 caractères).
+---
+ backend/health_report.py                   |   4 +-
+ backend/models.py                          |   4 +
+ backend/routes/cashier.py                  |  26 +++
+ backend/server.py                          | 175 ++++++++++++++++-----
+ backend/tests/test_scheduler_lot27.py      | 157 ++++++++++++++++++
+ frontend/src/components/EmojiPicker.jsx    | 175 +++++++++++++++++++++
+ frontend/src/pages/admin/AdminSettings.jsx |   7 +
+ frontend/src/pages/portal/Contacts.jsx     |  25 ++-
+ frontend/src/pages/portal/SmsBulk.jsx      |   5 +-
+ frontend/src/pages/portal/UnifiedInbox.jsx |   7 +-
+ frontend/src/pages/portal/WaBulk.jsx       |   4 +
+ 11 files changed, 549 insertions(+), 40 deletions(-)
+ create mode 100644 backend/tests/test_scheduler_lot27.py
+ create mode 100644 frontend/src/components/EmojiPicker.jsx
+
+diff --git a/backend/health_report.py b/backend/health_report.py
+index 406b600..403eff0 100644
+--- a/backend/health_report.py
++++ b/backend/health_report.py
+@@ -8,6 +8,7 @@ Pure-Python (reportlab), no system deps. Returns the PDF bytes.
+ """
+ from __future__ import annotations
+ 
++import asyncio
+ from datetime import datetime, timedelta, timezone
+ from io import BytesIO
+ from typing import Any, Dict, List
+@@ -570,5 +571,6 @@ async def build_weekly_health_pdf(snapshot_meta: Dict[str, Any] | None = None) -
+         small,
+     ))
+ 
+-    doc.build(story)
++    # Lot 27 : mise en page du PDF dans un thread (ne fige plus le serveur)
++    await asyncio.to_thread(doc.build, story)
+     return buf.getvalue()
+diff --git a/backend/models.py b/backend/models.py
+index 060e539..416d454 100644
+--- a/backend/models.py
++++ b/backend/models.py
+@@ -1006,6 +1006,10 @@ class SettingsUpdate(BaseModel):
+     # Default: 5 days after `last_payment_at` (or `contract_signed_at` if no
+     # payment has been recorded yet).
+     contract_overdue_days_default: Optional[int] = None
++    # Lot 27 — interrupteur général de la SUSPENSION AUTOMATIQUE des comptes
++    # en retard de paiement (désactivé par défaut : le scan quotidien a été
++    # inactif des mois, les règlements ont pu ne pas être saisis).
++    contract_auto_suspend_enabled: Optional[bool] = None
+ 
+     # OpenAI — used for audio transcription (Whisper) inside Reports/Suivis
+     openai_api_key: Optional[str] = None  # secret — masked when read (Whisper)
+diff --git a/backend/routes/cashier.py b/backend/routes/cashier.py
+index f3dc5d0..de13951 100644
+--- a/backend/routes/cashier.py
++++ b/backend/routes/cashier.py
+@@ -2447,7 +2447,31 @@ def make_router(*, db, get_current_user, get_current_admin, get_current_supervis
+         sent_ok = 0
+         sent_ko = 0
+         skipped_no_phone = 0
++        skipped_recent = 0
++        skipped_too_old = 0
++        # Lot 27 — garde-fous de la relance AUTOMATIQUE (le planificateur a été
++        # inactif des mois) : pas de nouvelle relance si la précédente date de
++        # moins de 6 jours, et pas de relance automatique d'une facture échue
++        # depuis plus de 90 jours (à relancer à la main après vérification :
++        # elle a peut-être été réglée sans être marquée payée).
++        now_dt = datetime.now(timezone.utc)
++
++        def _parse_dt(v):
++            try:
++                d = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
++                return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
++            except Exception:  # noqa: BLE001
++                return None
+         for inv in invoices:
++            if triggered_by == "cron":
++                last = _parse_dt(inv.get("last_reminder_at"))
++                if last and (now_dt - last).days < 6:
++                    skipped_recent += 1
++                    continue
++                due = _parse_dt(inv.get("due_date"))
++                if due and (now_dt - due).days > 90:
++                    skipped_too_old += 1
++                    continue
+             r = await _send_one_reminder(inv, actor_id=f"{triggered_by}")
+             results.append(r)
+             if r.get("ok"):
+@@ -2466,6 +2490,8 @@ def make_router(*, db, get_current_user, get_current_admin, get_current_supervis
+             "sent_ok": sent_ok,
+             "sent_ko": sent_ko,
+             "skipped_no_phone": skipped_no_phone,
++            "skipped_recent_reminder": skipped_recent,   # lot 27
++            "skipped_too_old": skipped_too_old,          # lot 27
+             "grace_days": grace_days,
+             "business_clients_count": len(eligible_bcs),
+             "email_report": {"sent": False, "to": recipient, "error": None},
+diff --git a/backend/server.py b/backend/server.py
+index 2ffb81a..aa6d191 100644
+--- a/backend/server.py
++++ b/backend/server.py
+@@ -5458,9 +5458,14 @@ async def _create_snapshot_record(comment: str, mask_secrets: bool, author_id: O
+     file_name = f"snapshot_{snap_id}.json.gz"
+     file_path = SNAPSHOTS_DIR / file_name
+     snap_payload, stats = await _build_snapshot_payload(mask_secrets=mask_secrets)
+-    raw = json.dumps(snap_payload, ensure_ascii=False, default=_json_default).encode("utf-8")
+-    compressed = gzip.compress(raw, compresslevel=6)
+-    file_path.write_bytes(compressed)
++    # Lot 27 : conversion, compression et écriture (lourdes, toute la base)
++    # exécutées dans un thread — la sauvegarde ne fige plus le serveur.
++    def _dump_and_write() -> tuple:
++        raw_bytes = json.dumps(snap_payload, ensure_ascii=False, default=_json_default).encode("utf-8")
++        packed = gzip.compress(raw_bytes, compresslevel=6)
++        file_path.write_bytes(packed)
++        return packed, len(raw_bytes)
++    compressed, raw_size = await asyncio.to_thread(_dump_and_write)
+     meta = {
+         "id": snap_id,
+         "created_at": _now(),
+@@ -5468,7 +5473,7 @@ async def _create_snapshot_record(comment: str, mask_secrets: bool, author_id: O
+         "author_email": author_email,
+         "comment": (comment or "").strip()[:500],
+         "size_bytes": len(compressed),
+-        "raw_size_bytes": len(raw),
++        "raw_size_bytes": raw_size,
+         "collections_count": len([k for k, v in stats.items() if v > 0]),
+         "total_documents": sum(stats.values()),
+         "stats": stats,
+@@ -5586,7 +5591,7 @@ async def _run_auto_snapshot(triggered_by: str = "cron:weekly") -> dict:
+             try:
+                 file_path = SNAPSHOTS_DIR / meta["file_name"]
+                 if file_path.exists():
+-                    content = file_path.read_bytes()
++                    content = await asyncio.to_thread(file_path.read_bytes)  # lot 27 : lecture hors du serveur principal
+                     pretty_size = f"{len(content)/1024:.1f} kB"
+                     # Build the companion weekly health report PDF
+                     pdf_bytes = b""
+@@ -16830,6 +16835,7 @@ async def me_sms_schedule_cancel(sid: str, user: dict = Depends(get_current_user
+ async def _run_scheduled_sms():
+     """APScheduler tick (every minute) — drain pending SMS schedules."""
+     try:
++        await _expire_stale_schedules(db.sms_schedules, "sms")  # lot 27 : pas de rattrapage massif
+         now_iso = datetime.now(timezone.utc).isoformat()
+         due = await db.sms_schedules.find(
+             {"status": "pending", "scheduled_at": {"$lte": now_iso}}, {"_id": 0},
+@@ -20108,6 +20114,37 @@ async def admin_delete_schedule(sid: str, _: dict = Depends(get_current_admin)):
+     return {"ok": True, "status": "deleted"}
+ 
+ 
++# Lot 27 — les tâches planifiées ont été inactives pendant des mois (bloc de
++# démarrage jamais exécuté). À leur réactivation, un envoi programmé en retard
++# de plus de SCHEDULE_MAX_LATE_HOURS ne part plus tout seul : il est annulé avec
++# un motif clair, visible dans l'historique, et peut être reprogrammé à la main.
++# (Évite d'envoyer d'un coup à des clients des messages vieux de plusieurs mois.)
++SCHEDULE_MAX_LATE_HOURS = 3
++
++
++async def _expire_stale_schedules(collection, kind: str) -> int:
++    """Annule les envois programmés encore « pending » mais trop en retard."""
++    limit_iso = (datetime.now(timezone.utc) - timedelta(hours=SCHEDULE_MAX_LATE_HOURS)).isoformat()
++    try:
++        res = await collection.update_many(
++            {"status": "pending", "scheduled_at": {"$lt": limit_iso}},
++            {"$set": {
++                "status": "cancelled",
++                "cancelled_reason": "stale",
++                "cancelled_at": _now(),
++                "updated_at": _now(),
++                "result_summary": {"error": f"Non envoyé : en retard de plus de {SCHEDULE_MAX_LATE_HOURS} h "
++                                            f"(planificateur inactif). Reprogrammez-le si besoin."},
++            }},
++        )
++        if res.modified_count:
++            logger.warning("[%s-scheduler] %s envoi(s) programmé(s) trop ancien(s) annulé(s)", kind, res.modified_count)
++        return res.modified_count
++    except Exception:  # noqa: BLE001
++        logger.exception("[%s-scheduler] annulation des envois trop anciens échouée", kind)
++        return 0
++
++
+ async def _run_scheduled_whatsapp():
+     """Cron job (runs every minute) — execute any pending schedule whose scheduled_at <= now.
+ 
+@@ -20116,6 +20153,7 @@ async def _run_scheduled_whatsapp():
+     a top-level `error` string in result_summary on hard failure.
+     """
+     try:
++        await _expire_stale_schedules(db.whatsapp_schedules, "wa")  # lot 27 : pas de rattrapage massif
+         now_iso = datetime.now(timezone.utc).isoformat()
+         due = await db.whatsapp_schedules.find(
+             {"status": "pending", "scheduled_at": {"$lte": now_iso}},
+@@ -22175,6 +22213,9 @@ async def _run_contract_overdue_alerts() -> Dict[str, Any]:
+     today = datetime.now(timezone.utc).date()
+     settings_doc = await db.settings.find_one({"_id": "global"}) or {}
+     default_threshold = int(settings_doc.get("contract_overdue_days_default") or 5)
++    # Lot 27 — suspension automatique seulement si l'interrupteur général est
++    # activé (Paramètres → Contrats). Les alertes à l'administrateur continuent.
++    auto_suspend_on = bool(settings_doc.get("contract_auto_suspend_enabled"))
+     # Only clients with either a `last_payment_at` or `contract_signed_at`.
+     q = {
+         "role": {"$in": ["admin", "client", "client-tracked"]},
+@@ -22208,7 +22249,9 @@ async def _run_contract_overdue_alerts() -> Dict[str, Any]:
+         # (default 5) still gets suspended on time.
+         suspend_threshold = u.get("auto_suspend_after_overdue_days")
+         if (
+-            suspend_threshold is not None
++            auto_suspend_on                                   # lot 27 : interrupteur général
++            and not _is_super_admin(u)                        # lot 27 : jamais le super-admin
++            and suspend_threshold is not None
+             and int(suspend_threshold) > 0
+             and days >= int(suspend_threshold)
+             and (u.get("account_status") or "active").lower() != "suspended"
+@@ -22460,14 +22503,69 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+     return await _run_contract_overdue_alerts()
+ 
+ 
++
++# ====================================================================
++# Lot 27 — PLANIFICATEUR (APScheduler)
++# Ce bloc se trouvait par erreur APRÈS le « return » de
++# admin_run_contract_overdue_now : il ne s'exécutait jamais et AUCUNE tâche
++# planifiée ne tournait (envois WhatsApp/SMS programmés, rappels, résumés,
++# sauvegardes…). Il a maintenant son propre crochet de démarrage.
++# Garde-fous ajoutés pour la réactivation : envois programmés trop en retard
++# annulés (_expire_stale_schedules), relances Caisse automatiques bornées,
++# suspension automatique des comptes derrière un interrupteur général,
++# chaque tâche préparée séparément (une erreur n'empêche plus les autres).
++# ====================================================================
++_SCHEDULER_STATE = "pas encore démarré"
++
++
++@api.get("/admin/scheduler/status", tags=["Admin"])
++async def admin_scheduler_status(_: dict = Depends(get_current_admin)):
++    """Lot 27 — état du planificateur : démarré ou non (et pourquoi), liste des
++    tâches et date de leur prochain passage."""
++    jobs = []
++    if _scheduler is not None:
++        for j in _scheduler.get_jobs():
++            nrt = getattr(j, "next_run_time", None)
++            jobs.append({"id": j.id, "next_run": nrt.isoformat() if nrt else None})
++    return {"running": bool(_scheduler is not None and _scheduler.running), "state": _SCHEDULER_STATE,
++            "jobs": sorted(jobs, key=lambda x: x["id"]), "count": len(jobs),
++            "stale_schedule_limit_hours": SCHEDULE_MAX_LATE_HOURS}
++
++
++@app.on_event("startup")
++async def _start_scheduler():
++    global _scheduler
++    # Lot 27 — JAMAIS dans l'environnement PREVIEW : sa base reçoit des copies
++    # de la production (instantanés), il enverrait de vrais messages aux
++    # clients en double. Même détection que le résumé hebdomadaire.
++    # Variables : DISABLE_SCHEDULER=1 (coupe partout), SCHEDULER_IN_PREVIEW=1
++    # (force l'activation dans la preview, pour un test volontaire).
++    env_url = (os.environ.get("PUBLIC_BASE_URL", "") or os.environ.get("preview_endpoint", "")
++               or os.environ.get("REACT_APP_BACKEND_URL", ""))
++    global _SCHEDULER_STATE
++    if os.environ.get("DISABLE_SCHEDULER") == "1":
++        _SCHEDULER_STATE = "désactivé (DISABLE_SCHEDULER=1)"
++        logger.info("[scheduler] %s", _SCHEDULER_STATE)
++        return
++    if ".preview." in env_url and os.environ.get("SCHEDULER_IN_PREVIEW") != "1":
++        _SCHEDULER_STATE = f"non démarré : environnement PREVIEW ({env_url})"
++        logger.info("[scheduler] %s", _SCHEDULER_STATE)
++        return
++
++    def _safe_add_job(*args, **kwargs):
++        """Ajoute une tâche ; en cas d'erreur, on la journalise et on continue."""
++        try:
++            _scheduler.add_job(*args, **kwargs)
++        except Exception:  # noqa: BLE001
++            logger.exception("[scheduler] tâche %s non ajoutée", kwargs.get("id"))
++
+     # ---------- Scheduler ----------
+     try:
+         from apscheduler.schedulers.asyncio import AsyncIOScheduler
+         from apscheduler.triggers.cron import CronTrigger
+-        global _scheduler
+         if _scheduler is None:
+             _scheduler = AsyncIOScheduler(timezone="Africa/Abidjan")
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _send_weekly_digest,
+                 CronTrigger(day_of_week="fri", hour=5, minute=0, timezone="Africa/Abidjan"),
+                 id="health_weekly_digest",
+@@ -22478,7 +22576,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+             # but always persists the result to db.auth_checks for the dashboard banner.
+             async def _scheduled_auth_check():
+                 await _run_auth_check(triggered_by="cron:hourly")
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _scheduled_auth_check,
+                 CronTrigger(minute=0, timezone="Africa/Abidjan"),
+                 id="auth_checker_hourly",
+@@ -22488,7 +22586,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+             # Hourly uptime monitor — multi-endpoint probes (db + public APIs).
+             async def _scheduled_uptime():
+                 await _run_uptime_probes(triggered_by="cron:hourly")
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _scheduled_uptime,
+                 CronTrigger(minute=5, timezone="Africa/Abidjan"),  # offset 5min from auth check
+                 id="uptime_monitor_hourly",
+@@ -22498,7 +22596,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+             # Iter35b — every 4h check whether Meta is calling our WA webhook.
+             async def _scheduled_wa_silence():
+                 await _run_wa_silence_check(triggered_by="cron:4h")
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _scheduled_wa_silence,
+                 CronTrigger(hour="*/4", minute=20, timezone="Africa/Abidjan"),
+                 id="wa_silence_detector_4h",
+@@ -22510,7 +22608,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+             # WhatsApp on failures (throttled 12h to avoid spam).
+             async def _scheduled_integration_health():
+                 await _run_integration_health_check(triggered_by="cron:4h")
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _scheduled_integration_health,
+                 CronTrigger(hour="*/4", minute=35, timezone="Africa/Abidjan"),
+                 id="integration_health_monitor_4h",
+@@ -22518,7 +22616,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+                 misfire_grace_time=900,
+             )
+             # Minute-level WhatsApp scheduler — drains pending schedules due for send.
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _run_scheduled_whatsapp,
+                 CronTrigger(minute="*", timezone="Africa/Abidjan"),
+                 id="whatsapp_scheduler_minutely",
+@@ -22528,7 +22626,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+             # Iter43-fix24av (2026-02-26) — Minute-level LinkedIn auto-post tick.
+             async def _scheduled_linkedin_autopost():
+                 await _run_linkedin_autopost_tick(db)
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _scheduled_linkedin_autopost,
+                 CronTrigger(minute="*", timezone="Africa/Abidjan"),
+                 id="linkedin_autopost_minutely",
+@@ -22538,7 +22636,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+             # Iter43-fix24ay (2026-02-26) — Google Calendar Watch channel renewal (every 6h)
+             async def _scheduled_gcal_watch_renewal():
+                 await _run_gcal_watch_renewal(db)
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _scheduled_gcal_watch_renewal,
+                 CronTrigger(hour="*/6", timezone="Africa/Abidjan"),
+                 id="gcal_watch_renewal_6h",
+@@ -22551,7 +22649,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+                     await _run_planning_wa_reminders()
+                 except Exception as exc:  # noqa: BLE001
+                     logger.warning("[planning] reminder job failed: %s", exc)
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _scheduled_planning_wa_reminders,
+                 CronTrigger(minute="*/5", timezone="UTC"),
+                 id="planning_wa_reminders_5min",
+@@ -22566,7 +22664,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+                     await _run_contract_overdue_alerts()
+                 except Exception as exc:  # noqa: BLE001
+                     logger.warning("[contract-overdue] job failed: %s", exc)
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _scheduled_contract_overdue_alerts,
+                 CronTrigger(hour=8, minute=15, timezone="Africa/Abidjan"),
+                 id="contract_overdue_alerts_daily",
+@@ -22579,7 +22677,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+                     await _run_recurring_billing_reminders()
+                 except Exception as exc:  # noqa: BLE001
+                     logger.warning("[billing-reminder] job failed: %s", exc)
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _scheduled_recurring_billing_reminders,
+                 CronTrigger(hour=7, minute=45, timezone="Africa/Abidjan"),
+                 id="recurring_billing_reminders_daily",
+@@ -22588,7 +22686,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+             )
+             # Iter38d — Monthly payroll outbound webhook (1st of month, 03:00 UTC).
+             try:
+-                _scheduler.add_job(
++                _safe_add_job(
+                     _pwh_router._scheduled_auto_dispatch,  # type: ignore[attr-defined]
+                     CronTrigger(day=1, hour=3, minute=0, timezone="UTC"),
+                     id="payroll_outbound_monthly",
+@@ -22599,7 +22697,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+             except Exception as _ex:
+                 logger.warning("Failed to schedule payroll outbound webhook: %s", _ex)
+             # Minute-level SMS scheduler — drains pending SMS schedules due for send.
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _run_scheduled_sms,
+                 CronTrigger(minute="*", timezone="Africa/Abidjan"),
+                 id="sms_scheduler_minutely",
+@@ -22607,7 +22705,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+                 misfire_grace_time=120,
+             )
+             # Hourly appointment reminders (J-1 window).
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _appointment_reminder_cron,
+                 CronTrigger(minute=15, timezone="Africa/Abidjan"),
+                 id="appointment_reminder_hourly",
+@@ -22641,7 +22739,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+                     except Exception:
+                         logger.exception("[synthese] minute_check crashed")
+ 
+-                _scheduler.add_job(
++                _safe_add_job(
+                     _synthese_minute_check,
+                     CronTrigger(minute="*", timezone="Africa/Abidjan"),
+                     id="liluvine_synthese_minutely",
+@@ -22652,7 +22750,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+             except Exception as _ex:
+                 logger.warning("Failed to schedule synthèse cron: %s", _ex)
+             # Hourly task reminders (1h window before due_at).
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _task_reminder_cron,
+                 CronTrigger(minute=20, timezone="Africa/Abidjan"),
+                 id="task_reminder_hourly",
+@@ -22668,7 +22766,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+                     await _run_wa_tasks_digest(db, _send_wa_text_for_digest, _get_settings_async)
+                 except Exception as exc:
+                     logger.warning("[scheduler:wa_tasks_digest] %s", exc)
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _scheduled_wa_tasks_digest,
+                 CronTrigger(minute="*/5", timezone="Africa/Abidjan"),
+                 id="wa_tasks_digest_5min",
+@@ -22685,7 +22783,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+                     await _rmpd(db, _send_wa_text_for_digest)
+                 except Exception as exc:
+                     logger.warning("[scheduler:medecin_planning_digest] %s", exc)
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _scheduled_medecin_planning_digest,
+                 CronTrigger(minute="*/5", timezone="Africa/Abidjan"),
+                 id="medecin_planning_digest_5min",
+@@ -22748,7 +22846,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+                             logger.warning("[scheduler:wa_token_alert] email send failed: %s", exc)
+                 except Exception as exc:
+                     logger.warning("[scheduler:wa_token_health] %s", exc)
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _scheduled_wa_token_health,
+                 CronTrigger(hour=7, minute=30, timezone="Africa/Abidjan"),
+                 id="wa_token_health_daily",
+@@ -22763,7 +22861,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+                     await _run_liluvine_weekly_digest(db, send_email, _get_settings_async)
+                 except Exception as exc:
+                     logger.warning("[scheduler:liluvine_digest] %s", exc)
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _scheduled_liluvine_weekly_digest,
+                 CronTrigger(day_of_week="mon", hour=8, minute=0, timezone="Africa/Abidjan"),
+                 id="liluvine_weekly_digest_mon",
+@@ -22776,7 +22874,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+                     await _run_gdpr_anonymization(db, _get_settings_async)
+                 except Exception as exc:
+                     logger.warning("[scheduler:gdpr_anonymize] %s", exc)
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _scheduled_gdpr_anonymize,
+                 CronTrigger(hour=3, minute=30, timezone="Africa/Abidjan"),
+                 id="gdpr_auto_anonymize_daily",
+@@ -22800,9 +22898,9 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+                     await _llm_warning_alerts(db, send_email, _wa_send_text)
+                 except Exception as exc:  # noqa: BLE001
+                     logger.warning("[scheduler:llm_health] %s", exc)
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _scheduled_llm_health_ping,
+-                CronTrigger(minute="*/15", timezone="Africa/Abidjan"),
++                CronTrigger(minute=10, timezone="Africa/Abidjan"),
+                 id="llm_health_ping_15min",
+                 replace_existing=True,
+                 misfire_grace_time=300,
+@@ -22819,7 +22917,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+                     await _run_auto_snapshot(triggered_by="cron:weekly-sun-03")
+                 except Exception as exc:  # noqa: BLE001
+                     logger.warning("Auto-snapshot cron failed: %s", exc)
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _scheduled_auto_snapshot,
+                 CronTrigger(day_of_week="sun", hour=3, minute=0, timezone="Africa/Abidjan"),
+                 id="db_auto_snapshot_weekly",
+@@ -22835,7 +22933,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+                     await _run_auto_relance_cashier(triggered_by="cron:daily-09")
+                 except Exception as exc:  # noqa: BLE001
+                     logger.warning("Auto-relance cron failed: %s", exc)
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _scheduled_auto_relance,
+                 CronTrigger(hour=9, minute=0, timezone="Africa/Abidjan"),
+                 id="cashier_auto_relance_daily",
+@@ -22857,7 +22955,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+                     await _proc(db, send_email_fn=_email_adapter, send_whatsapp_fn=_wa_adapter)
+                 except Exception as exc:  # noqa: BLE001
+                     logger.warning("AI subscriptions reminders cron failed: %s", exc)
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _scheduled_ai_subs_reminders,
+                 CronTrigger(hour=8, minute=0, timezone="Africa/Abidjan"),
+                 id="ai_subscriptions_reminders_daily",
+@@ -22889,17 +22987,22 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+                         logger.info("Ad banner reminders sent: %s", len(res["sent"]))
+                 except Exception as exc:  # noqa: BLE001
+                     logger.warning("Ad banner reminders cron failed: %s", exc)
+-            _scheduler.add_job(
++            _safe_add_job(
+                 _scheduled_ad_banner_reminders,
+                 CronTrigger(hour=9, minute=30, timezone="Africa/Abidjan"),
+                 id="ad_banner_expiration_reminders_daily",
+                 replace_existing=True,
+                 misfire_grace_time=3600,
+             )
+-            _scheduler.start()
+-            logger.info("Scheduler started — weekly digest Fri 05:00 + auth check H:00 + uptime H:05 (Africa/Abidjan)")
+     except Exception as exc:  # noqa: BLE001
+         logger.warning("Scheduler init failed: %s", exc)
++    finally:
++        # Lot 27 : le planificateur démarre avec toutes les tâches préparées,
++        # même si l'une d'elles a échoué.
++        if _scheduler is not None and not _scheduler.running:
++            _scheduler.start()
++            _SCHEDULER_STATE = f"démarré — {len(_scheduler.get_jobs())} tâche(s) planifiée(s)"
++            logger.info("[scheduler] %s", _SCHEDULER_STATE)
+ 
+ 
+ # ====================================================================
+diff --git a/backend/tests/test_scheduler_lot27.py b/backend/tests/test_scheduler_lot27.py
+new file mode 100644
+index 0000000..7bb737c
+--- /dev/null
++++ b/backend/tests/test_scheduler_lot27.py
+@@ -0,0 +1,157 @@
++"""Lot 27 — réactivation des tâches planifiées, avec garde-fous.
++
++- le planificateur démarre enfin (26 tâches), sauf dans l'environnement PREVIEW
++  (sa base contient des copies de la production) ou si DISABLE_SCHEDULER=1 ;
++- envois WhatsApp / SMS programmés en retard de plus de 3 h : annulés avec un
++  motif, jamais envoyés d'un coup ;
++- suspension automatique des comptes en retard : seulement si l'interrupteur
++  général est activé, jamais pour le super-admin.
++Tests autonomes : MongoDB simulé (mongomock-motor), aucun envoi réel.
++"""
++from __future__ import annotations
++
++import asyncio
++import os
++import sys
++import types
++from datetime import datetime, timedelta, timezone
++from pathlib import Path
++
++import pytest
++
++os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
++os.environ.setdefault("DB_NAME", "sawali_test")
++os.environ.setdefault("JWT_SECRET", "test")
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++mongomock_motor = pytest.importorskip("mongomock_motor")
++pytest.importorskip("apscheduler")
++
++# num2words n'est pas indispensable à ces tests : module de remplacement si absent
++if "num2words" not in sys.modules:
++    try:
++        import num2words  # noqa: F401
++    except ImportError:
++        _m = types.ModuleType("num2words")
++        _m.num2words = lambda *a, **k: ""
++        sys.modules["num2words"] = _m
++
++
++@pytest.fixture(scope="module")
++def server_mod():
++    """server.py importé dans une boucle (il crée des tâches à l'import)."""
++    loop = asyncio.new_event_loop()
++
++    async def _imp():
++        import server
++        return server
++    mod = loop.run_until_complete(_imp())
++    yield mod, loop
++    loop.close()
++
++
++@pytest.fixture()
++def mdb(server_mod, monkeypatch):
++    server, _loop = server_mod
++    db = mongomock_motor.AsyncMongoMockClient()["sawali_lot27"]
++    monkeypatch.setattr(server, "db", db)
++    return db
++
++
++def _iso(hours_ago: float) -> str:
++    return (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).isoformat()
++
++
++def test_stale_schedules_are_cancelled_not_sent(server_mod, mdb):
++    server, loop = server_mod
++
++    async def scenario():
++        await mdb.whatsapp_schedules.insert_many([
++            {"id": "vieux", "status": "pending", "scheduled_at": _iso(24 * 90)},   # 3 mois de retard
++            {"id": "recent", "status": "pending", "scheduled_at": _iso(1)},        # 1 h : encore envoyable
++            {"id": "futur", "status": "pending", "scheduled_at": _iso(-2)},
++            {"id": "fait", "status": "done", "scheduled_at": _iso(24 * 90)},
++        ])
++        n = await server._expire_stale_schedules(mdb.whatsapp_schedules, "wa")
++        docs = {d["id"]: d async for d in mdb.whatsapp_schedules.find({}, {"_id": 0})}
++        return n, docs
++    n, docs = loop.run_until_complete(scenario())
++    assert n == 1
++    assert docs["vieux"]["status"] == "cancelled" and "en retard" in docs["vieux"]["result_summary"]["error"]
++    assert docs["recent"]["status"] == "pending" and docs["futur"]["status"] == "pending"
++    assert docs["fait"]["status"] == "done"
++
++
++def test_scheduler_block_is_no_longer_dead_code(server_mod):
++    import inspect
++    server, _loop = server_mod
++    src = inspect.getsource(server.admin_run_contract_overdue_now)
++    assert "add_job" not in src and "AsyncIOScheduler" not in src
++    hook = inspect.getsource(server._start_scheduler)
++    assert hook.count("_safe_add_job(") == 26 + 1          # 26 tâches + la définition
++    assert 'CronTrigger(minute="*/15"' not in hook           # test LLM passé à 1 fois par heure
++
++
++def _run_hook(server, loop, monkeypatch, env: dict):
++    for k in ("DISABLE_SCHEDULER", "SCHEDULER_IN_PREVIEW", "PUBLIC_BASE_URL", "preview_endpoint", "REACT_APP_BACKEND_URL"):
++        monkeypatch.delenv(k, raising=False)
++    for k, v in env.items():
++        monkeypatch.setenv(k, v)
++    monkeypatch.setattr(server, "_scheduler", None)
++    loop.run_until_complete(server._start_scheduler())
++    sched = server._scheduler
++    state = server._SCHEDULER_STATE
++    if sched is not None and sched.running:
++        sched.shutdown(wait=False)
++    return sched, state
++
++
++def test_scheduler_starts_with_all_jobs(server_mod, monkeypatch):
++    server, loop = server_mod
++    sched, state = _run_hook(server, loop, monkeypatch, {"PUBLIC_BASE_URL": "https://sawalismartsystems.com"})
++    assert sched is not None and state.startswith("démarré")
++    ids = {j.id for j in sched.get_jobs()}
++    assert len(ids) == 26 and {"whatsapp_scheduler_minutely", "sms_scheduler_minutely",
++                               "appointment_reminder_hourly", "db_auto_snapshot_weekly"} <= ids
++
++
++def test_scheduler_never_starts_in_preview(server_mod, monkeypatch):
++    server, loop = server_mod
++    sched, state = _run_hook(server, loop, monkeypatch,
++                             {"REACT_APP_BACKEND_URL": "https://sawali-portal.preview.emergentagent.com"})
++    assert sched is None and "PREVIEW" in state
++    sched, state = _run_hook(server, loop, monkeypatch, {"DISABLE_SCHEDULER": "1"})
++    assert sched is None and "désactivé" in state
++
++
++def test_auto_suspend_requires_global_switch(server_mod, mdb, monkeypatch):
++    server, loop = server_mod
++    sent = []
++
++    async def fake_email(*a, **k):
++        sent.append("email")
++        return True
++
++    async def fake_wa(*a, **k):
++        sent.append("wa")
++        return {"ok": True}
++    monkeypatch.setattr(server, "send_email", fake_email)
++    monkeypatch.setattr(server, "_wa_send_template", fake_wa)
++    old = (datetime.now(timezone.utc) - timedelta(days=60)).date().isoformat()
++    super_email = getattr(server, "SUPER_ADMIN_EMAIL", "admin@sawalismartsystems.com")
++
++    async def scenario(switch: bool):
++        await mdb.users.delete_many({})
++        await mdb.settings.delete_many({})
++        await mdb.settings.insert_one({"_id": "global", "contract_auto_suspend_enabled": switch})
++        await mdb.users.insert_many([
++            {"id": "c1", "email": "client@x.bf", "role": "client", "last_payment_at": old,
++             "auto_suspend_after_overdue_days": 30, "account_status": "active"},
++            {"id": "sa", "email": super_email, "role": "admin", "last_payment_at": old,
++             "auto_suspend_after_overdue_days": 30, "account_status": "active"},
++        ])
++        await server._run_contract_overdue_alerts()
++        return {u["id"]: u.get("account_status") async for u in mdb.users.find({}, {"_id": 0})}
++    off = loop.run_until_complete(scenario(False))
++    assert off == {"c1": "active", "sa": "active"}           # interrupteur coupé : aucune suspension
++    on = loop.run_until_complete(scenario(True))
++    assert on["c1"] == "suspended" and on["sa"] == "active"   # jamais le super-admin
+diff --git a/frontend/src/components/EmojiPicker.jsx b/frontend/src/components/EmojiPicker.jsx
+new file mode 100644
+index 0000000..56cbe3c
+--- /dev/null
++++ b/frontend/src/components/EmojiPicker.jsx
+@@ -0,0 +1,175 @@
++/*
++  EmojiPicker — bouton 😊 + palette d'emojis pour les zones de saisie des
++  messages (lot 27) : conversation WhatsApp, envoi SMS, boîte de réception unifiée.
++
++  - catégories (récents, visages, gestes, cœurs, travail, nourriture, nature,
++    symboles, drapeaux) et recherche par mot-clé en français ;
++  - l'emoji est inséré À LA POSITION DU CURSEUR dans la zone de saisie, puis
++    le curseur est replacé juste après ;
++  - les 24 derniers emojis utilisés sont mémorisés sur l'appareil.
++  Aucune dépendance : les emojis sont des caractères Unicode standard, que
++  WhatsApp et les téléphones affichent directement (en SMS, un emoji fait passer
++  le message en encodage Unicode : 70 caractères par SMS au lieu de 160).
++
++  Props :
++    textareaRef  — ref React de la zone de saisie (textarea ou input)
++    value        — texte actuel
++    onChange     — (nouveauTexte) => void
++    disabled, className, testId, maxLength (facultatif)
++*/
++import React, { useEffect, useMemo, useRef, useState } from "react";
++import { Smile, Search, X } from "lucide-react";
++
++// Catégories : [clé, libellé, icône, liste « emoji mot-clé mot-clé… »]
++const CATEGORIES = [
++  ["smileys", "Visages", "😀", [
++    "😀 sourire", "😃 sourire", "😄 rire", "😁 rire", "😆 rire", "😅 gêne", "😂 larmes rire", "🤣 rire", "😊 content", "😇 ange",
++    "🙂 sourire", "🙃 inverse", "😉 clin", "😌 soulagé", "😍 amour", "🥰 amour", "😘 bisou", "😗 bisou", "😋 miam", "😛 langue",
++    "😜 clin langue", "🤪 fou", "🤨 doute", "🧐 examiner", "🤓 lunettes", "😎 cool", "🤩 étoiles", "🥳 fête", "😏 malin", "😒 bof",
++    "😞 déçu", "😔 triste", "😟 inquiet", "😕 confus", "🙁 triste", "😣 effort", "😖 confus", "😫 fatigué", "😩 las", "🥺 supplier",
++    "😢 pleurer", "😭 pleurer", "😤 fier", "😠 colère", "😡 colère", "🤬 injure", "🤯 choc", "😳 gêne", "🥵 chaud", "🥶 froid",
++    "😱 peur", "😨 peur", "😰 anxieux", "😥 déçu", "😓 sueur", "🤗 câlin", "🤔 réfléchir", "🤭 oups", "🤫 silence", "🤥 mensonge",
++    "😶 muet", "😐 neutre", "😑 blasé", "😬 grimace", "🙄 yeux", "😯 surpris", "😦 surpris", "😮 bouche", "😲 étonné", "🥱 bâiller",
++    "😴 dormir", "🤤 baver", "😪 sommeil", "😵 étourdi", "🤐 bouche cousue", "🥴 éméché", "🤢 nausée", "🤮 vomir", "🤧 éternuer", "😷 masque",
++    "🤒 malade", "🤕 blessé", "🤑 argent", "🤠 cowboy",
++  ]],
++  ["gestures", "Gestes", "👍", [
++    "👍 pouce oui ok", "👎 pouce non", "👌 ok", "✌️ victoire", "🤞 chance", "🤝 accord poignée", "🙏 merci prière svp", "👏 bravo applaudir",
++    "🙌 hourra", "👐 mains", "🤲 mains", "👋 salut bonjour", "🤚 main", "✋ stop", "🖐️ main", "🖖 salut", "🤙 appel", "💪 force",
++    "👊 poing", "✊ poing", "🤛 poing", "🤜 poing", "☝️ un", "👆 haut", "👇 bas", "👉 droite", "👈 gauche", "✍️ écrire signer",
++    "🤳 selfie", "💅 ongles", "🙋 lever main", "🙆 ok", "🙅 non", "🤷 bof", "🤦 facepalm", "🙇 excuses", "💁 info",
++  ]],
++  ["hearts", "Cœurs", "❤️", [
++    "❤️ cœur amour", "🧡 cœur", "💛 cœur", "💚 cœur", "💙 cœur", "💜 cœur", "🖤 cœur", "🤍 cœur", "🤎 cœur", "💔 cœur brisé",
++    "❣️ cœur", "💕 cœurs", "💞 cœurs", "💓 cœur", "💗 cœur", "💖 cœur", "💘 flèche", "💝 cadeau", "💟 cœur", "💯 cent",
++  ]],
++  ["work", "Travail", "💼", [
++    "💼 travail mallette", "📄 document", "📑 documents", "📋 liste", "📌 épingle", "📎 trombone", "✏️ crayon", "🖊️ stylo", "📝 note",
++    "📅 calendrier date", "📆 agenda", "🗓️ planning", "⏰ réveil heure", "⏳ attente", "⌛ temps", "📞 téléphone appel", "📱 portable",
++    "💻 ordinateur", "🖥️ écran", "🖨️ imprimante", "📧 email", "✉️ lettre", "📩 message", "📨 courrier", "📦 colis livraison",
++    "🏢 bureau entreprise", "🏥 hôpital pharmacie", "💊 médicament", "🩺 médecin", "🧾 facture reçu", "💰 argent", "💵 billets",
++    "💳 carte paiement", "🏦 banque", "📈 hausse", "📉 baisse", "📊 statistiques", "🔒 sécurisé", "🔑 clé", "🔔 rappel notification",
++    "📣 annonce", "🎯 objectif", "✅ fait valide", "☑️ coché", "❌ non annulé", "⚠️ attention", "🚚 livraison camion", "🛒 achat panier",
++  ]],
++  ["food", "Nourriture", "🍽️", [
++    "☕ café", "🍵 thé", "🥤 boisson", "🧃 jus", "🍺 bière", "🍷 vin", "🥂 santé", "🍞 pain", "🥖 baguette", "🍗 poulet", "🍖 viande",
++    "🍚 riz", "🍲 plat", "🥘 plat", "🍛 curry", "🥗 salade", "🍕 pizza", "🍔 burger", "🍟 frites", "🍳 œuf", "🍌 banane", "🍊 orange",
++    "🍉 pastèque", "🥭 mangue", "🍍 ananas", "🥥 coco", "🍰 gâteau", "🎂 anniversaire gâteau", "🍫 chocolat", "🍬 bonbon",
++  ]],
++  ["nature", "Nature", "🌍", [
++    "☀️ soleil", "🌤️ beau temps", "⛅ nuage", "🌧️ pluie", "⛈️ orage", "🌈 arc-en-ciel", "🔥 feu", "💧 eau goutte", "🌊 vague",
++    "🌍 afrique monde", "🌱 plante", "🌳 arbre", "🌴 palmier", "🌸 fleur", "🌹 rose", "🌻 tournesol", "🍀 chance trèfle",
++    "🐶 chien", "🐱 chat", "🐔 poule", "🐄 vache", "🐐 chèvre", "🐑 mouton", "🦁 lion", "🐘 éléphant", "🦋 papillon", "⭐ étoile", "🌙 lune",
++  ]],
++  ["symbols", "Symboles", "✨", [
++    "✨ étincelles", "🎉 fête bravo", "🎊 fête", "🎁 cadeau", "🏆 trophée", "🥇 médaille", "🎓 diplôme", "⚡ éclair", "💡 idée",
++    "🔴 rouge", "🟠 orange", "🟡 jaune", "🟢 vert", "🔵 bleu", "🟣 violet", "⚫ noir", "⚪ blanc", "▶️ lecture", "⏸️ pause",
++    "🔄 actualiser", "➡️ droite", "⬅️ gauche", "⬆️ haut", "⬇️ bas", "ℹ️ info", "❓ question", "❗ important", "‼️ urgent",
++    "🆕 nouveau", "🆗 ok", "🆘 sos", "🔝 top", "💬 discussion", "🗨️ bulle", "👀 regarder", "🙈 oups", "🤖 robot", "🚀 lancement",
++  ]],
++  ["flags", "Drapeaux", "🇧🇫", [
++    "🇧🇫 burkina faso", "🇨🇮 côte d'ivoire", "🇲🇱 mali", "🇳🇪 niger", "🇸🇳 sénégal", "🇹🇬 togo", "🇧🇯 bénin", "🇬🇭 ghana",
++    "🇬🇳 guinée", "🇨🇲 cameroun", "🇲🇦 maroc", "🇹🇳 tunisie", "🇩🇿 algérie", "🇳🇬 nigeria", "🇫🇷 france", "🇧🇪 belgique",
++    "🇨🇦 canada", "🇺🇸 usa", "🇪🇺 europe", "🏳️ blanc",
++  ]],
++];
++const RECENT_KEY = "sawali_recent_emojis";
++
++// Lecture / écriture des récents (stockage local de l'appareil, tolérant aux erreurs)
++const readRecent = () => { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]"); } catch { return []; } };
++const saveRecent = (list) => { try { localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 24))); } catch { /* stockage indisponible */ } };
++
++export default function EmojiPicker({ textareaRef, value, onChange, disabled = false, className = "", testId = "emoji", maxLength }) {
++  const [open, setOpen] = useState(false);
++  const [cat, setCat] = useState("smileys");
++  const [query, setQuery] = useState("");
++  const [recent, setRecent] = useState(readRecent);
++  const boxRef = useRef(null);
++
++  // Fermeture au clic en dehors de la palette ou avec Échap
++  useEffect(() => {
++    if (!open) return undefined;
++    const onDown = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
++    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
++    document.addEventListener("mousedown", onDown);
++    document.addEventListener("keydown", onKey);
++    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
++  }, [open]);
++
++  // Emojis affichés : recherche sur toutes les catégories, sinon la catégorie choisie
++  const shown = useMemo(() => {
++    const q = query.trim().toLowerCase();
++    if (q) {
++      return CATEGORIES.flatMap(([, , , list]) => list).filter((e) => e.toLowerCase().includes(q)).map((e) => e.split(" ")[0]);
++    }
++    if (cat === "recent") return recent;
++    return (CATEGORIES.find(([k]) => k === cat)?.[3] || []).map((e) => e.split(" ")[0]);
++  }, [cat, query, recent]);
++
++  // Insère l'emoji à la position du curseur et replace le curseur juste après
++  const insert = (emoji) => {
++    const el = textareaRef?.current;
++    const text = value || "";
++    const start = el && typeof el.selectionStart === "number" ? el.selectionStart : text.length;
++    const end = el && typeof el.selectionEnd === "number" ? el.selectionEnd : text.length;
++    let next = text.slice(0, start) + emoji + text.slice(end);
++    if (maxLength && next.length > maxLength) return;       // pas de dépassement de la limite
++    onChange(next);
++    const caret = start + emoji.length;
++    requestAnimationFrame(() => {
++      if (!el) return;
++      el.focus();
++      try { el.setSelectionRange(caret, caret); } catch { /* champ sans sélection */ }
++    });
++    const nextRecent = [emoji, ...recent.filter((e) => e !== emoji)].slice(0, 24);
++    setRecent(nextRecent);
++    saveRecent(nextRecent);
++  };
++
++  const tabs = [["recent", "Récents", "🕘"], ...CATEGORIES.map(([k, l, i]) => [k, l, i])];
++
++  return (
++    <div className={`relative shrink-0 ${className}`} ref={boxRef}>
++      <button
++        type="button"
++        onClick={() => setOpen((v) => !v)}
++        disabled={disabled}
++        title="Insérer un emoji"
++        aria-label="Insérer un emoji"
++        className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white hover:bg-amber-50 px-2.5 py-2 text-sm text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed"
++        data-testid={`${testId}-btn`}
++      >
++        <Smile className="h-4 w-4" />
++      </button>
++      {open && (
++        <div className="absolute bottom-full right-0 z-50 mb-2 w-80 max-w-[90vw] rounded-xl border border-slate-200 bg-white shadow-2xl" data-testid={`${testId}-panel`}>
++          {/* Recherche */}
++          <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
++            <Search className="h-3.5 w-3.5 text-slate-400" />
++            <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher (merci, fête, argent…)"
++              className="flex-1 text-sm outline-none" data-testid={`${testId}-search`} />
++            <button type="button" onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-700" aria-label="Fermer"><X className="h-4 w-4" /></button>
++          </div>
++          {/* Onglets des catégories */}
++          {!query && (
++            <div className="flex gap-0.5 overflow-x-auto border-b border-slate-100 px-2 py-1">
++              {tabs.map(([k, l, i]) => (
++                <button key={k} type="button" title={l} onClick={() => setCat(k)}
++                  className={`shrink-0 rounded-md px-1.5 py-1 text-lg leading-none ${cat === k ? "bg-amber-100" : "hover:bg-slate-100"}`}
++                  data-testid={`${testId}-tab-${k}`}>{i}</button>
++              ))}
++            </div>
++          )}
++          {/* Grille d'emojis */}
++          <div className="grid max-h-56 grid-cols-8 gap-0.5 overflow-y-auto p-2" data-testid={`${testId}-grid`}>
++            {shown.length === 0 && <p className="col-span-8 py-6 text-center text-xs text-slate-400">{cat === "recent" && !query ? "Aucun emoji utilisé récemment." : "Aucun emoji trouvé."}</p>}
++            {shown.map((e, i) => (
++              <button key={`${e}-${i}`} type="button" onClick={() => insert(e)} title={e}
++                className="rounded-md p-1 text-xl leading-none hover:bg-amber-50" data-testid={`${testId}-item`}>{e}</button>
++            ))}
++          </div>
++        </div>
++      )}
++    </div>
++  );
++}
+diff --git a/frontend/src/pages/admin/AdminSettings.jsx b/frontend/src/pages/admin/AdminSettings.jsx
+index d393573..3ca4ad3 100644
+--- a/frontend/src/pages/admin/AdminSettings.jsx
++++ b/frontend/src/pages/admin/AdminSettings.jsx
+@@ -3077,6 +3077,13 @@ export default function AdminSettings() {
+             placeholder="5"
+             testid="contract-overdue-days-default"
+           />
++          {/* Lot 27 — interrupteur général de la suspension automatique */}
++          <Toggle
++            label="Suspendre automatiquement les comptes en retard (selon le seuil de suspension de chaque fiche client)"
++            value={!!s.contract_auto_suspend_enabled}
++            onChange={(v) => upd("contract_auto_suspend_enabled", v)}
++            testid="toggle-contract-auto-suspend"
++          />
+           <button
+             type="button"
+             onClick={async () => {
+diff --git a/frontend/src/pages/portal/Contacts.jsx b/frontend/src/pages/portal/Contacts.jsx
+index a24c2ed..d41b492 100644
+--- a/frontend/src/pages/portal/Contacts.jsx
++++ b/frontend/src/pages/portal/Contacts.jsx
+@@ -1,4 +1,5 @@
+-import React, { useEffect, useMemo, useState } from "react";
++import React, { useEffect, useMemo, useRef, useState } from "react";
++import EmojiPicker from "@/components/EmojiPicker";
+ import { Link, useSearchParams } from "react-router-dom";
+ import { apiClient } from "@/lib/api";
+ import { toast } from "sonner";
+@@ -1697,6 +1698,7 @@ const ConversationModal = ({ contact, onClose, onMessagesRead }) => {
+   const [loading, setLoading] = useState(true);
+   const [data, setData] = useState({ messages: [], can_send_text: false, last_inbound_at: null, window_expires_at: null });
+   const [text, setText] = useState("");
++  const textRef = useRef(null);   // lot 27 : zone de saisie (insertion d'emojis au curseur)
+   // Iter38r-fix4 — Share-from-library modal (média / formulaire / catalogue)
+   const [shareModal, setShareModal] = useState({ open: false, tab: "media", items: [], loading: false, query: "" });
+   const [sending, setSending] = useState(false);
+@@ -2794,7 +2796,11 @@ const ConversationModal = ({ contact, onClose, onMessagesRead }) => {
+                 >
+                   <ClipboardPaste className="h-4 w-4" />
+                 </button>
++                {/* Lot 27 — emojis insérés à la position du curseur */}
++                <EmojiPicker textareaRef={textRef} value={text} onChange={setText} maxLength={4096}
++                  disabled={sending || recState !== "idle"} testId="conversation-emoji" />
+                 <textarea
++                  ref={textRef}
+                   value={text}
+                   onChange={(e) => setText(e.target.value)}
+                   onPaste={onPasteComposer}
+@@ -3484,6 +3490,7 @@ const SmsModal = ({ contact, onClose, onSent, userRole }) => {
+   const [providers, setProviders] = useState({ default: "auto", active: [] });
+   const [provider, setProvider] = useState("auto");
+   const [message, setMessage] = useState("");
++  const smsRef = useRef(null);   // lot 27 : zone de saisie SMS (emojis)
+   const [sender, setSender] = useState("");
+   const [sending, setSending] = useState(false);
+   const [result, setResult] = useState(null);
+@@ -3575,7 +3582,12 @@ const SmsModal = ({ contact, onClose, onSent, userRole }) => {
+                     insertCallback={insertLink}
+                   />
+                 </label>
++                <div className="flex justify-end mt-1">
++                  {/* Lot 27 — emojis (un emoji fait passer le SMS en Unicode : 70 caractères par SMS) */}
++                  <EmojiPicker textareaRef={smsRef} value={message} onChange={(v) => setMessage(v.slice(0, 800))} maxLength={800} testId="sms-emoji" />
++                </div>
+                 <textarea
++                  ref={smsRef}
+                   value={message}
+                   onChange={(e) => setMessage(e.target.value.slice(0, 800))}
+                   rows={6}
+@@ -3583,6 +3595,17 @@ const SmsModal = ({ contact, onClose, onSent, userRole }) => {
+                   className="w-full mt-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                   data-testid="sms-message"
+                 />
++                {/* Lot 27 — nombre de SMS : 160 caractères par SMS, 70 si le message contient un emoji ou un caractère spécial */}
++                {(() => {
++                  const unicode = /[^\u0000-\u00ff]/.test(message);
++                  const per = unicode ? (message.length > 70 ? 67 : 70) : (message.length > 160 ? 153 : 160);
++                  const count = message.length ? Math.ceil(message.length / per) : 0;
++                  return (
++                    <p className={`text-[10px] mt-0.5 ${unicode ? "text-amber-600" : "text-slate-400"}`} data-testid="sms-count">
++                      {message.length}/800 caractères · {count} SMS{unicode ? " — contient des emojis : envoi en Unicode (70 caractères par SMS)" : ""}
++                    </p>
++                  );
++                })()}
+                 <p className="text-[10px] text-slate-400 mt-0.5">
+                   Astuce : utilisez le bouton « Insérer un lien de paiement » pour ajouter un lien <code>/pay/&#123;slug&#125;</code>.
+                 </p>
+diff --git a/frontend/src/pages/portal/SmsBulk.jsx b/frontend/src/pages/portal/SmsBulk.jsx
+index 968e894..53b8ee3 100644
+--- a/frontend/src/pages/portal/SmsBulk.jsx
++++ b/frontend/src/pages/portal/SmsBulk.jsx
+@@ -452,7 +452,10 @@ export default function SmsBulk() {
+                       <td className="px-3 py-2 hidden md:table-cell max-w-[300px] truncate text-xs text-slate-600" title={sc.message_template}>{sc.message_template}</td>
+                       <td className="px-3 py-2 hidden sm:table-cell text-center font-mono text-xs">
+                         {(sc.contact_ids || []).length}
+-                        {sc.result_summary && <span className="text-[10px] text-emerald-700 block">✓ {sc.result_summary.sent_ok || 0}</span>}
++                        {/* Lot 27 — motif d'annulation (ex. envoi trop en retard, non parti automatiquement) */}
++                        {sc.status === "cancelled" && sc.result_summary?.error
++                          ? <span className="text-[10px] text-slate-500 block max-w-[220px]">{sc.result_summary.error}</span>
++                          : sc.result_summary && <span className="text-[10px] text-emerald-700 block">✓ {sc.result_summary.sent_ok || 0}</span>}
+                       </td>
+                       <td className="px-3 py-2 hidden lg:table-cell text-xs">{(sc.provider || "auto").toUpperCase()}</td>
+                       <td className="px-3 py-2">
+diff --git a/frontend/src/pages/portal/UnifiedInbox.jsx b/frontend/src/pages/portal/UnifiedInbox.jsx
+index a16c62f..dd9d83f 100644
+--- a/frontend/src/pages/portal/UnifiedInbox.jsx
++++ b/frontend/src/pages/portal/UnifiedInbox.jsx
+@@ -3,7 +3,8 @@
+  * Aggregates WhatsApp + Messenger threads. Two-pane layout: thread list (left)
+  * and message view (right). Channel-colored badges and unread counts.
+  */
+-import React, { useCallback, useEffect, useState } from "react";
++import React, { useCallback, useEffect, useRef, useState } from "react";
++import EmojiPicker from "@/components/EmojiPicker";
+ import { apiClient } from "@/lib/api";
+ import { MessageCircle, Facebook, Loader2, RefreshCw, Inbox as InboxIcon, Send, Smartphone, ArrowDown, CircleDollarSign, Trash2 } from "lucide-react";
+ import { toast } from "sonner";
+@@ -25,6 +26,7 @@ export default function UnifiedInbox() {
+   const [loadingMsgs, setLoadingMsgs] = useState(false);
+   const [filterCh, setFilterCh] = useState("all");
+   const [composer, setComposer] = useState("");
++  const composerRef = useRef(null);   // lot 27 : insertion d'emojis au curseur
+   const [sending, setSending] = useState(false);
+   // Iter43-fix24d — Badge coût Bird du jour
+   const [birdCost, setBirdCost] = useState(null);
+@@ -309,7 +311,10 @@ export default function UnifiedInbox() {
+               </div>
+               <div className="p-3 border-t border-slate-200">
+                 <div className="flex items-end gap-2">
++                  {/* Lot 27 — emojis */}
++                  <EmojiPicker textareaRef={composerRef} value={composer} onChange={setComposer} disabled={sending} testId="inbox-emoji" />
+                   <textarea
++                    ref={composerRef}
+                     value={composer} onChange={(e) => setComposer(e.target.value)}
+                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                     placeholder={`Répondre via ${selected.channel === "whatsapp" ? "WhatsApp" : "Messenger"}…`}
+diff --git a/frontend/src/pages/portal/WaBulk.jsx b/frontend/src/pages/portal/WaBulk.jsx
+index be3c54e..b95c732 100644
+--- a/frontend/src/pages/portal/WaBulk.jsx
++++ b/frontend/src/pages/portal/WaBulk.jsx
+@@ -737,6 +737,10 @@ export default function WaBulk() {
+                       </td>
+                       <td className="px-3 py-2 hidden sm:table-cell text-center font-mono text-xs">
+                         {(sc.recipients || []).length}
++                        {/* Lot 27 — motif d'annulation (ex. envoi trop en retard, non parti automatiquement) */}
++                        {sc.status === "cancelled" && sc.result_summary?.error && (
++                          <span className="text-[10px] text-slate-500 block max-w-[220px]" data-testid={`wa-sched-cancel-reason-${sc.id}`}>{sc.result_summary.error}</span>
++                        )}
+                         {sc.result_summary?.sent_ok != null && (
+                           <span className="text-[10px] text-emerald-700 block">✓ {sc.result_summary.sent_ok}</span>
+                         )}
+-- 
+2.43.0
+
