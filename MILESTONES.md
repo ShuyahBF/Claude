@@ -104,15 +104,19 @@ concerné.
   réutilisable (constructeur 19 types, validation serveur, conditions,
   invitations personnelles par client, lien public + QR, réponses, stats par
   question, export CSV), copié par `forms-core/sync.sh` ; 10 tests.
-- **Albarka lot 3 — Formulaires (`/admin/forms`)** — **livré, en attente de
-  publication** (base `b545832` de `conflict_030926_0658` ;
-  `albarka-portal-livraisons/albarka-portal-corrections_3_7387b59.patch` +
-  `albarka-portal-prompt_3.md` ; dev `claude/forms-lot3` 21990c4 dans
-  `ShuyahBF/albarka-portal`). Rôle cumulable `formulaires` (case Personnels,
-  menu visible seulement pour ce rôle + superviseur), envoi e-mail/WhatsApp à
-  des clients choisis, lien public non-clients, « Mes formulaires » côté
-  client. 7 tests Albarka + parcours navigateur complet OK. Noté : la case
-  « Caissier » manque dans `AdminStaff.jsx` (à traiter à part).
+- **Albarka lot 3 — Formulaires + Caissier + administrateur réservé + espace
+  client** — **livré, en attente de publication** (base `b545832` de
+  `conflict_030926_0658` ; `albarka-portal-livraisons/albarka-portal-corrections_3_7a62fdf.patch`
+  + `albarka-portal-prompt_3.md`, remplace la 1re version 7387b59 non publiée ;
+  dev `claude/forms-lot3` db51055 dans `ShuyahBF/albarka-portal`).
+  Formulaires (rôle `formulaires`, envoi clients, lien public, « Mes
+  formulaires ») ; Caissier seul à encaisser/délivrer un reçu, reçu REC auto
+  à l'encaissement (exclu des totaux) ; administrateur = compte
+  admin@sawalismartsystems.com seul (rôles effectifs, rien effacé) ; espace
+  client : dépôts sans OCR, factures mises à disposition, modules par client,
+  page « Factures & documents », notification WhatsApp à textes réglables
+  (modèle Meta hors 24 h, repli e-mail). 18 tests Albarka + parcours
+  navigateur OK.
 - **À refaire pour** : `Site-Albarka` — **lot 1 publié et déployé en production le
   2026-09-23** (commit Emergent `ccab0b2`, identique au patch ; routes et
   frontend vérifiés sur albarka-bf.com ; premier retour réel de l'utilisateur

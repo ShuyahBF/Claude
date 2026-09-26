@@ -1,36 +1,54 @@
-From 7387b59b0a5d81500f76cdbd29b44a25f94fa99c Mon Sep 17 00:00:00 2001
+From 7a62fdfe56fefb476f3dfb7ea369e0e43a35fc9d Mon Sep 17 00:00:00 2001
 From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
-Date: Fri, 25 Sep 2026 23:38:03 +0000
-Subject: [PATCH] Formulaires : module commun forms_core + /admin/forms, envoi
- aux clients et lien public
+Date: Sat, 26 Sep 2026 00:44:26 +0000
+Subject: [PATCH] =?UTF-8?q?Formulaires,=20r=C3=B4le=20Caissier,=20administ?=
+ =?UTF-8?q?rateur=20r=C3=A9serv=C3=A9,=20espace=20client=20avec=20notifica?=
+ =?UTF-8?q?tions?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-J'ajoute la gestion de formulaires au portail, sur le module commun
-forms_core (même principe que ocr_core) :
-- backend/forms_core et frontend/src/components/forms-core : copies
-  identiques du module commun (constructeur, 19 types de questions,
-  validation serveur, conditions d'affichage, invitations personnelles,
-  lien public + QR code, réponses, statistiques par question, export CSV) ;
-- albarka_forms.py : branchement Albarka (clients destinataires, e-mail et
-  WhatsApp, stockage des pièces jointes, journal de la plateforme) ;
-- nouveau rôle cumulable « formulaires » : case dans la fiche du personnel,
-  menu Formulaires visible uniquement pour ce rôle (et le superviseur) ;
-- espace client : « Mes formulaires » ; page publique /f/<jeton>.
+J'ajoute au portail :
+- Formulaires (/admin/forms) sur le module commun forms_core (même principe
+  que ocr_core) : constructeur, envoi aux clients choisis (lien personnel),
+  lien public + QR, réponses, statistiques, export CSV ; nouveau rôle
+  cumulable « formulaires » qui seul voit le menu ; « Mes formulaires » côté
+  client et page publique /f/<jeton>.
+- Rôle Caissier : seul habilité à encaisser et à délivrer un reçu ; chaque
+  encaissement délivre automatiquement un reçu (REC-…) ; case Caissier dans
+  la fiche du personnel, menu Caisse ouvert au caissier.
+- Administrateur : rôle réservé au compte admin du portail, ignoré sur tout
+  autre compte (rien n'est effacé en base).
+- Espace client : dépôt/scan de documents faits hors du portail (sans OCR),
+  mise à disposition des factures/proformas/reçus de la Caisse, modules
+  visibles réglables par client, page client « Factures & documents ».
+- Notification WhatsApp du client à chaque mise à disposition, textes
+  réglables par catégorie dans Paramètres, modèle Meta hors fenêtre de 24 h,
+  repli e-mail.
 ---
- backend/albarka_forms.py                      | 252 +++++++
- backend/albarka_models.py                     |   8 +
+ backend/albarka_admin_settings.py             |  38 +
+ backend/albarka_auth.py                       |   4 +
+ backend/albarka_client_space.py               | 588 +++++++++++++++
+ backend/albarka_clients.py                    |  43 +-
+ backend/albarka_documents.py                  |   7 +
+ backend/albarka_echeances.py                  |   5 +-
+ backend/albarka_forms.py                      | 256 +++++++
+ backend/albarka_missions.py                   |   5 +-
+ backend/albarka_models.py                     |  59 ++
+ backend/albarka_notifications.py              |  49 ++
+ backend/albarka_phase_c.py                    | 105 ++-
  backend/forms_core/__init__.py                |  26 +
  backend/forms_core/api.py                     | 688 ++++++++++++++++++
  backend/forms_core/export.py                  |  58 ++
  backend/forms_core/fields.py                  | 226 ++++++
  backend/forms_core/stats.py                   | 100 +++
  backend/forms_core/validation.py              | 150 ++++
- backend/server.py                             |  13 +
+ backend/server.py                             |  24 +
+ backend/tests/test_client_space_lot3.py       | 312 ++++++++
  backend/tests/test_forms_lot3.py              | 219 ++++++
- frontend/src/App.js                           |  10 +
- frontend/src/components/PortalLayout.jsx      |   8 +
+ frontend/src/App.js                           |  15 +
+ frontend/src/components/ClientSpacePanel.jsx  | 236 ++++++
+ frontend/src/components/PortalLayout.jsx      |  32 +-
  .../src/components/forms-core/FormBuilder.jsx | 325 +++++++++
  .../src/components/forms-core/FormDetail.jsx  |  69 ++
  .../components/forms-core/FormRenderer.jsx    | 292 ++++++++
@@ -41,11 +59,18 @@ forms_core (même principe que ocr_core) :
  .../src/components/forms-core/MyForms.jsx     |  46 ++
  .../components/forms-core/PublicFormPage.jsx  | 127 ++++
  .../src/components/forms-core/fieldTypes.js   | 100 +++
+ frontend/src/pages/admin/AdminBilling.jsx     |  64 +-
+ .../src/pages/admin/AdminClientDetail.jsx     |   6 +
+ frontend/src/pages/admin/AdminClientSpace.jsx |  28 +
  frontend/src/pages/admin/AdminForms.jsx       |  25 +
- frontend/src/pages/admin/AdminStaff.jsx       |   3 +
+ frontend/src/pages/admin/AdminSettings.jsx    |   3 +
+ frontend/src/pages/admin/AdminStaff.jsx       |  16 +-
+ .../src/pages/admin/ClientDocsNotifPanel.jsx  | 117 +++
+ .../src/pages/portal/CabinetDocuments.jsx     | 102 +++
  frontend/src/pages/portal/MyForms.jsx         |  10 +
  frontend/src/pages/public/FillForm.jsx        |  14 +
- 26 files changed, 3451 insertions(+)
+ 43 files changed, 5211 insertions(+), 60 deletions(-)
+ create mode 100644 backend/albarka_client_space.py
  create mode 100644 backend/albarka_forms.py
  create mode 100644 backend/forms_core/__init__.py
  create mode 100644 backend/forms_core/api.py
@@ -53,7 +78,9 @@ forms_core (même principe que ocr_core) :
  create mode 100644 backend/forms_core/fields.py
  create mode 100644 backend/forms_core/stats.py
  create mode 100644 backend/forms_core/validation.py
+ create mode 100644 backend/tests/test_client_space_lot3.py
  create mode 100644 backend/tests/test_forms_lot3.py
+ create mode 100644 frontend/src/components/ClientSpacePanel.jsx
  create mode 100644 frontend/src/components/forms-core/FormBuilder.jsx
  create mode 100644 frontend/src/components/forms-core/FormDetail.jsx
  create mode 100644 frontend/src/components/forms-core/FormRenderer.jsx
@@ -64,16 +91,847 @@ forms_core (même principe que ocr_core) :
  create mode 100644 frontend/src/components/forms-core/MyForms.jsx
  create mode 100644 frontend/src/components/forms-core/PublicFormPage.jsx
  create mode 100644 frontend/src/components/forms-core/fieldTypes.js
+ create mode 100644 frontend/src/pages/admin/AdminClientSpace.jsx
  create mode 100644 frontend/src/pages/admin/AdminForms.jsx
+ create mode 100644 frontend/src/pages/admin/ClientDocsNotifPanel.jsx
+ create mode 100644 frontend/src/pages/portal/CabinetDocuments.jsx
  create mode 100644 frontend/src/pages/portal/MyForms.jsx
  create mode 100644 frontend/src/pages/public/FillForm.jsx
 
+diff --git a/backend/albarka_admin_settings.py b/backend/albarka_admin_settings.py
+index e37a1a3..0c020ca 100644
+--- a/backend/albarka_admin_settings.py
++++ b/backend/albarka_admin_settings.py
+@@ -88,6 +88,21 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
+     "pawapay_api_token_production": "",
+     "pawapay_country": "BFA",  # ISO-3
+     "pawapay_callback_secret": "",
++    # Espace client — notification WhatsApp au client quand le cabinet dépose
++    # ou met à disposition un document (voir albarka_client_space.py).
++    #  - client_docs_templates : texte du message par catégorie
++    #    ("default" + facture, proforma, recu, rapport…) ; vide = texte par défaut.
++    #    Variables : {client} {entreprise} {cabinet} {nombre} {liste} {titre}
++    #    {categorie} {reference} {montant} {lien}.
++    #  - modèle Meta (hors fenêtre de 24 h) : nom, langue et variables
++    #    envoyées dans l'ordre pour {{1}}, {{2}}… (liste séparée par des virgules).
++    #  - repli e-mail si WhatsApp est impossible.
++    "client_docs_notify_enabled": True,
++    "client_docs_templates": {},
++    "client_docs_wa_template_name": "",
++    "client_docs_wa_template_lang": "fr",
++    "client_docs_wa_template_params": "client,nombre,lien",
++    "client_docs_email_fallback": True,
+ }
+ 
+ 
+@@ -176,6 +191,13 @@ class SettingsUpdate(BaseModel):
+     pawapay_api_token_production: Optional[str] = Field(None, max_length=500)
+     pawapay_country: Optional[str] = Field(None, max_length=3)
+     pawapay_callback_secret: Optional[str] = Field(None, max_length=200)
++    # Espace client — modèles de notification (voir DEFAULT_SETTINGS)
++    client_docs_notify_enabled: Optional[bool] = None
++    client_docs_templates: Optional[Dict[str, str]] = None
++    client_docs_wa_template_name: Optional[str] = Field(None, max_length=120)
++    client_docs_wa_template_lang: Optional[str] = Field(None, max_length=10)
++    client_docs_wa_template_params: Optional[str] = Field(None, max_length=200)
++    client_docs_email_fallback: Optional[bool] = None
+ 
+ 
+ @router.get("/settings")
+@@ -201,6 +223,22 @@ async def update_settings(payload: SettingsUpdate, user: dict = Depends(require_
+             if val and not _EMAIL_RE.match(val):
+                 raise HTTPException(status_code=400, detail=f"{k} : adresse email invalide")
+             changes[k] = val
++    # Modèles de notification de l'espace client : clés connues uniquement,
++    # 1000 caractères max ; un texte vide revient au texte par défaut.
++    if "client_docs_templates" in changes:
++        from albarka_client_space import TEMPLATE_KEYS
++        tpl = changes["client_docs_templates"]
++        unknown = set(tpl) - set(TEMPLATE_KEYS)
++        if unknown:
++            raise HTTPException(status_code=400, detail=f"Modèle inconnu : {', '.join(sorted(unknown))}")
++        changes["client_docs_templates"] = {k: (v or "").strip()[:1000] for k, v in tpl.items() if (v or "").strip()}
++    if "client_docs_wa_template_params" in changes:
++        from albarka_client_space import TEMPLATE_VARIABLES
++        params = [p.strip() for p in (changes["client_docs_wa_template_params"] or "").split(",") if p.strip()]
++        bad = [p for p in params if p not in TEMPLATE_VARIABLES]
++        if bad:
++            raise HTTPException(status_code=400, detail=f"Variable inconnue pour le modèle Meta : {', '.join(bad)}")
++        changes["client_docs_wa_template_params"] = ",".join(params)
+     if not changes:
+         return _mask(await _load_settings())
+     await _load_settings()
+diff --git a/backend/albarka_auth.py b/backend/albarka_auth.py
+index a4a2477..c18c5f1 100644
+--- a/backend/albarka_auth.py
++++ b/backend/albarka_auth.py
+@@ -15,6 +15,7 @@ from jose import JWTError, jwt
+ 
+ from albarka_models import (
+     AuthTokenResponse,
++    effective_roles,
+     LoginRequest,
+     LoginResponse,
+     OtpVerifyRequest,
+@@ -101,6 +102,8 @@ async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(_securi
+         raise HTTPException(status_code=401, detail="Utilisateur introuvable")
+     if not user.get("is_active", True):
+         raise HTTPException(status_code=403, detail="Compte désactivé")
++    # Rôles effectifs : "administrateur" réservé au compte admin (albarka_models).
++    user["roles"] = effective_roles(user)
+     return user
+ 
+ 
+@@ -188,6 +191,7 @@ async def verify_otp(payload: OtpVerifyRequest):
+         {"$set": {"last_login": datetime.now(timezone.utc).isoformat()}},
+     )
+     token = create_access_token(user["id"])
++    user["roles"] = effective_roles(user)  # mêmes rôles effectifs que get_current_user
+     return AuthTokenResponse(access_token=token, user=User(**user))
+ 
+ 
+diff --git a/backend/albarka_client_space.py b/backend/albarka_client_space.py
+new file mode 100644
+index 0000000..2e55bc3
+--- /dev/null
++++ b/backend/albarka_client_space.py
+@@ -0,0 +1,588 @@
++"""Espace client — documents mis à disposition par le cabinet.
++
++Le cabinet fait souvent ses factures, rapports, attestations… dans un autre
++logiciel. Ce module lui permet de les déposer (fichier ou scan, SANS analyse
++OCR) dans l'espace d'un client, et de mettre à disposition les factures,
++proformas et reçus faits dans la Caisse du portail. Le client ne voit que ce
++qui le concerne ET que le cabinet a rendu visible, et il est prévenu par
++WhatsApp (repli e-mail) avec des textes réglables dans Paramètres.
++
++Routes (préfixe /api) :
++  /client-space/...   côté cabinet (CLIENT_SPACE_ROLES ; modules : CLIENT_MANAGE_ROLES)
++  /me/space           côté client (ses documents visibles + téléchargement)
++
++Collection : `client_documents` (fichiers dans le stockage Albarka, kind
++"client_space", référencés aussi dans `stored_objects`).
++"""
++from __future__ import annotations
++
++import logging
++import re
++import secrets
++from datetime import datetime, timezone
++from html import escape
++from typing import Any, Dict, List, Optional
++
++from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile
++from fastapi.responses import Response
++
++import albarka_storage
++from albarka_admin_settings import get_settings_doc
++from albarka_auth import get_current_user, require_roles
++from albarka_models import (
++    CLIENT_MANAGE_ROLES, CLIENT_PORTAL_MODULES, CLIENT_SPACE_ROLES, ENCAISSEMENT_ROLES,
++    client_modules, has_any_role, is_client, whatsapp_number_of,
++)
++from albarka_notifications import send_email, send_whatsapp, send_whatsapp_template, wa_window_state
++from db import db
++
++logger = logging.getLogger("albarka.client_space")
++
++router = APIRouter(prefix="/client-space", tags=["Espace client — cabinet"])
++me_router = APIRouter(prefix="/me/space", tags=["Espace client — client"])
++
++# Catégories proposées au dépôt (les 3 premières sont aussi celles de la Caisse).
++CATEGORIES: Dict[str, str] = {
++    "facture": "Facture",
++    "proforma": "Proforma",
++    "recu": "Reçu",
++    "rapport": "Rapport",
++    "declaration": "Déclaration fiscale",
++    "attestation": "Attestation / certificat",
++    "contrat": "Contrat",
++    "courrier": "Courrier",
++    "autre": "Autre document",
++}
++MAX_FILES = 10
++MAX_FILE_BYTES = 20 * 1024 * 1024  # 20 Mo, comme les pièces
++ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png", "webp", "doc", "docx", "xls", "xlsx", "txt", "csv"}
++DEFAULT_BASE_URL = "https://albarka-bf.com"
++CLIENT_PAGE_PATH = "/portal/documents-cabinet"
++
++# ---------------------------------------------------------------- modèles de message
++# Variables utilisables dans les textes (Paramètres → Notifications).
++TEMPLATE_VARIABLES = {
++    "client": "Nom du client",
++    "entreprise": "Entreprise du client",
++    "cabinet": "Nom du cabinet",
++    "nombre": "Nombre de documents",
++    "liste": "Liste des documents (une ligne par document)",
++    "titre": "Titre du 1er document",
++    "categorie": "Catégorie du 1er document",
++    "reference": "Référence / numéro du 1er document",
++    "montant": "Montant du 1er document",
++    "lien": "Lien vers l'espace client",
++}
++# Un texte par catégorie + "default" (plusieurs catégories dans un même envoi,
++# ou catégorie sans texte propre).
++TEMPLATE_KEYS = ["default", *CATEGORIES]
++DEFAULT_TEMPLATES: Dict[str, str] = {
++    "default": ("*{cabinet}*\nBonjour {client},\n\nVous avez reçu {nombre} nouveau(x) document(s) "
++                "dans votre espace client :\n{liste}\n\nConsultez-les ici : {lien}"),
++    "facture": ("*{cabinet}*\nBonjour {client},\n\nUne nouvelle facture est disponible dans votre espace client :\n"
++                "{liste}\n\nConsultez-la ici : {lien}"),
++    "proforma": ("*{cabinet}*\nBonjour {client},\n\nUne facture proforma est disponible dans votre espace client :\n"
++                 "{liste}\n\nConsultez-la ici : {lien}"),
++    "recu": ("*{cabinet}*\nBonjour {client},\n\nMerci pour votre règlement. Votre reçu est disponible "
++             "dans votre espace client :\n{liste}\n\nConsultez-le ici : {lien}"),
++    "rapport": ("*{cabinet}*\nBonjour {client},\n\nUn nouveau rapport est disponible dans votre espace client :\n"
++                "{liste}\n\nConsultez-le ici : {lien}"),
++}
++_VAR_RE = re.compile(r"\{([a-z_]+)\}")
++
++
++def render_template(template: str, values: Dict[str, str]) -> str:
++    """Remplace {variable} par sa valeur ; une accolade inconnue reste telle quelle
++    (pas d'erreur si le texte contient d'autres accolades)."""
++    return _VAR_RE.sub(lambda m: str(values.get(m.group(1), m.group(0))), template)
++
++
++def _fmt_amount(amount: Any, currency: str = "FCFA") -> str:
++    try:
++        return f"{int(round(float(amount))):,} {currency}".replace(",", " ")
++    except (TypeError, ValueError):
++        return ""
++
++
++def _item_line(it: Dict[str, Any]) -> str:
++    """Ligne de la variable {liste} : « • Facture — Honoraires (FAC-…) — 150 000 FCFA »."""
++    parts = [f"• {CATEGORIES.get(it['category'], 'Document')} — {it.get('title') or 'Document'}"]
++    if it.get("reference"):
++        parts[0] += f" ({it['reference']})"
++    if it.get("amount"):
++        parts.append(_fmt_amount(it["amount"], "FCFA" if (it.get("currency") or "XOF") == "XOF" else it["currency"]))
++    return " — ".join(parts)
++
++
++def template_values(*, client: Dict[str, Any], items: List[Dict[str, Any]], cabinet: str, link: str) -> Dict[str, str]:
++    """Valeurs des variables pour un envoi (items = documents du même envoi)."""
++    first = items[0] if items else {}
++    return {
++        "client": client.get("full_name") or client.get("email") or "",
++        "entreprise": client.get("company") or client.get("full_name") or "",
++        "cabinet": cabinet,
++        "nombre": str(len(items)),
++        "liste": "\n".join(_item_line(i) for i in items),
++        "titre": first.get("title") or "",
++        "categorie": CATEGORIES.get(first.get("category"), ""),
++        "reference": first.get("reference") or "",
++        "montant": _fmt_amount(first["amount"]) if first.get("amount") else "",
++        "lien": link,
++    }
++
++
++def pick_template(settings: Dict[str, Any], items: List[Dict[str, Any]]) -> str:
++    """Texte réglé pour la catégorie (si tous les documents sont de la même),
++    sinon celui par défaut ; à défaut de réglage, le texte fourni d'origine."""
++    custom = settings.get("client_docs_templates") or {}
++    cats = {i.get("category") for i in items}
++    if len(cats) == 1:
++        cat = next(iter(cats))
++        if (custom.get(cat) or "").strip():
++            return custom[cat]
++        if (custom.get("default") or "").strip():
++            return custom["default"]
++        return DEFAULT_TEMPLATES.get(cat, DEFAULT_TEMPLATES["default"])
++    return (custom.get("default") or "").strip() or DEFAULT_TEMPLATES["default"]
++
++
++def _portal_link(request: Optional[Request] = None) -> str:
++    """Lien vers la page client ; toujours en https (garde-fous e-mail)."""
++    origin = ((request.headers.get("origin") if request else "") or "").rstrip("/")
++    base = origin if origin.startswith("https://") else DEFAULT_BASE_URL
++    return base + CLIENT_PAGE_PATH
++
++
++def _notif_email_html(*, cabinet: str, client_name: str, lines: List[str], link: str) -> str:
++    """E-mail de repli (même style que les autres e-mails du cabinet ; bouton
++    sans nom de domaine pour respecter les garde-fous)."""
++    items = "".join(f'<li style="margin:4px 0;">{escape(l.lstrip("• "))}</li>' for l in lines)
++    return f"""
++<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#FBFAF4;padding:24px 0;font-family:Arial,sans-serif;">
++  <tr><td align="center">
++    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;">
++      <tr><td style="background:#0B1912;padding:24px 32px;color:#ffffff;">
++        <div style="font-size:12px;letter-spacing:2px;color:#E5A24B;text-transform:uppercase;">{escape(cabinet)}</div>
++        <div style="font-size:22px;margin-top:4px;font-family:Georgia,serif;">Nouveaux documents disponibles</div>
++      </td></tr>
++      <tr><td style="padding:32px;color:#0F172A;">
++        <p style="margin:0 0 12px 0;">Bonjour {escape(client_name)},</p>
++        <p style="margin:0 0 12px 0;">Le cabinet a mis à votre disposition dans votre espace client :</p>
++        <ul style="margin:0 0 16px 18px;padding:0;">{items}</ul>
++        <p style="margin:24px 0;text-align:center;">
++          <a href="{escape(link)}" style="background:#0F6B4A;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;display:inline-block;">Ouvrir mon espace client</a>
++        </p>
++        <p style="margin:24px 0 0 0;font-size:13px;color:#64748B;">Ce message est envoyé automatiquement par {escape(cabinet)}.</p>
++      </td></tr>
++    </table>
++  </td></tr>
++</table>
++"""
++
++
++async def notify_client(client: Dict[str, Any], items: List[Dict[str, Any]], *, link: str) -> Dict[str, Any]:
++    """Prévient le client des documents qu'il vient de recevoir.
++    1. WhatsApp : message libre (texte réglé) si la fenêtre de 24 h est
++       ouverte ; sinon le modèle Meta réglé, s'il y en a un ;
++    2. repli e-mail si WhatsApp est impossible (réglable).
++    Retourne {ok, channel, error, at} (enregistré sur chaque document)."""
++    now = datetime.now(timezone.utc).isoformat()
++    settings = await get_settings_doc()
++    if not settings.get("client_docs_notify_enabled", True):
++        return {"ok": False, "channel": None, "error": "Notifications désactivées dans les paramètres", "at": now}
++    if client.get("can_receive_notifications") is False or not client.get("is_active", True):
++        return {"ok": False, "channel": None, "error": "Le client a refusé les notifications", "at": now}
++    cabinet = settings.get("cabinet_name") or "Cabinet ALBARKA"
++    values = template_values(client=client, items=items, cabinet=cabinet, link=link)
++    text = render_template(pick_template(settings, items), values)
++
++    wa_error = None
++    phone = whatsapp_number_of(client) or ""
++    if phone.startswith("+"):
++        window = await wa_window_state(phone)
++        tpl_name = (settings.get("client_docs_wa_template_name") or "").strip()
++        if window is not True and tpl_name:
++            # Hors fenêtre (ou inconnue) : seul un modèle approuvé par Meta est remis.
++            params = [values.get(p.strip(), "") for p in (settings.get("client_docs_wa_template_params") or "").split(",") if p.strip()]
++            r = await send_whatsapp_template(to_phone=phone, template_name=tpl_name,
++                                             language=settings.get("client_docs_wa_template_lang") or "fr", body_params=params)
++            if r.get("ok"):
++                return {"ok": True, "channel": "whatsapp_template", "error": None, "at": now}
++            wa_error = f"Modèle WhatsApp refusé : {r.get('error')}"[:300]
++        else:
++            r = await send_whatsapp(to_phone=phone, message=text)
++            if r.get("ok") and window is not False:
++                return {"ok": True, "channel": "whatsapp", "error": None, "at": now}
++            wa_error = ("Hors fenêtre de 24 h WhatsApp et aucun modèle Meta réglé : message probablement non remis"
++                        if r.get("ok") or r.get("outside_24h_window") else f"WhatsApp : {r.get('error')}")[:300]
++    else:
++        wa_error = "Pas de numéro WhatsApp au format +226…"
++
++    # Repli e-mail
++    if settings.get("client_docs_email_fallback", True) and client.get("email"):
++        try:
++            sent = await send_email(
++                to=client["email"], subject=f"Nouveaux documents disponibles — {cabinet}",
++                html=_notif_email_html(cabinet=cabinet, client_name=values["client"],
++                                       lines=values["liste"].split("\n"), link=link))
++            if sent:
++                return {"ok": True, "channel": "email", "error": wa_error, "at": now}
++        except ValueError as exc:  # garde-fous de sécurité des e-mails
++            logger.warning("E-mail de notification refusé : %s", exc)
++    return {"ok": False, "channel": None, "error": wa_error or "Aucun canal disponible", "at": now}
++
++
++# ---------------------------------------------------------------- mise en forme
++def _upload_item(d: Dict[str, Any]) -> Dict[str, Any]:
++    return {
++        "source": "upload", "id": d["id"], "tenant_id": d["tenant_id"], "category": d["category"],
++        "category_label": CATEGORIES.get(d["category"], "Document"), "title": d.get("title"),
++        "reference": d.get("reference"), "amount": d.get("amount"), "currency": d.get("currency") or "XOF",
++        "date": d.get("doc_date") or (d.get("created_at") or "")[:10], "created_at": d.get("created_at"),
++        "filename": d.get("original_filename"), "content_type": d.get("content_type"), "size": d.get("size"),
++        "visible": bool(d.get("visible")), "viewed_at": d.get("viewed_at"),
++        "last_notification": (d.get("notifications") or [None])[-1],
++        "uploaded_by_name": d.get("uploaded_by_name"),
++    }
++
++
++def _invoice_item(inv: Dict[str, Any]) -> Dict[str, Any]:
++    total = float(inv.get("total") or 0)
++    paid = float(inv.get("paid_amount") or 0)
++    return {
++        "source": "invoice", "id": inv["id"], "tenant_id": inv["tenant_id"], "category": inv["document_type"],
++        "category_label": CATEGORIES.get(inv["document_type"], "Document"), "title": inv.get("title"),
++        "reference": inv.get("number"), "amount": total, "currency": inv.get("currency") or "XOF",
++        "date": (inv.get("created_at") or "")[:10], "created_at": inv.get("created_at"),
++        "filename": f"{inv['document_type']}_{inv.get('number')}.pdf", "content_type": "application/pdf",
++        "status": inv.get("status"), "paid_amount": paid,
++        "remaining": round(total - paid, 2) if inv["document_type"] == "facture" else None,
++        "visible": bool(inv.get("client_visible")), "viewed_at": inv.get("client_viewed_at"),
++        "last_notification": (inv.get("client_notifications") or [None])[-1],
++    }
++
++
++async def _client_or_404(tenant_id: str) -> Dict[str, Any]:
++    c = await db.users.find_one({"id": tenant_id, "roles": "client"}, {"_id": 0, "password_hash": 0})
++    if not c:
++        raise HTTPException(status_code=404, detail="Client introuvable")
++    return c
++
++
++def _check_category_rights(user: Dict[str, Any], category: str) -> None:
++    if category not in CATEGORIES:
++        raise HTTPException(status_code=400, detail="Catégorie inconnue")
++    # Délivrer un reçu = encaisser : réservé au Caissier, même pour un reçu fait ailleurs.
++    if category == "recu" and not has_any_role(user, ENCAISSEMENT_ROLES):
++        raise HTTPException(status_code=403, detail="Seul un collaborateur Caissier peut délivrer un reçu")
++
++
++async def _log(user: Dict[str, Any], action: str, entity_id: str, meta: Dict[str, Any]) -> None:
++    from albarka_phase_c import _log_platform_event  # import local : évite un cycle
++    await _log_platform_event(user=user, action=action, entity_type="client_document", entity_id=entity_id, meta=meta)
++
++
++# ---------------------------------------------------------------- mise à disposition des factures (Caisse)
++async def publish_invoice(invoice: Dict[str, Any], *, user: Dict[str, Any], notify: bool = True,
++                          request: Optional[Request] = None) -> Dict[str, Any]:
++    """Rend une facture/proforma/reçu de la Caisse visible dans l'espace du
++    client et le prévient (utilisé à la création, à l'encaissement et par le
++    bouton « Mettre à disposition »)."""
++    now = datetime.now(timezone.utc).isoformat()
++    update: Dict[str, Any] = {"client_visible": True, "client_published_at": now}
++    push = None
++    if notify:
++        client = await db.users.find_one({"id": invoice["tenant_id"]}, {"_id": 0, "password_hash": 0})
++        result = await notify_client(client, [_invoice_item(invoice)], link=_portal_link(request)) if client else \
++            {"ok": False, "channel": None, "error": "Client introuvable", "at": now}
++        push = {"client_notifications": result}
++        invoice["_notification"] = result
++    await db.invoices.update_one({"id": invoice["id"]}, {"$set": update, **({"$push": push} if push else {})})
++    invoice.update(update)
++    await _log(user, "client_space.invoice_published", invoice["id"], {"number": invoice.get("number")})
++    return invoice
++
++
++@router.post("/invoices/{invoice_id}/visibility")
++async def set_invoice_visibility(invoice_id: str, request: Request, payload: Dict[str, Any] = Body(...),
++                                 user: dict = Depends(require_roles(CLIENT_SPACE_ROLES))):
++    """Bouton de la Caisse : mettre à disposition du client / retirer de son espace."""
++    inv = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
++    if not inv:
++        raise HTTPException(status_code=404, detail="Document introuvable")
++    if payload.get("visible"):
++        inv = await publish_invoice(inv, user=user, notify=bool(payload.get("notify", True)), request=request)
++        return {"ok": True, "visible": True, "notification": inv.pop("_notification", None)}
++    await db.invoices.update_one({"id": invoice_id}, {"$set": {"client_visible": False}})
++    await _log(user, "client_space.invoice_hidden", invoice_id, {"number": inv.get("number")})
++    return {"ok": True, "visible": False, "notification": None}
++
++
++# ---------------------------------------------------------------- cabinet : dépôts
++@router.get("/catalog")
++async def catalog(user: dict = Depends(require_roles(CLIENT_SPACE_ROLES))):
++    """Catégories, modules, variables et textes par défaut (écrans et paramètres)."""
++    return {"categories": [{"key": k, "label": v} for k, v in CATEGORIES.items()],
++            "modules": [{"key": k, "label": v} for k, v in CLIENT_PORTAL_MODULES.items()],
++            "variables": [{"key": k, "label": v} for k, v in TEMPLATE_VARIABLES.items()],
++            "template_keys": TEMPLATE_KEYS, "default_templates": DEFAULT_TEMPLATES,
++            "can_issue_receipt": has_any_role(user, ENCAISSEMENT_ROLES)}
++
++
++@router.post("/preview")
++async def preview(payload: Dict[str, Any] = Body(...), user: dict = Depends(require_roles(CLIENT_SPACE_ROLES))):
++    """Aperçu d'un texte de notification avec des valeurs d'exemple (Paramètres)."""
++    settings = await get_settings_doc()
++    cat = payload.get("category") if payload.get("category") in CATEGORIES else "facture"
++    sample = [{"category": cat, "title": "Honoraires de septembre", "reference": "FAC-202609-0042", "amount": 150000}]
++    text = payload.get("template") or pick_template(settings, sample)
++    values = template_values(client={"full_name": "SARL Exemple", "company": "Exemple SARL"}, items=sample,
++                             cabinet=settings.get("cabinet_name") or "Cabinet ALBARKA", link=DEFAULT_BASE_URL + CLIENT_PAGE_PATH)
++    return {"text": render_template(text, values)}
++
++
++@router.get("/documents")
++async def list_documents(tenant_id: str, category: Optional[str] = None,
++                         user: dict = Depends(require_roles(CLIENT_SPACE_ROLES))):
++    """Tout ce qui est (ou peut être) dans l'espace du client : dépôts et
++    documents de la Caisse, avec visibilité, dernière notification et lecture."""
++    q: Dict[str, Any] = {"tenant_id": tenant_id, "is_deleted": {"$ne": True}}
++    if category:
++        q["category"] = category
++    uploads = await db.client_documents.find(q, {"_id": 0}).sort("created_at", -1).to_list(1000)
++    iq: Dict[str, Any] = {"tenant_id": tenant_id}
++    if category:
++        iq["document_type"] = category
++    invoices = await db.invoices.find(iq, {"_id": 0}).sort("created_at", -1).to_list(1000) \
++        if not category or category in ("facture", "proforma", "recu") else []
++    items = [_upload_item(d) for d in uploads] + [_invoice_item(i) for i in invoices]
++    items.sort(key=lambda x: x.get("created_at") or "", reverse=True)
++    client = await _client_or_404(tenant_id)
++    return {"items": items, "modules": client_modules(client)}
++
++
++@router.post("/documents", status_code=201)
++async def upload_documents(
++    request: Request,
++    tenant_id: str = Form(...),
++    category: str = Form("autre"),
++    title: str = Form(""),
++    reference: str = Form(""),
++    amount: str = Form(""),
++    doc_date: str = Form(""),
++    visible: bool = Form(True),
++    notify: bool = Form(True),
++    files: List[UploadFile] = File(...),
++    user: dict = Depends(require_roles(CLIENT_SPACE_ROLES)),
++):
++    """Dépose un ou plusieurs fichiers (ou scans) dans l'espace d'un client.
++    Aucune analyse OCR. Si visibles, le client est prévenu en UN seul message."""
++    _check_category_rights(user, category)
++    client = await _client_or_404(tenant_id)
++    if not files:
++        raise HTTPException(status_code=400, detail="Aucun fichier")
++    if len(files) > MAX_FILES:
++        raise HTTPException(status_code=400, detail=f"{MAX_FILES} fichiers maximum par dépôt")
++    try:
++        amount_val = float(amount.replace(" ", "").replace(",", ".")) if amount.strip() else None
++    except ValueError:
++        raise HTTPException(status_code=400, detail="Montant invalide")
++    now = datetime.now(timezone.utc).isoformat()
++    created: List[Dict[str, Any]] = []
++    for f in files:
++        name = f.filename or "document"
++        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
++        if ext not in ALLOWED_EXTENSIONS:
++            raise HTTPException(status_code=400, detail=f"« {name} » : format non accepté (.{ext or '?'})")
++        data = await f.read()
++        if len(data) > MAX_FILE_BYTES:
++            raise HTTPException(status_code=413, detail=f"« {name} » dépasse 20 Mo")
++        stored = await albarka_storage.save_and_log(
++            db, data=data, kind="client_space", tenant_id=tenant_id, ext=ext,
++            content_type=albarka_storage.guess_content_type(ext, f.content_type or "application/octet-stream"),
++            original_filename=name, user_id=user["id"])
++        # Titre : celui saisi (numéroté s'il y a plusieurs fichiers), sinon le nom du fichier
++        base_title = title.strip()
++        doc_title = (f"{base_title} ({len(created) + 1})" if base_title and len(files) > 1 else base_title) \
++            or name.rsplit(".", 1)[0]
++        doc = {
++            "id": secrets.token_urlsafe(12), "tenant_id": tenant_id, "category": category,
++            "title": doc_title[:200], "reference": reference.strip()[:80] or None, "amount": amount_val,
++            "currency": "XOF", "doc_date": doc_date.strip()[:10] or None,
++            "storage_id": stored["id"], "storage_path": stored["path"], "content_type": stored["content_type"],
++            "size": stored["size"], "original_filename": name, "visible": bool(visible),
++            "published_at": now if visible else None, "uploaded_by": user["id"],
++            "uploaded_by_name": user.get("full_name") or user.get("email"), "created_at": now,
++            "viewed_at": None, "is_deleted": False, "notifications": [],
++        }
++        await db.client_documents.insert_one(dict(doc))
++        created.append(doc)
++    notification = None
++    if visible and notify:
++        notification = await notify_client(client, [_upload_item(d) for d in created], link=_portal_link(request))
++        await db.client_documents.update_many({"id": {"$in": [d["id"] for d in created]}},
++                                              {"$push": {"notifications": notification}})
++        for d in created:
++            d["notifications"] = [notification]
++    await _log(user, "client_space.upload", created[0]["id"],
++               {"tenant_id": tenant_id, "count": len(created), "category": category, "visible": bool(visible)})
++    return {"items": [_upload_item(d) for d in created], "notification": notification}
++
++
++async def _doc_or_404(doc_id: str) -> Dict[str, Any]:
++    d = await db.client_documents.find_one({"id": doc_id, "is_deleted": {"$ne": True}}, {"_id": 0})
++    if not d:
++        raise HTTPException(status_code=404, detail="Document introuvable")
++    return d
++
++
++@router.patch("/documents/{doc_id}")
++async def update_document(doc_id: str, request: Request, payload: Dict[str, Any] = Body(...),
++                          user: dict = Depends(require_roles(CLIENT_SPACE_ROLES))):
++    """Modifie un dépôt ; le rendre visible pour la 1re fois prévient le client."""
++    d = await _doc_or_404(doc_id)
++    upd: Dict[str, Any] = {}
++    for k in ("title", "reference", "doc_date"):
++        if k in payload:
++            upd[k] = (str(payload[k] or "").strip() or None)
++    if "category" in payload:
++        _check_category_rights(user, payload["category"])
++        upd["category"] = payload["category"]
++    if "amount" in payload:
++        upd["amount"] = float(payload["amount"]) if payload["amount"] not in (None, "") else None
++    notification = None
++    if "visible" in payload:
++        upd["visible"] = bool(payload["visible"])
++        if upd["visible"] and not d.get("visible"):
++            upd["published_at"] = datetime.now(timezone.utc).isoformat()
++            if payload.get("notify", True):
++                client = await _client_or_404(d["tenant_id"])
++                notification = await notify_client(client, [_upload_item({**d, **upd})], link=_portal_link(request))
++    await db.client_documents.update_one({"id": doc_id}, {"$set": upd, **({"$push": {"notifications": notification}} if notification else {})})
++    await _log(user, "client_space.update", doc_id, {k: v for k, v in upd.items() if k != "published_at"})
++    return {"item": _upload_item(await _doc_or_404(doc_id)), "notification": notification}
++
++
++@router.post("/documents/{doc_id}/notify")
++async def renotify(doc_id: str, request: Request, user: dict = Depends(require_roles(CLIENT_SPACE_ROLES))):
++    """Renvoie la notification d'un document visible (ex. après correction du numéro WhatsApp)."""
++    d = await _doc_or_404(doc_id)
++    if not d.get("visible"):
++        raise HTTPException(status_code=400, detail="Document non visible par le client")
++    client = await _client_or_404(d["tenant_id"])
++    notification = await notify_client(client, [_upload_item(d)], link=_portal_link(request))
++    await db.client_documents.update_one({"id": doc_id}, {"$push": {"notifications": notification}})
++    return {"notification": notification}
++
++
++@router.delete("/documents/{doc_id}")
++async def delete_document(doc_id: str, user: dict = Depends(require_roles(CLIENT_SPACE_ROLES))):
++    """Retire définitivement le document de l'espace client (le fichier reste
++    tracé dans stored_objects, rien n'est effacé physiquement)."""
++    d = await _doc_or_404(doc_id)
++    await db.client_documents.update_one({"id": doc_id}, {"$set": {
++        "is_deleted": True, "deleted_at": datetime.now(timezone.utc).isoformat(), "deleted_by": user["id"]}})
++    await _log(user, "client_space.delete", doc_id, {"title": d.get("title"), "tenant_id": d["tenant_id"]})
++    return {"ok": True}
++
++
++def _file_response(data: bytes, content_type: str, filename: str, download: bool) -> Response:
++    safe = re.sub(r'[^\w.\- ]', "_", filename or "document")
++    return Response(content=data, media_type=content_type or "application/octet-stream",
++                    headers={"Content-Disposition": f'{"attachment" if download else "inline"}; filename="{safe}"'})
++
++
++@router.get("/documents/{doc_id}/file")
++async def staff_file(doc_id: str, download: bool = False, user: dict = Depends(require_roles(CLIENT_SPACE_ROLES))):
++    d = await _doc_or_404(doc_id)
++    data, ct = await albarka_storage.get_object(d["storage_path"])
++    return _file_response(data, d.get("content_type") or ct, d.get("original_filename"), download)
++
++
++# ---------------------------------------------------------------- cabinet : modules visibles
++@router.get("/modules/{tenant_id}")
++async def get_modules(tenant_id: str, user: dict = Depends(require_roles(CLIENT_SPACE_ROLES))):
++    client = await _client_or_404(tenant_id)
++    return {"modules": client_modules(client),
++            "catalog": [{"key": k, "label": v} for k, v in CLIENT_PORTAL_MODULES.items()]}
++
++
++@router.put("/modules/{tenant_id}")
++async def set_modules(tenant_id: str, payload: Dict[str, Any] = Body(...),
++                      user: dict = Depends(require_roles(CLIENT_MANAGE_ROLES))):
++    """Choisit les modules que ce client voit dans son espace."""
++    await _client_or_404(tenant_id)
++    mods = [m for m in (payload.get("modules") or []) if m in CLIENT_PORTAL_MODULES]
++    await db.users.update_one({"id": tenant_id}, {"$set": {"portal_modules": mods}})
++    await _log(user, "client_space.modules", tenant_id, {"modules": mods})
++    return {"modules": mods}
++
++
++# ---------------------------------------------------------------- côté client
++def _require_client_module(user: Dict[str, Any]) -> None:
++    if not is_client(user):
++        raise HTTPException(status_code=403, detail="Réservé aux clients")
++    if "cabinet_documents" not in client_modules(user):
++        raise HTTPException(status_code=403, detail="Ce module n'est pas ouvert pour votre compte")
++
++
++@me_router.get("")
++async def my_space(user: dict = Depends(get_current_user)):
++    """Documents que le cabinet a mis à disposition du client connecté."""
++    if not is_client(user):
++        return {"items": [], "modules": [], "categories": []}
++    mods = client_modules(user)
++    if "cabinet_documents" not in mods:
++        return {"items": [], "modules": mods, "categories": []}
++    uploads = await db.client_documents.find({"tenant_id": user["id"], "visible": True, "is_deleted": {"$ne": True}},
++                                             {"_id": 0}).to_list(2000)
++    invoices = await db.invoices.find({"tenant_id": user["id"], "client_visible": True}, {"_id": 0}).to_list(2000)
++    items = [_upload_item(d) for d in uploads] + [_invoice_item(i) for i in invoices]
++    # Côté client : pas d'informations internes (notifications, auteur du dépôt)
++    for it in items:
++        it.pop("last_notification", None)
++        it.pop("uploaded_by_name", None)
++        it.pop("visible", None)
++        it["is_new"] = not it.get("viewed_at")
++    items.sort(key=lambda x: x.get("created_at") or "", reverse=True)
++    return {"items": items, "modules": mods, "categories": [{"key": k, "label": v} for k, v in CATEGORIES.items()]}
++
++
++@me_router.get("/{source}/{item_id}/file")
++async def my_file(source: str, item_id: str, download: bool = False, user: dict = Depends(get_current_user)):
++    """Ouvre / télécharge un document de son espace ; la 1re ouverture est notée
++    (le cabinet voit que le client l'a consulté)."""
++    _require_client_module(user)
++    now = datetime.now(timezone.utc).isoformat()
++    if source == "upload":
++        d = await db.client_documents.find_one({"id": item_id, "tenant_id": user["id"], "visible": True,
++                                                "is_deleted": {"$ne": True}}, {"_id": 0})
++        if not d:
++            raise HTTPException(status_code=404, detail="Document introuvable")
++        data, ct = await albarka_storage.get_object(d["storage_path"])
++        if not d.get("viewed_at"):
++            await db.client_documents.update_one({"id": item_id}, {"$set": {"viewed_at": now}})
++        return _file_response(data, d.get("content_type") or ct, d.get("original_filename"), download)
++    if source == "invoice":
++        inv = await db.invoices.find_one({"id": item_id, "tenant_id": user["id"], "client_visible": True}, {"_id": 0})
++        if not inv:
++            raise HTTPException(status_code=404, detail="Document introuvable")
++        from albarka_billing_docs import ensure_invoice_pdf
++        inv = await ensure_invoice_pdf(inv)
++        try:
++            data, _ct = await albarka_storage.get_object(inv["pdf_storage_path"])
++        except Exception:  # noqa: BLE001 — fichier perdu : on régénère, comme la Caisse
++            await db.invoices.update_one({"id": item_id}, {"$set": {"pdf_storage_path": None}})
++            inv["pdf_storage_path"] = None
++            inv = await ensure_invoice_pdf(inv)
++            data, _ct = await albarka_storage.get_object(inv["pdf_storage_path"])
++        if not inv.get("client_viewed_at"):
++            await db.invoices.update_one({"id": item_id}, {"$set": {"client_viewed_at": now}})
++        return _file_response(data, "application/pdf", f"{inv['document_type']}_{inv['number']}.pdf", download)
++    raise HTTPException(status_code=404, detail="Document introuvable")
++
++
++async def ensure_client_space_indexes() -> None:
++    """Index Mongo (appelé au démarrage, voir server.py)."""
++    await db.client_documents.create_index([("tenant_id", 1), ("created_at", -1)])
++    await db.invoices.create_index([("tenant_id", 1), ("client_visible", 1)])
+diff --git a/backend/albarka_clients.py b/backend/albarka_clients.py
+index bfafe36..ee8c97d 100644
+--- a/backend/albarka_clients.py
++++ b/backend/albarka_clients.py
+@@ -10,7 +10,9 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
+ 
+ from albarka_auth import get_current_user, hash_password, require_roles, require_staff
+ from albarka_admin_settings import get_settings_doc
+-from albarka_models import ALBARKA_ROLES, CLIENT_MANAGE_ROLES, VERIFY_PHONE_ROLES, User, is_client
++from albarka_models import (
++    ALBARKA_ROLES, CLIENT_MANAGE_ROLES, VERIFY_PHONE_ROLES, User, effective_roles, is_admin_account, is_client,
++)
+ from db import db, serialize, serialize_many
+ 
+ router = APIRouter(prefix="/clients", tags=["Clients"])
+@@ -111,6 +113,9 @@ async def list_staff(user: dict = Depends(require_staff())):
+     docs = await db.users.find(
+         {"roles": {"$nin": ["client"]}}, {"_id": 0, "password_hash": 0}
+     ).sort("created_at", -1).to_list(1000)
++    # Rôles affichés = rôles réellement appliqués (administrateur : compte admin seul).
++    for d in docs:
++        d["roles"] = effective_roles(d)
+     return serialize_many(docs)
+ 
+ 
+@@ -140,18 +145,20 @@ async def create_client(payload: ClientCreate, user: dict = Depends(require_role
+ 
+ 
+ def _is_admin(u: dict) -> bool:
+-    """Retourne True si l'utilisateur porte le rôle privilégié `administrateur`."""
+-    return "administrateur" in (u.get("roles") or [])
++    """Retourne True si l'utilisateur est le compte admin du portail — le seul
++    qui puisse porter (et donc attribuer) le rôle `administrateur`."""
++    return is_admin_account(u)
++
++
++_ADMIN_ROLE_RESERVED = "Le rôle Administrateur est réservé au compte admin du portail"
+ 
+ 
+ @router.post("/staff")
+ async def create_staff(payload: StaffCreate, user: dict = Depends(require_staff())):
+-    # Point 10 — seul un `administrateur` peut créer un compte administrateur.
+-    if "administrateur" in payload.roles and not _is_admin(user):
+-        raise HTTPException(
+-            status_code=403,
+-            detail="Seul un compte Administrateur peut créer un autre Administrateur",
+-        )
++    # Seul le compte admin peut être administrateur : aucun nouveau compte ne
++    # peut recevoir ce rôle (voir effective_roles dans albarka_models.py).
++    if "administrateur" in payload.roles:
++        raise HTTPException(status_code=403, detail=_ADMIN_ROLE_RESERVED)
+     existing = await db.users.find_one({"email": payload.email.lower()})
+     if existing:
+         raise HTTPException(status_code=409, detail="Un compte avec cet email existe déjà")
+@@ -187,7 +194,7 @@ async def update_client(user_id: str, payload: UserUpdate, user: dict = Depends(
+     update = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
+     if not update:
+         raise HTTPException(status_code=400, detail="Aucun champ à mettre à jour")
+-    target = await db.users.find_one({"id": user_id}, {"_id": 0, "roles": 1})
++    target = await db.users.find_one({"id": user_id}, {"_id": 0, "roles": 1, "email": 1})
+     if not target:
+         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+     # La restriction "création/modification de clients" ne s'applique qu'aux
+@@ -195,16 +202,14 @@ async def update_client(user_id: str, payload: UserUpdate, user: dict = Depends(
+     # (voir AdminStaff.jsx, qui limite déjà sa propre UI à admin/superviseur/direction).
+     if is_client(target) and not set(user.get("roles") or []) & set(CLIENT_MANAGE_ROLES):
+         raise HTTPException(status_code=403, detail="Action réservée aux rôles autorisés")
+-    # Point 10 — seul un `administrateur` peut attribuer/retirer le rôle `administrateur`.
++    # Rôle `administrateur` : réservé au compte admin. Il ne peut être ajouté
++    # à aucun autre compte ; sur le compte admin il est porté d'office, donc
++    # inutile de le stocker (effective_roles l'ajoute à chaque requête).
+     if "roles" in update:
+-        current_roles = set(target.get("roles") or [])
+-        new_roles = set(update["roles"])
+-        touches_admin = ("administrateur" in current_roles) != ("administrateur" in new_roles)
+-        if touches_admin and not _is_admin(user):
+-            raise HTTPException(
+-                status_code=403,
+-                detail="Seul un compte Administrateur peut attribuer ou retirer le rôle Administrateur",
+-            )
++        if "administrateur" in update["roles"] and not is_admin_account(target):
++            raise HTTPException(status_code=403, detail=_ADMIN_ROLE_RESERVED)
++        # Un compte ne doit jamais se retrouver sans aucun rôle stocké.
++        update["roles"] = [r for r in update["roles"] if r != "administrateur"] or update["roles"]
+     res = await db.users.update_one({"id": user_id}, {"$set": update})
+     if not res.matched_count:
+         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+diff --git a/backend/albarka_documents.py b/backend/albarka_documents.py
+index 5ac1a6f..45ec779 100644
+--- a/backend/albarka_documents.py
++++ b/backend/albarka_documents.py
+@@ -30,6 +30,7 @@ import ocr_core  # module commun d'OCR (copie identique, source : dépôt Shuyah
+ from albarka_ai import DEFAULT_MODEL_ID, analyze_document, get_model
+ from albarka_auth import get_current_user, require_staff
+ from albarka_models import (
++    client_modules,
+     DOCS_DELETE_ROLES,
+     DOCS_PRIVILEGED_ROLES,
+     DOCUMENT_KINDS,
+@@ -133,6 +134,9 @@ async def upload_document(
+     model: Optional[str] = Form(None),
+     user: dict = Depends(get_current_user),
+ ):
++    # Module « Mes pièces » fermé par le cabinet pour ce client : dépôt refusé.
++    if is_client(user) and "documents" not in client_modules(user):
++        raise HTTPException(status_code=403, detail="Ce module n'est pas ouvert pour votre compte")
+     if kind not in DOCUMENT_KINDS:
+         raise HTTPException(status_code=400, detail=f"kind invalide (attendu : {DOCUMENT_KINDS})")
+     ext = _ext_of(file.filename or "")
+@@ -245,6 +249,9 @@ async def _analyze_and_store(
+ async def list_documents(tenant_id: Optional[str] = None, user: dict = Depends(get_current_user)):
+     query: dict = {}
+     if is_client(user):
++        # Module fermé par le cabinet pour ce client (fiche client → Espace client)
++        if "documents" not in client_modules(user):
++            return []
+         query["tenant_id"] = tenant_id_of(user)
+     elif tenant_id:
+         query["tenant_id"] = tenant_id
+diff --git a/backend/albarka_echeances.py b/backend/albarka_echeances.py
+index 8db5d6d..158bfbf 100644
+--- a/backend/albarka_echeances.py
++++ b/backend/albarka_echeances.py
+@@ -8,7 +8,7 @@ from typing import Optional
+ from fastapi import APIRouter, Depends, HTTPException
+ 
+ from albarka_auth import get_current_user, require_staff
+-from albarka_models import EcheanceCreate, EcheanceUpdate, is_client, tenant_id_of
++from albarka_models import EcheanceCreate, EcheanceUpdate, client_modules, is_client, tenant_id_of
+ from db import db, serialize, serialize_many
+ 
+ router = APIRouter(prefix="/echeances", tags=["Échéances"])
+@@ -18,6 +18,9 @@ router = APIRouter(prefix="/echeances", tags=["Échéances"])
+ async def list_echeances(tenant_id: Optional[str] = None, user: dict = Depends(get_current_user)):
+     query: dict = {}
+     if is_client(user):
++        # Module fermé par le cabinet pour ce client (fiche client → Espace client)
++        if "echeances" not in client_modules(user):
++            return []
+         query["tenant_id"] = tenant_id_of(user)
+     elif tenant_id:
+         query["tenant_id"] = tenant_id
 diff --git a/backend/albarka_forms.py b/backend/albarka_forms.py
 new file mode 100644
-index 0000000..240ca01
+index 0000000..251ca87
 --- /dev/null
 +++ b/backend/albarka_forms.py
-@@ -0,0 +1,252 @@
+@@ -0,0 +1,256 @@
 +"""Formulaires ALBARKA — branchement du module commun forms_core.
 +
 +Toute la logique (constructeur, validation, envois, suivi, statistiques,
@@ -100,7 +958,7 @@ index 0000000..240ca01
 +from fastapi import Request
 +
 +from albarka_auth import get_current_user, require_roles
-+from albarka_models import FORMS_ROLES, whatsapp_number_of
++from albarka_models import FORMS_ROLES, client_modules, whatsapp_number_of
 +from albarka_notifications import _get_from_name, send_email, send_whatsapp
 +from albarka_phase_c import _log_platform_event
 +import albarka_storage
@@ -199,7 +1057,11 @@ index 0000000..240ca01
 +    def recipient_id_of(self, user: Dict[str, Any]) -> Optional[str]:
 +        """Un client retrouve ses formulaires sous son propre identifiant
 +        (le locataire = le compte client, voir tenant_id_of)."""
-+        return user["id"] if "client" in (user.get("roles") or []) else None
++        if "client" not in (user.get("roles") or []):
++            return None
++        # Module « Mes formulaires » fermé pour ce client : liste vide
++        # (ses liens personnels déjà reçus restent utilisables).
++        return user["id"] if "formulaires" in client_modules(user) else None
 +
 +    @staticmethod
 +    def _as_recipient(u: Dict[str, Any]) -> Dict[str, Any]:
@@ -326,8 +1188,31 @@ index 0000000..240ca01
 +async def ensure_forms_indexes() -> None:
 +    """Index Mongo du module (appelé au démarrage, voir server.py)."""
 +    await ensure_indexes(adapter)
+diff --git a/backend/albarka_missions.py b/backend/albarka_missions.py
+index 19c548a..c1f6dcc 100644
+--- a/backend/albarka_missions.py
++++ b/backend/albarka_missions.py
+@@ -8,7 +8,7 @@ from typing import Optional
+ from fastapi import APIRouter, Depends, HTTPException
+ 
+ from albarka_auth import get_current_user, require_staff
+-from albarka_models import MissionCreate, MissionUpdate, is_client, tenant_id_of
++from albarka_models import MissionCreate, MissionUpdate, client_modules, is_client, tenant_id_of
+ from db import db, serialize, serialize_many
+ 
+ router = APIRouter(prefix="/missions", tags=["Missions"])
+@@ -18,6 +18,9 @@ router = APIRouter(prefix="/missions", tags=["Missions"])
+ async def list_missions(tenant_id: Optional[str] = None, user: dict = Depends(get_current_user)):
+     query: dict = {}
+     if is_client(user):
++        # Module fermé par le cabinet pour ce client (fiche client → Espace client)
++        if "missions" not in client_modules(user):
++            return []
+         query["tenant_id"] = tenant_id_of(user)
+     elif tenant_id:
+         query["tenant_id"] = tenant_id
 diff --git a/backend/albarka_models.py b/backend/albarka_models.py
-index 82d4375..e218727 100644
+index 82d4375..db53305 100644
 --- a/backend/albarka_models.py
 +++ b/backend/albarka_models.py
 @@ -26,6 +26,10 @@ ALBARKA_ROLES = [
@@ -341,7 +1226,7 @@ index 82d4375..e218727 100644
      "client",
  ]
  STAFF_ROLES = [r for r in ALBARKA_ROLES if r != "client"]
-@@ -50,6 +54,10 @@ CHAT_THREAD_CREATE_ROLES = DOCS_PRIVILEGED_ROLES
+@@ -50,6 +54,39 @@ CHAT_THREAD_CREATE_ROLES = DOCS_PRIVILEGED_ROLES
  # passe-droit "superviseur" déjà appliqué partout ailleurs dans l'app —
  # cohérence avec le reste du portail plutôt qu'un cas particulier isolé.
  PAYMENTS_ROLES = ["caissier"]
@@ -349,9 +1234,342 @@ index 82d4375..e218727 100644
 +# y accèdent (menu de la barre latérale compris), plus le superviseur via le
 +# passe-droit habituel de require_roles().
 +FORMS_ROLES = ["formulaires"]
++# Encaisser (enregistrer un paiement sur une facture) et délivrer un reçu —
++# réservé au rôle cumulable "caissier" : une secrétaire qui a aussi ce rôle
++# peut encaisser, une secrétaire sans ce rôle ne le peut pas. Même passe-droit
++# "superviseur" que partout ailleurs via require_roles()/has_any_role().
++ENCAISSEMENT_ROLES = ["caissier"]
++# Espace client — déposer / scanner un document fait hors du portail
++# (facture, rapport…) dans l'espace d'un client, ou y mettre à disposition
++# une facture de la Caisse. Un reçu déposé reste réservé au Caissier.
++CLIENT_SPACE_ROLES = ["administrateur", "direction", "dg", "secretariat", "comptable",
++                      "fiscaliste", "aide_comptable", "caissier"]
++# Modules de l'espace client que le cabinet peut ouvrir ou fermer, client par
++# client (fiche client → « Espace client »). Tableau de bord et Mon compte
++# restent toujours visibles. Aucun réglage enregistré = tous les modules.
++CLIENT_PORTAL_MODULES = {
++    "documents": "Mes pièces",
++    "cabinet_documents": "Factures & documents",
++    "missions": "Mes missions",
++    "echeances": "Échéances",
++    "formulaires": "Mes formulaires",
++    "historique": "Historique",
++}
++
++
++def client_modules(user: dict) -> List[str]:
++    """Modules de l'espace client ouverts pour ce client."""
++    mods = user.get("portal_modules")
++    if not isinstance(mods, list):
++        return list(CLIENT_PORTAL_MODULES)
++    return [m for m in mods if m in CLIENT_PORTAL_MODULES]
  
  MISSION_TYPES = [
      "tenue_comptable",
+@@ -126,6 +163,8 @@ class User(BaseModel):
+     whatsapp_number: Optional[str] = None
+     whatsapp_verified: bool = False
+     is_active: bool = True
++    # Espace client : modules ouverts par le cabinet (None = tous).
++    portal_modules: Optional[List[str]] = None
+     created_at: str = Field(default_factory=_now_iso)
+     last_login: Optional[str] = None
+ 
+@@ -153,6 +192,26 @@ def whatsapp_number_of(user_doc: dict) -> Optional[str]:
+     return user_doc.get("whatsapp_number") or user_doc.get("phone")
+ 
+ 
++# Le rôle "administrateur" est réservé au seul compte admin du portail :
++# sur tout autre compte il est ignoré (sans rien effacer en base), et ce
++# compte le porte d'office. Voir effective_roles(), appliqué à chaque requête
++# par get_current_user() (albarka_auth.py).
++ADMIN_ACCOUNT_EMAIL = "admin@sawalismartsystems.com"
++
++
++def is_admin_account(user: dict) -> bool:
++    return (user.get("email") or "").strip().lower() == ADMIN_ACCOUNT_EMAIL
++
++
++def effective_roles(user: dict) -> List[str]:
++    """Rôles réellement appliqués : "administrateur" retiré partout sauf sur
++    le compte admin, où il est ajouté d'office."""
++    roles = [r for r in (user.get("roles") or []) if r != "administrateur"]
++    if is_admin_account(user):
++        roles.append("administrateur")
++    return roles
++
++
+ def is_superviseur(user: dict) -> bool:
+     return "superviseur" in (user.get("roles") or [])
+ 
+diff --git a/backend/albarka_notifications.py b/backend/albarka_notifications.py
+index e94d15b..dae4d38 100644
+--- a/backend/albarka_notifications.py
++++ b/backend/albarka_notifications.py
+@@ -321,6 +321,55 @@ async def send_whatsapp(*, to_phone: str, message: str) -> dict:
+     }
+ 
+ 
++async def wa_window_state(to_phone: str) -> Optional[bool]:
++    """Fenêtre de conversation WhatsApp de 24 h avec ce numéro :
++    True = ouverte (le client nous a écrit il y a moins de 24 h, message libre
++    possible), False = fermée, None = inconnue (aucun message reçu enregistré)."""
++    return _wa_window_open(await _wa_last_inbound_iso(to_phone))
++
++
++async def send_whatsapp_template(*, to_phone: str, template_name: str, language: str = "fr",
++                                 body_params: Optional[list] = None) -> dict:
++    """Envoie un MODÈLE WhatsApp approuvé par Meta (seul type de message
++    qu'on peut envoyer hors fenêtre de 24 h). `body_params` remplit, dans
++    l'ordre, les variables {{1}}, {{2}}… du corps du modèle.
++    Même forme de retour que send_whatsapp()."""
++    cfg = await _get_wa_config()
++    if not cfg:
++        return {"ok": False, "message_id": None, "status": None, "error": "wa_not_configured",
++                "kind": "not_configured", "outside_24h_window": None}
++    if not to_phone or not to_phone.startswith("+"):
++        return {"ok": False, "message_id": None, "status": None, "error": "invalid_phone",
++                "kind": "invalid_phone", "outside_24h_window": None}
++    template: dict = {"name": template_name.strip(), "language": {"code": (language or "fr").strip()}}
++    if body_params:
++        # Meta refuse les paramètres vides ou contenant des retours à la ligne.
++        params = [{"type": "text", "text": (str(p).replace("\n", " ").strip() or "-")[:1000]} for p in body_params]
++        template["components"] = [{"type": "body", "parameters": params}]
++    payload = {"messaging_product": "whatsapp", "recipient_type": "individual",
++               "to": to_phone.lstrip("+"), "type": "template", "template": template}
++    url = f"https://graph.facebook.com/{cfg['graph_version']}/{cfg['phone_number_id']}/messages"
++    headers = {"Authorization": f"Bearer {cfg['access_token']}", "Content-Type": "application/json"}
++    try:
++        async with httpx.AsyncClient(timeout=30) as client:
++            resp = await client.post(url, json=payload, headers=headers)
++        if resp.status_code >= 300:
++            logger.warning("WA modèle %s HTTP %s vers %s : %s", template_name, resp.status_code, to_phone, resp.text[:400])
++            return {"ok": False, "message_id": None, "status": resp.status_code, "error": resp.text[:400],
++                    "kind": "http_error", "outside_24h_window": None}
++        messages = (resp.json() or {}).get("messages") or []
++        mid = messages[0].get("id") if messages else None
++        if not mid:
++            return {"ok": False, "message_id": None, "status": resp.status_code, "error": "silent_drop",
++                    "kind": "silent_drop", "outside_24h_window": None}
++        return {"ok": True, "message_id": mid, "status": resp.status_code, "error": None,
++                "kind": "success", "outside_24h_window": None}
++    except httpx.HTTPError as exc:
++        logger.exception("Échec envoi modèle WA à %s", to_phone)
++        return {"ok": False, "message_id": None, "status": None, "error": str(exc)[:400],
++                "kind": "http_error", "outside_24h_window": None}
++
++
+ async def _wa_upload_media(*, pdf_bytes: bytes, filename: str, content_type: str = "application/pdf") -> Optional[str]:
+     """Upload un fichier à la Media API Meta, retourne le media_id ou None.
+ 
+diff --git a/backend/albarka_phase_c.py b/backend/albarka_phase_c.py
+index ad5a4e8..5f487c3 100644
+--- a/backend/albarka_phase_c.py
++++ b/backend/albarka_phase_c.py
+@@ -23,7 +23,9 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
+ 
+ from albarka_admin_settings import get_settings_doc
+ from albarka_auth import get_current_user, require_roles, require_staff
+-from albarka_models import CAISSE_DATE_RANGE_ROLES, CHAT_THREAD_CREATE_ROLES, is_client
++from albarka_models import (
++    CAISSE_DATE_RANGE_ROLES, CHAT_THREAD_CREATE_ROLES, ENCAISSEMENT_ROLES, has_any_role, is_client,
++)
+ from db import db, serialize, serialize_many
+ 
+ logger = logging.getLogger("albarka.phase_c")
+@@ -218,6 +220,9 @@ class InvoiceCreate(BaseModel):
+         description="facture | reçu | proforma — chaque type a sa propre numérotation",
+     )
+ 
++    # Case « Visible dans l'espace client » du formulaire de création.
++    client_visible: bool = False
++
+     @field_validator("document_type")
+     @classmethod
+     def _valid_doc_type(cls, v):
+@@ -241,6 +246,11 @@ def _invoice_totals(items: list[dict]) -> dict:
+ 
+ 
+ _DOC_PREFIX = {"facture": "FAC", "recu": "REC", "proforma": "PRO"}
++# Filtre Mongo excluant les reçus délivrés automatiquement à l'encaissement
++# (champ payment_id) des totaux et de la situation de compte.
++_NOT_PAYMENT_RECEIPT = {"payment_id": {"$exists": False}}
++# Libellés des moyens de paiement repris sur le reçu délivré à l'encaissement.
++_METHOD_LABELS = {"cash": "espèces", "mobile_money": "Mobile Money", "bank": "virement", "other": "autre moyen"}
+ 
+ 
+ @billing_router.get("/invoices")
+@@ -258,27 +268,32 @@ async def list_invoices(
+     return serialize_many(items)
+ 
+ 
+-@billing_router.post("/invoices")
+-async def create_invoice(payload: InvoiceCreate, user: dict = Depends(require_staff())):
+-    items = [i.model_dump() for i in payload.items]
++async def _new_billing_document(
++    *, document_type: str, tenant_id: str, title: str, items: list[dict], user: dict,
++    currency: str = "XOF", due_date: Optional[str] = None, notes: Optional[str] = None,
++    extra: Optional[dict] = None,
++) -> dict:
++    """Crée une facture / un reçu / un proforma : numéro, statut, PDF, journal,
++    archive. Utilisé par la création manuelle ET par l'encaissement (reçu
++    délivré automatiquement), pour que les deux suivent exactement les mêmes règles."""
+     totals = _invoice_totals(items)
+     # Numéro : {FAC|REC|PRO}-YYYYMM-NNNN (compteur mensuel PAR type)
+     month_key = datetime.now(timezone.utc).strftime("%Y%m")
+-    prefix = _DOC_PREFIX[payload.document_type]
+-    key = f"{payload.document_type}:{month_key}"
++    prefix = _DOC_PREFIX[document_type]
++    key = f"{document_type}:{month_key}"
+     res = await db.report_series.find_one_and_update(
+         {"key": key},
+-        {"$inc": {"seq": 1}, "$setOnInsert": {"kind": payload.document_type, "month_key": month_key}},
++        {"$inc": {"seq": 1}, "$setOnInsert": {"kind": document_type, "month_key": month_key}},
+         upsert=True, return_document=True,
+     )
+     seq = int(res.get("seq") or 1)
+     number = f"{prefix}-{month_key}-{seq:04d}"
+     # Un reçu est réputé déjà payé au moment de l'émission ; un proforma
+     # n'est pas payable (indicatif). Une facture reste "unpaid" par défaut.
+-    if payload.document_type == "recu":
++    if document_type == "recu":
+         status = "paid"
+         paid_amount = totals["total"]
+-    elif payload.document_type == "proforma":
++    elif document_type == "proforma":
+         status = "proforma"
+         paid_amount = 0.0
+     else:
+@@ -287,13 +302,13 @@ async def create_invoice(payload: InvoiceCreate, user: dict = Depends(require_st
+     doc = {
+         "id": secrets.token_urlsafe(12),
+         "number": number,
+-        "document_type": payload.document_type,
+-        "tenant_id": payload.tenant_id,
+-        "title": payload.title,
++        "document_type": document_type,
++        "tenant_id": tenant_id,
++        "title": title,
+         "items": items,
+-        "currency": payload.currency,
+-        "due_date": payload.due_date,
+-        "notes": payload.notes,
++        "currency": currency,
++        "due_date": due_date,
++        "notes": notes,
+         "status": status,
+         "paid_amount": paid_amount,
+         **totals,
+@@ -302,6 +317,10 @@ async def create_invoice(payload: InvoiceCreate, user: dict = Depends(require_st
+         "created_by": user["id"],
+         "pdf_storage_id": None,
+         "pdf_storage_path": None,
++        # Espace client : un document n'y apparaît que si le cabinet l'a mis
++        # à disposition (voir albarka_client_space.py).
++        "client_visible": False,
++        **(extra or {}),
+     }
+     await db.invoices.insert_one(doc.copy())
+     from albarka_billing_docs import ensure_invoice_pdf
+@@ -309,25 +328,47 @@ async def create_invoice(payload: InvoiceCreate, user: dict = Depends(require_st
+         await ensure_invoice_pdf(doc)
+     except Exception:  # noqa: BLE001 — best-effort ; régénérable via /pdf/regenerate
+         logger.exception("Échec génération PDF à la création de %s", doc["id"])
+-    await _log_platform_event(user=user, action=f"{payload.document_type}.create",
++    await _log_platform_event(user=user, action=f"{document_type}.create",
+                               entity_type="invoice", entity_id=doc["id"],
+                               meta={"total": doc["total"], "number": number})
+     # Point 2 — auto-archive
+     await _auto_archive(
+-        title=f"{payload.document_type.title()} {number} — {payload.title}",
++        title=f"{document_type.title()} {number} — {title}",
+         category="caisse",
+-        tags=[payload.document_type, month_key],
++        tags=[document_type, month_key],
+         source={"kind": "invoice", "id": doc["id"], "number": number, "tenant_id": doc["tenant_id"]},
+         user=user,
+     )
++    return doc
++
++
++@billing_router.post("/invoices")
++async def create_invoice(payload: InvoiceCreate, user: dict = Depends(require_staff())):
++    # Délivrer un reçu = encaisser : réservé au rôle "caissier" (ENCAISSEMENT_ROLES).
++    if payload.document_type == "recu" and not has_any_role(user, ENCAISSEMENT_ROLES):
++        raise HTTPException(status_code=403, detail="Seul un collaborateur Caissier peut délivrer un reçu")
++    doc = await _new_billing_document(
++        document_type=payload.document_type, tenant_id=payload.tenant_id, title=payload.title,
++        items=[i.model_dump() for i in payload.items], user=user, currency=payload.currency,
++        due_date=payload.due_date, notes=payload.notes,
++    )
++    # Mise à disposition immédiate dans l'espace du client (case cochée à la
++    # création) : le client est prévenu par WhatsApp selon les modèles réglés.
++    if payload.client_visible:
++        from albarka_client_space import publish_invoice
++        doc = await publish_invoice(doc, user=user, notify=True)
+     return serialize(doc)
+ 
+ 
+ @billing_router.post("/payments")
+-async def create_payment(payload: PaymentCreate, user: dict = Depends(require_staff())):
++async def create_payment(payload: PaymentCreate, user: dict = Depends(require_roles(ENCAISSEMENT_ROLES))):
++    """Encaissement sur une facture — réservé au Caissier. Délivre
++    automatiquement un reçu (REC-…) du montant encaissé, avec son PDF."""
+     invoice = await db.invoices.find_one({"id": payload.invoice_id}, {"_id": 0})
+     if not invoice:
+         raise HTTPException(status_code=404, detail="Facture introuvable")
++    if invoice.get("document_type") != "facture":
++        raise HTTPException(status_code=400, detail="Seule une facture peut être encaissée")
+     payment = {
+         "id": secrets.token_urlsafe(12),
+         "invoice_id": payload.invoice_id,
+@@ -356,7 +397,23 @@ async def create_payment(payload: PaymentCreate, user: dict = Depends(require_st
+     await _log_platform_event(user=user, action="payment.create",
+                               entity_type="invoice", entity_id=invoice["id"],
+                               meta={"amount": payment["amount"], "method": payment["method"]})
+-    return serialize(payment)
++    # Reçu délivré au client pour CE paiement (hors taxe : le montant encaissé
++    # est déjà TTC). Il suit la visibilité de sa facture dans l'espace client.
++    receipt = await _new_billing_document(
++        document_type="recu", tenant_id=invoice["tenant_id"],
++        title=f"Règlement {invoice['number']} — {invoice.get('title') or ''}".strip(" —"),
++        items=[{"label": f"Règlement de la facture {invoice['number']} ({_METHOD_LABELS.get(payload.method, payload.method)})",
++                "quantity": 1, "unit_price": float(payload.amount), "tax_rate": 0}],
++        user=user, currency=invoice.get("currency") or "XOF",
++        notes=f"Référence : {payload.reference}" if payload.reference else None,
++        extra={"invoice_id": invoice["id"], "payment_id": payment["id"]},
++    )
++    await db.payments.update_one({"id": payment["id"]}, {"$set": {"receipt_id": receipt["id"], "receipt_number": receipt["number"]}})
++    payment.update(receipt_id=receipt["id"], receipt_number=receipt["number"])
++    if invoice.get("client_visible"):
++        from albarka_client_space import publish_invoice
++        receipt = await publish_invoice(receipt, user=user, notify=True)
++    return {**serialize(payment), "receipt": serialize(receipt)}
+ 
+ 
+ def _is_caisse_date_privileged(user: dict) -> bool:
+@@ -421,7 +478,10 @@ async def billing_summary(
+     strictement les encaissements visibles par l'utilisateur : journée en
+     cours pour un collaborateur ordinaire, période choisie — ou "Depuis
+     toujours" — pour Administrateur/DG/Superviseur, voir _payments_date_bounds)."""
+-    inv_q: dict = {}
++    # Les reçus délivrés à l'encaissement (liés à une facture) ne sont pas une
++    # nouvelle vente : les compter doublerait le « Facturé » (le paiement est
++    # déjà porté par la facture et par db.payments).
++    inv_q: dict = dict(_NOT_PAYMENT_RECEIPT)
+     if tenant_id: inv_q["tenant_id"] = tenant_id
+     invoices = await db.invoices.find(inv_q, {"_id": 0, "total": 1, "paid_amount": 1, "status": 1}).to_list(2000)
+     total = sum(float(i.get("total", 0)) for i in invoices)
+@@ -474,7 +534,8 @@ async def _build_statement(
+         if not client:
+             raise HTTPException(status_code=404, detail="Client introuvable")
+ 
+-    inv_q: dict = {"tenant_id": tenant_id} if tenant_id else {}
++    # Hors reçus d'encaissement : le paiement figure déjà dans la liste des encaissements.
++    inv_q: dict = {**_NOT_PAYMENT_RECEIPT, **({"tenant_id": tenant_id} if tenant_id else {})}
+     invoices = await db.invoices.find(inv_q, {"_id": 0}).sort("created_at", -1).to_list(2000)
+     total_billed = sum(float(i.get("total", 0)) for i in invoices)
+     outstanding = sum(float(i.get("total", 0)) - float(i.get("paid_amount", 0)) for i in invoices)
 diff --git a/backend/forms_core/__init__.py b/backend/forms_core/__init__.py
 new file mode 100644
 index 0000000..a8624bd
@@ -1637,13 +2855,19 @@ index 0000000..4c46b61
 +        clean[field["id"]] = value
 +    return clean, errors
 diff --git a/backend/server.py b/backend/server.py
-index 2a18d76..4aefbc4 100644
+index 2a18d76..e4a2c9c 100644
 --- a/backend/server.py
 +++ b/backend/server.py
-@@ -42,6 +42,13 @@ from albarka_phase_c import (  # noqa: E402
+@@ -42,6 +42,19 @@ from albarka_phase_c import (  # noqa: E402
      messaging_router,
  )
  from albarka_public import router as public_router  # noqa: E402
++# Espace client : documents déposés / mis à disposition par le cabinet
++from albarka_client_space import (  # noqa: E402
++    ensure_client_space_indexes,
++    me_router as client_space_me_router,
++    router as client_space_router,
++)
 +# Formulaires (module commun forms_core branché par albarka_forms.py)
 +from albarka_forms import (  # noqa: E402
 +    ensure_forms_indexes,
@@ -1654,10 +2878,13 @@ index 2a18d76..4aefbc4 100644
  from albarka_report_templates import router as report_templates_router  # noqa: E402
  from albarka_reports_mgmt import router as reports_mgmt_router  # noqa: E402
  from albarka_wa_inbox import router as wa_inbox_router  # noqa: E402
-@@ -99,6 +106,10 @@ api_router.include_router(wa_inbox_router)
+@@ -99,6 +112,13 @@ api_router.include_router(wa_inbox_router)
  api_router.include_router(wa_extras_router)
  # Endpoints publics (bouton wa.me — Partie 0)
  api_router.include_router(public_router)
++# Espace client : dépôts du cabinet (factures, rapports… faits ailleurs) + page client
++api_router.include_router(client_space_router)
++api_router.include_router(client_space_me_router)
 +# Formulaires : gestion (rôle formulaires), remplissage public par lien, espace client
 +api_router.include_router(forms_staff_router)
 +api_router.include_router(forms_public_router)
@@ -1665,15 +2892,335 @@ index 2a18d76..4aefbc4 100644
  
  
  @api_router.get("/")
-@@ -165,6 +176,8 @@ async def _ensure_indexes():
+@@ -165,6 +185,10 @@ async def _ensure_indexes():
          await _db.report_series.create_index("key", unique=True)
          # Contacts (iteration 4)
          await _db.contacts.create_index([("scope", 1), ("tenant_id", 1), ("is_primary", -1)])
 +        # Formulaires (jetons de lien uniques, réponses par formulaire, anti-abus)
 +        await ensure_forms_indexes()
++        # Espace client (documents du cabinet par client)
++        await ensure_client_space_indexes()
      except Exception:
          logger.exception("Échec création index Mongo (non bloquant)")
  
+diff --git a/backend/tests/test_client_space_lot3.py b/backend/tests/test_client_space_lot3.py
+new file mode 100644
+index 0000000..030aecb
+--- /dev/null
++++ b/backend/tests/test_client_space_lot3.py
+@@ -0,0 +1,312 @@
++"""Lot 3 (suite) — Caissier, administrateur réservé au compte admin, espace client.
++
++- Caissier : seul habilité à encaisser et à délivrer un reçu ; chaque
++  encaissement délivre un reçu automatiquement ;
++- Administrateur : rôle ignoré sur tout autre compte que le compte admin ;
++- Espace client : dépôts sans OCR, mise à disposition des factures de la
++  Caisse, modules ouverts par client, notification WhatsApp à modèles
++  réglables (message libre dans la fenêtre de 24 h, modèle Meta sinon,
++  repli e-mail).
++
++Tests autonomes : MongoDB simulé (mongomock-motor), envois, PDF et stockage
++remplacés par des doublures — aucun serveur, aucune clé, aucun réseau.
++"""
++from __future__ import annotations
++
++import asyncio
++import os
++import sys
++from pathlib import Path
++
++os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
++os.environ.setdefault("DB_NAME", "albarka_test")
++os.environ.setdefault("JWT_SECRET_KEY", "test-secret")
++
++import pytest
++from fastapi import APIRouter, FastAPI, Header, HTTPException
++from fastapi.testclient import TestClient
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++mongomock_motor = pytest.importorskip("mongomock_motor")
++
++import db as db_module  # noqa: E402
++import albarka_admin_settings  # noqa: E402
++import albarka_auth  # noqa: E402
++import albarka_billing_docs  # noqa: E402
++import albarka_client_space as cs  # noqa: E402
++import albarka_clients  # noqa: E402
++import albarka_missions  # noqa: E402
++import albarka_phase_c  # noqa: E402
++import albarka_storage  # noqa: E402
++from albarka_auth import get_current_user  # noqa: E402
++from albarka_models import effective_roles  # noqa: E402
++from albarka_notifications import _assert_safe_email  # noqa: E402
++
++ADMIN = {"id": "u-admin", "email": "admin@sawalismartsystems.com", "full_name": "Admin", "roles": ["superviseur", "direction"], "is_active": True}
++USERS = {
++    "admin": ADMIN,
++    "secr": {"id": "u-secr", "email": "s@albarka.bf", "full_name": "Secrétaire", "roles": ["secretariat"], "is_active": True},
++    "secr_caisse": {"id": "u-sc", "email": "sc@albarka.bf", "full_name": "Secrétaire caissière", "roles": ["secretariat", "caissier"], "is_active": True},
++    "compta": {"id": "u-compta", "email": "c@albarka.bf", "full_name": "Comptable", "roles": ["comptable"], "is_active": True},
++    "faux_admin": {"id": "u-fa", "email": "dg@albarka.bf", "full_name": "DG", "roles": ["dg", "administrateur"], "is_active": True},
++    "c1": {"id": "c1", "email": "kabore@exemple.bf", "full_name": "SARL Kaboré", "company": "Kaboré & Fils", "phone": "+22670000001", "roles": ["client"], "is_active": True},
++    "c2": {"id": "c2", "email": "o@exemple.bf", "full_name": "Ets Ouédraogo", "phone": "+22670000002", "roles": ["client"], "is_active": True},
++    "c3": {"id": "c3", "email": "n@exemple.bf", "full_name": "Refus notifs", "phone": "+22670000003", "roles": ["client"], "is_active": True, "can_receive_notifications": False},
++}
++
++
++@pytest.fixture()
++def env(monkeypatch):
++    mock_db = mongomock_motor.AsyncMongoMockClient()["albarka_cs_test"]
++    real_db = db_module.db
++    # Chaque module a importé `db` : on remplace la base partout où elle est référencée
++    for mod in list(sys.modules.values()):
++        if getattr(mod, "db", None) is real_db and getattr(mod, "__name__", "").startswith(("albarka_", "db")):
++            monkeypatch.setattr(mod, "db", mock_db)
++    asyncio.run(mock_db.users.insert_many([dict(u) for u in USERS.values()]))
++
++    sent = {"wa": [], "tpl": [], "email": [], "files": {}}
++    state = {"window": True}
++
++    async def fake_wa(*, to_phone, message):
++        sent["wa"].append({"to": to_phone, "text": message})
++        return {"ok": True, "kind": "success", "outside_24h_window": state["window"] is False}
++
++    async def fake_tpl(*, to_phone, template_name, language="fr", body_params=None):
++        sent["tpl"].append({"to": to_phone, "name": template_name, "lang": language, "params": body_params})
++        return {"ok": True}
++
++    async def fake_window(phone):
++        return state["window"]
++
++    async def fake_email(*, to, subject, html, **kw):
++        _assert_safe_email(subject, html)  # vrais garde-fous Albarka
++        sent["email"].append({"to": to, "subject": subject})
++        return "mail-1"
++
++    async def fake_save(db_, *, data, kind, tenant_id, ext, content_type=None, original_filename=None, user_id=None):
++        path = f"{kind}/{tenant_id}/{len(sent['files']) + 1}.{ext}"
++        sent["files"][path] = data
++        return {"id": f"s{len(sent['files'])}", "path": path, "size": len(data), "content_type": content_type or "application/pdf"}
++
++    async def fake_get(path):
++        return sent["files"][path], "application/pdf"
++
++    async def fake_put(path, data, ct):
++        sent["files"][path] = data
++
++    async def fake_pdf(invoice):
++        return b"%PDF-" + invoice["number"].encode()
++
++    async def fake_log(**kw):
++        return None
++
++    async def no_archive(**kw):
++        return None
++
++    monkeypatch.setattr(cs, "send_whatsapp", fake_wa)
++    monkeypatch.setattr(cs, "send_whatsapp_template", fake_tpl)
++    monkeypatch.setattr(cs, "wa_window_state", fake_window)
++    monkeypatch.setattr(cs, "send_email", fake_email)
++    monkeypatch.setattr(albarka_storage, "save_and_log", fake_save)
++    monkeypatch.setattr(albarka_storage, "get_object", fake_get)
++    monkeypatch.setattr(albarka_billing_docs, "put_object", fake_put)
++    monkeypatch.setattr(albarka_billing_docs, "build_pdf_bytes", fake_pdf)
++    monkeypatch.setattr(albarka_phase_c, "_log_platform_event", fake_log)
++    monkeypatch.setattr(albarka_phase_c, "_auto_archive", no_archive)
++
++    app = FastAPI()
++    api = APIRouter(prefix="/api")
++    for r in (albarka_phase_c.billing_router, cs.router, cs.me_router, albarka_clients.router,
++              albarka_missions.router, albarka_admin_settings.router):
++        api.include_router(r)
++    app.include_router(api)
++
++    # Connexion simulée : X-User choisit le compte ; rôles effectifs comme en production
++    async def fake_user(x_user: str = Header(default="")):
++        if x_user not in USERS:
++            raise HTTPException(status_code=401, detail="Non connecté")
++        u = asyncio.get_event_loop()  # noqa: F841 — garde la signature asynchrone
++        doc = await mock_db.users.find_one({"id": USERS[x_user]["id"]}, {"_id": 0})
++        doc["roles"] = effective_roles(doc)
++        return doc
++    app.dependency_overrides[get_current_user] = fake_user
++    with TestClient(app, headers={"Origin": "https://albarka-bf.com"}) as client:
++        yield type("Env", (), {"c": client, "sent": sent, "state": state, "db": mock_db})
++
++
++def _h(u):
++    return {"X-User": u}
++
++
++def _invoice(env, user="secr", **extra):
++    r = env.c.post("/api/billing/invoices", headers=_h(user), json={
++        "tenant_id": "c1", "title": "Honoraires septembre", "document_type": "facture",
++        "items": [{"label": "Tenue comptable", "quantity": 1, "unit_price": 100000, "tax_rate": 18}], **extra})
++    assert r.status_code == 200, r.text
++    return r.json()
++
++
++# ------------------------------------------------------------------ Caissier
++def test_only_caissier_can_encaisser_and_gets_a_receipt(env):
++    inv = _invoice(env)
++    pay = {"invoice_id": inv["id"], "amount": 50000, "method": "cash"}
++    # Secrétaire ou comptable sans le rôle Caissier : refus
++    assert env.c.post("/api/billing/payments", headers=_h("secr"), json=pay).status_code == 403
++    assert env.c.post("/api/billing/payments", headers=_h("compta"), json=pay).status_code == 403
++    # Secrétaire qui a AUSSI le rôle Caissier : encaissement + reçu délivré
++    r = env.c.post("/api/billing/payments", headers=_h("secr_caisse"), json=pay)
++    assert r.status_code == 200, r.text
++    receipt = r.json()["receipt"]
++    assert receipt["document_type"] == "recu" and receipt["number"].startswith("REC-") and receipt["total"] == 50000
++    assert receipt["invoice_id"] == inv["id"] and r.json()["receipt_number"] == receipt["number"]
++    facture = asyncio.run(env.db.invoices.find_one({"id": inv["id"]}))
++    assert facture["status"] == "partial" and facture["paid_amount"] == 50000
++
++
++def test_receipt_document_reserved_to_caissier(env):
++    body = {"tenant_id": "c1", "title": "Reçu", "document_type": "recu",
++            "items": [{"label": "Règlement", "quantity": 1, "unit_price": 1000, "tax_rate": 0}]}
++    assert env.c.post("/api/billing/invoices", headers=_h("secr"), json=body).status_code == 403
++    assert env.c.post("/api/billing/invoices", headers=_h("secr_caisse"), json=body).status_code == 200
++    # Une proforma ne s'encaisse pas
++    pro = _invoice(env, document_type="proforma")
++    assert env.c.post("/api/billing/payments", headers=_h("secr_caisse"),
++                      json={"invoice_id": pro["id"], "amount": 10}).status_code == 400
++
++
++# ------------------------------------------------------------------ Administrateur
++def test_administrateur_only_for_admin_account(env):
++    assert "administrateur" in effective_roles(ADMIN)
++    assert "administrateur" not in effective_roles(USERS["faux_admin"])
++    # Création / attribution refusées sur tout autre compte, même par l'admin
++    staff = {"email": "x@albarka.bf", "full_name": "X", "roles": ["administrateur"], "password": "motdepasse1"}
++    assert env.c.post("/api/clients/staff", headers=_h("admin"), json=staff).status_code == 403
++    assert env.c.patch("/api/clients/u-compta", headers=_h("admin"), json={"roles": ["comptable", "administrateur"]}).status_code == 403
++    # La case Caissier s'attribue normalement
++    assert env.c.patch("/api/clients/u-secr", headers=_h("admin"), json={"roles": ["secretariat", "caissier"]}).status_code == 200
++    # Liste du personnel : rôles effectifs (le « faux » administrateur n'apparaît plus)
++    listed = {u["id"]: u["roles"] for u in env.c.get("/api/clients/staff", headers=_h("admin")).json()}
++    assert "administrateur" not in listed["u-fa"] and "administrateur" in listed["u-admin"]
++
++
++def test_real_get_current_user_applies_effective_roles(env):
++    from fastapi.security import HTTPAuthorizationCredentials
++    token = albarka_auth.create_access_token("u-fa")
++    u = asyncio.run(albarka_auth.get_current_user(HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)))
++    assert u["roles"] == ["dg"]
++
++
++# ------------------------------------------------------------------ Espace client
++def test_upload_external_documents_notifies_client_once(env):
++    files = [("files", ("facture-sage-042.pdf", b"%PDF-1", "application/pdf")),
++             ("files", ("facture-sage-043.pdf", b"%PDF-2", "application/pdf"))]
++    r = env.c.post("/api/client-space/documents", headers=_h("compta"), files=files,
++                   data={"tenant_id": "c1", "category": "facture", "title": "Honoraires", "reference": "F-042", "amount": "150000"})
++    assert r.status_code == 201, r.text
++    body = r.json()
++    assert [i["title"] for i in body["items"]] == ["Honoraires (1)", "Honoraires (2)"]
++    # UN seul message WhatsApp pour le dépôt, texte par défaut « facture »
++    assert len(env.sent["wa"]) == 1 and body["notification"]["channel"] == "whatsapp"
++    text = env.sent["wa"][0]["text"]
++    assert "SARL Kaboré" in text and "Honoraires (1) (F-042) — 150 000 FCFA" in text and "https://albarka-bf.com/portal/documents-cabinet" in text
++    # Aucune analyse OCR : rien dans documents / document_ocr_runs
++    assert asyncio.run(env.db.document_ocr_runs.count_documents({})) == 0
++
++
++def test_receipt_upload_reserved_to_caissier_and_bad_format(env):
++    f = [("files", ("recu.pdf", b"%PDF", "application/pdf"))]
++    assert env.c.post("/api/client-space/documents", headers=_h("compta"), files=f,
++                      data={"tenant_id": "c1", "category": "recu"}).status_code == 403
++    assert env.c.post("/api/client-space/documents", headers=_h("secr_caisse"), files=f,
++                      data={"tenant_id": "c1", "category": "recu"}).status_code == 201
++    bad = [("files", ("virus.exe", b"MZ", "application/octet-stream"))]
++    assert env.c.post("/api/client-space/documents", headers=_h("compta"), files=bad,
++                      data={"tenant_id": "c1", "category": "autre"}).status_code == 400
++
++
++def test_custom_template_and_meta_template_outside_window(env):
++    # Textes réglés dans Paramètres (clé inconnue refusée)
++    assert env.c.put("/api/admin/settings", headers=_h("admin"), json={"client_docs_templates": {"inconnu": "x"}}).status_code == 400
++    r = env.c.put("/api/admin/settings", headers=_h("admin"), json={
++        "client_docs_templates": {"rapport": "{cabinet} : rapport « {titre} » pour {entreprise}. {lien}"},
++        "client_docs_wa_template_name": "nouveau_document", "client_docs_wa_template_params": "client, nombre, lien"})
++    assert r.status_code == 200 and r.json()["client_docs_wa_template_params"] == "client,nombre,lien"
++    f = [("files", ("bilan.pdf", b"%PDF", "application/pdf"))]
++    env.c.post("/api/client-space/documents", headers=_h("compta"), files=f,
++               data={"tenant_id": "c1", "category": "rapport", "title": "Bilan 2025"})
++    assert env.sent["wa"][-1]["text"] == "Cabinet ALBARKA : rapport « Bilan 2025 » pour Kaboré & Fils. https://albarka-bf.com/portal/documents-cabinet"
++    # Hors fenêtre de 24 h : le modèle Meta est envoyé avec ses variables dans l'ordre réglé
++    env.state["window"] = False
++    env.c.post("/api/client-space/documents", headers=_h("compta"), files=f,
++               data={"tenant_id": "c1", "category": "rapport", "title": "Bilan 2024"})
++    assert env.sent["tpl"] == [{"to": "+22670000001", "name": "nouveau_document", "lang": "fr",
++                                "params": ["SARL Kaboré", "1", "https://albarka-bf.com/portal/documents-cabinet"]}]
++    # Aperçu du texte dans les paramètres
++    prev = env.c.post("/api/client-space/preview", headers=_h("compta"), json={"category": "rapport"}).json()["text"]
++    assert prev.startswith("Cabinet ALBARKA : rapport « Honoraires de septembre »")
++
++
++def test_outside_window_without_meta_template_falls_back_to_email(env):
++    env.state["window"] = False
++    f = [("files", ("f.pdf", b"%PDF", "application/pdf"))]
++    body = env.c.post("/api/client-space/documents", headers=_h("compta"), files=f,
++                      data={"tenant_id": "c1", "category": "facture"}).json()
++    assert body["notification"]["channel"] == "email" and "24 h" in body["notification"]["error"]
++    assert env.sent["email"][0]["to"] == "kabore@exemple.bf"
++    # Client qui a refusé les notifications : rien n'est envoyé
++    body = env.c.post("/api/client-space/documents", headers=_h("compta"), files=f,
++                      data={"tenant_id": "c3", "category": "facture"}).json()
++    assert body["notification"]["ok"] is False and len(env.sent["email"]) == 1
++
++
++def test_client_sees_only_visible_own_documents_and_invoices(env):
++    f = [("files", ("a.pdf", b"%PDF-A", "application/pdf"))]
++    env.c.post("/api/client-space/documents", headers=_h("compta"), files=f, data={"tenant_id": "c1", "category": "attestation", "title": "Attestation"})
++    env.c.post("/api/client-space/documents", headers=_h("compta"), files=f, data={"tenant_id": "c1", "category": "courrier", "title": "Brouillon", "visible": "false"})
++    env.c.post("/api/client-space/documents", headers=_h("compta"), files=f, data={"tenant_id": "c2", "category": "rapport", "title": "Autre client"})
++    inv = _invoice(env)  # facture de la Caisse, pas encore mise à disposition
++    mine = env.c.get("/api/me/space", headers=_h("c1")).json()["items"]
++    assert [i["title"] for i in mine] == ["Attestation"] and mine[0]["is_new"] and "last_notification" not in mine[0]
++    # Mise à disposition depuis la Caisse → visible + client prévenu
++    r = env.c.post(f"/api/client-space/invoices/{inv['id']}/visibility", headers=_h("secr"), json={"visible": True})
++    assert r.json()["notification"]["ok"] is True and "Honoraires septembre" in env.sent["wa"][-1]["text"]
++    mine = {i["source"]: i for i in env.c.get("/api/me/space", headers=_h("c1")).json()["items"]}
++    assert mine["invoice"]["reference"] == inv["number"] and mine["invoice"]["remaining"] == 118000
++    # Ouverture : fichier servi, première lecture notée
++    got = env.c.get(f"/api/me/space/invoice/{inv['id']}/file", headers=_h("c1"))
++    assert got.status_code == 200 and got.content == b"%PDF-" + inv["number"].encode()
++    staff_view = {i["id"]: i for i in env.c.get("/api/client-space/documents?tenant_id=c1", headers=_h("compta")).json()["items"]}
++    assert staff_view[inv["id"]]["viewed_at"] and staff_view[inv["id"]]["visible"]
++    # Un autre client ne peut pas l'ouvrir ; le reçu d'encaissement suit la visibilité de la facture
++    assert env.c.get(f"/api/me/space/invoice/{inv['id']}/file", headers=_h("c2")).status_code == 404
++    env.c.post("/api/billing/payments", headers=_h("secr_caisse"), json={"invoice_id": inv["id"], "amount": 118000})
++    cats = sorted(i["category"] for i in env.c.get("/api/me/space", headers=_h("c1")).json()["items"])
++    assert cats == ["attestation", "facture", "recu"]
++    # Création avec la case « Visible dans l'espace client »
++    _invoice(env, client_visible=True, title="Proforma 2027", document_type="proforma")
++    assert len(env.c.get("/api/me/space", headers=_h("c1")).json()["items"]) == 4
++
++
++def test_modules_closed_by_cabinet(env):
++    env.c.put("/api/client-space/modules/c1", headers=_h("secr"), json={"modules": ["documents", "echeances"]})
++    assert env.c.get("/api/client-space/modules/c1", headers=_h("compta")).json()["modules"] == ["documents", "echeances"]
++    # Un comptable (hors gestion des clients) ne peut pas changer les modules
++    assert env.c.put("/api/client-space/modules/c1", headers=_h("compta"), json={"modules": []}).status_code == 403
++    assert env.c.get("/api/me/space", headers=_h("c1")).json()["items"] == []
++    assert env.c.get("/api/missions", headers=_h("c1")).json() == []
++
++
++def test_payment_receipt_not_counted_twice_in_summary(env):
++    """Le reçu délivré à l'encaissement n'est pas une nouvelle vente :
++    le « Facturé » et le « Reste dû » de la Caisse ne bougent pas."""
++    inv = _invoice(env)
++    env.c.post("/api/billing/payments", headers=_h("secr_caisse"), json={"invoice_id": inv["id"], "amount": 118000})
++    s = env.c.get("/api/billing/summary", headers=_h("secr")).json()
++    assert s["invoice_count"] == 1 and s["total_billed"] == 118000 and s["outstanding"] == 0 and s["total_paid"] == 118000
++    # Un reçu fait à la main (vente payée comptant, sans facture) reste compté
++    env.c.post("/api/billing/invoices", headers=_h("secr_caisse"), json={
++        "tenant_id": "c1", "title": "Vente comptant", "document_type": "recu",
++        "items": [{"label": "Conseil", "quantity": 1, "unit_price": 5000, "tax_rate": 0}]})
++    assert env.c.get("/api/billing/summary", headers=_h("secr")).json()["total_billed"] == 123000
 diff --git a/backend/tests/test_forms_lot3.py b/backend/tests/test_forms_lot3.py
 new file mode 100644
 index 0000000..a992adf
@@ -1900,7 +3447,7 @@ index 0000000..a992adf
 +                   json={"recipient_ids": ["c1"], "channels": ["email"]})
 +    assert r.json()["sent"] == 1 and "https://albarka-bf.com/f/" in env.sent["email"][0]["html"]
 diff --git a/frontend/src/App.js b/frontend/src/App.js
-index d762646..878e465 100644
+index d762646..2397bc9 100644
 --- a/frontend/src/App.js
 +++ b/frontend/src/App.js
 @@ -11,6 +11,8 @@ import PortalLayout from "@/components/PortalLayout";
@@ -1912,23 +3459,25 @@ index d762646..878e465 100644
  
  // Auth
  import Login from "@/pages/auth/Login";
-@@ -22,6 +24,7 @@ import ClientMissions from "@/pages/portal/Missions";
+@@ -22,6 +24,8 @@ import ClientMissions from "@/pages/portal/Missions";
  import ClientEcheances from "@/pages/portal/Echeances";
  import Historique from "@/pages/portal/Historique";
  import MyAccount from "@/pages/portal/MyAccount";
 +import MyForms from "@/pages/portal/MyForms";
++import CabinetDocuments from "@/pages/portal/CabinetDocuments";
  
  // Admin (staff)
  import AdminClients from "@/pages/admin/AdminClients";
-@@ -39,6 +42,7 @@ import AdminBulkReports from "@/pages/admin/AdminBulkReports";
+@@ -39,6 +43,8 @@ import AdminBulkReports from "@/pages/admin/AdminBulkReports";
  import { AdminArchives, AdminMessaging, AdminPlatformLogs } from "@/pages/admin/AdminPhaseC";
  import AdminWhatsAppConversations from "@/pages/admin/AdminWhatsAppConversations";
  import AdminWhatsAppStats from "@/pages/admin/AdminWhatsAppStats";
 +import { AdminFormsLibrary, AdminFormDetail } from "@/pages/admin/AdminForms";
++import AdminClientSpace from "@/pages/admin/AdminClientSpace";
  import { AdminDashboard, AdminDocuments, AdminMissions, AdminEcheances } from "@/pages/admin/AdminShared";
  
  function RootRedirect() {
-@@ -71,6 +75,8 @@ function App() {
+@@ -71,6 +77,8 @@ function App() {
            <Route path="/services" element={<Missions />} />
            <Route path="/contact" element={<Contact />} />
            <Route path="/login" element={<Login />} />
@@ -1937,37 +3486,284 @@ index d762646..878e465 100644
  
            {/* Client portal */}
            <Route path="/portal" element={<ProtectedRoute><PortalLayout admin={false} /></ProtectedRoute>}>
-@@ -79,6 +85,7 @@ function App() {
+@@ -79,6 +87,8 @@ function App() {
              <Route path="missions" element={<ClientMissions />} />
              <Route path="echeances" element={<ClientEcheances />} />
              <Route path="historique" element={<Historique />} />
 +            <Route path="formulaires" element={<MyForms />} />
++            <Route path="documents-cabinet" element={<CabinetDocuments />} />
              <Route path="mon-compte" element={<MyAccount />} />
            </Route>
  
-@@ -103,6 +110,9 @@ function App() {
+@@ -103,6 +113,11 @@ function App() {
              <Route path="whatsapp" element={<AdminWhatsAppConversations />} />
              <Route path="whatsapp/stats" element={<AdminWhatsAppStats />} />
              <Route path="comptabilite" element={<AdminAccounting />} />
 +            {/* Formulaires (rôle « formulaires ») : bibliothèque puis fiche d'un formulaire */}
 +            <Route path="forms" element={<AdminFormsLibrary />} />
 +            <Route path="forms/:id" element={<AdminFormDetail />} />
++            {/* Dépôt de documents dans l'espace d'un client (sans OCR) */}
++            <Route path="espace-client" element={<AdminClientSpace />} />
              <Route path="logs" element={<AdminPlatformLogs />} />
              <Route path="settings" element={<AdminSettings />} />
              <Route path="mon-compte" element={<MyAccount />} />
+diff --git a/frontend/src/components/ClientSpacePanel.jsx b/frontend/src/components/ClientSpacePanel.jsx
+new file mode 100644
+index 0000000..508b03e
+--- /dev/null
++++ b/frontend/src/components/ClientSpacePanel.jsx
+@@ -0,0 +1,236 @@
++/*
++  ClientSpacePanel — côté cabinet, « Espace client » d'UN client :
++    1. modules visibles par ce client dans son espace (cases à cocher) ;
++    2. dépôt de documents faits hors du portail (factures, rapports…) :
++       fichiers ou scan (appareil photo sur téléphone), SANS analyse OCR ;
++       le client est prévenu par WhatsApp (textes réglés dans Paramètres) ;
++    3. liste de tout ce qui est dans son espace (dépôts + Caisse) : visible
++       ou non, dernière notification, consulté ou non par le client.
++  Props : tenantId (identifiant du client)
++  API : /client-space/* (albarka_client_space.py)
++*/
++import React, { useEffect, useRef, useState } from "react";
++import { toast } from "sonner";
++import {
++  Upload, Camera, Eye, EyeOff, Bell, Trash2, CheckCircle2, AlertTriangle, Loader2, FileText, LayoutGrid,
++} from "lucide-react";
++import { apiClient, extractError } from "@/lib/api";
++import { Button } from "@/components/ui/button";
++import { Input } from "@/components/ui/input";
++import { Label } from "@/components/ui/label";
++import { useAuth } from "@/contexts/AuthContext";
++
++// Doit rester identique à CLIENT_MANAGE_ROLES côté backend : qui peut ouvrir/fermer les modules.
++const CLIENT_MANAGE_ROLES = ["administrateur", "superviseur", "dg", "direction", "secretariat"];
++// Libellé du canal par lequel le client a été prévenu.
++const CHANNEL_LABEL = { whatsapp: "WhatsApp", whatsapp_template: "WhatsApp (modèle)", email: "e-mail" };
++
++const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString("fr-FR") : "—");
++const fmtAmount = (n) => (n || n === 0 ? `${Math.round(Number(n)).toLocaleString("fr-FR")} FCFA` : "");
++
++export default function ClientSpacePanel({ tenantId }) {
++  const { user } = useAuth();
++  const roles = user?.roles || [];
++  const canManageModules = roles.includes("superviseur") || roles.some((r) => CLIENT_MANAGE_ROLES.includes(r));
++
++  const [catalog, setCatalog] = useState(null);
++  const [items, setItems] = useState(null);
++  const [modules, setModules] = useState([]);
++  const [savingModules, setSavingModules] = useState(false);
++  // Formulaire de dépôt
++  const emptyForm = { category: "facture", title: "", reference: "", amount: "", doc_date: "", visible: true, notify: true };
++  const [form, setForm] = useState(emptyForm);
++  const [files, setFiles] = useState([]);
++  const [uploading, setUploading] = useState(false);
++  const fileRef = useRef(null);
++  const cameraRef = useRef(null);
++
++  const load = async () => {
++    try {
++      const { data } = await apiClient.get("/client-space/documents", { params: { tenant_id: tenantId } });
++      setItems(data.items || []);
++      setModules(data.modules || []);
++    } catch (err) { toast.error(extractError(err)); setItems([]); }
++  };
++  useEffect(() => {
++    apiClient.get("/client-space/catalog").then(({ data }) => setCatalog(data)).catch(() => {});
++    if (tenantId) load();
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [tenantId]);
++
++  // --- Modules visibles -----------------------------------------------------
++  const toggleModule = (key) => setModules((m) => (m.includes(key) ? m.filter((x) => x !== key) : [...m, key]));
++  const saveModules = async () => {
++    setSavingModules(true);
++    try {
++      const { data } = await apiClient.put(`/client-space/modules/${tenantId}`, { modules });
++      setModules(data.modules);
++      toast.success("Modules de l'espace client enregistrés");
++    } catch (err) { toast.error(extractError(err)); } finally { setSavingModules(false); }
++  };
++
++  // --- Dépôt ----------------------------------------------------------------
++  // Copie immédiate de la liste : le champ fichier est vidé juste après
++  // (pour pouvoir re-choisir le même fichier), ce qui viderait aussi la FileList.
++  const addFiles = (list) => {
++    const picked = Array.from(list || []);
++    setFiles((f) => [...f, ...picked].slice(0, 10));
++  };
++  const submit = async () => {
++    if (!files.length) { toast.error("Choisissez au moins un fichier"); return; }
++    setUploading(true);
++    try {
++      const fd = new FormData();
++      fd.append("tenant_id", tenantId);
++      Object.entries(form).forEach(([k, v]) => fd.append(k, typeof v === "boolean" ? String(v) : v));
++      files.forEach((f) => fd.append("files", f, f.name));
++      const { data } = await apiClient.post("/client-space/documents", fd, { headers: { "Content-Type": "multipart/form-data" } });
++      const n = data.notification;
++      toast.success(`${data.items.length} document(s) déposé(s)${n ? (n.ok ? ` — client prévenu par ${CHANNEL_LABEL[n.channel] || n.channel}` : ` — client non prévenu : ${n.error}`) : ""}`);
++      setFiles([]); setForm(emptyForm);
++      await load();
++    } catch (err) { toast.error(extractError(err)); } finally { setUploading(false); }
++  };
++
++  // --- Actions sur un document ------------------------------------------------
++  const openFile = async (it) => {
++    // Ouverture dans un nouvel onglet : dépôt → /client-space/documents/{id}/file ; Caisse → PDF de la facture
++    const url = it.source === "upload" ? `/client-space/documents/${it.id}/file` : `/billing/invoices/${it.id}/pdf`;
++    try {
++      const res = await apiClient.get(url, { responseType: "blob" });
++      window.open(window.URL.createObjectURL(res.data), "_blank");
++    } catch (err) { toast.error(extractError(err, "Ouverture impossible")); }
++  };
++  const setVisible = async (it, visible) => {
++    try {
++      const { data } = it.source === "upload"
++        ? await apiClient.patch(`/client-space/documents/${it.id}`, { visible, notify: true })
++        : await apiClient.post(`/client-space/invoices/${it.id}/visibility`, { visible, notify: true });
++      const n = data.notification;
++      toast.success(visible ? `Visible par le client${n ? (n.ok ? " — client prévenu" : ` — non prévenu : ${n.error}`) : ""}` : "Masqué au client");
++      await load();
++    } catch (err) { toast.error(extractError(err)); }
++  };
++  const renotify = async (it) => {
++    try {
++      const { data } = await apiClient.post(`/client-space/documents/${it.id}/notify`);
++      const n = data.notification;
++      if (n.ok) toast.success(`Client prévenu par ${CHANNEL_LABEL[n.channel] || n.channel}`); else toast.error(`Non envoyé : ${n.error}`);
++      await load();
++    } catch (err) { toast.error(extractError(err)); }
++  };
++  const remove = async (it) => {
++    if (!window.confirm(`Retirer « ${it.title} » de l'espace du client ?`)) return;
++    try { await apiClient.delete(`/client-space/documents/${it.id}`); toast.success("Document retiré"); await load(); }
++    catch (err) { toast.error(extractError(err)); }
++  };
++
++  const categories = (catalog?.categories || []).filter((c) => c.key !== "recu" || catalog?.can_issue_receipt);
++
++  return (
++    <div className="space-y-5" data-testid="client-space-panel">
++      {/* 1. Modules visibles par le client */}
++      {catalog && (
++        <div className="albarka-card p-4">
++          <div className="flex items-center gap-2 font-semibold mb-2"><LayoutGrid className="w-4 h-4 text-[#0F6B4A]" /> Modules visibles dans l'espace client</div>
++          <div className="flex flex-wrap gap-x-5 gap-y-2">
++            {catalog.modules.map((m) => (
++              <label key={m.key} className="flex items-center gap-2 text-sm cursor-pointer">
++                <input type="checkbox" checked={modules.includes(m.key)} disabled={!canManageModules} onChange={() => toggleModule(m.key)} data-testid={`module-${m.key}`} />
++                {m.label}
++              </label>
++            ))}
++          </div>
++          <p className="text-xs text-muted-foreground mt-2">Tableau de bord et Mon compte restent toujours visibles.</p>
++          {canManageModules && (
++            <Button size="sm" className="mt-3 bg-[#0F6B4A] hover:bg-[#0A4E36] text-white" onClick={saveModules} disabled={savingModules} data-testid="modules-save">Enregistrer les modules</Button>
++          )}
++        </div>
++      )}
++
++      {/* 2. Dépôt de documents faits hors du portail */}
++      <div className="albarka-card p-4 space-y-3" data-testid="client-space-upload">
++        <div className="flex items-center gap-2 font-semibold"><Upload className="w-4 h-4 text-[#0F6B4A]" /> Déposer dans l'espace du client</div>
++        <p className="text-xs text-muted-foreground">Facture, rapport, attestation… faits dans un autre logiciel : téléversez le fichier ou scannez-le. Aucune analyse OCR.</p>
++        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
++          <div>
++            <Label className="text-xs">Catégorie</Label>
++            <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="mt-1 w-full h-10 rounded-md border px-2 text-sm bg-white" data-testid="cs-category">
++              {categories.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
++            </select>
++          </div>
++          <div><Label className="text-xs">Titre (facultatif)</Label><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="ex. Honoraires septembre" data-testid="cs-title" /></div>
++          <div><Label className="text-xs">Référence / n° (facultatif)</Label><Input value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} data-testid="cs-reference" /></div>
++          <div><Label className="text-xs">Montant FCFA (facultatif)</Label><Input inputMode="decimal" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} data-testid="cs-amount" /></div>
++          <div><Label className="text-xs">Date du document</Label><Input type="date" value={form.doc_date} onChange={(e) => setForm({ ...form, doc_date: e.target.value })} data-testid="cs-date" /></div>
++        </div>
++        <div className="flex flex-wrap items-center gap-2">
++          {/* Fichiers (plusieurs possibles) */}
++          <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv" className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} data-testid="cs-files" />
++          {/* Scan : appareil photo du téléphone / tablette */}
++          <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
++          <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()}><Upload className="w-4 h-4 mr-1" /> Choisir des fichiers</Button>
++          <Button type="button" variant="outline" size="sm" onClick={() => cameraRef.current?.click()}><Camera className="w-4 h-4 mr-1" /> Scanner</Button>
++          {files.map((f, i) => (
++            <span key={i} className="albarka-chip bg-slate-100 text-slate-700 text-xs">
++              {f.name} <button type="button" className="ml-1 text-slate-400 hover:text-rose-600" onClick={() => setFiles(files.filter((_, j) => j !== i))}>×</button>
++            </span>
++          ))}
++        </div>
++        <div className="flex flex-wrap items-center gap-5 text-sm">
++          <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.visible} onChange={(e) => setForm({ ...form, visible: e.target.checked })} data-testid="cs-visible" /> Visible par le client</label>
++          <label className={`flex items-center gap-2 cursor-pointer ${form.visible ? "" : "opacity-40"}`}><input type="checkbox" disabled={!form.visible} checked={form.visible && form.notify} onChange={(e) => setForm({ ...form, notify: e.target.checked })} data-testid="cs-notify" /> Prévenir le client (WhatsApp)</label>
++          <Button onClick={submit} disabled={uploading || !files.length} className="bg-[#0F6B4A] hover:bg-[#0A4E36] text-white ml-auto" data-testid="cs-submit">
++            {uploading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Upload className="w-4 h-4 mr-1" />} Déposer {files.length ? `(${files.length})` : ""}
++          </Button>
++        </div>
++      </div>
++
++      {/* 3. Contenu de l'espace client */}
++      <div className="albarka-card overflow-x-auto" data-testid="client-space-list">
++        <table className="w-full text-sm">
++          <thead><tr className="text-left text-xs text-muted-foreground border-b">
++            <th className="p-3">Document</th><th className="p-3">Origine</th><th className="p-3">Date</th>
++            <th className="p-3">Client</th><th className="p-3">Notification</th><th className="p-3 text-right">Actions</th>
++          </tr></thead>
++          <tbody>
++            {items === null && <tr><td colSpan={6} className="p-6 text-center text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin inline" /> Chargement…</td></tr>}
++            {items && items.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">Rien dans l'espace de ce client pour l'instant.</td></tr>}
++            {(items || []).map((it) => (
++              <tr key={`${it.source}-${it.id}`} className="border-b last:border-0" data-testid={`cs-row-${it.id}`}>
++                <td className="p-3">
++                  <div className="font-medium flex items-center gap-1.5"><FileText className="w-4 h-4 text-slate-400" />{it.title}</div>
++                  <div className="text-xs text-muted-foreground">{it.category_label}{it.reference ? ` · ${it.reference}` : ""}{it.amount ? ` · ${fmtAmount(it.amount)}` : ""}</div>
++                </td>
++                <td className="p-3 text-xs">{it.source === "upload" ? `Déposé${it.uploaded_by_name ? ` par ${it.uploaded_by_name}` : ""}` : "Caisse"}</td>
++                <td className="p-3 text-xs">{fmtDate(it.date)}</td>
++                <td className="p-3 text-xs">
++                  {it.visible
++                    ? <span className="albarka-chip bg-[#0F6B4A]/10 text-[#0F6B4A]">{it.viewed_at ? `Consulté le ${fmtDate(it.viewed_at)}` : "Visible, non consulté"}</span>
++                    : <span className="albarka-chip bg-slate-100 text-slate-600">Masqué</span>}
++                </td>
++                <td className="p-3 text-xs">
++                  {it.last_notification
++                    ? (it.last_notification.ok
++                      ? <span className="inline-flex items-center gap-1 text-emerald-700"><CheckCircle2 className="w-3.5 h-3.5" /> {CHANNEL_LABEL[it.last_notification.channel] || it.last_notification.channel}</span>
++                      : <span className="inline-flex items-center gap-1 text-amber-700" title={it.last_notification.error}><AlertTriangle className="w-3.5 h-3.5" /> Non prévenu</span>)
++                    : "—"}
++                </td>
++                <td className="p-3">
++                  <div className="flex justify-end gap-1">
++                    <Button size="sm" variant="ghost" className="px-2" title="Ouvrir" onClick={() => openFile(it)}><Eye className="w-4 h-4" /></Button>
++                    <Button size="sm" variant="ghost" className="px-2" title={it.visible ? "Masquer au client" : "Rendre visible (le client est prévenu)"} onClick={() => setVisible(it, !it.visible)} data-testid={`cs-toggle-${it.id}`}>
++                      {it.visible ? <EyeOff className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4 text-[#0F6B4A]" />}
++                    </Button>
++                    {it.source === "upload" && it.visible && <Button size="sm" variant="ghost" className="px-2" title="Prévenir à nouveau le client" onClick={() => renotify(it)}><Bell className="w-4 h-4" /></Button>}
++                    {it.source === "upload" && <Button size="sm" variant="ghost" className="px-2 text-rose-600" title="Retirer" onClick={() => remove(it)}><Trash2 className="w-4 h-4" /></Button>}
++                  </div>
++                </td>
++              </tr>
++            ))}
++          </tbody>
++        </table>
++      </div>
++    </div>
++  );
++}
 diff --git a/frontend/src/components/PortalLayout.jsx b/frontend/src/components/PortalLayout.jsx
-index cbf824e..b44c5b1 100644
+index cbf824e..54dc204 100644
 --- a/frontend/src/components/PortalLayout.jsx
 +++ b/frontend/src/components/PortalLayout.jsx
-@@ -27,6 +27,7 @@ import {
+@@ -27,6 +27,9 @@ import {
    ScrollText,
    Zap,
    CreditCard,
 +  ClipboardCheck,
++  FolderOpen,
++  FolderUp,
  } from "lucide-react";
  import { useAuth } from "@/contexts/AuthContext";
  import { Button } from "@/components/ui/button";
-@@ -40,6 +41,8 @@ const BADGES_POLL_MS = 15000;
+@@ -40,16 +43,26 @@ const BADGES_POLL_MS = 15000;
  
  // Doit rester identique à PAYMENTS_ROLES côté backend (albarka_models.py).
  const PAYMENTS_ROLES = ["caissier"];
@@ -1975,26 +3771,59 @@ index cbf824e..b44c5b1 100644
 +const FORMS_ROLES = ["formulaires"];
  
  // Client sidebar (unchanged for pure clients).
++// `module` = clé du module (CLIENT_PORTAL_MODULES côté backend) que le cabinet
++// peut fermer client par client ; sans `module`, le lien est toujours visible.
  const CLIENT_LINKS = [
-@@ -48,6 +51,8 @@ const CLIENT_LINKS = [
-   { to: "/portal/missions", label: "Mes missions", icon: Briefcase },
-   { to: "/portal/echeances", label: "Échéances", icon: CalendarClock },
-   { to: "/portal/historique", label: "Historique", icon: History },
+   { to: "/portal", label: "Tableau de bord", icon: LayoutDashboard, end: true },
+-  { to: "/portal/documents", label: "Mes pièces", icon: FileText },
+-  { to: "/portal/missions", label: "Mes missions", icon: Briefcase },
+-  { to: "/portal/echeances", label: "Échéances", icon: CalendarClock },
+-  { to: "/portal/historique", label: "Historique", icon: History },
++  { to: "/portal/documents", label: "Mes pièces", icon: FileText, module: "documents" },
++  // Factures, reçus, rapports… mis à disposition par le cabinet
++  { to: "/portal/documents-cabinet", label: "Factures & documents", icon: FolderOpen, module: "cabinet_documents" },
++  { to: "/portal/missions", label: "Mes missions", icon: Briefcase, module: "missions" },
++  { to: "/portal/echeances", label: "Échéances", icon: CalendarClock, module: "echeances" },
++  { to: "/portal/historique", label: "Historique", icon: History, module: "historique" },
 +  // Formulaires envoyés par le cabinet (à remplir / déjà répondus)
-+  { to: "/portal/formulaires", label: "Mes formulaires", icon: ClipboardCheck },
++  { to: "/portal/formulaires", label: "Mes formulaires", icon: ClipboardCheck, module: "formulaires" },
    { to: "/portal/mon-compte", label: "Mon compte", icon: UserCog },
  ];
++// Doit rester identique à CLIENT_SPACE_ROLES côté backend (albarka_models.py).
++const CLIENT_SPACE_ROLES = ["administrateur", "direction", "dg", "secretariat", "comptable", "fiscaliste", "aide_comptable", "caissier"];
  
-@@ -81,6 +86,9 @@ const STAFF_MENU = [
+ // Staff menu items with the roles that grant access. `superviseur` = full access.
+ const STAFF_MENU = [
+@@ -75,12 +88,18 @@ const STAFF_MENU = [
+     roles: ["superviseur", "direction", "comptable", "fiscaliste"] },
+   { to: "/admin/contrats", label: "Contrats clients", icon: FileSignature,
+     roles: ["superviseur", "direction", "administrateur", "secretariat"] },
++  // Caisse : le Caissier y accède aussi (seul habilité à encaisser / délivrer un reçu).
+   { to: "/admin/caisse", label: "Caisse", icon: Receipt,
+-    roles: ["superviseur", "direction", "administrateur", "comptable", "secretariat"] },
++    roles: ["superviseur", "direction", "administrateur", "comptable", "secretariat", "caissier"] },
+   // Réservé au rôle "caissier" — masqué pour tous les autres, y compris les
    // rôles Caisse ci-dessus (paiements mobile money, distinct de la caisse
    // manuelle). Le passe-droit "superviseur" standard reste appliqué.
    { to: "/admin/paiements", label: "Paiements", icon: CreditCard, roles: PAYMENTS_ROLES },
 +  // Formulaires : visible UNIQUEMENT pour les collaborateurs ayant coché le
 +  // rôle « Formulaires » dans leur fiche (plus le superviseur, passe-droit standard).
 +  { to: "/admin/forms", label: "Formulaires", icon: ClipboardCheck, roles: FORMS_ROLES },
++  // Déposer des documents faits hors du portail dans l'espace d'un client
++  { to: "/admin/espace-client", label: "Dépôt espace client", icon: FolderUp, roles: CLIENT_SPACE_ROLES },
    { to: "/admin/comptabilite", label: "Comptabilité OHADA", icon: BookOpen,
      roles: ["superviseur", "direction", "administrateur", "comptable", "aide_comptable", "fiscaliste"] },
    { to: "/admin/messagerie", label: "Diffusion", icon: Send, badgeKey: "diffusion_new",
+@@ -111,7 +130,8 @@ export default function PortalLayout({ admin = false }) {
+   const roles = user?.roles || [];
+   const links = admin
+     ? STAFF_MENU.filter((l) => allowedFor(l, roles))
+-    : CLIENT_LINKS;
++    // Espace client : seuls les modules ouverts par le cabinet (aucun réglage = tous)
++    : CLIENT_LINKS.filter((l) => !l.module || !Array.isArray(user?.portal_modules) || user.portal_modules.includes(l.module));
+   const canUsePayments = roles.includes("superviseur") || roles.some((r) => PAYMENTS_ROLES.includes(r));
+ 
+   // Badges non-lus (WhatsApp/Diffusion) affichés à côté du lien correspondant
 diff --git a/frontend/src/components/forms-core/FormBuilder.jsx b/frontend/src/components/forms-core/FormBuilder.jsx
 new file mode 100644
 index 0000000..3b1d6f2
@@ -3696,6 +5525,221 @@ index 0000000..383ada0
 +  a.href = href; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
 +  setTimeout(() => URL.revokeObjectURL(href), 2000);
 +}
+diff --git a/frontend/src/pages/admin/AdminBilling.jsx b/frontend/src/pages/admin/AdminBilling.jsx
+index bae839e..17a58f3 100644
+--- a/frontend/src/pages/admin/AdminBilling.jsx
++++ b/frontend/src/pages/admin/AdminBilling.jsx
+@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
+ import { toast } from "sonner";
+ import {
+   Plus, Receipt, Wallet, X, MoreHorizontal, Eye, RefreshCw,
+-  Trash2, Download, Mail, MessageCircle,
++  Trash2, Download, Mail, MessageCircle, UserCheck, UserX,
+ } from "lucide-react";
+ import { apiClient, extractError } from "@/lib/api";
+ import { Button } from "@/components/ui/button";
+@@ -23,6 +23,12 @@ import { useAuth } from "@/contexts/AuthContext";
+ const CAISSE_DATE_RANGE_ROLES = ["administrateur", "dg", "superviseur"];
+ // Doit rester identique à CAISSE_PDF_ACTION_ROLES côté backend (albarka_models.py).
+ const CAISSE_PDF_ACTION_ROLES = ["administrateur", "superviseur", "direction", "dg", "caissier", "secretariat"];
++// Doit rester identique à ENCAISSEMENT_ROLES côté backend : encaisser et
++// délivrer un reçu sont réservés au Caissier (+ passe-droit superviseur).
++const ENCAISSEMENT_ROLES = ["caissier"];
++// Doit rester identique à CLIENT_SPACE_ROLES côté backend (albarka_models.py) :
++// qui peut mettre un document à disposition dans l'espace d'un client.
++const CLIENT_SPACE_ROLES = ["administrateur", "direction", "dg", "secretariat", "comptable", "fiscaliste", "aide_comptable", "caissier"];
+ 
+ const emptyItem = () => ({ label: "", quantity: 1, unit_price: "", tax_rate: 18 });
+ 
+@@ -40,6 +46,10 @@ export default function AdminBilling() {
+   // "telechargement" (voir canDownloadPdf ci-dessous).
+   const canActOnPdf = roles.includes("superviseur") || roles.some((r) => CAISSE_PDF_ACTION_ROLES.includes(r));
+   const canDownloadPdf = roles.includes("telechargement");
++  // Encaisser / délivrer un reçu : Caissier uniquement (+ superviseur).
++  const canEncaisser = roles.includes("superviseur") || roles.some((r) => ENCAISSEMENT_ROLES.includes(r));
++  // Mettre un document à disposition dans l'espace du client.
++  const canShareToClient = roles.includes("superviseur") || roles.some((r) => CLIENT_SPACE_ROLES.includes(r));
+ 
+   const [invoices, setInvoices] = useState([]);
+   const [payments, setPayments] = useState([]);
+@@ -47,7 +57,7 @@ export default function AdminBilling() {
+   const [openInv, setOpenInv] = useState(false);
+   const [openPay, setOpenPay] = useState(false);
+   const [payTarget, setPayTarget] = useState(null);
+-  const [invForm, setInvForm] = useState({ tenant_id: "", title: "", document_type: "facture", items: [emptyItem()] });
++  const [invForm, setInvForm] = useState({ tenant_id: "", title: "", document_type: "facture", client_visible: false, items: [emptyItem()] });
+   const [payForm, setPayForm] = useState({ amount: "", method: "cash", reference: "" });
+   const [filterTenantId, setFilterTenantId] = useState("");
+   // Résout tenant_id -> {company, full_name} pour la colonne Client à
+@@ -186,6 +196,7 @@ export default function AdminBilling() {
+       await apiClient.post("/billing/invoices", {
+         tenant_id: invForm.tenant_id, title: invForm.title,
+         document_type: invForm.document_type,
++        client_visible: invForm.client_visible, // mis à disposition dès la création (client prévenu)
+         items: items.map((it) => ({
+           label: it.label, quantity: Number(it.quantity) || 1,
+           unit_price: Number(it.unit_price) || 0, tax_rate: Number(it.tax_rate) || 0,
+@@ -193,7 +204,20 @@ export default function AdminBilling() {
+       });
+       toast.success(`${invForm.document_type === "recu" ? "Reçu" : invForm.document_type === "proforma" ? "Proforma" : "Facture"} créé(e)`);
+       setOpenInv(false);
+-      setInvForm({ tenant_id: "", title: "", document_type: "facture", items: [emptyItem()] });
++      setInvForm({ tenant_id: "", title: "", document_type: "facture", client_visible: false, items: [emptyItem()] });
++      await load();
++    } catch (err) { toast.error(extractError(err)); }
++  };
++
++  // --- Espace client : mettre à disposition / retirer ----------------------
++  const toggleClientVisibility = async (invoice) => {
++    const visible = !invoice.client_visible;
++    try {
++      const { data } = await apiClient.post(`/client-space/invoices/${invoice.id}/visibility`, { visible, notify: true });
++      const n = data.notification;
++      toast.success(visible
++        ? `Mis à disposition du client${n ? (n.ok ? " — client prévenu" : ` — notification non envoyée : ${n.error}`) : ""}`
++        : "Retiré de l'espace client");
+       await load();
+     } catch (err) { toast.error(extractError(err)); }
+   };
+@@ -246,11 +270,15 @@ export default function AdminBilling() {
+   const submitPayment = async () => {
+     if (!payTarget || !payForm.amount) { toast.error("Montant requis"); return; }
+     try {
+-      await apiClient.post("/billing/payments", {
++      const { data } = await apiClient.post("/billing/payments", {
+         invoice_id: payTarget.id, amount: Number(payForm.amount),
+         method: payForm.method, reference: payForm.reference || null,
+       });
+-      toast.success("Encaissement enregistré");
++      // Chaque encaissement délivre un reçu : on propose de l'ouvrir tout de suite.
++      const receipt = data.receipt;
++      toast.success(receipt ? `Encaissement enregistré — reçu ${receipt.number} délivré` : "Encaissement enregistré", {
++        action: receipt ? { label: "Voir le reçu", onClick: () => openPdfBlob(receipt) } : undefined,
++      });
+       setOpenPay(false);
+       setPayForm({ amount: "", method: "cash", reference: "" });
+       await load();
+@@ -406,7 +434,8 @@ export default function AdminBilling() {
+                       <SelectTrigger data-testid="invoice-doctype-select"><SelectValue /></SelectTrigger>
+                       <SelectContent>
+                         <SelectItem value="facture">Facture</SelectItem>
+-                        <SelectItem value="recu">Reçu de caisse</SelectItem>
++                        {/* Délivrer un reçu : Caissier uniquement */}
++                        {canEncaisser && <SelectItem value="recu">Reçu de caisse</SelectItem>}
+                         <SelectItem value="proforma">Proforma</SelectItem>
+                       </SelectContent>
+                     </Select>
+@@ -450,6 +479,13 @@ export default function AdminBilling() {
+                       </div>
+                     ))}
+                   </div>
++                  {/* Mise à disposition immédiate dans l'espace du client (+ notification WhatsApp) */}
++                  {canShareToClient && (
++                    <label className="flex items-center gap-2 text-sm cursor-pointer">
++                      <input type="checkbox" checked={invForm.client_visible} onChange={(e) => setInvForm({ ...invForm, client_visible: e.target.checked })} data-testid="invoice-client-visible" />
++                      Mettre à disposition dans l'espace du client (le client est prévenu)
++                    </label>
++                  )}
+                 </div>
+                 <DialogFooter>
+                   <Button variant="outline" onClick={() => setOpenInv(false)}>Annuler</Button>
+@@ -485,7 +521,11 @@ export default function AdminBilling() {
+                         {i.document_type === "recu" ? "Reçu" : i.document_type === "proforma" ? "Proforma" : "Facture"}
+                       </span>
+                     </TableCell>
+-                    <TableCell>{i.title}</TableCell>
++                    <TableCell>
++                      {i.title}
++                      {/* Visible par le client dans son espace */}
++                      {i.client_visible && <span className="ml-2 albarka-chip text-[10px] bg-[#0F6B4A]/10 text-[#0F6B4A]" data-testid={`invoice-shared-${i.id}`}>Espace client</span>}
++                    </TableCell>
+                     <TableCell className="text-xs text-muted-foreground">{fmtDateTime(i.created_at)}</TableCell>
+                     <TableCell className="text-xs text-muted-foreground">{fmtDateTime(i.updated_at)}</TableCell>
+                     <TableCell className="text-right">{Number(i.total).toLocaleString()} {i.currency}</TableCell>
+@@ -498,9 +538,17 @@ export default function AdminBilling() {
+                     </span></TableCell>
+                     <TableCell className="text-right">
+                       <div className="flex items-center justify-end gap-1.5">
+-                        {i.status !== "paid" && i.status !== "proforma" && (
++                        {/* Encaisser : factures non soldées, Caissier uniquement */}
++                        {canEncaisser && i.document_type === "facture" && i.status !== "paid" && (
+                           <Button size="sm" variant="outline" onClick={() => { setPayTarget(i); setOpenPay(true); }} data-testid={`pay-invoice-${i.id}`}>Encaisser</Button>
+                         )}
++                        {/* Mettre à disposition du client / retirer de son espace */}
++                        {canShareToClient && (
++                          <Button size="sm" variant="ghost" className="px-2" title={i.client_visible ? "Retirer de l'espace client" : "Mettre à disposition du client"}
++                            onClick={() => toggleClientVisibility(i)} data-testid={`invoice-share-${i.id}`}>
++                            {i.client_visible ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
++                          </Button>
++                        )}
+                         {canActOnPdf && (
+                           <DropdownMenu>
+                             <DropdownMenuTrigger asChild>
+diff --git a/frontend/src/pages/admin/AdminClientDetail.jsx b/frontend/src/pages/admin/AdminClientDetail.jsx
+index b5bb6c4..ad0eafd 100644
+--- a/frontend/src/pages/admin/AdminClientDetail.jsx
++++ b/frontend/src/pages/admin/AdminClientDetail.jsx
+@@ -10,6 +10,7 @@ import Missions from "@/pages/portal/Missions";
+ import Echeances from "@/pages/portal/Echeances";
+ import { ClientReportsPanel } from "@/pages/admin/AdminReports";
+ import { ContactsPanel } from "@/pages/admin/AdminContacts";
++import ClientSpacePanel from "@/components/ClientSpacePanel";
+ 
+ export default function AdminClientDetail() {
+   const { id } = useParams();
+@@ -51,6 +52,8 @@ export default function AdminClientDetail() {
+           <TabsTrigger value="documents" data-testid="tab-client-documents">Pièces</TabsTrigger>
+           <TabsTrigger value="missions" data-testid="tab-client-missions">Missions</TabsTrigger>
+           <TabsTrigger value="echeances" data-testid="tab-client-echeances">Échéances</TabsTrigger>
++          {/* Modules visibles + documents déposés / mis à disposition du client */}
++          <TabsTrigger value="espace" data-testid="tab-client-space">Espace client</TabsTrigger>
+         </TabsList>
+         <TabsContent value="reports" className="pt-4">
+           <ClientReportsPanel tenantId={client.id} clientEmail={client.email} />
+@@ -67,6 +70,9 @@ export default function AdminClientDetail() {
+         <TabsContent value="echeances" className="pt-4">
+           <Echeances tenantIdOverride={client.id} staffMode notifiable />
+         </TabsContent>
++        <TabsContent value="espace" className="pt-4">
++          <ClientSpacePanel tenantId={id} />
++        </TabsContent>
+       </Tabs>
+     </div>
+   );
+diff --git a/frontend/src/pages/admin/AdminClientSpace.jsx b/frontend/src/pages/admin/AdminClientSpace.jsx
+new file mode 100644
+index 0000000..abd1723
+--- /dev/null
++++ b/frontend/src/pages/admin/AdminClientSpace.jsx
+@@ -0,0 +1,28 @@
++/*
++  « Dépôt espace client » — page rapide pour déposer des documents faits
++  hors du portail (factures, rapports, attestations…) dans l'espace d'un
++  client : on choisit le client, puis on utilise le même panneau que l'onglet
++  « Espace client » de sa fiche (ClientSpacePanel).
++*/
++import React, { useState } from "react";
++import { Label } from "@/components/ui/label";
++import EntitySelect from "@/components/EntitySelect";
++import ClientSpacePanel from "@/components/ClientSpacePanel";
++
++export default function AdminClientSpace() {
++  const [tenantId, setTenantId] = useState(""); // client choisi
++  return (
++    <div className="space-y-6" data-testid="admin-client-space-page">
++      <div>
++        <div className="text-xs uppercase tracking-[0.2em] text-[#0F6B4A] mb-2">Cabinet</div>
++        <h1 className="font-display text-3xl md:text-4xl">Dépôt dans l'espace client</h1>
++        <p className="text-muted-foreground mt-1">Factures, rapports, attestations… faits dans un autre logiciel ou scannés : le client les retrouve dans « Factures & documents » et il est prévenu par WhatsApp.</p>
++      </div>
++      <div className="w-full sm:w-80">
++        <Label className="text-xs">Client</Label>
++        <div className="mt-1"><EntitySelect value={tenantId} onChange={setTenantId} placeholder="Choisir un client" testId="cs-client-select" /></div>
++      </div>
++      {tenantId ? <ClientSpacePanel key={tenantId} tenantId={tenantId} /> : <p className="text-sm text-muted-foreground">Choisissez d'abord un client.</p>}
++    </div>
++  );
++}
 diff --git a/frontend/src/pages/admin/AdminForms.jsx b/frontend/src/pages/admin/AdminForms.jsx
 new file mode 100644
 index 0000000..ace71f8
@@ -3727,20 +5771,300 @@ index 0000000..ace71f8
 +  const { id } = useParams(); // identifiant du formulaire dans l'adresse
 +  return <FormDetail {...FORMS_PROPS} formId={id} publicPath="/f" color="#0F6B4A" />;
 +}
+diff --git a/frontend/src/pages/admin/AdminSettings.jsx b/frontend/src/pages/admin/AdminSettings.jsx
+index 57ac79d..61461a0 100644
+--- a/frontend/src/pages/admin/AdminSettings.jsx
++++ b/frontend/src/pages/admin/AdminSettings.jsx
+@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
+ import { Textarea } from "@/components/ui/textarea";
+ import { Switch } from "@/components/ui/switch";
+ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
++import ClientDocsNotifPanel from "@/pages/admin/ClientDocsNotifPanel";
+ import CertificatesPanel from "@/pages/admin/CertificatesPanel";
+ import BrandingPanel from "@/pages/admin/BrandingPanel";
+ import { useAuth } from "@/contexts/AuthContext";
+@@ -580,6 +581,8 @@ export default function AdminSettings() {
+               Enregistrer
+             </Button>
+           </div>
++          {/* Modèles de notification des documents mis à disposition des clients */}
++          <ClientDocsNotifPanel settings={settings} setSettings={setSettings} save={save} saving={saving} />
+         </TabsContent>
+ 
+         {/* --- RAPPORTS --- */}
 diff --git a/frontend/src/pages/admin/AdminStaff.jsx b/frontend/src/pages/admin/AdminStaff.jsx
-index 109861a..726777e 100644
+index 109861a..7b48751 100644
 --- a/frontend/src/pages/admin/AdminStaff.jsx
 +++ b/frontend/src/pages/admin/AdminStaff.jsx
-@@ -28,6 +28,9 @@ const STAFF_ROLES = [
+@@ -28,6 +28,12 @@ const STAFF_ROLES = [
    // Rôle transversal cumulable : accorde le droit de télécharger les pièces
    // client quel que soit le métier principal du collaborateur.
    { value: "telechargement", label: "Téléchargement" },
 +  // Rôle cumulable : donne accès au menu et au module Formulaires
 +  // (création, envoi aux clients, réponses, statistiques).
 +  { value: "formulaires", label: "Formulaires" },
++  // Rôle cumulable : seul habilité à encaisser et à délivrer un reçu
++  // (ex. une secrétaire avec ce rôle en plus peut encaisser).
++  { value: "caissier", label: "Caissier" },
  ];
  
  const emptyForm = () => ({
+@@ -48,10 +54,12 @@ export default function AdminStaff() {
+   const [editing, setEditing] = useState(null); // null = create mode
+   const [form, setForm] = useState(emptyForm());
+ 
+-  // Rôles proposés dans le formulaire : masque "administrateur" pour les non-admins.
++  // Rôles proposés dans le formulaire : jamais "administrateur" — ce rôle est
++  // réservé au compte admin du portail, qui le porte d'office (voir
++  // effective_roles côté backend, albarka_models.py).
+   const visibleRoles = useMemo(
+-    () => (isAdmin ? STAFF_ROLES : STAFF_ROLES.filter((r) => r.value !== "administrateur")),
+-    [isAdmin],
++    () => STAFF_ROLES.filter((r) => r.value !== "administrateur"),
++    [],
+   );
+   // Table filtrée : masque les comptes administrateurs pour les non-admins.
+   const visibleItems = useMemo(
+@@ -186,6 +194,8 @@ export default function AdminStaff() {
+                     </label>
+                   ))}
+                 </div>
++                {/* Rappel : le rôle Administrateur n'est pas attribuable */}
++                <p className="text-[11px] text-muted-foreground mt-2">Le rôle Administrateur est réservé au compte admin du portail.</p>
+               </div>
+               <label className="flex items-center gap-2 text-sm cursor-pointer pt-1">
+                 <Checkbox
+diff --git a/frontend/src/pages/admin/ClientDocsNotifPanel.jsx b/frontend/src/pages/admin/ClientDocsNotifPanel.jsx
+new file mode 100644
+index 0000000..c80d480
+--- /dev/null
++++ b/frontend/src/pages/admin/ClientDocsNotifPanel.jsx
+@@ -0,0 +1,117 @@
++/*
++  Paramètres → Notifications → « Documents mis à disposition des clients ».
++  Règle le message WhatsApp envoyé au client quand le cabinet dépose ou met
++  à disposition un document dans son espace :
++    - un texte par catégorie (facture, reçu, rapport…) + un texte par défaut,
++      avec variables {client} {liste} {lien}… et aperçu ;
++    - le modèle Meta approuvé à utiliser hors fenêtre de 24 h (nom, langue,
++      variables envoyées pour {{1}}, {{2}}…) ;
++    - le repli e-mail si WhatsApp est impossible.
++  Props : settings, setSettings, save(partial), saving (état de AdminSettings)
++*/
++import React, { useEffect, useState } from "react";
++import { Save, RotateCcw } from "lucide-react";
++import { apiClient } from "@/lib/api";
++import { Button } from "@/components/ui/button";
++import { Input } from "@/components/ui/input";
++import { Label } from "@/components/ui/label";
++import { Switch } from "@/components/ui/switch";
++
++export default function ClientDocsNotifPanel({ settings, setSettings, save, saving }) {
++  const [catalog, setCatalog] = useState(null);
++  const [key, setKey] = useState("default"); // texte en cours d'édition
++  const [preview, setPreview] = useState("");
++
++  useEffect(() => { apiClient.get("/client-space/catalog").then(({ data }) => setCatalog(data)).catch(() => {}); }, []);
++
++  const templates = settings.client_docs_templates || {};
++  const defaults = catalog?.default_templates || {};
++  // Texte affiché : celui réglé, sinon le texte fourni d'origine (catégorie puis défaut)
++  const current = templates[key] ?? defaults[key] ?? defaults.default ?? "";
++  const setCurrent = (v) => setSettings({ ...settings, client_docs_templates: { ...templates, [key]: v } });
++  const resetCurrent = () => { const t = { ...templates }; delete t[key]; setSettings({ ...settings, client_docs_templates: t }); };
++  const labelOf = (k) => (k === "default" ? "Par défaut (plusieurs catégories)" : catalog?.categories.find((c) => c.key === k)?.label || k);
++
++  // Aperçu avec des valeurs d'exemple, recalculé à chaque frappe (léger délai)
++  useEffect(() => {
++    if (!catalog) return undefined;
++    const t = setTimeout(() => {
++      apiClient.post("/client-space/preview", { category: key === "default" ? "facture" : key, template: current })
++        .then(({ data }) => setPreview(data.text)).catch(() => setPreview(""));
++    }, 300);
++    return () => clearTimeout(t);
++  }, [catalog, key, current]);
++
++  const insertVar = (v) => setCurrent(`${current}{${v}}`);
++
++  if (!catalog) return null;
++  return (
++    <div className="albarka-card p-6 space-y-5 max-w-3xl mt-6" data-testid="client-docs-notif-panel">
++      <div className="flex items-start justify-between">
++        <div>
++          <div className="font-semibold">Documents mis à disposition des clients</div>
++          <div className="text-sm text-muted-foreground">Message WhatsApp envoyé au client quand le cabinet dépose une facture, un rapport… dans son espace.</div>
++        </div>
++        <Switch checked={settings.client_docs_notify_enabled !== false} onCheckedChange={(v) => setSettings({ ...settings, client_docs_notify_enabled: v })} data-testid="cd-notify-switch" />
++      </div>
++
++      {/* Texte par catégorie */}
++      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
++        <div className="space-y-2">
++          <Label>Texte pour</Label>
++          <select value={key} onChange={(e) => setKey(e.target.value)} className="w-full h-10 rounded-md border px-2 text-sm bg-white" data-testid="cd-template-key">
++            {catalog.template_keys.map((k) => <option key={k} value={k}>{labelOf(k)}{templates[k] ? " — personnalisé" : ""}</option>)}
++          </select>
++          <textarea rows={9} value={current} onChange={(e) => setCurrent(e.target.value)} className="w-full rounded-md border p-2 text-sm font-mono" data-testid="cd-template-text" />
++          <div className="flex flex-wrap gap-1">
++            {catalog.variables.map((v) => (
++              <button key={v.key} type="button" title={v.label} onClick={() => insertVar(v.key)} className="text-[11px] px-1.5 py-0.5 rounded border bg-slate-50 hover:bg-slate-100 font-mono">{`{${v.key}}`}</button>
++            ))}
++          </div>
++          {templates[key] !== undefined && (
++            <Button type="button" variant="ghost" size="sm" onClick={resetCurrent}><RotateCcw className="w-3.5 h-3.5 mr-1" /> Revenir au texte d'origine</Button>
++          )}
++        </div>
++        <div className="space-y-2">
++          <Label>Aperçu (valeurs d'exemple)</Label>
++          <div className="rounded-lg bg-[#E7F8E1] border border-[#cbe8c0] p-3 text-sm whitespace-pre-wrap min-h-[200px]" data-testid="cd-template-preview">{preview}</div>
++        </div>
++      </div>
++
++      {/* Modèle Meta hors fenêtre de 24 h */}
++      <div className="rounded-lg border p-4 space-y-3">
++        <div>
++          <div className="font-medium">Modèle WhatsApp approuvé (hors fenêtre de 24 h)</div>
++          <div className="text-xs text-muted-foreground">
++            WhatsApp n'accepte un message libre que si le client vous a écrit dans les dernières 24 h. Sinon, seul un modèle
++            approuvé dans votre compte Meta est remis. Laissez vide si vous n'en avez pas : l'e-mail prendra le relais.
++          </div>
++        </div>
++        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
++          <div><Label className="text-xs">Nom du modèle Meta</Label><Input value={settings.client_docs_wa_template_name || ""} onChange={(e) => setSettings({ ...settings, client_docs_wa_template_name: e.target.value })} placeholder="ex. nouveau_document" data-testid="cd-meta-name" /></div>
++          <div><Label className="text-xs">Langue</Label><Input value={settings.client_docs_wa_template_lang || "fr"} onChange={(e) => setSettings({ ...settings, client_docs_wa_template_lang: e.target.value })} placeholder="fr" /></div>
++          <div><Label className="text-xs">Variables {"{{1}}, {{2}}…"} dans l'ordre</Label><Input value={settings.client_docs_wa_template_params || ""} onChange={(e) => setSettings({ ...settings, client_docs_wa_template_params: e.target.value })} placeholder="client,nombre,lien" data-testid="cd-meta-params" /></div>
++        </div>
++      </div>
++
++      <div className="flex items-center justify-between">
++        <div>
++          <div className="font-medium">Prévenir par e-mail si WhatsApp est impossible</div>
++          <div className="text-sm text-muted-foreground">Pas de numéro WhatsApp, hors fenêtre de 24 h sans modèle, ou échec d'envoi.</div>
++        </div>
++        <Switch checked={settings.client_docs_email_fallback !== false} onCheckedChange={(v) => setSettings({ ...settings, client_docs_email_fallback: v })} />
++      </div>
++
++      <Button onClick={() => save({
++        client_docs_notify_enabled: settings.client_docs_notify_enabled !== false,
++        client_docs_templates: settings.client_docs_templates || {},
++        client_docs_wa_template_name: settings.client_docs_wa_template_name || "",
++        client_docs_wa_template_lang: settings.client_docs_wa_template_lang || "fr",
++        client_docs_wa_template_params: settings.client_docs_wa_template_params || "",
++        client_docs_email_fallback: settings.client_docs_email_fallback !== false,
++      })} disabled={saving} className="bg-[#0F6B4A] hover:bg-[#0A4E36] text-white" data-testid="save-client-docs-notif">
++        <Save className="w-4 h-4 mr-2" /> Enregistrer
++      </Button>
++    </div>
++  );
++}
+diff --git a/frontend/src/pages/portal/CabinetDocuments.jsx b/frontend/src/pages/portal/CabinetDocuments.jsx
+new file mode 100644
+index 0000000..d4905fa
+--- /dev/null
++++ b/frontend/src/pages/portal/CabinetDocuments.jsx
+@@ -0,0 +1,102 @@
++/*
++  « Factures & documents » (espace client) — tout ce que le cabinet a mis à
++  disposition du client connecté : factures, proformas, reçus (Caisse du
++  portail ou faits ailleurs), rapports, attestations, courriers…
++  Rien d'autre n'est visible : le serveur ne renvoie que les documents de ce
++  client, rendus visibles par le cabinet (API /me/space).
++*/
++import React, { useEffect, useMemo, useState } from "react";
++import { toast } from "sonner";
++import { FolderOpen, Download, Eye, Loader2 } from "lucide-react";
++import { apiClient, extractError } from "@/lib/api";
++import { Button } from "@/components/ui/button";
++
++const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString("fr-FR") : "");
++const fmtAmount = (n) => `${Math.round(Number(n || 0)).toLocaleString("fr-FR")} FCFA`;
++// Statut de paiement affiché pour une facture de la Caisse
++const STATUS = { paid: ["Payée", "bg-emerald-100 text-emerald-800"], partial: ["Partiellement payée", "bg-amber-100 text-amber-800"],
++  unpaid: ["À payer", "bg-rose-100 text-rose-800"] };
++
++export default function CabinetDocuments() {
++  const [data, setData] = useState(null);
++  const [tab, setTab] = useState("all");
++
++  const load = () => apiClient.get("/me/space").then(({ data: d }) => setData(d)).catch((e) => { toast.error(extractError(e)); setData({ items: [] }); });
++  useEffect(() => { load(); }, []);
++
++  // Onglets : « Tout » + une catégorie par type de document effectivement présent
++  const tabs = useMemo(() => {
++    const counts = {};
++    (data?.items || []).forEach((i) => { counts[i.category] = (counts[i.category] || 0) + 1; });
++    return [{ key: "all", label: "Tout", n: data?.items?.length || 0 },
++      ...(data?.categories || []).filter((c) => counts[c.key]).map((c) => ({ key: c.key, label: c.label, n: counts[c.key] }))];
++  }, [data]);
++  const shown = (data?.items || []).filter((i) => tab === "all" || i.category === tab);
++  const newCount = (data?.items || []).filter((i) => i.is_new).length;
++
++  // Ouvre (ou télécharge) le fichier ; la première ouverture est notée côté cabinet
++  const open = async (it, download = false) => {
++    try {
++      const res = await apiClient.get(`/me/space/${it.source}/${it.id}/file`, { params: download ? { download: true } : undefined, responseType: "blob" });
++      const url = window.URL.createObjectURL(res.data);
++      if (download) {
++        const a = document.createElement("a");
++        a.href = url; a.download = it.filename || "document"; document.body.appendChild(a); a.click(); a.remove();
++      } else {
++        window.open(url, "_blank");
++      }
++      if (it.is_new) load();
++    } catch (err) { toast.error(extractError(err, "Ouverture impossible")); }
++  };
++
++  return (
++    <div className="space-y-5" data-testid="cabinet-documents-page">
++      <div>
++        <div className="text-xs uppercase tracking-[0.2em] text-[#0F6B4A] mb-2">Mon espace</div>
++        <h1 className="font-display text-3xl">Factures & documents</h1>
++        <p className="text-muted-foreground mt-1">
++          {data === null ? "" : newCount ? `${newCount} nouveau(x) document(s) du cabinet.` : "Les documents que le cabinet a mis à votre disposition."}
++        </p>
++      </div>
++      {tabs.length > 1 && (
++        <div className="flex flex-wrap gap-2">
++          {tabs.map((t) => (
++            <button key={t.key} type="button" onClick={() => setTab(t.key)} data-testid={`cd-tab-${t.key}`}
++              className={`px-3 py-1.5 rounded-full text-sm border ${tab === t.key ? "bg-[#0F6B4A] text-white border-[#0F6B4A]" : "bg-white text-slate-700"}`}>
++              {t.label} <span className="opacity-70">({t.n})</span>
++            </button>
++          ))}
++        </div>
++      )}
++      {data === null ? (
++        <p className="text-sm text-muted-foreground inline-flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Chargement…</p>
++      ) : shown.length === 0 ? (
++        <div className="albarka-card p-10 text-center text-muted-foreground"><FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-40" /> Aucun document pour l'instant.</div>
++      ) : (
++        <div className="space-y-2">
++          {shown.map((it) => (
++            <div key={`${it.source}-${it.id}`} className="albarka-card p-4 flex flex-wrap items-center gap-3" data-testid={`cd-item-${it.id}`}>
++              <div className="flex-1 min-w-[220px]">
++                <div className="font-medium flex items-center gap-2">
++                  {it.title}
++                  {it.is_new && <span className="albarka-chip text-[10px] bg-[#E5A24B]/20 text-[#8a5a14]">Nouveau</span>}
++                </div>
++                <div className="text-xs text-muted-foreground">
++                  {it.category_label}{it.reference ? ` · ${it.reference}` : ""}{it.date ? ` · ${fmtDate(it.date)}` : ""}{it.amount ? ` · ${fmtAmount(it.amount)}` : ""}
++                </div>
++              </div>
++              {/* Facture de la Caisse : statut et reste à payer */}
++              {it.category === "facture" && STATUS[it.status] && (
++                <span className={`albarka-chip text-xs ${STATUS[it.status][1]}`}>
++                  {STATUS[it.status][0]}{it.status !== "paid" && it.remaining ? ` — reste ${fmtAmount(it.remaining)}` : ""}
++                </span>
++              )}
++              <Button size="sm" variant="outline" onClick={() => open(it)} data-testid={`cd-open-${it.id}`}><Eye className="w-4 h-4 mr-1" /> Ouvrir</Button>
++              <Button size="sm" variant="ghost" onClick={() => open(it, true)} title="Télécharger"><Download className="w-4 h-4" /></Button>
++            </div>
++          ))}
++        </div>
++      )}
++    </div>
++  );
++}
 diff --git a/frontend/src/pages/portal/MyForms.jsx b/frontend/src/pages/portal/MyForms.jsx
 new file mode 100644
 index 0000000..aa88a53
