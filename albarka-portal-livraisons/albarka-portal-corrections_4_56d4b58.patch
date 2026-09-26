@@ -1,0 +1,1090 @@
+From 56d4b589dbdd74f21cb16bec294829f5571af61f Mon Sep 17 00:00:00 2001
+From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
+Date: Sat, 26 Sep 2026 01:47:10 +0000
+Subject: [PATCH] =?UTF-8?q?R=C3=B4le=20Superviseur=20r=C3=A9serv=C3=A9,=20?=
+ =?UTF-8?q?suppression=20du=20personnel,=20comptes=20de=20test,=20Param?=
+ =?UTF-8?q?=C3=A8tres?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Superviseur : rôle attribué ou retiré uniquement par le compte admin du
+  portail ; un compte Superviseur n'est modifiable que par un superviseur.
+- Administrateur : je reviens à la règle d'avant le lot 3 (un administrateur
+  peut attribuer ce rôle) ; plus de réservation au compte admin.
+- Suppression d'un compte du personnel réservée au superviseur (compte admin
+  intouchable, un superviseur seulement par le compte admin), tracée.
+- Bouton « Créer comptes de test » : comptes de la recette avec adresses
+  +alias, invisibles de tous sauf du superviseur, exclus des envois de masse ;
+  suppression groupée.
+- Paramètres réservés au superviseur (menu et routes : réglages, image de
+  marque, certificats, tests de configuration) ; RGPD modifiable par lui.
+---
+ backend/albarka_admin_settings.py          |  14 +-
+ backend/albarka_auth.py                    |   4 -
+ backend/albarka_branding.py                |   4 +-
+ backend/albarka_clients.py                 | 165 ++++++++++++++++++---
+ backend/albarka_dashboard.py               |   9 +-
+ backend/albarka_forms.py                   |   5 +-
+ backend/albarka_models.py                  |  35 +++--
+ backend/albarka_notifications.py           |   1 +
+ backend/albarka_phase_c.py                 |  10 +-
+ backend/albarka_reports_mgmt.py            |   3 +-
+ backend/albarka_settings_tests.py          |   4 +-
+ backend/albarka_signing.py                 |   5 +-
+ backend/tests/test_accounts_lot4.py        | 165 +++++++++++++++++++++
+ backend/tests/test_client_space_lot3.py    |  29 +---
+ frontend/src/components/PortalLayout.jsx   |   4 +-
+ frontend/src/pages/admin/AdminSettings.jsx |   7 +-
+ frontend/src/pages/admin/AdminStaff.jsx    | 133 +++++++++++++++--
+ 17 files changed, 495 insertions(+), 102 deletions(-)
+ create mode 100644 backend/tests/test_accounts_lot4.py
+
+diff --git a/backend/albarka_admin_settings.py b/backend/albarka_admin_settings.py
+index 0c020ca..dbbd2e7 100644
+--- a/backend/albarka_admin_settings.py
++++ b/backend/albarka_admin_settings.py
+@@ -1,8 +1,8 @@
+ """Paramètres administrateur (settings globaux) — WABA config, notifications, etc.
+ 
+ Document unique en base : `settings` avec `_id="global"` (compatible avec le
+-pattern du repo d'origine). Seul un utilisateur ayant l'un des rôles
+-`superviseur`, `direction` ou `administrateur` peut lire/écrire les paramètres.
++pattern du repo d'origine). Seul le Superviseur peut lire/écrire les
++paramètres (SETTINGS_ROLES).
+ """
+ from __future__ import annotations
+ 
+@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
+ from pydantic import BaseModel, Field
+ 
+ import re
++from albarka_models import SETTINGS_ROLES
+ from albarka_auth import get_current_user, require_roles
+ from db import db
+ 
+@@ -23,7 +24,8 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+ 
+ router = APIRouter(prefix="/admin", tags=["Admin"])
+ 
+-_ADMIN_ROLES = ["superviseur", "direction", "administrateur"]
++# Paramètres : superviseur uniquement (SETTINGS_ROLES, albarka_models.py)
++_ADMIN_ROLES = SETTINGS_ROLES
+ 
+ # Champs sensibles : masqués sur lecture (******** = présent).
+ SENSITIVE_FIELDS = {"wa_access_token", "recaptcha_secret_key", "pawapay_api_token_sandbox", "pawapay_api_token_production"}
+@@ -208,10 +210,8 @@ async def get_settings(user: dict = Depends(require_roles(_ADMIN_ROLES))):
+ @router.put("/settings")
+ async def update_settings(payload: SettingsUpdate, user: dict = Depends(require_roles(_ADMIN_ROLES))):
+     changes = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
+-    # L'activation/désactivation du RGPD est réservée au rôle "administrateur"
+-    # littéral — contrairement à require_roles, pas de passe-droit superviseur ici.
+-    if "rgpd_masking_enabled" in changes and "administrateur" not in (user.get("roles") or []):
+-        raise HTTPException(status_code=403, detail="Seul un compte Administrateur peut activer/désactiver le RGPD")
++    # RGPD : les Paramètres étant réservés au Superviseur (SETTINGS_ROLES), il
++    # est le seul à pouvoir activer/désactiver le masquage des numéros.
+     # Never persist the masked sentinel back.
+     for k in SENSITIVE_FIELDS:
+         if changes.get(k) == "********":
+diff --git a/backend/albarka_auth.py b/backend/albarka_auth.py
+index c18c5f1..a4a2477 100644
+--- a/backend/albarka_auth.py
++++ b/backend/albarka_auth.py
+@@ -15,7 +15,6 @@ from jose import JWTError, jwt
+ 
+ from albarka_models import (
+     AuthTokenResponse,
+-    effective_roles,
+     LoginRequest,
+     LoginResponse,
+     OtpVerifyRequest,
+@@ -102,8 +101,6 @@ async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(_securi
+         raise HTTPException(status_code=401, detail="Utilisateur introuvable")
+     if not user.get("is_active", True):
+         raise HTTPException(status_code=403, detail="Compte désactivé")
+-    # Rôles effectifs : "administrateur" réservé au compte admin (albarka_models).
+-    user["roles"] = effective_roles(user)
+     return user
+ 
+ 
+@@ -191,7 +188,6 @@ async def verify_otp(payload: OtpVerifyRequest):
+         {"$set": {"last_login": datetime.now(timezone.utc).isoformat()}},
+     )
+     token = create_access_token(user["id"])
+-    user["roles"] = effective_roles(user)  # mêmes rôles effectifs que get_current_user
+     return AuthTokenResponse(access_token=token, user=User(**user))
+ 
+ 
+diff --git a/backend/albarka_branding.py b/backend/albarka_branding.py
+index e94a50d..e0671b9 100644
+--- a/backend/albarka_branding.py
++++ b/backend/albarka_branding.py
+@@ -12,6 +12,7 @@ from typing import Optional
+ 
+ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+ 
++from albarka_models import SETTINGS_ROLES
+ from albarka_auth import require_roles
+ from albarka_storage import delete_object, get_object, put_object
+ from db import db
+@@ -20,7 +21,8 @@ logger = logging.getLogger("albarka.branding")
+ 
+ router = APIRouter(prefix="/admin/branding", tags=["Branding cabinet"])
+ 
+-_ADMIN_ROLES = ["superviseur", "direction", "administrateur"]
++# Paramètres : superviseur uniquement (SETTINGS_ROLES, albarka_models.py)
++_ADMIN_ROLES = SETTINGS_ROLES
+ BRANDING_KINDS = {"logo", "letterhead", "dg_signature", "watermark"}
+ ALLOWED_MIMES = {"image/png", "image/jpeg", "image/webp"}
+ MAX_SIZE = 5 * 1024 * 1024  # 5 MB
+diff --git a/backend/albarka_clients.py b/backend/albarka_clients.py
+index ee8c97d..731200c 100644
+--- a/backend/albarka_clients.py
++++ b/backend/albarka_clients.py
+@@ -11,7 +11,8 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
+ from albarka_auth import get_current_user, hash_password, require_roles, require_staff
+ from albarka_admin_settings import get_settings_doc
+ from albarka_models import (
+-    ALBARKA_ROLES, CLIENT_MANAGE_ROLES, VERIFY_PHONE_ROLES, User, effective_roles, is_admin_account, is_client,
++    ALBARKA_ROLES, CLIENT_MANAGE_ROLES, VERIFY_PHONE_ROLES, User, hide_test_accounts_filter,
++    is_admin_account, is_client, is_test_account,
+ )
+ from db import db, serialize, serialize_many
+ 
+@@ -102,20 +103,19 @@ def _public(user: dict) -> dict:
+ 
+ @router.get("")
+ async def list_clients(user: dict = Depends(require_staff())):
++    # Comptes de test : visibles du superviseur uniquement
+     docs = await db.users.find(
+-        {"roles": "client"}, {"_id": 0, "password_hash": 0}
++        {"roles": "client", **hide_test_accounts_filter(user)}, {"_id": 0, "password_hash": 0}
+     ).sort("created_at", -1).to_list(1000)
+     return serialize_many(await _apply_rgpd_masking(docs, user))
+ 
+ 
+ @router.get("/staff")
+ async def list_staff(user: dict = Depends(require_staff())):
++    # Comptes de test : visibles du superviseur uniquement
+     docs = await db.users.find(
+-        {"roles": {"$nin": ["client"]}}, {"_id": 0, "password_hash": 0}
++        {"roles": {"$nin": ["client"]}, **hide_test_accounts_filter(user)}, {"_id": 0, "password_hash": 0}
+     ).sort("created_at", -1).to_list(1000)
+-    # Rôles affichés = rôles réellement appliqués (administrateur : compte admin seul).
+-    for d in docs:
+-        d["roles"] = effective_roles(d)
+     return serialize_many(docs)
+ 
+ 
+@@ -145,20 +145,24 @@ async def create_client(payload: ClientCreate, user: dict = Depends(require_role
+ 
+ 
+ def _is_admin(u: dict) -> bool:
+-    """Retourne True si l'utilisateur est le compte admin du portail — le seul
+-    qui puisse porter (et donc attribuer) le rôle `administrateur`."""
+-    return is_admin_account(u)
++    """Retourne True si l'utilisateur porte le rôle privilégié `administrateur`."""
++    return "administrateur" in (u.get("roles") or [])
+ 
+ 
+-_ADMIN_ROLE_RESERVED = "Le rôle Administrateur est réservé au compte admin du portail"
++_SUPERVISEUR_RESERVED = "Le rôle Superviseur ne peut être attribué ou retiré que par le compte admin du portail"
+ 
+ 
+ @router.post("/staff")
+ async def create_staff(payload: StaffCreate, user: dict = Depends(require_staff())):
+-    # Seul le compte admin peut être administrateur : aucun nouveau compte ne
+-    # peut recevoir ce rôle (voir effective_roles dans albarka_models.py).
+-    if "administrateur" in payload.roles:
+-        raise HTTPException(status_code=403, detail=_ADMIN_ROLE_RESERVED)
++    # Rôle Superviseur (tous les droits) : seul le compte admin du portail le donne.
++    if "superviseur" in payload.roles and not is_admin_account(user):
++        raise HTTPException(status_code=403, detail=_SUPERVISEUR_RESERVED)
++    # Point 10 — seul un `administrateur` peut créer un compte administrateur.
++    if "administrateur" in payload.roles and not _is_admin(user):
++        raise HTTPException(
++            status_code=403,
++            detail="Seul un compte Administrateur peut créer un autre Administrateur",
++        )
+     existing = await db.users.find_one({"email": payload.email.lower()})
+     if existing:
+         raise HTTPException(status_code=409, detail="Un compte avec cet email existe déjà")
+@@ -179,11 +183,98 @@ async def create_staff(payload: StaffCreate, user: dict = Depends(require_staff(
+     return _public(user_doc)
+ 
+ 
++# ---------------------------------------------------------------- comptes de test
++# Bouton « Créer comptes de test » (Personnels, superviseur uniquement).
++# Chaque compte reçoit une adresse « +alias » de l'e-mail choisi, pour que
++# TOUS les codes de connexion (OTP) arrivent dans la même boîte (Gmail et la
++# plupart des messageries acceptent l'alias « +… »). Les comptes portent
++# is_test_account=True : invisibles de tous sauf du superviseur, exclus des
++# envois de masse.
++TEST_ACCOUNTS = [
++    # (alias, nom affiché, rôles, entreprise)
++    ("test-superviseur", "TEST Superviseur", ["superviseur"], None),
++    ("test-secretaire", "TEST Secrétaire A", ["secretariat"], None),
++    ("test-caissiere", "TEST Secrétaire B (caissière)", ["secretariat", "caissier"], None),
++    ("test-formulaires", "TEST Collaborateur Formulaires", ["comptable", "formulaires"], None),
++    ("test-comptable", "TEST Comptable", ["comptable"], None),
++    ("test-client1", "TEST Client 1", ["client"], "Client Test 1"),
++    ("test-client2", "TEST Client 2", ["client"], "Client Test 2"),
++]
++
++
++class TestAccountsPayload(BaseModel):
++    email: EmailStr                       # boîte qui recevra tous les codes de connexion
++    password: str = Field(..., min_length=8)
++    client1_whatsapp: Optional[str] = None  # +226… (a écrit au WhatsApp du cabinet < 24 h)
++    client2_whatsapp: Optional[str] = None  # +226… (n'a pas écrit depuis 24 h)
++
++
++def _alias_email(base: str, alias: str) -> str:
++    local, domain = base.lower().split("@", 1)
++    local = local.split("+", 1)[0]
++    return f"{local}+{alias}@{domain}"
++
++
++@router.post("/test-accounts")
++async def create_test_accounts(payload: TestAccountsPayload, user: dict = Depends(require_roles(["superviseur"]))):
++    """Crée (ou remet à neuf) les comptes de test de la recette. Le compte
++    « TEST Superviseur » n'est créé que si le compte admin du portail lance
++    l'opération (seul habilité à donner ce rôle)."""
++    for w in (payload.client1_whatsapp, payload.client2_whatsapp):
++        if w and not w.strip().startswith("+"):
++            raise HTTPException(status_code=400, detail="Numéro WhatsApp attendu au format international (+226…)")
++    now = datetime.now(timezone.utc).isoformat()
++    phones = {"test-client1": payload.client1_whatsapp, "test-client2": payload.client2_whatsapp}
++    results = []
++    for alias, name, roles, company in TEST_ACCOUNTS:
++        email = _alias_email(payload.email, alias)
++        if "superviseur" in roles and not is_admin_account(user):
++            results.append({"email": email, "name": name, "roles": roles, "status": "ignoré",
++                            "detail": "Seul le compte admin du portail peut créer un superviseur"})
++            continue
++        fields = {
++            "full_name": name, "roles": roles, "company": company, "is_active": True, "is_test_account": True,
++            "password_hash": hash_password(payload.password), "can_receive_notifications": True,
++            "phone": (phones.get(alias) or "").strip() or None,
++            # Numéro de test fourni par le superviseur : considéré comme vérifié
++            "phone_verified": bool(phones.get(alias)),
++        }
++        existing = await db.users.find_one({"email": email}, {"_id": 0, "id": 1, "is_test_account": 1})
++        if existing and not existing.get("is_test_account"):
++            results.append({"email": email, "name": name, "roles": roles, "status": "ignoré",
++                            "detail": "Un vrai compte utilise déjà cette adresse"})
++            continue
++        if existing:
++            await db.users.update_one({"id": existing["id"]}, {"$set": fields})
++            status = "mis à jour"
++        else:
++            await db.users.insert_one({"id": secrets.token_urlsafe(12), "email": email, "created_at": now,
++                                       "last_login": None, **fields})
++            status = "créé"
++        results.append({"email": email, "name": name, "roles": roles, "status": status})
++    from albarka_phase_c import _log_platform_event  # import local : évite un cycle
++    await _log_platform_event(user=user, action="test_accounts.create", entity_type="user",
++                              meta={"count": sum(r["status"] != "ignoré" for r in results)})
++    return {"accounts": results}
++
++
++@router.delete("/test-accounts")
++async def delete_test_accounts(user: dict = Depends(require_roles(["superviseur"]))):
++    """Supprime tous les comptes de test (un vrai compte n'est jamais touché)."""
++    res = await db.users.delete_many({"is_test_account": True})
++    from albarka_phase_c import _log_platform_event  # import local : évite un cycle
++    await _log_platform_event(user=user, action="test_accounts.delete", entity_type="user",
++                              meta={"count": res.deleted_count})
++    return {"deleted": res.deleted_count}
++
++
+ @router.get("/{user_id}")
+ async def get_client(user_id: str, user: dict = Depends(require_staff())):
+     doc = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+     if not doc:
+         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
++    if is_test_account(doc) and hide_test_accounts_filter(user):
++        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+     if is_client(doc):
+         (await _apply_rgpd_masking([doc], user))
+     return serialize(doc)
+@@ -194,22 +285,32 @@ async def update_client(user_id: str, payload: UserUpdate, user: dict = Depends(
+     update = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
+     if not update:
+         raise HTTPException(status_code=400, detail="Aucun champ à mettre à jour")
+-    target = await db.users.find_one({"id": user_id}, {"_id": 0, "roles": 1, "email": 1})
+-    if not target:
++    target = await db.users.find_one({"id": user_id}, {"_id": 0, "roles": 1, "email": 1, "is_test_account": 1})
++    if not target or (is_test_account(target) and hide_test_accounts_filter(user)):
+         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
++    current = set(target.get("roles") or [])
++    # Un compte Superviseur ne peut être modifié que par un superviseur ou le compte admin.
++    if "superviseur" in current and not (is_admin_account(user) or "superviseur" in (user.get("roles") or [])):
++        raise HTTPException(status_code=403, detail="Seul un superviseur peut modifier un compte Superviseur")
++    # Rôle Superviseur : attribution ou retrait réservés au compte admin du portail.
++    if "roles" in update and ("superviseur" in current) != ("superviseur" in set(update["roles"])) \
++            and not is_admin_account(user):
++        raise HTTPException(status_code=403, detail=_SUPERVISEUR_RESERVED)
+     # La restriction "création/modification de clients" ne s'applique qu'aux
+     # comptes clients — modifier un collaborateur reste géré séparément
+     # (voir AdminStaff.jsx, qui limite déjà sa propre UI à admin/superviseur/direction).
+     if is_client(target) and not set(user.get("roles") or []) & set(CLIENT_MANAGE_ROLES):
+         raise HTTPException(status_code=403, detail="Action réservée aux rôles autorisés")
+-    # Rôle `administrateur` : réservé au compte admin. Il ne peut être ajouté
+-    # à aucun autre compte ; sur le compte admin il est porté d'office, donc
+-    # inutile de le stocker (effective_roles l'ajoute à chaque requête).
++    # Point 10 — seul un `administrateur` peut attribuer/retirer le rôle `administrateur`.
+     if "roles" in update:
+-        if "administrateur" in update["roles"] and not is_admin_account(target):
+-            raise HTTPException(status_code=403, detail=_ADMIN_ROLE_RESERVED)
+-        # Un compte ne doit jamais se retrouver sans aucun rôle stocké.
+-        update["roles"] = [r for r in update["roles"] if r != "administrateur"] or update["roles"]
++        current_roles = set(target.get("roles") or [])
++        new_roles = set(update["roles"])
++        touches_admin = ("administrateur" in current_roles) != ("administrateur" in new_roles)
++        if touches_admin and not _is_admin(user):
++            raise HTTPException(
++                status_code=403,
++                detail="Seul un compte Administrateur peut attribuer ou retirer le rôle Administrateur",
++            )
+     res = await db.users.update_one({"id": user_id}, {"$set": update})
+     if not res.matched_count:
+         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+@@ -252,6 +353,24 @@ async def verify_client_whatsapp(
+ async def delete_client(user_id: str, user: dict = Depends(require_staff())):
+     if user_id == user["id"]:
+         raise HTTPException(status_code=400, detail="Impossible de supprimer votre propre compte")
++    target = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
++    if not target or (is_test_account(target) and hide_test_accounts_filter(user)):
++        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
++    # Compte du personnel : suppression réservée au superviseur ; le compte admin
++    # du portail n'est jamais supprimable, un superviseur seulement par lui.
++    if not is_client(target):
++        if "superviseur" not in (user.get("roles") or []):
++            raise HTTPException(status_code=403, detail="Seul le superviseur peut supprimer un compte du personnel")
++        if is_admin_account(target):
++            raise HTTPException(status_code=403, detail="Le compte admin du portail ne peut pas être supprimé")
++        if "superviseur" in (target.get("roles") or []) and not is_admin_account(user):
++            raise HTTPException(status_code=403, detail="Seul le compte admin du portail peut supprimer un superviseur")
++        # Trace de la suppression (le compte lui-même est effacé)
++        await db.deleted_users.insert_one({**target, "deleted_at": datetime.now(timezone.utc).isoformat(),
++                                           "deleted_by": user["id"]})
++        from albarka_phase_c import _log_platform_event  # import local : évite un cycle
++        await _log_platform_event(user=user, action="staff.delete", entity_type="user", entity_id=user_id,
++                                  meta={"email": target.get("email"), "roles": target.get("roles")})
+     res = await db.users.delete_one({"id": user_id})
+     if not res.deleted_count:
+         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+diff --git a/backend/albarka_dashboard.py b/backend/albarka_dashboard.py
+index e8eec39..1e2a338 100644
+--- a/backend/albarka_dashboard.py
++++ b/backend/albarka_dashboard.py
+@@ -6,7 +6,7 @@ from typing import Optional
+ from fastapi import APIRouter, Depends
+ 
+ from albarka_auth import get_current_user
+-from albarka_models import is_client, tenant_id_of
++from albarka_models import hide_test_accounts_filter, is_client, tenant_id_of
+ from db import db, serialize_many
+ 
+ router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+@@ -29,8 +29,10 @@ async def dashboard_summary(user: dict = Depends(get_current_user)):
+     clients_total = None
+     staff_total = None
+     if not is_client(user):
+-        clients_total = await db.users.count_documents({"roles": "client"})
+-        staff_total = await db.users.count_documents({"roles": {"$nin": ["client"]}})
++        # Comptes de test comptés pour le superviseur seulement
++        hide = hide_test_accounts_filter(user)
++        clients_total = await db.users.count_documents({"roles": "client", **hide})
++        staff_total = await db.users.count_documents({"roles": {"$nin": ["client"]}, **hide})
+ 
+     return {
+         "documents_total": documents_total,
+@@ -92,4 +94,3 @@ async def dashboard_dispatches(user: dict = Depends(get_current_user)):
+         "signatures": signatures,
+         "reports_generated": reports_generated,
+     }
+-
+diff --git a/backend/albarka_forms.py b/backend/albarka_forms.py
+index 251ca87..36bb8f6 100644
+--- a/backend/albarka_forms.py
++++ b/backend/albarka_forms.py
+@@ -24,7 +24,7 @@ from typing import Any, Dict, List, Optional
+ from fastapi import Request
+ 
+ from albarka_auth import get_current_user, require_roles
+-from albarka_models import FORMS_ROLES, client_modules, whatsapp_number_of
++from albarka_models import FORMS_ROLES, client_modules, hide_test_accounts_filter, whatsapp_number_of
+ from albarka_notifications import _get_from_name, send_email, send_whatsapp
+ from albarka_phase_c import _log_platform_event
+ import albarka_storage
+@@ -143,7 +143,8 @@ class AlbarkaFormsAdapter(FormsAdapter):
+ 
+     async def list_recipients(self, user: Dict[str, Any]) -> List[Dict[str, Any]]:
+         """Clients actifs proposés dans la liste d'envoi (triés par nom)."""
+-        cur = self.db.users.find({"roles": "client", "is_active": {"$ne": False}},
++        # Comptes de test proposés au superviseur uniquement
++        cur = self.db.users.find({"roles": "client", "is_active": {"$ne": False}, **hide_test_accounts_filter(user)},
+                                  {"_id": 0, "password_hash": 0}).sort("full_name", 1)
+         return [self._as_recipient(u) for u in await cur.to_list(5000)]
+ 
+diff --git a/backend/albarka_models.py b/backend/albarka_models.py
+index b98204b..3b7f537 100644
+--- a/backend/albarka_models.py
++++ b/backend/albarka_models.py
+@@ -198,10 +198,9 @@ def whatsapp_number_of(user_doc: dict) -> Optional[str]:
+     return user_doc.get("whatsapp_number") or user_doc.get("phone")
+ 
+ 
+-# Le rôle "administrateur" est réservé au seul compte admin du portail :
+-# sur tout autre compte il est ignoré (sans rien effacer en base), et ce
+-# compte le porte d'office. Voir effective_roles(), appliqué à chaque requête
+-# par get_current_user() (albarka_auth.py).
++# Compte admin du portail : le SEUL qui peut attribuer ou retirer le rôle
++# "superviseur" (rôle qui a tous les droits via le passe-droit de
++# require_roles). Voir albarka_clients.py.
+ ADMIN_ACCOUNT_EMAIL = "admin@sawalismartsystems.com"
+ 
+ 
+@@ -209,13 +208,27 @@ def is_admin_account(user: dict) -> bool:
+     return (user.get("email") or "").strip().lower() == ADMIN_ACCOUNT_EMAIL
+ 
+ 
+-def effective_roles(user: dict) -> List[str]:
+-    """Rôles réellement appliqués : "administrateur" retiré partout sauf sur
+-    le compte admin, où il est ajouté d'office."""
+-    roles = [r for r in (user.get("roles") or []) if r != "administrateur"]
+-    if is_admin_account(user):
+-        roles.append("administrateur")
+-    return roles
++def is_test_account(user: dict) -> bool:
++    """Compte créé par le bouton « Créer comptes de test » (Personnels)."""
++    return bool(user.get("is_test_account"))
++
++
++def hide_test_accounts_filter(viewer: dict) -> dict:
++    """Filtre Mongo des listes d'utilisateurs : les comptes de test ne sont
++    visibles que du superviseur ; pour tout autre viewer ils sont exclus."""
++    if "superviseur" in (viewer.get("roles") or []):
++        return {}
++    return {"is_test_account": {"$ne": True}}
++
++
++# Menu « Paramètres » (réglages globaux, image de marque, certificats de
++# signature, tests de configuration) : réservé au Superviseur.
++SETTINGS_ROLES = ["superviseur"]
++
++
++# Exclut les comptes de test des envois de masse (diffusion, rapports en masse,
++# alertes au personnel), quel que soit l'utilisateur qui les lance.
++NOT_TEST_ACCOUNT = {"is_test_account": {"$ne": True}}
+ 
+ 
+ def is_superviseur(user: dict) -> bool:
+diff --git a/backend/albarka_notifications.py b/backend/albarka_notifications.py
+index dae4d38..7d16127 100644
+--- a/backend/albarka_notifications.py
++++ b/backend/albarka_notifications.py
+@@ -627,6 +627,7 @@ async def notify_upload(db, *, document: dict, tenant: dict) -> dict:
+         {
+             "roles": {"$nin": ["client"]},
+             "is_active": True,
++            "is_test_account": {"$ne": True},  # comptes de test : jamais alertés
+             "$or": [
+                 {"can_receive_notifications": {"$exists": False}},
+                 {"can_receive_notifications": True},
+diff --git a/backend/albarka_phase_c.py b/backend/albarka_phase_c.py
+index 345a7ee..7f89bcc 100644
+--- a/backend/albarka_phase_c.py
++++ b/backend/albarka_phase_c.py
+@@ -24,7 +24,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
+ from albarka_admin_settings import get_settings_doc
+ from albarka_auth import get_current_user, require_roles, require_staff
+ from albarka_models import (
+-    CAISSE_DATE_RANGE_ROLES, CHAT_THREAD_CREATE_ROLES, can_encaisser, is_client,
++    CAISSE_DATE_RANGE_ROLES, CHAT_THREAD_CREATE_ROLES, NOT_TEST_ACCOUNT, can_encaisser, is_client,
+ )
+ from db import db, serialize, serialize_many
+ 
+@@ -1024,15 +1024,15 @@ async def send_broadcast(
+     """
+     if payload.scope == "clients":
+         recipients = await db.users.find(
+-            {"roles": "client", "is_active": {"$ne": False}}, {"_id": 0},
++            {"roles": "client", "is_active": {"$ne": False}, **NOT_TEST_ACCOUNT}, {"_id": 0},
+         ).to_list(1000)
+     elif payload.scope == "staff":
+         recipients = await db.users.find(
+-            {"roles": {"$nin": ["client"]}, "is_active": {"$ne": False}}, {"_id": 0},
++            {"roles": {"$nin": ["client"]}, "is_active": {"$ne": False}, **NOT_TEST_ACCOUNT}, {"_id": 0},
+         ).to_list(1000)
+-    else:  # all
++    else:  # all — jamais les comptes de test (NOT_TEST_ACCOUNT)
+         recipients = await db.users.find(
+-            {"is_active": {"$ne": False}}, {"_id": 0},
++            {"is_active": {"$ne": False}, **NOT_TEST_ACCOUNT}, {"_id": 0},
+         ).to_list(2000)
+ 
+     bid = secrets.token_urlsafe(12)
+diff --git a/backend/albarka_reports_mgmt.py b/backend/albarka_reports_mgmt.py
+index 6632c1c..7d31620 100644
+--- a/backend/albarka_reports_mgmt.py
++++ b/backend/albarka_reports_mgmt.py
+@@ -844,7 +844,8 @@ async def bulk_generate_reports(
+         ).to_list(500)
+     else:
+         clients = await db.users.find(
+-            {"roles": "client", "is_active": {"$ne": False}},
++            # « Tous les clients » : jamais les comptes de test
++            {"roles": "client", "is_active": {"$ne": False}, "is_test_account": {"$ne": True}},
+             {"_id": 0, "id": 1, "full_name": 1},
+         ).to_list(500)
+     generated: list[dict] = []
+diff --git a/backend/albarka_settings_tests.py b/backend/albarka_settings_tests.py
+index 0f7a3c6..7c34358 100644
+--- a/backend/albarka_settings_tests.py
++++ b/backend/albarka_settings_tests.py
+@@ -14,6 +14,7 @@ import httpx
+ from fastapi import APIRouter, Depends
+ from pydantic import BaseModel
+ 
++from albarka_models import SETTINGS_ROLES
+ from albarka_auth import require_roles
+ from albarka_payments import PAWAPAY_HOSTS, _pawapay_str
+ 
+@@ -23,7 +24,8 @@ router = APIRouter(prefix="/admin/settings/test", tags=["Paramètres — tests"]
+ 
+ # Même rôles que la lecture/écriture des Paramètres (albarka_admin_settings._ADMIN_ROLES),
+ # dupliqué ici pour éviter d'exposer un symbole privé entre modules.
+-_ADMIN_ROLES = ["superviseur", "direction", "administrateur"]
++# Paramètres : superviseur uniquement (SETTINGS_ROLES, albarka_models.py)
++_ADMIN_ROLES = SETTINGS_ROLES
+ 
+ 
+ class RecaptchaTestPayload(BaseModel):
+diff --git a/backend/albarka_signing.py b/backend/albarka_signing.py
+index 619199f..5e74c99 100644
+--- a/backend/albarka_signing.py
++++ b/backend/albarka_signing.py
+@@ -279,12 +279,14 @@ def decrypt_passphrase(cipher: str) -> str:
+ from fastapi import APIRouter, Depends, HTTPException
+ from pydantic import BaseModel, Field
+ 
++from albarka_models import SETTINGS_ROLES
+ from albarka_auth import require_roles
+ from db import db, serialize, serialize_many
+ 
+ router = APIRouter(prefix="/admin/certificates", tags=["Signature électronique"])
+ 
+-_ADMIN_ROLES = ["superviseur", "direction", "administrateur"]
++# Paramètres : superviseur uniquement (SETTINGS_ROLES, albarka_models.py)
++_ADMIN_ROLES = SETTINGS_ROLES
+ 
+ 
+ class CertificateCreate(BaseModel):
+@@ -414,4 +416,3 @@ async def resolve_passphrase(cert_id: str) -> Optional[str]:
+     except Exception:
+         logger.exception("Déchiffrement passphrase échoué pour cert %s", cert_id)
+         return None
+-
+diff --git a/backend/tests/test_accounts_lot4.py b/backend/tests/test_accounts_lot4.py
+new file mode 100644
+index 0000000..8caf9e4
+--- /dev/null
++++ b/backend/tests/test_accounts_lot4.py
+@@ -0,0 +1,165 @@
++"""Lot 4 — rôles Superviseur/Administrateur, suppression du personnel,
++comptes de test, Paramètres réservés au Superviseur.
++
++- Superviseur : attribué ou retiré UNIQUEMENT par le compte admin du portail ;
++- Administrateur : fonctionnement d'avant le lot 3 (un administrateur peut
++  l'attribuer), plus aucune restriction « compte admin » ;
++- suppression d'un compte du personnel : superviseur uniquement ;
++- comptes de test : créés par le superviseur, invisibles des autres,
++  exclus des envois de masse ;
++- Paramètres : superviseur uniquement.
++
++Tests autonomes : MongoDB simulé (mongomock-motor), aucun réseau.
++"""
++from __future__ import annotations
++
++import asyncio
++import os
++import sys
++from pathlib import Path
++
++os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
++os.environ.setdefault("DB_NAME", "albarka_test")
++os.environ.setdefault("JWT_SECRET_KEY", "test-secret")
++
++import pytest
++from fastapi import APIRouter, FastAPI, Header, HTTPException
++from fastapi.testclient import TestClient
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++mongomock_motor = pytest.importorskip("mongomock_motor")
++
++import db as db_module  # noqa: E402
++import albarka_admin_settings  # noqa: E402
++import albarka_auth  # noqa: E402
++import albarka_clients  # noqa: E402
++import albarka_dashboard  # noqa: E402
++import albarka_phase_c  # noqa: E402
++from albarka_auth import get_current_user  # noqa: E402
++
++USERS = {
++    "admin": {"id": "u-admin", "email": "admin@sawalismartsystems.com", "full_name": "Admin", "roles": ["superviseur", "direction"], "is_active": True},
++    "sup": {"id": "u-sup", "email": "sup@albarka.bf", "full_name": "Superviseur", "roles": ["superviseur"], "is_active": True},
++    "dir": {"id": "u-dir", "email": "dg@albarka.bf", "full_name": "Direction", "roles": ["direction", "secretariat"], "is_active": True},
++    "adm": {"id": "u-adm", "email": "adm@albarka.bf", "full_name": "Administrateur", "roles": ["administrateur"], "is_active": True},
++    "compta": {"id": "u-compta", "email": "c@albarka.bf", "full_name": "Comptable", "roles": ["comptable"], "is_active": True},
++    "c1": {"id": "c1", "email": "client@exemple.bf", "full_name": "Vrai client", "roles": ["client"], "is_active": True},
++}
++
++
++@pytest.fixture()
++def env(monkeypatch):
++    mock_db = mongomock_motor.AsyncMongoMockClient()["albarka_lot4_test"]
++    real_db = db_module.db
++    for mod in list(sys.modules.values()):
++        if getattr(mod, "db", None) is real_db and getattr(mod, "__name__", "").startswith(("albarka_", "db")):
++            monkeypatch.setattr(mod, "db", mock_db)
++    asyncio.run(mock_db.users.insert_many([dict(u) for u in USERS.values()]))
++    logs = []
++
++    async def fake_log(**kw):
++        logs.append(kw["action"])
++    monkeypatch.setattr(albarka_phase_c, "_log_platform_event", fake_log)
++
++    app = FastAPI()
++    api = APIRouter(prefix="/api")
++    for r in (albarka_clients.router, albarka_admin_settings.router, albarka_dashboard.router):
++        api.include_router(r)
++    app.include_router(api)
++
++    async def fake_user(x_user: str = Header(default="")):
++        if x_user not in USERS:
++            raise HTTPException(status_code=401, detail="Non connecté")
++        return await mock_db.users.find_one({"id": USERS[x_user]["id"]}, {"_id": 0})
++    app.dependency_overrides[get_current_user] = fake_user
++    with TestClient(app) as client:
++        yield type("Env", (), {"c": client, "db": mock_db, "logs": logs})
++
++
++def _h(u):
++    return {"X-User": u}
++
++
++def _staff(**kw):
++    return {"email": "nouveau@albarka.bf", "full_name": "Nouveau", "roles": ["comptable"], "password": "motdepasse1", **kw}
++
++
++def test_superviseur_role_only_by_admin_account(env):
++    # Direction ou superviseur ordinaire : impossible de créer / donner / retirer Superviseur
++    assert env.c.post("/api/clients/staff", headers=_h("dir"), json=_staff(roles=["superviseur"])).status_code == 403
++    assert env.c.post("/api/clients/staff", headers=_h("sup"), json=_staff(roles=["superviseur"])).status_code == 403
++    assert env.c.patch("/api/clients/u-compta", headers=_h("sup"), json={"roles": ["comptable", "superviseur"]}).status_code == 403
++    assert env.c.patch("/api/clients/u-sup", headers=_h("dir"), json={"full_name": "X"}).status_code == 403
++    # Le compte admin du portail le peut
++    assert env.c.patch("/api/clients/u-compta", headers=_h("admin"), json={"roles": ["comptable", "superviseur"]}).status_code == 200
++    assert env.c.patch("/api/clients/u-compta", headers=_h("admin"), json={"roles": ["comptable"]}).status_code == 200
++    # Les autres rôles restent attribuables normalement
++    assert env.c.patch("/api/clients/u-compta", headers=_h("dir"), json={"roles": ["comptable", "caissier"]}).status_code == 200
++
++
++def test_administrateur_back_to_previous_rule(env):
++    # Un administrateur peut créer un administrateur (règle d'avant le lot 3)…
++    assert env.c.post("/api/clients/staff", headers=_h("adm"), json=_staff(roles=["administrateur"])).status_code == 200
++    # …mais pas un compte sans ce rôle
++    assert env.c.post("/api/clients/staff", headers=_h("dir"),
++                      json=_staff(email="x@albarka.bf", roles=["administrateur"])).status_code == 403
++    listed = {u["id"]: u["roles"] for u in env.c.get("/api/clients/staff", headers=_h("sup")).json()}
++    assert listed["u-adm"] == ["administrateur"]  # plus aucun rôle retiré à l'affichage
++
++
++def test_delete_staff_only_by_superviseur(env):
++    assert env.c.delete("/api/clients/u-compta", headers=_h("dir")).status_code == 403
++    assert env.c.delete("/api/clients/u-admin", headers=_h("sup")).status_code == 403  # compte admin intouchable
++    assert env.c.delete("/api/clients/u-sup", headers=_h("sup")).status_code == 400     # pas soi-même
++    r = env.c.delete("/api/clients/u-compta", headers=_h("sup"))
++    assert r.status_code == 200 and "staff.delete" in env.logs
++    assert asyncio.run(env.db.users.find_one({"id": "u-compta"})) is None
++    assert asyncio.run(env.db.deleted_users.find_one({"id": "u-compta"}))["deleted_by"] == "u-sup"
++    # Un superviseur ne peut être supprimé que par le compte admin
++    assert env.c.delete("/api/clients/u-sup", headers=_h("admin")).status_code == 200
++
++
++def test_test_accounts_created_hidden_and_removed(env):
++    body = {"email": "moi+ancien@gmail.com", "password": "recette2026", "client1_whatsapp": "+22670000001"}
++    assert env.c.post("/api/clients/test-accounts", headers=_h("dir"), json=body).status_code == 403
++    res = env.c.post("/api/clients/test-accounts", headers=_h("sup"), json=body).json()["accounts"]
++    by_alias = {a["email"].split("+")[1].split("@")[0]: a for a in res}
++    assert by_alias["test-secretaire"]["email"] == "moi+test-secretaire@gmail.com"
++    assert by_alias["test-superviseur"]["status"] == "ignoré"          # seul le compte admin crée un superviseur
++    assert by_alias["test-caissiere"]["roles"] == ["secretariat", "caissier"] and by_alias["test-client1"]["status"] == "créé"
++    # Relancer = remise à neuf, pas de doublon
++    again = env.c.post("/api/clients/test-accounts", headers=_h("admin"), json=body).json()["accounts"]
++    assert {a["status"] for a in again if "superviseur" not in a["roles"]} == {"mis à jour"}
++    assert next(a for a in again if a["roles"] == ["superviseur"])["status"] == "créé"
++    # Mot de passe utilisable
++    doc = asyncio.run(env.db.users.find_one({"email": "moi+test-comptable@gmail.com"}))
++    assert albarka_auth.verify_password("recette2026", doc["password_hash"]) and doc["is_test_account"]
++    # Invisibles de tous sauf du superviseur
++    staff_dir = [u["email"] for u in env.c.get("/api/clients/staff", headers=_h("dir")).json()]
++    staff_sup = [u["email"] for u in env.c.get("/api/clients/staff", headers=_h("sup")).json()]
++    assert not any("+test-" in e for e in staff_dir) and sum("+test-" in e for e in staff_sup) == 5
++    assert [u["email"] for u in env.c.get("/api/clients", headers=_h("dir")).json()] == ["client@exemple.bf"]
++    tid = doc["id"]
++    assert env.c.get(f"/api/clients/{tid}", headers=_h("dir")).status_code == 404
++    assert env.c.get(f"/api/clients/{tid}", headers=_h("sup")).status_code == 200
++    assert env.c.get("/api/dashboard/summary", headers=_h("dir")).json()["clients_total"] == 1
++    # Suppression groupée : seuls les comptes de test partent
++    assert env.c.delete("/api/clients/test-accounts", headers=_h("sup")).json()["deleted"] == 7
++    assert asyncio.run(env.db.users.count_documents({})) == len(USERS)
++
++
++def test_settings_only_for_superviseur(env):
++    assert env.c.get("/api/admin/settings", headers=_h("dir")).status_code == 403
++    assert env.c.get("/api/admin/settings", headers=_h("adm")).status_code == 403
++    assert env.c.get("/api/admin/settings", headers=_h("sup")).status_code == 200
++    # RGPD : modifiable par le superviseur (seul à accéder aux Paramètres)
++    assert env.c.put("/api/admin/settings", headers=_h("sup"), json={"rgpd_masking_enabled": False}).json()["rgpd_masking_enabled"] is False
++
++
++def test_frontend_rules():
++    front = Path(__file__).resolve().parents[2] / "frontend" / "src"
++    layout = (front / "components" / "PortalLayout.jsx").read_text(encoding="utf-8")
++    assert '{ to: "/admin/settings", label: "Paramètres", icon: Settings, roles: ["superviseur"] }' in layout
++    staff = (front / "pages" / "admin" / "AdminStaff.jsx").read_text(encoding="utf-8")
++    assert 'disabled={r.value === "superviseur" && !isAdminAccount}' in staff and "Créer comptes de test" in staff
+diff --git a/backend/tests/test_client_space_lot3.py b/backend/tests/test_client_space_lot3.py
+index c1c4f6c..68a4c23 100644
+--- a/backend/tests/test_client_space_lot3.py
++++ b/backend/tests/test_client_space_lot3.py
+@@ -1,8 +1,7 @@
+-"""Lot 3 (suite) — Caissier, administrateur réservé au compte admin, espace client.
++"""Lot 3 (suite) — Caissier, espace client.
+ 
+ - Caissier : seul habilité à encaisser et à délivrer un reçu ; chaque
+   encaissement délivre un reçu automatiquement ;
+-- Administrateur : rôle ignoré sur tout autre compte que le compte admin ;
+ - Espace client : dépôts sans OCR, mise à disposition des factures de la
+   Caisse, modules ouverts par client, notification WhatsApp à modèles
+   réglables (message libre dans la fenêtre de 24 h, modèle Meta sinon,
+@@ -40,7 +39,6 @@ import albarka_missions  # noqa: E402
+ import albarka_phase_c  # noqa: E402
+ import albarka_storage  # noqa: E402
+ from albarka_auth import get_current_user  # noqa: E402
+-from albarka_models import effective_roles  # noqa: E402
+ from albarka_notifications import _assert_safe_email  # noqa: E402
+ 
+ ADMIN = {"id": "u-admin", "email": "admin@sawalismartsystems.com", "full_name": "Admin", "roles": ["superviseur", "direction"], "is_active": True}
+@@ -124,13 +122,12 @@ def env(monkeypatch):
+         api.include_router(r)
+     app.include_router(api)
+ 
+-    # Connexion simulée : X-User choisit le compte ; rôles effectifs comme en production
++    # Connexion simulée : X-User choisit le compte
+     async def fake_user(x_user: str = Header(default="")):
+         if x_user not in USERS:
+             raise HTTPException(status_code=401, detail="Non connecté")
+         u = asyncio.get_event_loop()  # noqa: F841 — garde la signature asynchrone
+         doc = await mock_db.users.find_one({"id": USERS[x_user]["id"]}, {"_id": 0})
+-        doc["roles"] = effective_roles(doc)
+         return doc
+     app.dependency_overrides[get_current_user] = fake_user
+     with TestClient(app, headers={"Origin": "https://albarka-bf.com"}) as client:
+@@ -177,28 +174,6 @@ def test_receipt_document_reserved_to_caissier(env):
+                       json={"invoice_id": pro["id"], "amount": 10}).status_code == 400
+ 
+ 
+-# ------------------------------------------------------------------ Administrateur
+-def test_administrateur_only_for_admin_account(env):
+-    assert "administrateur" in effective_roles(ADMIN)
+-    assert "administrateur" not in effective_roles(USERS["faux_admin"])
+-    # Création / attribution refusées sur tout autre compte, même par l'admin
+-    staff = {"email": "x@albarka.bf", "full_name": "X", "roles": ["administrateur"], "password": "motdepasse1"}
+-    assert env.c.post("/api/clients/staff", headers=_h("admin"), json=staff).status_code == 403
+-    assert env.c.patch("/api/clients/u-compta", headers=_h("admin"), json={"roles": ["comptable", "administrateur"]}).status_code == 403
+-    # La case Caissier s'attribue normalement
+-    assert env.c.patch("/api/clients/u-secr", headers=_h("admin"), json={"roles": ["secretariat", "caissier"]}).status_code == 200
+-    # Liste du personnel : rôles effectifs (le « faux » administrateur n'apparaît plus)
+-    listed = {u["id"]: u["roles"] for u in env.c.get("/api/clients/staff", headers=_h("admin")).json()}
+-    assert "administrateur" not in listed["u-fa"] and "administrateur" in listed["u-admin"]
+-
+-
+-def test_real_get_current_user_applies_effective_roles(env):
+-    from fastapi.security import HTTPAuthorizationCredentials
+-    token = albarka_auth.create_access_token("u-fa")
+-    u = asyncio.run(albarka_auth.get_current_user(HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)))
+-    assert u["roles"] == ["dg"]
+-
+-
+ # ------------------------------------------------------------------ Espace client
+ def test_upload_external_documents_notifies_client_once(env):
+     files = [("files", ("facture-sage-042.pdf", b"%PDF-1", "application/pdf")),
+diff --git a/frontend/src/components/PortalLayout.jsx b/frontend/src/components/PortalLayout.jsx
+index 54dc204..b5e7a01 100644
+--- a/frontend/src/components/PortalLayout.jsx
++++ b/frontend/src/components/PortalLayout.jsx
+@@ -110,8 +110,8 @@ const STAFF_MENU = [
+     roles: ["superviseur", "direction", "administrateur", "secretariat", "fiscaliste", "comptable"] },
+   { to: "/admin/logs", label: "Journal plateforme", icon: ScrollText,
+     roles: ["superviseur", "direction", "administrateur"] },
+-  { to: "/admin/settings", label: "Paramètres", icon: Settings,
+-    roles: ["superviseur", "direction", "administrateur"] },
++  // Paramètres : Superviseur uniquement (SETTINGS_ROLES côté backend)
++  { to: "/admin/settings", label: "Paramètres", icon: Settings, roles: ["superviseur"] },
+   // Accessible à TOUT collaborateur, quel que soit son rôle (alwaysAllowed) —
+   // voir allowedFor() ci-dessous.
+   { to: "/admin/mon-compte", label: "Mon compte", icon: UserCog, alwaysAllowed: true },
+diff --git a/frontend/src/pages/admin/AdminSettings.jsx b/frontend/src/pages/admin/AdminSettings.jsx
+index 61461a0..8a64e22 100644
+--- a/frontend/src/pages/admin/AdminSettings.jsx
++++ b/frontend/src/pages/admin/AdminSettings.jsx
+@@ -20,7 +20,8 @@ const FIELDS_TABS = ["cabinet", "whatsapp", "notifications", "rapports"];
+ 
+ export default function AdminSettings() {
+   const { user } = useAuth();
+-  const isAdministrateur = (user?.roles || []).includes("administrateur");
++  // RGPD : modifiable par le Superviseur (seul à accéder aux Paramètres)
++  const isAdministrateur = (user?.roles || []).includes("superviseur");
+   const [settings, setSettings] = useState(null);
+   const [loading, setLoading] = useState(true);
+   const [saving, setSaving] = useState(false);
+@@ -262,7 +263,7 @@ export default function AdminSettings() {
+                   <div className="text-sm text-muted-foreground max-w-md">
+                     Une fois activé, seuls Administrateur/Superviseur/DG/Direction/Secrétariat
+                     voient les numéros de téléphone et WhatsApp des clients en clair — les autres
+-                    collaborateurs les voient masqués. Réservé au rôle Administrateur.
++                    collaborateurs les voient masqués. Réservé au Superviseur.
+                   </div>
+                 </div>
+                 <Switch
+@@ -274,7 +275,7 @@ export default function AdminSettings() {
+               </div>
+               {!isAdministrateur && (
+                 <div className="text-xs text-amber-700 mt-2">
+-                  Seul un compte Administrateur peut modifier ce réglage.
++                  Seul le Superviseur peut modifier ce réglage.
+                 </div>
+               )}
+               {isAdministrateur && (
+diff --git a/frontend/src/pages/admin/AdminStaff.jsx b/frontend/src/pages/admin/AdminStaff.jsx
+index 7b48751..f07f7be 100644
+--- a/frontend/src/pages/admin/AdminStaff.jsx
++++ b/frontend/src/pages/admin/AdminStaff.jsx
+@@ -1,6 +1,6 @@
+ import React, { useEffect, useState, useMemo } from "react";
+ import { toast } from "sonner";
+-import { Plus, Pencil } from "lucide-react";
++import { Plus, Pencil, Trash2, FlaskConical } from "lucide-react";
+ import { apiClient, extractError } from "@/lib/api";
+ import { Button } from "@/components/ui/button";
+ import {
+@@ -47,6 +47,11 @@ export default function AdminStaff() {
+   // Point 10 — filtrage selon le rôle du visiteur.
+   const isAdmin = myRoles.includes("administrateur");
+   const canEdit = isAdmin || myRoles.includes("superviseur") || myRoles.includes("direction");
++  // Superviseur : supprime un compte du personnel, gère les comptes de test.
++  const isSuperviseur = myRoles.includes("superviseur");
++  // Compte admin du portail : SEUL habilité à cocher / décocher « Superviseur »
++  // (doit rester identique à ADMIN_ACCOUNT_EMAIL côté backend).
++  const isAdminAccount = (me?.email || "").toLowerCase() === "admin@sawalismartsystems.com";
+ 
+   const [items, setItems] = useState([]);
+   const [loading, setLoading] = useState(true);
+@@ -54,13 +59,17 @@ export default function AdminStaff() {
+   const [editing, setEditing] = useState(null); // null = create mode
+   const [form, setForm] = useState(emptyForm());
+ 
+-  // Rôles proposés dans le formulaire : jamais "administrateur" — ce rôle est
+-  // réservé au compte admin du portail, qui le porte d'office (voir
+-  // effective_roles côté backend, albarka_models.py).
++  // Rôles proposés dans le formulaire : masque "administrateur" pour les non-admins.
+   const visibleRoles = useMemo(
+-    () => STAFF_ROLES.filter((r) => r.value !== "administrateur"),
+-    [],
++    () => (isAdmin ? STAFF_ROLES : STAFF_ROLES.filter((r) => r.value !== "administrateur")),
++    [isAdmin],
+   );
++  // Comptes de test (bouton « Créer comptes de test »)
++  const [openTest, setOpenTest] = useState(false);
++  const [testForm, setTestForm] = useState({ email: me?.email || "", password: "", client1_whatsapp: "", client2_whatsapp: "" });
++  const [testResult, setTestResult] = useState(null);
++  const [testBusy, setTestBusy] = useState(false);
++  const [toDelete, setToDelete] = useState(null); // compte à supprimer (confirmation)
+   // Table filtrée : masque les comptes administrateurs pour les non-admins.
+   const visibleItems = useMemo(
+     () => (isAdmin ? items : items.filter((s) => !(s.roles || []).includes("administrateur"))),
+@@ -144,6 +153,40 @@ export default function AdminStaff() {
+     }
+   };
+ 
++  // --- Supprimer un compte du personnel (superviseur) ------------------------
++  const confirmDelete = async () => {
++    try {
++      await apiClient.delete(`/clients/${toDelete.id}`);
++      toast.success(`Compte ${toDelete.full_name} supprimé`);
++      setToDelete(null);
++      await load();
++    } catch (err) { toast.error(extractError(err)); }
++  };
++
++  // --- Comptes de test (superviseur) --------------------------------------------
++  const createTestAccounts = async () => {
++    if (!testForm.email || testForm.password.length < 8) { toast.error("E-mail et mot de passe (8 caractères min.) requis"); return; }
++    setTestBusy(true);
++    try {
++      const { data } = await apiClient.post("/clients/test-accounts", {
++        email: testForm.email, password: testForm.password,
++        client1_whatsapp: testForm.client1_whatsapp || null, client2_whatsapp: testForm.client2_whatsapp || null,
++      });
++      setTestResult(data.accounts);
++      toast.success("Comptes de test prêts");
++      await load();
++    } catch (err) { toast.error(extractError(err)); } finally { setTestBusy(false); }
++  };
++  const deleteTestAccounts = async () => {
++    setTestBusy(true);
++    try {
++      const { data } = await apiClient.delete("/clients/test-accounts");
++      toast.success(`${data.deleted} compte(s) de test supprimé(s)`);
++      setTestResult(null);
++      await load();
++    } catch (err) { toast.error(extractError(err)); } finally { setTestBusy(false); }
++  };
++
+   return (
+     <div className="space-y-6" data-testid="admin-staff-page">
+       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+@@ -152,6 +195,13 @@ export default function AdminStaff() {
+           <h1 className="font-display text-3xl md:text-4xl text-foreground">Personnels</h1>
+           <p className="text-muted-foreground mt-1">Équipe du cabinet et leurs rôles.</p>
+         </div>
++        <div className="flex flex-wrap gap-2">
++        {/* Comptes de test de la recette : superviseur uniquement */}
++        {isSuperviseur && (
++          <Button variant="outline" onClick={() => { setTestResult(null); setOpenTest(true); }} data-testid="test-accounts-btn">
++            <FlaskConical className="w-4 h-4 mr-2" />Créer comptes de test
++          </Button>
++        )}
+         <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setEditing(null); }}>
+           {canEdit && (
+             <DialogTrigger asChild>
+@@ -188,14 +238,16 @@ export default function AdminStaff() {
+                       <Checkbox
+                         checked={form.roles.includes(r.value)}
+                         onCheckedChange={() => toggleRole(r.value)}
++                        // Superviseur : case verrouillée sauf pour le compte admin du portail
++                        disabled={r.value === "superviseur" && !isAdminAccount}
+                         data-testid={`role-${r.value}`}
+                       />
+                       {r.label}
+                     </label>
+                   ))}
+                 </div>
+-                {/* Rappel : le rôle Administrateur n'est pas attribuable */}
+-                <p className="text-[11px] text-muted-foreground mt-2">Le rôle Administrateur est réservé au compte admin du portail.</p>
++                {/* Rappel : le rôle Superviseur n'est attribuable que par le compte admin */}
++                {!isAdminAccount && <p className="text-[11px] text-muted-foreground mt-2">Le rôle Superviseur ne peut être donné ou retiré que par le compte admin du portail.</p>}
+               </div>
+               <label className="flex items-center gap-2 text-sm cursor-pointer pt-1">
+                 <Checkbox
+@@ -224,6 +276,7 @@ export default function AdminStaff() {
+             </DialogFooter>
+           </DialogContent>
+         </Dialog>
++        </div>
+       </div>
+ 
+       <div className="albarka-card overflow-hidden">
+@@ -243,7 +296,11 @@ export default function AdminStaff() {
+             {!loading && visibleItems.length === 0 && <TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">Aucun personnel.</TableCell></TableRow>}
+             {visibleItems.map((s) => (
+               <TableRow key={s.id} className="hover:bg-[#0F6B4A]/5">
+-                <TableCell className="font-medium">{s.full_name}</TableCell>
++                <TableCell className="font-medium">
++                  {s.full_name}
++                  {/* Compte de test : visible du superviseur uniquement */}
++                  {s.is_test_account && <span className="ml-2 albarka-chip text-[10px] bg-amber-100 text-amber-800" data-testid={`test-badge-${s.id}`}>TEST</span>}
++                </TableCell>
+                 <TableCell className="text-sm">{s.email}</TableCell>
+                 <TableCell className="text-xs">
+                   <div className="flex flex-wrap gap-1">
+@@ -270,12 +327,70 @@ export default function AdminStaff() {
+                       <Pencil className="w-4 h-4" />
+                     </Button>
+                   )}
++                  {/* Supprimer : superviseur uniquement (jamais soi-même ni le compte admin ;
++                      un superviseur seulement par le compte admin) */}
++                  {isSuperviseur && s.id !== me?.id && (s.email || "").toLowerCase() !== "admin@sawalismartsystems.com"
++                    && (!(s.roles || []).includes("superviseur") || isAdminAccount) && (
++                    <Button variant="ghost" size="sm" className="text-red-600" onClick={() => setToDelete(s)} title="Supprimer" data-testid={`delete-staff-${s.id}`}>
++                      <Trash2 className="w-4 h-4" />
++                    </Button>
++                  )}
+                 </TableCell>
+               </TableRow>
+             ))}
+           </TableBody>
+         </Table>
+       </div>
++
++      {/* Confirmation de suppression d'un compte du personnel */}
++      <Dialog open={!!toDelete} onOpenChange={(v) => { if (!v) setToDelete(null); }}>
++        <DialogContent data-testid="delete-staff-dialog">
++          <DialogHeader><DialogTitle>Supprimer ce compte ?</DialogTitle></DialogHeader>
++          <p className="text-sm">Le compte <b>{toDelete?.full_name}</b> ({toDelete?.email}) sera supprimé définitivement : cette personne ne pourra plus se connecter. La suppression est tracée dans le Journal plateforme.</p>
++          <DialogFooter>
++            <Button variant="outline" onClick={() => setToDelete(null)}>Annuler</Button>
++            <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={confirmDelete} data-testid="confirm-delete-staff">Supprimer</Button>
++          </DialogFooter>
++        </DialogContent>
++      </Dialog>
++
++      {/* Création des comptes de test */}
++      <Dialog open={openTest} onOpenChange={setOpenTest}>
++        <DialogContent data-testid="test-accounts-dialog">
++          <DialogHeader><DialogTitle>Comptes de test de la recette</DialogTitle></DialogHeader>
++          {!testResult ? (
++            <div className="space-y-3">
++              <p className="text-sm text-muted-foreground">
++                Crée TEST Secrétaire A, TEST Secrétaire B (caissière), TEST Collaborateur Formulaires, TEST Comptable,
++                TEST Client 1 et TEST Client 2{isAdminAccount ? ", et TEST Superviseur" : ""}. Ils ne sont visibles que du superviseur.
++                Chaque compte reçoit une adresse « +alias » de l'e-mail ci-dessous : tous les codes de connexion arrivent dans cette boîte.
++              </p>
++              <div><Label>E-mail qui recevra les codes de connexion</Label><Input value={testForm.email} onChange={(e) => setTestForm({ ...testForm, email: e.target.value })} data-testid="test-email" /></div>
++              <div><Label>Mot de passe commun (8 caractères min.)</Label><Input type="password" value={testForm.password} onChange={(e) => setTestForm({ ...testForm, password: e.target.value })} data-testid="test-password" /></div>
++              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
++                <div><Label>WhatsApp Client 1 (+226…)</Label><Input value={testForm.client1_whatsapp} onChange={(e) => setTestForm({ ...testForm, client1_whatsapp: e.target.value })} placeholder="a écrit au cabinet < 24 h" /></div>
++                <div><Label>WhatsApp Client 2 (+226…)</Label><Input value={testForm.client2_whatsapp} onChange={(e) => setTestForm({ ...testForm, client2_whatsapp: e.target.value })} placeholder="n'a pas écrit depuis 24 h" /></div>
++              </div>
++            </div>
++          ) : (
++            <div className="space-y-2 max-h-[50vh] overflow-y-auto" data-testid="test-accounts-result">
++              {testResult.map((a) => (
++                <div key={a.email} className="text-sm border rounded-md p-2">
++                  <div className="font-medium">{a.name} <span className="text-xs text-muted-foreground">— {a.status}</span></div>
++                  <div className="text-xs font-mono break-all">{a.email}</div>
++                  {a.detail && <div className="text-xs text-amber-700">{a.detail}</div>}
++                </div>
++              ))}
++              <p className="text-xs text-muted-foreground">Connexion : l'adresse ci-dessus + le mot de passe choisi ; le code arrive dans votre boîte.</p>
++            </div>
++          )}
++          <DialogFooter className="flex-wrap gap-2">
++            <Button variant="outline" className="text-red-600 mr-auto" onClick={deleteTestAccounts} disabled={testBusy} data-testid="delete-test-accounts">Supprimer les comptes de test</Button>
++            <Button variant="outline" onClick={() => setOpenTest(false)}>Fermer</Button>
++            {!testResult && <Button className="bg-[#0F6B4A] hover:bg-[#0A4E36] text-white" onClick={createTestAccounts} disabled={testBusy} data-testid="create-test-accounts">Créer / remettre à neuf</Button>}
++          </DialogFooter>
++        </DialogContent>
++      </Dialog>
+     </div>
+   );
+ }
+-- 
+2.43.0
+

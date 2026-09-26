@@ -109,6 +109,23 @@ Concrètement :
   Claude via `EMERGENT_LLM_KEY`") — jamais une attribution du travail de
   rédaction ou de préparation du patch lui-même.
 
+## 7. Après chaque implémentation : résumé + où cliquer + recette
+
+Demandé explicitement par l'utilisateur (2026-09-26, Albarka lot 3). Après
+chaque nouvelle implémentation livrée (dans ma réponse, en français, en plus
+du patch + prompt), toujours donner :
+
+1. **Le résumé** des modules ajoutés ou modifiés, module par module : ce que
+   ça fait, qui y a accès, ce qui change pour l'utilisateur.
+2. **Le lien de la sidebar** où cliquer pour chaque module (nom exact du menu
+   et chemin, ex. « Cabinet → Formulaires (`/admin/forms`) »), côté
+   personnel et côté client.
+3. **La recette des lots concernés** : pour chaque module, qui se connecte
+   (quel compte de test), comment faire (étapes), et ce qu'il faut vérifier.
+   Commencer par les comptes à préparer, finir par la non-régression et
+   « si quelque chose ne marche pas ». Proposer ensuite la checklist à cocher
+   partagée (Artifact avec `db`), comme pour le lot 3 Albarka.
+
 ## Origine de ces règles
 
 Établies le 2026-09 sur `Site-SawaliSmartSystems` (sawali-emergent),
