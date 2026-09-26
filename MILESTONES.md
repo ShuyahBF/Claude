@@ -106,11 +106,12 @@ concerné.
   question, export CSV), copié par `forms-core/sync.sh` ; 10 tests.
 - **Albarka lot 3 — Formulaires + Caissier + administrateur réservé + espace
   client** — **livré, en attente de publication** (base `b545832` de
-  `conflict_030926_0658` ; `albarka-portal-livraisons/albarka-portal-corrections_3_7a62fdf.patch`
-  + `albarka-portal-prompt_3.md`, remplace la 1re version 7387b59 non publiée ;
-  dev `claude/forms-lot3` db51055 dans `ShuyahBF/albarka-portal`).
+  `conflict_030926_0658` ; `albarka-portal-livraisons/albarka-portal-corrections_3_49aecac.patch`
+  + `albarka-portal-prompt_3.md`, remplace 7387b59 et 7a62fdf non publiés ;
+  dev `claude/forms-lot3` 9e9bb41 dans `ShuyahBF/albarka-portal`).
   Formulaires (rôle `formulaires`, envoi clients, lien public, « Mes
-  formulaires ») ; Caissier seul à encaisser/délivrer un reçu, reçu REC auto
+  formulaires ») ; Caissier seul à encaisser/délivrer un reçu (superviseur compris : pas de
+  passe-droit, décision utilisateur 2026-09-26 ; tableau de bord client non filtré : OK), reçu REC auto
   à l'encaissement (exclu des totaux) ; administrateur = compte
   admin@sawalismartsystems.com seul (rôles effectifs, rien effacé) ; espace
   client : dépôts sans OCR, factures mises à disposition, modules par client,

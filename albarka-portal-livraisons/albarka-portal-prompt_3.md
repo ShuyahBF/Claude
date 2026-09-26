@@ -1,12 +1,12 @@
 # Albarka — Lot 3 : formulaires, rôle Caissier, administrateur réservé, espace client avec notifications
 
-Applique `albarka-portal-corrections_3_7a62fdf.patch` sur la branche
+Applique `albarka-portal-corrections_3_49aecac.patch` sur la branche
 `conflict_030926_0658`. Base attendue : le commit `b545832` (celui que tu as
 créé en publiant le lot 2, `aaf483b`, l'OCR sur le module commun `ocr_core`).
 C'est un `git format-patch` d'un seul commit : applique-le en UN SEUL `git am`,
-puis redéploie. Ce patch remplace entièrement la version précédente du lot 3
-(`…_3_7387b59.patch`, formulaires seuls) que je t'avais envoyée : n'applique
-que celui-ci.
+puis redéploie. Ce patch remplace entièrement les versions précédentes du lot 3
+(`…_3_7387b59.patch` et `…_3_7a62fdf.patch`) que je t'avais envoyées :
+n'applique que celui-ci.
 
 **Interdiction explicite** : je ne veux AUCUNE commande de test, de build ou
 de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
@@ -172,9 +172,13 @@ disposition. Aucun rôle n'est effacé en base.
      existait côté serveur, mais la case manquait). Le rôle est cumulable :
      une secrétaire qui a aussi « Caissier » peut encaisser, une secrétaire
      sans ce rôle ne le peut plus.
-   - `POST /billing/payments` passe par `require_roles(ENCAISSEMENT_ROLES)`
-     (`["caissier"]`, avec le passe-droit superviseur habituel). Créer un
-     « Reçu de caisse » (`document_type = "recu"`) exige aussi ce rôle. Dans
+   - **Aucune exception, pas même pour le superviseur** : contrairement au
+     reste du portail, `require_roles()` n'est pas utilisé ici (il laisse
+     passer le superviseur). `POST /billing/payments`, la création d'un « Reçu
+     de caisse » (`document_type = "recu"`) et le dépôt d'un reçu dans
+     l'espace client vérifient `can_encaisser()`, qui exige le rôle `caissier`
+     (`ENCAISSEMENT_ROLES`). Un superviseur qui doit encaisser se fait cocher
+     « Caissier » en plus. Dans
      l'écran Caisse, le bouton **Encaisser** et l'option « Reçu de caisse »
      ne s'affichent que pour lui, et le menu Caisse lui est ouvert.
    - **Chaque encaissement délivre automatiquement un reçu** (`REC-…`) du
@@ -281,8 +285,9 @@ disposition. Aucun rôle n'est effacé en base.
 - **Ouvrir une facture de la Caisse depuis l'espace client d'un comptable** :
   le PDF reste soumis aux droits Caisse existants (`CAISSE_PDF_ACTION_ROLES`).
   Je n'élargis pas ces droits.
-- **Passe-droit du superviseur** pour l'encaissement : conservé, comme pour
-  les Paiements et le reste du portail.
+- **Module Paiements (liens PawaPay)** : il garde le passe-droit superviseur
+  existant. Seuls l'encaissement en Caisse et les reçus sont concernés par la
+  règle « Caissier sans exception ».
 
 ## À tester une fois déployé
 
@@ -313,24 +318,26 @@ disposition. Aucun rôle n'est effacé en base.
     Encaisser, pas d'option « Reçu de caisse ». Crée une facture pour un
     client, en cochant « Mettre à disposition dans l'espace du client » : le
     client reçoit le WhatsApp « Une nouvelle facture est disponible… ».
-11. Avec la secrétaire **Caissière**, clique **Encaisser** sur cette facture
+11. Avec un **superviseur sans la case Caissier**, ouvre la Caisse : pas de
+    bouton Encaisser, pas d'option « Reçu de caisse ».
+12. Avec la secrétaire **Caissière**, clique **Encaisser** sur cette facture
     et encaisse le total : le message « reçu REC-… délivré » s'affiche, et
     « Voir le reçu » ouvre le PDF. La carte « Facturé » ne double pas. Le
     client reçoit le WhatsApp du reçu.
-12. **Dépôt espace client** : choisis le client, catégorie « Rapport »,
+13. **Dépôt espace client** : choisis le client, catégorie « Rapport »,
     téléverse un PDF (ou **Scanner** sur téléphone), **Déposer**. Le message
     « client prévenu par WhatsApp » s'affiche, et la ligne apparaît avec
     « Visible, non consulté ».
-13. **Paramètres → Notifications** : modifie le texte « Rapport », vérifie
+14. **Paramètres → Notifications** : modifie le texte « Rapport », vérifie
     l'aperçu et enregistre. Refais un dépôt « Rapport » : le WhatsApp suit le
     nouveau texte.
-14. Dans la fiche du client, onglet **Espace client** : décoche « Mes
+15. Dans la fiche du client, onglet **Espace client** : décoche « Mes
     missions » et enregistre.
-15. Connecte-toi avec ce client. Le menu n'a plus « Mes missions » ;
+16. Connecte-toi avec ce client. Le menu n'a plus « Mes missions » ;
     **Factures & documents** montre la facture (Payée), le reçu et le rapport,
     avec « Nouveau ». Ouvre-en un : côté cabinet, la ligne passe à « Consulté
     le … ».
-16. Avec un compte qui avait le rôle Administrateur (autre que le compte
+17. Avec un compte qui avait le rôle Administrateur (autre que le compte
     admin) : il n'a plus accès aux réglages réservés à l'administrateur.
 
 Si quelque chose ne marche pas, renvoie-moi le message d'erreur exact (écran

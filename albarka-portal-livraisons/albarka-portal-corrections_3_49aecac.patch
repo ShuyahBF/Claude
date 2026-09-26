@@ -1,6 +1,6 @@
-From 7a62fdfe56fefb476f3dfb7ea369e0e43a35fc9d Mon Sep 17 00:00:00 2001
+From 49aecac7ae02f532bc73f44ccc422e93e4e8049f Mon Sep 17 00:00:00 2001
 From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
-Date: Sat, 26 Sep 2026 00:44:26 +0000
+Date: Sat, 26 Sep 2026 00:52:11 +0000
 Subject: [PATCH] =?UTF-8?q?Formulaires,=20r=C3=B4le=20Caissier,=20administ?=
  =?UTF-8?q?rateur=20r=C3=A9serv=C3=A9,=20espace=20client=20avec=20notifica?=
  =?UTF-8?q?tions?=
@@ -14,7 +14,8 @@ J'ajoute au portail :
   lien public + QR, réponses, statistiques, export CSV ; nouveau rôle
   cumulable « formulaires » qui seul voit le menu ; « Mes formulaires » côté
   client et page publique /f/<jeton>.
-- Rôle Caissier : seul habilité à encaisser et à délivrer un reçu ; chaque
+- Rôle Caissier : seul habilité à encaisser et à délivrer un reçu (sans
+  passe-droit superviseur) ; chaque
   encaissement délivre automatiquement un reçu (REC-…) ; case Caissier dans
   la fiche du personnel, menu Caisse ouvert au caissier.
 - Administrateur : rôle réservé au compte admin du portail, ignoré sur tout
@@ -28,15 +29,15 @@ J'ajoute au portail :
 ---
  backend/albarka_admin_settings.py             |  38 +
  backend/albarka_auth.py                       |   4 +
- backend/albarka_client_space.py               | 588 +++++++++++++++
+ backend/albarka_client_space.py               | 589 +++++++++++++++
  backend/albarka_clients.py                    |  43 +-
  backend/albarka_documents.py                  |   7 +
  backend/albarka_echeances.py                  |   5 +-
  backend/albarka_forms.py                      | 256 +++++++
  backend/albarka_missions.py                   |   5 +-
- backend/albarka_models.py                     |  59 ++
+ backend/albarka_models.py                     |  65 ++
  backend/albarka_notifications.py              |  49 ++
- backend/albarka_phase_c.py                    | 105 ++-
+ backend/albarka_phase_c.py                    | 106 ++-
  backend/forms_core/__init__.py                |  26 +
  backend/forms_core/api.py                     | 688 ++++++++++++++++++
  backend/forms_core/export.py                  |  58 ++
@@ -44,7 +45,7 @@ J'ajoute au portail :
  backend/forms_core/stats.py                   | 100 +++
  backend/forms_core/validation.py              | 150 ++++
  backend/server.py                             |  24 +
- backend/tests/test_client_space_lot3.py       | 312 ++++++++
+ backend/tests/test_client_space_lot3.py       | 329 +++++++++
  backend/tests/test_forms_lot3.py              | 219 ++++++
  frontend/src/App.js                           |  15 +
  frontend/src/components/ClientSpacePanel.jsx  | 236 ++++++
@@ -69,7 +70,7 @@ J'ajoute au portail :
  .../src/pages/portal/CabinetDocuments.jsx     | 102 +++
  frontend/src/pages/portal/MyForms.jsx         |  10 +
  frontend/src/pages/public/FillForm.jsx        |  14 +
- 43 files changed, 5211 insertions(+), 60 deletions(-)
+ 43 files changed, 5237 insertions(+), 59 deletions(-)
  create mode 100644 backend/albarka_client_space.py
  create mode 100644 backend/albarka_forms.py
  create mode 100644 backend/forms_core/__init__.py
@@ -192,10 +193,10 @@ index a4a2477..c18c5f1 100644
  
 diff --git a/backend/albarka_client_space.py b/backend/albarka_client_space.py
 new file mode 100644
-index 0000000..2e55bc3
+index 0000000..928efe3
 --- /dev/null
 +++ b/backend/albarka_client_space.py
-@@ -0,0 +1,588 @@
+@@ -0,0 +1,589 @@
 +"""Espace client — documents mis à disposition par le cabinet.
 +
 +Le cabinet fait souvent ses factures, rapports, attestations… dans un autre
@@ -228,8 +229,8 @@ index 0000000..2e55bc3
 +from albarka_admin_settings import get_settings_doc
 +from albarka_auth import get_current_user, require_roles
 +from albarka_models import (
-+    CLIENT_MANAGE_ROLES, CLIENT_PORTAL_MODULES, CLIENT_SPACE_ROLES, ENCAISSEMENT_ROLES,
-+    client_modules, has_any_role, is_client, whatsapp_number_of,
++    CLIENT_MANAGE_ROLES, CLIENT_PORTAL_MODULES, CLIENT_SPACE_ROLES,
++    can_encaisser, client_modules, is_client, whatsapp_number_of,
 +)
 +from albarka_notifications import send_email, send_whatsapp, send_whatsapp_template, wa_window_state
 +from db import db
@@ -470,8 +471,9 @@ index 0000000..2e55bc3
 +def _check_category_rights(user: Dict[str, Any], category: str) -> None:
 +    if category not in CATEGORIES:
 +        raise HTTPException(status_code=400, detail="Catégorie inconnue")
-+    # Délivrer un reçu = encaisser : réservé au Caissier, même pour un reçu fait ailleurs.
-+    if category == "recu" and not has_any_role(user, ENCAISSEMENT_ROLES):
++    # Délivrer un reçu = encaisser : rôle Caissier obligatoire (superviseur compris),
++    # même pour un reçu fait ailleurs.
++    if category == "recu" and not can_encaisser(user):
 +        raise HTTPException(status_code=403, detail="Seul un collaborateur Caissier peut délivrer un reçu")
 +
 +
@@ -524,7 +526,7 @@ index 0000000..2e55bc3
 +            "modules": [{"key": k, "label": v} for k, v in CLIENT_PORTAL_MODULES.items()],
 +            "variables": [{"key": k, "label": v} for k, v in TEMPLATE_VARIABLES.items()],
 +            "template_keys": TEMPLATE_KEYS, "default_templates": DEFAULT_TEMPLATES,
-+            "can_issue_receipt": has_any_role(user, ENCAISSEMENT_ROLES)}
++            "can_issue_receipt": can_encaisser(user)}
 +
 +
 +@router.post("/preview")
@@ -1212,7 +1214,7 @@ index 19c548a..c1f6dcc 100644
      elif tenant_id:
          query["tenant_id"] = tenant_id
 diff --git a/backend/albarka_models.py b/backend/albarka_models.py
-index 82d4375..db53305 100644
+index 82d4375..b98204b 100644
 --- a/backend/albarka_models.py
 +++ b/backend/albarka_models.py
 @@ -26,6 +26,10 @@ ALBARKA_ROLES = [
@@ -1226,7 +1228,7 @@ index 82d4375..db53305 100644
      "client",
  ]
  STAFF_ROLES = [r for r in ALBARKA_ROLES if r != "client"]
-@@ -50,6 +54,39 @@ CHAT_THREAD_CREATE_ROLES = DOCS_PRIVILEGED_ROLES
+@@ -50,6 +54,45 @@ CHAT_THREAD_CREATE_ROLES = DOCS_PRIVILEGED_ROLES
  # passe-droit "superviseur" déjà appliqué partout ailleurs dans l'app —
  # cohérence avec le reste du portail plutôt qu'un cas particulier isolé.
  PAYMENTS_ROLES = ["caissier"]
@@ -1236,9 +1238,15 @@ index 82d4375..db53305 100644
 +FORMS_ROLES = ["formulaires"]
 +# Encaisser (enregistrer un paiement sur une facture) et délivrer un reçu —
 +# réservé au rôle cumulable "caissier" : une secrétaire qui a aussi ce rôle
-+# peut encaisser, une secrétaire sans ce rôle ne le peut pas. Même passe-droit
-+# "superviseur" que partout ailleurs via require_roles()/has_any_role().
++# peut encaisser, une secrétaire sans ce rôle ne le peut pas. SANS passe-droit
++# superviseur (contrairement à require_roles/has_any_role) : un superviseur
++# doit lui aussi avoir le rôle Caissier — voir can_encaisser().
 +ENCAISSEMENT_ROLES = ["caissier"]
++
++
++def can_encaisser(user: dict) -> bool:
++    """Encaisser / délivrer un reçu : rôle Caissier obligatoire, aucune exception."""
++    return bool(set(user.get("roles") or []) & set(ENCAISSEMENT_ROLES))
 +# Espace client — déposer / scanner un document fait hors du portail
 +# (facture, rapport…) dans l'espace d'un client, ou y mettre à disposition
 +# une facture de la Caisse. Un reçu déposé reste réservé au Caissier.
@@ -1266,7 +1274,7 @@ index 82d4375..db53305 100644
  
  MISSION_TYPES = [
      "tenue_comptable",
-@@ -126,6 +163,8 @@ class User(BaseModel):
+@@ -126,6 +169,8 @@ class User(BaseModel):
      whatsapp_number: Optional[str] = None
      whatsapp_verified: bool = False
      is_active: bool = True
@@ -1275,7 +1283,7 @@ index 82d4375..db53305 100644
      created_at: str = Field(default_factory=_now_iso)
      last_login: Optional[str] = None
  
-@@ -153,6 +192,26 @@ def whatsapp_number_of(user_doc: dict) -> Optional[str]:
+@@ -153,6 +198,26 @@ def whatsapp_number_of(user_doc: dict) -> Optional[str]:
      return user_doc.get("whatsapp_number") or user_doc.get("phone")
  
  
@@ -1363,7 +1371,7 @@ index e94d15b..dae4d38 100644
      """Upload un fichier à la Media API Meta, retourne le media_id ou None.
  
 diff --git a/backend/albarka_phase_c.py b/backend/albarka_phase_c.py
-index ad5a4e8..5f487c3 100644
+index ad5a4e8..345a7ee 100644
 --- a/backend/albarka_phase_c.py
 +++ b/backend/albarka_phase_c.py
 @@ -23,7 +23,9 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -1372,7 +1380,7 @@ index ad5a4e8..5f487c3 100644
  from albarka_auth import get_current_user, require_roles, require_staff
 -from albarka_models import CAISSE_DATE_RANGE_ROLES, CHAT_THREAD_CREATE_ROLES, is_client
 +from albarka_models import (
-+    CAISSE_DATE_RANGE_ROLES, CHAT_THREAD_CREATE_ROLES, ENCAISSEMENT_ROLES, has_any_role, is_client,
++    CAISSE_DATE_RANGE_ROLES, CHAT_THREAD_CREATE_ROLES, can_encaisser, is_client,
 +)
  from db import db, serialize, serialize_many
  
@@ -1471,7 +1479,7 @@ index ad5a4e8..5f487c3 100644
      }
      await db.invoices.insert_one(doc.copy())
      from albarka_billing_docs import ensure_invoice_pdf
-@@ -309,25 +328,47 @@ async def create_invoice(payload: InvoiceCreate, user: dict = Depends(require_st
+@@ -309,25 +328,50 @@ async def create_invoice(payload: InvoiceCreate, user: dict = Depends(require_st
          await ensure_invoice_pdf(doc)
      except Exception:  # noqa: BLE001 — best-effort ; régénérable via /pdf/regenerate
          logger.exception("Échec génération PDF à la création de %s", doc["id"])
@@ -1494,8 +1502,8 @@ index ad5a4e8..5f487c3 100644
 +
 +@billing_router.post("/invoices")
 +async def create_invoice(payload: InvoiceCreate, user: dict = Depends(require_staff())):
-+    # Délivrer un reçu = encaisser : réservé au rôle "caissier" (ENCAISSEMENT_ROLES).
-+    if payload.document_type == "recu" and not has_any_role(user, ENCAISSEMENT_ROLES):
++    # Délivrer un reçu = encaisser : rôle "caissier" obligatoire, même pour un superviseur.
++    if payload.document_type == "recu" and not can_encaisser(user):
 +        raise HTTPException(status_code=403, detail="Seul un collaborateur Caissier peut délivrer un reçu")
 +    doc = await _new_billing_document(
 +        document_type=payload.document_type, tenant_id=payload.tenant_id, title=payload.title,
@@ -1511,10 +1519,12 @@ index ad5a4e8..5f487c3 100644
  
  
  @billing_router.post("/payments")
--async def create_payment(payload: PaymentCreate, user: dict = Depends(require_staff())):
-+async def create_payment(payload: PaymentCreate, user: dict = Depends(require_roles(ENCAISSEMENT_ROLES))):
-+    """Encaissement sur une facture — réservé au Caissier. Délivre
-+    automatiquement un reçu (REC-…) du montant encaissé, avec son PDF."""
+ async def create_payment(payload: PaymentCreate, user: dict = Depends(require_staff())):
++    """Encaissement sur une facture — réservé au Caissier (sans passe-droit
++    superviseur). Délivre automatiquement un reçu (REC-…) du montant encaissé,
++    avec son PDF."""
++    if not can_encaisser(user):
++        raise HTTPException(status_code=403, detail="Seul un collaborateur Caissier peut encaisser")
      invoice = await db.invoices.find_one({"id": payload.invoice_id}, {"_id": 0})
      if not invoice:
          raise HTTPException(status_code=404, detail="Facture introuvable")
@@ -1523,7 +1533,7 @@ index ad5a4e8..5f487c3 100644
      payment = {
          "id": secrets.token_urlsafe(12),
          "invoice_id": payload.invoice_id,
-@@ -356,7 +397,23 @@ async def create_payment(payload: PaymentCreate, user: dict = Depends(require_st
+@@ -356,7 +400,23 @@ async def create_payment(payload: PaymentCreate, user: dict = Depends(require_st
      await _log_platform_event(user=user, action="payment.create",
                                entity_type="invoice", entity_id=invoice["id"],
                                meta={"amount": payment["amount"], "method": payment["method"]})
@@ -1548,7 +1558,7 @@ index ad5a4e8..5f487c3 100644
  
  
  def _is_caisse_date_privileged(user: dict) -> bool:
-@@ -421,7 +478,10 @@ async def billing_summary(
+@@ -421,7 +481,10 @@ async def billing_summary(
      strictement les encaissements visibles par l'utilisateur : journée en
      cours pour un collaborateur ordinaire, période choisie — ou "Depuis
      toujours" — pour Administrateur/DG/Superviseur, voir _payments_date_bounds)."""
@@ -1560,7 +1570,7 @@ index ad5a4e8..5f487c3 100644
      if tenant_id: inv_q["tenant_id"] = tenant_id
      invoices = await db.invoices.find(inv_q, {"_id": 0, "total": 1, "paid_amount": 1, "status": 1}).to_list(2000)
      total = sum(float(i.get("total", 0)) for i in invoices)
-@@ -474,7 +534,8 @@ async def _build_statement(
+@@ -474,7 +537,8 @@ async def _build_statement(
          if not client:
              raise HTTPException(status_code=404, detail="Client introuvable")
  
@@ -2905,10 +2915,10 @@ index 2a18d76..e4a2c9c 100644
  
 diff --git a/backend/tests/test_client_space_lot3.py b/backend/tests/test_client_space_lot3.py
 new file mode 100644
-index 0000000..030aecb
+index 0000000..c1c4f6c
 --- /dev/null
 +++ b/backend/tests/test_client_space_lot3.py
-@@ -0,0 +1,312 @@
+@@ -0,0 +1,329 @@
 +"""Lot 3 (suite) — Caissier, administrateur réservé au compte admin, espace client.
 +
 +- Caissier : seul habilité à encaisser et à délivrer un reçu ; chaque
@@ -2957,6 +2967,7 @@ index 0000000..030aecb
 +ADMIN = {"id": "u-admin", "email": "admin@sawalismartsystems.com", "full_name": "Admin", "roles": ["superviseur", "direction"], "is_active": True}
 +USERS = {
 +    "admin": ADMIN,
++    "sup": {"id": "u-sup", "email": "sup@albarka.bf", "full_name": "Superviseur", "roles": ["superviseur"], "is_active": True},
 +    "secr": {"id": "u-secr", "email": "s@albarka.bf", "full_name": "Secrétaire", "roles": ["secretariat"], "is_active": True},
 +    "secr_caisse": {"id": "u-sc", "email": "sc@albarka.bf", "full_name": "Secrétaire caissière", "roles": ["secretariat", "caissier"], "is_active": True},
 +    "compta": {"id": "u-compta", "email": "c@albarka.bf", "full_name": "Comptable", "roles": ["comptable"], "is_active": True},
@@ -3221,6 +3232,22 @@ index 0000000..030aecb
 +        "tenant_id": "c1", "title": "Vente comptant", "document_type": "recu",
 +        "items": [{"label": "Conseil", "quantity": 1, "unit_price": 5000, "tax_rate": 0}]})
 +    assert env.c.get("/api/billing/summary", headers=_h("secr")).json()["total_billed"] == 123000
++
++
++def test_superviseur_without_caissier_cannot_encaisser(env):
++    """Pas de passe-droit superviseur : encaisser exige le rôle Caissier."""
++    inv = _invoice(env)
++    assert env.c.post("/api/billing/payments", headers=_h("sup"), json={"invoice_id": inv["id"], "amount": 1000}).status_code == 403
++    recu = {"tenant_id": "c1", "title": "Reçu", "document_type": "recu",
++            "items": [{"label": "Règlement", "quantity": 1, "unit_price": 1000, "tax_rate": 0}]}
++    assert env.c.post("/api/billing/invoices", headers=_h("sup"), json=recu).status_code == 403
++    f = [("files", ("recu.pdf", b"%PDF", "application/pdf"))]
++    assert env.c.post("/api/client-space/documents", headers=_h("sup"), files=f,
++                      data={"tenant_id": "c1", "category": "recu"}).status_code == 403
++    assert env.c.get("/api/client-space/catalog", headers=_h("sup")).json()["can_issue_receipt"] is False
++    # Un superviseur à qui l'on coche aussi « Caissier » peut encaisser
++    asyncio.run(env.db.users.update_one({"id": "u-sup"}, {"$set": {"roles": ["superviseur", "caissier"]}}))
++    assert env.c.post("/api/billing/payments", headers=_h("sup"), json={"invoice_id": inv["id"], "amount": 1000}).status_code == 200
 diff --git a/backend/tests/test_forms_lot3.py b/backend/tests/test_forms_lot3.py
 new file mode 100644
 index 0000000..a992adf
@@ -5526,7 +5553,7 @@ index 0000000..383ada0
 +  setTimeout(() => URL.revokeObjectURL(href), 2000);
 +}
 diff --git a/frontend/src/pages/admin/AdminBilling.jsx b/frontend/src/pages/admin/AdminBilling.jsx
-index bae839e..17a58f3 100644
+index bae839e..3ff08e0 100644
 --- a/frontend/src/pages/admin/AdminBilling.jsx
 +++ b/frontend/src/pages/admin/AdminBilling.jsx
 @@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
@@ -5543,7 +5570,7 @@ index bae839e..17a58f3 100644
  // Doit rester identique à CAISSE_PDF_ACTION_ROLES côté backend (albarka_models.py).
  const CAISSE_PDF_ACTION_ROLES = ["administrateur", "superviseur", "direction", "dg", "caissier", "secretariat"];
 +// Doit rester identique à ENCAISSEMENT_ROLES côté backend : encaisser et
-+// délivrer un reçu sont réservés au Caissier (+ passe-droit superviseur).
++// délivrer un reçu sont réservés au Caissier — SANS passe-droit superviseur.
 +const ENCAISSEMENT_ROLES = ["caissier"];
 +// Doit rester identique à CLIENT_SPACE_ROLES côté backend (albarka_models.py) :
 +// qui peut mettre un document à disposition dans l'espace d'un client.
@@ -5555,8 +5582,8 @@ index bae839e..17a58f3 100644
    // "telechargement" (voir canDownloadPdf ci-dessous).
    const canActOnPdf = roles.includes("superviseur") || roles.some((r) => CAISSE_PDF_ACTION_ROLES.includes(r));
    const canDownloadPdf = roles.includes("telechargement");
-+  // Encaisser / délivrer un reçu : Caissier uniquement (+ superviseur).
-+  const canEncaisser = roles.includes("superviseur") || roles.some((r) => ENCAISSEMENT_ROLES.includes(r));
++  // Encaisser / délivrer un reçu : rôle Caissier obligatoire, même pour un superviseur.
++  const canEncaisser = roles.some((r) => ENCAISSEMENT_ROLES.includes(r));
 +  // Mettre un document à disposition dans l'espace du client.
 +  const canShareToClient = roles.includes("superviseur") || roles.some((r) => CLIENT_SPACE_ROLES.includes(r));
  
