@@ -1,12 +1,12 @@
-# Albarka — Lot 4 : Superviseur réservé, actions sur les comptes, comptes de test, Paramètres
+# Albarka — Lot 4 : Superviseur réservé, actions sur les comptes, présence en temps réel, comptes de test, Paramètres
 
-Applique `albarka-portal-corrections_4_37ad3ec.patch` sur la branche
+Applique `albarka-portal-corrections_4_90834f0.patch` sur la branche
 `conflict_030926_0658`. Base attendue : le commit `3d6b60a` (« Auto-generated
 changes », juste après `2e0a021`, le lot 3 que tu as publié). C'est un
 `git format-patch` d'un seul commit : applique-le en UN SEUL `git am`, puis
 redéploie (backend et frontend) et enregistre sur GitHub. Ce patch remplace
-entièrement la version précédente du lot 4 (`…_4_56d4b58.patch`) que je
-t'avais envoyée : n'applique que celui-ci.
+entièrement les versions précédentes du lot 4 (`…_4_56d4b58.patch` et
+`…_4_37ad3ec.patch`) que je t'avais envoyées : n'applique que celui-ci.
 
 Vocabulaire : quand je dis « admin », je parle du compte
 `admin@sawalismartsystems.com`, le super-utilisateur de la plateforme, pas du
@@ -21,6 +21,8 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 **Nouveaux fichiers**
 - `backend/tests/test_accounts_lot4.py` : tests du lot. Tu ne les lances pas.
 - `frontend/src/components/AccountActions.jsx` : actions sur un compte (désactiver, réinitialiser le mot de passe, supprimer) et colonne « Connexion / modification »
+- `backend/albarka_presence.py` : présence en temps réel (keep-alive)
+- `frontend/src/components/Presence.jsx` : battements depuis chaque page, pastilles et libellés de présence
 
 **Fichiers modifiés**
 - `backend/albarka_models.py` : suppression de `effective_roles()` (lot 3), ajout de `is_test_account()`, `hide_test_accounts_filter()`, `NOT_TEST_ACCOUNT` et `SETTINGS_ROLES`
@@ -28,11 +30,14 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 - `backend/albarka_myaccount.py` : date de dernière modification notée quand la personne modifie son propre compte
 - `backend/albarka_clients.py` : règle Superviseur, retour de la règle Administrateur d'origine, suppression d'un compte (personnel : superviseur ; client : admin), `POST /clients/{id}/active`, `POST /clients/{id}/reset-password`, date et auteur de la dernière modification, comptes de test (`POST` et `DELETE /clients/test-accounts`), masquage des comptes de test
 - `backend/albarka_admin_settings.py`, `albarka_settings_tests.py`, `albarka_branding.py`, `albarka_signing.py` : routes des Paramètres réservées au superviseur
-- `backend/albarka_dashboard.py`, `albarka_forms.py`, `albarka_phase_c.py`, `albarka_notifications.py`, `albarka_reports_mgmt.py` : comptes de test masqués ou exclus des envois de masse
+- `backend/albarka_dashboard.py`, `albarka_forms.py`, `albarka_phase_c.py`, `albarka_notifications.py`, `albarka_reports_mgmt.py` : comptes de test masqués ou exclus des envois de masse ; `albarka_phase_c.py` renvoie aussi `peer_id` pour les discussions directes du chat
+- `backend/server.py` : routeur Présence inclus sous `/api`, index créé au démarrage
+- `frontend/src/components/ChatBubble.jsx` : présence des collègues et de l'interlocuteur
+- `frontend/src/pages/admin/AdminWhatsAppConversations.jsx` : présence sur le portail des contacts clients
 - `backend/tests/test_client_space_lot3.py` : tests de la règle Administrateur du lot 3 retirés
 - `frontend/src/pages/admin/AdminStaff.jsx` : case Superviseur verrouillée, case Administrateur rétablie, actions sur les comptes, bouton « Créer comptes de test », badge TEST
 - `frontend/src/pages/admin/AdminClients.jsx` : actions sur les comptes, colonne « Connexion / modification », suppression pour admin
-- `frontend/src/components/PortalLayout.jsx` : menu Paramètres réservé au superviseur
+- `frontend/src/components/PortalLayout.jsx` : menu Paramètres réservé au superviseur, battements de présence, « hors ligne » envoyé à la déconnexion
 - `frontend/src/pages/admin/AdminSettings.jsx` : réglage RGPD modifiable par le superviseur
 
 Aucune nouvelle dépendance, aucune migration. Nouvelle collection
@@ -40,6 +45,8 @@ Aucune nouvelle dépendance, aucune migration. Nouvelle collection
 suppression. Les comptes portent désormais `updated_at`, `updated_by` et
 `updated_by_name` (dernière modification) et, après une réinitialisation,
 `password_changed_at`. Les comptes de test portent `is_test_account: true`.
+Nouvelle collection `presence` (un document par compte, index sur
+`last_seen`), créée au premier battement.
 Les jetons de connexion déjà émis restent valables : seule une
 réinitialisation du mot de passe ferme les sessions du compte concerné.
 
@@ -156,6 +163,35 @@ réinitialisation du mot de passe ferme les sessions du compte concerné.
      met à jour cette date : fiche, rôles, numéros vérifiés, activation, mot
      de passe, et la personne elle-même dans « Mon compte ».
 
+8. **Présence en temps réel (keep-alive) des clients et des collaborateurs.**
+   - **Battement.** Chaque page ouverte du portail, espace client comme
+     cabinet, envoie un battement toutes les 25 s (`POST /presence/heartbeat`,
+     avec « onglet visible ou non » et la page ouverte).
+   - **Hors ligne tout de suite** à la déconnexion et à la fermeture de
+     l'onglet (`POST /presence/offline`, via un `fetch` `keepalive` qui garde
+     le jeton). Au retour d'un onglet au premier plan, le battement part
+     aussitôt.
+   - **Trois états**, calculés par le serveur :
+     - « En ligne » : battement de moins de 70 s, onglet visible ;
+     - « Absent » : onglet en arrière-plan ;
+     - « Hors ligne » : plus de battement depuis 70 s, ou déconnexion.
+     Chaque état est affiché avec « vu il y a … ».
+   - **Pas de WebSocket** dans l'application : le cabinet lit l'état toutes
+     les 15 s (`GET /presence`, réservé au personnel ; comptes de test pour le
+     superviseur seulement).
+   - **Où ça s'affiche :**
+     - **Clients** et **Personnels** : pastille et libellé dans la colonne
+       « Connexion / modification », et le nombre de comptes en ligne sous le
+       titre de la page ;
+     - **chat interne** (bulle) : chaque collègue et chaque discussion
+       directe est marqué ● en ligne, ◐ absent ou ○ hors ligne, les collègues
+       en ligne en premier, et l'état de l'interlocuteur s'affiche au-dessus
+       des messages ;
+     - **messagerie WhatsApp** : quand le contact est un client du portail,
+       une pastille le montre connecté, dans la liste et en tête de
+       conversation. `GET /presence/by-phone` ne renvoie que l'état pour des
+       numéros que le cabinet connaît déjà.
+
 ## Volontairement pas dans ce lot
 
 - **Envoi automatique du nouveau mot de passe** par e-mail ou WhatsApp : je
@@ -207,6 +243,16 @@ réinitialisation du mot de passe ferme les sessions du compte concerné.
     Supprime un client de test : il disparaît, et l'action figure au Journal.
 14. Après une connexion d'un compte, la colonne affiche « Connexion : » avec
     la date et l'heure.
+15. Ouvre le portail avec un **client** sur un autre appareil (ou en
+    navigation privée). Côté cabinet, dans **Clients**, il passe « En ligne »
+    en moins de 15 s, et le compteur « client(s) en ligne » augmente. Mets
+    son onglet en arrière-plan : « Absent ». Clique **Déconnexion** ou ferme
+    l'onglet : « Hors ligne · Vu à l'instant ».
+16. Ouvre la **bulle de chat** : les collègues connectés sont marqués ● et
+    listés en premier. Démarre une discussion directe : l'état de ton
+    interlocuteur s'affiche au-dessus des messages.
+17. **WhatsApp** : ouvre la conversation d'un client connecté au portail. Une
+    pastille « En ligne » apparaît dans la liste et sous son numéro.
 
 Si quelque chose ne marche pas, renvoie-moi le message d'erreur exact (écran
 ou logs backend). Rappel : **aucun test, build, lint, Testing Agent ou

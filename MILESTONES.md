@@ -124,9 +124,10 @@ concerné.
   navigateur OK.
 - **Albarka lot 4 — Superviseur réservé, suppression du personnel, comptes
   de test, Paramètres** — **livré, en attente de publication** (base
-  `3d6b60a` ; `albarka-portal-livraisons/albarka-portal-corrections_4_37ad3ec.patch`
-  + `albarka-portal-prompt_4.md`, remplace 56d4b58 non publié ; dev
-  `claude/albarka-lot4` 98ba780). + Actions sur les comptes (désactiver,
+  `3d6b60a` ; `albarka-portal-livraisons/albarka-portal-corrections_4_90834f0.patch`
+  + `albarka-portal-prompt_4.md`, remplace 56d4b58 et 37ad3ec non publiés ; dev
+  `claude/albarka-lot4` e186574). + Présence en temps réel (keep-alive 25 s,
+  en ligne/absent/hors ligne, Clients, Personnels, chat, WhatsApp). + Actions sur les comptes (désactiver,
   réinitialiser le mot de passe avec fermeture des sessions via iat,
   dernière connexion / modification) ; suppression client par admin seul. Correction :
   « administrateur » = compte qui a tous les droits → règle Administrateur du
@@ -134,7 +135,7 @@ concerné.
   admin@sawalismartsystems.com seul ; suppression d'un compte du personnel
   par le superviseur (trace deleted_users) ; « Créer comptes de test » (+alias
   e-mail, invisibles sauf superviseur, exclus des envois de masse) ;
-  Paramètres superviseur seul (RGPD compris). 82 tests + navigateur OK.
+  Paramètres superviseur seul (RGPD compris). 83 tests + navigateur OK.
 - **À refaire pour** : `Site-Albarka` — **lot 1 publié et déployé en production le
   2026-09-23** (commit Emergent `ccab0b2`, identique au patch ; routes et
   frontend vérifiés sur albarka-bf.com ; premier retour réel de l'utilisateur

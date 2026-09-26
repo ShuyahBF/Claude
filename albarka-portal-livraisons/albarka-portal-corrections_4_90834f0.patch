@@ -1,8 +1,9 @@
-From 37ad3ec9441db49b441f2ebdf442fa529747bcea Mon Sep 17 00:00:00 2001
+From 90834f00ec82f31249e19d3d4508483f54848923 Mon Sep 17 00:00:00 2001
 From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
-Date: Sat, 26 Sep 2026 01:58:54 +0000
+Date: Sat, 26 Sep 2026 02:08:45 +0000
 Subject: [PATCH] =?UTF-8?q?Superviseur=20r=C3=A9serv=C3=A9,=20actions=20su?=
- =?UTF-8?q?r=20les=20comptes,=20comptes=20de=20test,=20Param=C3=A8tres?=
+ =?UTF-8?q?r=20les=20comptes,=20pr=C3=A9sence,=20comptes=20de=20test,=20Pa?=
+ =?UTF-8?q?ram=C3=A8tres?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -17,35 +18,45 @@ Content-Transfer-Encoding: 8bit
 - Actions sur les comptes clients et du personnel : désactiver / réactiver,
   réinitialiser le mot de passe (sessions ouvertes fermées), dernière
   connexion et dernière modification (date, heure, auteur).
+- Présence en temps réel (keep-alive) des clients et collaborateurs :
+  en ligne / absent / hors ligne, dans Clients, Personnels, le chat interne
+  et la messagerie WhatsApp.
 - Bouton « Créer comptes de test » : comptes de la recette avec adresses
   +alias, invisibles de tous sauf du superviseur, exclus des envois de masse ;
   suppression groupée.
 - Paramètres réservés au superviseur (menu et routes : réglages, image de
   marque, certificats, tests de configuration) ; RGPD modifiable par lui.
 ---
- backend/albarka_admin_settings.py          |  14 +-
- backend/albarka_auth.py                    |  18 +-
- backend/albarka_branding.py                |   4 +-
- backend/albarka_clients.py                 | 248 ++++++++++++++++++---
- backend/albarka_dashboard.py               |   9 +-
- backend/albarka_forms.py                   |   5 +-
- backend/albarka_models.py                  |  43 +++-
- backend/albarka_myaccount.py               |   6 +-
- backend/albarka_notifications.py           |   1 +
- backend/albarka_phase_c.py                 |  10 +-
- backend/albarka_reports_mgmt.py            |   3 +-
- backend/albarka_settings_tests.py          |   4 +-
- backend/albarka_signing.py                 |   5 +-
- backend/tests/test_accounts_lot4.py        | 209 +++++++++++++++++
- backend/tests/test_client_space_lot3.py    |  29 +--
- frontend/src/components/AccountActions.jsx | 142 ++++++++++++
- frontend/src/components/PortalLayout.jsx   |   4 +-
- frontend/src/pages/admin/AdminClients.jsx  |  11 +-
- frontend/src/pages/admin/AdminSettings.jsx |   7 +-
- frontend/src/pages/admin/AdminStaff.jsx    | 119 +++++++++-
- 20 files changed, 779 insertions(+), 112 deletions(-)
+ backend/albarka_admin_settings.py             |  14 +-
+ backend/albarka_auth.py                       |  18 +-
+ backend/albarka_branding.py                   |   4 +-
+ backend/albarka_clients.py                    | 248 ++++++++++++++++--
+ backend/albarka_dashboard.py                  |   9 +-
+ backend/albarka_forms.py                      |   5 +-
+ backend/albarka_models.py                     |  43 ++-
+ backend/albarka_myaccount.py                  |   6 +-
+ backend/albarka_notifications.py              |   1 +
+ backend/albarka_phase_c.py                    |  13 +-
+ backend/albarka_presence.py                   | 113 ++++++++
+ backend/albarka_reports_mgmt.py               |   3 +-
+ backend/albarka_settings_tests.py             |   4 +-
+ backend/albarka_signing.py                    |   5 +-
+ backend/server.py                             |   6 +
+ backend/tests/test_accounts_lot4.py           | 237 +++++++++++++++++
+ backend/tests/test_client_space_lot3.py       |  29 +-
+ frontend/src/components/AccountActions.jsx    | 142 ++++++++++
+ frontend/src/components/ChatBubble.jsx        |  17 +-
+ frontend/src/components/PortalLayout.jsx      |  10 +-
+ frontend/src/components/Presence.jsx          |  97 +++++++
+ frontend/src/pages/admin/AdminClients.jsx     |  20 +-
+ frontend/src/pages/admin/AdminSettings.jsx    |   7 +-
+ frontend/src/pages/admin/AdminStaff.jsx       | 128 ++++++++-
+ .../admin/AdminWhatsAppConversations.jsx      |  22 +-
+ 25 files changed, 1082 insertions(+), 119 deletions(-)
+ create mode 100644 backend/albarka_presence.py
  create mode 100644 backend/tests/test_accounts_lot4.py
  create mode 100644 frontend/src/components/AccountActions.jsx
+ create mode 100644 frontend/src/components/Presence.jsx
 
 diff --git a/backend/albarka_admin_settings.py b/backend/albarka_admin_settings.py
 index 0c020ca..dbbd2e7 100644
@@ -673,7 +684,7 @@ index dae4d38..7d16127 100644
                  {"can_receive_notifications": {"$exists": False}},
                  {"can_receive_notifications": True},
 diff --git a/backend/albarka_phase_c.py b/backend/albarka_phase_c.py
-index 345a7ee..7f89bcc 100644
+index 345a7ee..d3a808d 100644
 --- a/backend/albarka_phase_c.py
 +++ b/backend/albarka_phase_c.py
 @@ -24,7 +24,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -685,7 +696,24 @@ index 345a7ee..7f89bcc 100644
  )
  from db import db, serialize, serialize_many
  
-@@ -1024,15 +1024,15 @@ async def send_broadcast(
+@@ -139,6 +139,7 @@ async def list_chat_threads(user: dict = Depends(require_staff())):
+     result = []
+     for t in visible:
+         last = last_by_thread.get(t["id"])
++        peer_id = None  # discussion directe : l'interlocuteur (présence en ligne affichée)
+         if t.get("kind") == "dm":
+             peer_id = next((p for p in (t.get("participants") or []) if p != user["id"]), None)
+             peer = await db.users.find_one({"id": peer_id}, {"_id": 0, "full_name": 1}) if peer_id else None
+@@ -146,7 +147,7 @@ async def list_chat_threads(user: dict = Depends(require_staff())):
+         else:
+             title = t["title"]
+         result.append({
+-            "thread_id": t["id"], "title": title, "kind": t.get("kind", "group"),
++            "thread_id": t["id"], "title": title, "kind": t.get("kind", "group"), "peer_id": peer_id,
+             "last_at": last["last_at"] if last else t["created_at"],
+             "last_author": last["last_author"] if last else None,
+             "last_body": (last["last_body"][:120] if last else ""),
+@@ -1024,15 +1025,15 @@ async def send_broadcast(
      """
      if payload.scope == "clients":
          recipients = await db.users.find(
@@ -705,6 +733,125 @@ index 345a7ee..7f89bcc 100644
          ).to_list(2000)
  
      bid = secrets.token_urlsafe(12)
+diff --git a/backend/albarka_presence.py b/backend/albarka_presence.py
+new file mode 100644
+index 0000000..92fcb6d
+--- /dev/null
++++ b/backend/albarka_presence.py
+@@ -0,0 +1,113 @@
++"""Présence en temps réel (keep-alive) — qui est connecté au portail.
++
++Chaque page ouverte du portail (espace client comme cabinet) envoie un
++« battement » toutes les 25 s (POST /presence/heartbeat), et un signal
++« hors ligne » à la déconnexion ou à la fermeture de l'onglet
++(POST /presence/offline). Le cabinet lit l'état de tous les comptes
++(GET /presence) pour les listes Clients / Personnels et les fenêtres de
++communication (chat interne, WhatsApp).
++
++États :
++  - online  : battement reçu il y a moins de ONLINE_WINDOW s, onglet visible ;
++  - away    : battement récent mais onglet en arrière-plan ;
++  - offline : plus de battement depuis ONLINE_WINDOW s, ou signal de sortie.
++
++Collection `presence` : un document par compte (_id = user_id). Pas de
++WebSocket dans l'application : même principe de sondage que le chat.
++"""
++from __future__ import annotations
++
++from datetime import datetime, timedelta, timezone
++from typing import Dict, List, Optional
++
++from fastapi import APIRouter, Body, Depends, Query
++
++from albarka_auth import get_current_user, require_staff
++from albarka_models import hide_test_accounts_filter, is_client
++from db import db
++
++router = APIRouter(prefix="/presence", tags=["Présence"])
++
++HEARTBEAT_SECONDS = 25          # fréquence des battements côté navigateur
++ONLINE_WINDOW = 70              # au-delà (≈ 2 battements manqués) : hors ligne
++
++
++def _now() -> datetime:
++    return datetime.now(timezone.utc)
++
++
++def status_of(doc: Optional[Dict], now: Optional[datetime] = None) -> Dict:
++    """État lisible d'un document de présence : {status, last_seen, page}."""
++    if not doc or not doc.get("last_seen"):
++        return {"status": "offline", "last_seen": None, "page": None}
++    now = now or _now()
++    last = datetime.fromisoformat(doc["last_seen"])
++    fresh = (now - last) <= timedelta(seconds=ONLINE_WINDOW)
++    if doc.get("offline") or not fresh:
++        status = "offline"
++    else:
++        status = "online" if doc.get("visible", True) else "away"
++    return {"status": status, "last_seen": doc["last_seen"], "page": doc.get("page") if status != "offline" else None}
++
++
++@router.post("/heartbeat")
++async def heartbeat(payload: Dict = Body(default={}), user: dict = Depends(get_current_user)):
++    """Battement : « je suis là » (+ onglet visible ou non, page ouverte)."""
++    await db.presence.update_one({"_id": user["id"]}, {"$set": {
++        "user_id": user["id"], "last_seen": _now().isoformat(), "offline": False,
++        "visible": bool(payload.get("visible", True)),
++        "page": str(payload.get("page") or "")[:120] or None,
++        "kind": "client" if is_client(user) else "staff",
++    }}, upsert=True)
++    return {"ok": True, "interval": HEARTBEAT_SECONDS}
++
++
++@router.post("/offline")
++async def offline(user: dict = Depends(get_current_user)):
++    """Sortie explicite (déconnexion, fermeture de l'onglet) : hors ligne tout de suite."""
++    await db.presence.update_one({"_id": user["id"]}, {"$set": {
++        "user_id": user["id"], "offline": True, "last_seen": _now().isoformat()}}, upsert=True)
++    return {"ok": True}
++
++
++@router.get("")
++async def presence_all(user: dict = Depends(require_staff())):
++    """État de présence de tous les comptes (cabinet uniquement) + compteurs."""
++    now = _now()
++    hide = hide_test_accounts_filter(user)
++    # Comptes visibles par ce collaborateur (les comptes de test : superviseur seul)
++    users = await db.users.find(hide, {"_id": 0, "id": 1, "roles": 1}).to_list(5000)
++    kinds = {u["id"]: ("client" if "client" in (u.get("roles") or []) else "staff") for u in users}
++    docs = await db.presence.find({"_id": {"$in": list(kinds)}}).to_list(5000)
++    items = {d["_id"]: status_of(d, now) for d in docs}
++    counts = {"staff_online": 0, "client_online": 0}
++    for uid, st in items.items():
++        if st["status"] != "offline":
++            counts[f"{kinds.get(uid, 'staff')}_online"] += 1
++    return {"items": items, "counts": counts, "online_window": ONLINE_WINDOW, "server_time": now.isoformat()}
++
++
++@router.get("/by-phone")
++async def presence_by_phone(phones: List[str] = Query(default=[]), user: dict = Depends(require_staff())):
++    """Présence portail des clients dont le cabinet connaît déjà le numéro
++    (messagerie WhatsApp) : ne renvoie que l'état, jamais d'autre donnée."""
++    phones = [p for p in phones if p][:200]
++    if not phones:
++        return {"items": {}}
++    clients = await db.users.find(
++        {"roles": "client", "$or": [{"phone": {"$in": phones}}, {"whatsapp_number": {"$in": phones}}],
++         **hide_test_accounts_filter(user)},
++        {"_id": 0, "id": 1, "phone": 1, "whatsapp_number": 1}).to_list(500)
++    docs = {d["_id"]: d for d in await db.presence.find({"_id": {"$in": [c["id"] for c in clients]}}).to_list(500)}
++    now = _now()
++    out: Dict[str, Dict] = {}
++    for c in clients:
++        st = status_of(docs.get(c["id"]), now)
++        for p in (c.get("phone"), c.get("whatsapp_number")):
++            if p in phones:
++                out[p] = st
++    return {"items": out}
++
++
++async def ensure_presence_indexes() -> None:
++    await db.presence.create_index("last_seen")
 diff --git a/backend/albarka_reports_mgmt.py b/backend/albarka_reports_mgmt.py
 index 6632c1c..7d31620 100644
 --- a/backend/albarka_reports_mgmt.py
@@ -766,12 +913,43 @@ index 619199f..5e74c99 100644
          logger.exception("Déchiffrement passphrase échoué pour cert %s", cert_id)
          return None
 -
+diff --git a/backend/server.py b/backend/server.py
+index e4a2c9c..c66a8ca 100644
+--- a/backend/server.py
++++ b/backend/server.py
+@@ -42,6 +42,8 @@ from albarka_phase_c import (  # noqa: E402
+     messaging_router,
+ )
+ from albarka_public import router as public_router  # noqa: E402
++# Présence en temps réel (keep-alive : connectés / déconnectés)
++from albarka_presence import ensure_presence_indexes, router as presence_router  # noqa: E402
+ # Espace client : documents déposés / mis à disposition par le cabinet
+ from albarka_client_space import (  # noqa: E402
+     ensure_client_space_indexes,
+@@ -112,6 +114,8 @@ api_router.include_router(wa_inbox_router)
+ api_router.include_router(wa_extras_router)
+ # Endpoints publics (bouton wa.me — Partie 0)
+ api_router.include_router(public_router)
++# Présence : battements des pages ouvertes + état lu par le cabinet
++api_router.include_router(presence_router)
+ # Espace client : dépôts du cabinet (factures, rapports… faits ailleurs) + page client
+ api_router.include_router(client_space_router)
+ api_router.include_router(client_space_me_router)
+@@ -189,6 +193,8 @@ async def _ensure_indexes():
+         await ensure_forms_indexes()
+         # Espace client (documents du cabinet par client)
+         await ensure_client_space_indexes()
++        # Présence (keep-alive)
++        await ensure_presence_indexes()
+     except Exception:
+         logger.exception("Échec création index Mongo (non bloquant)")
+ 
 diff --git a/backend/tests/test_accounts_lot4.py b/backend/tests/test_accounts_lot4.py
 new file mode 100644
-index 0000000..cb856ee
+index 0000000..9a64b67
 --- /dev/null
 +++ b/backend/tests/test_accounts_lot4.py
-@@ -0,0 +1,209 @@
+@@ -0,0 +1,237 @@
 +"""Lot 4 — rôles Superviseur/Administrateur, suppression du personnel,
 +comptes de test, Paramètres réservés au Superviseur.
 +
@@ -981,6 +1159,34 @@ index 0000000..cb856ee
 +        with pytest.raises(HTTPException) as e:
 +            asyncio.run(albarka_auth.get_current_user(creds(t)))
 +        assert e.value.status_code == 401
++
++
++def test_presence_keep_alive(env, monkeypatch):
++    """Keep-alive : en ligne / absent / hors ligne, lu par le cabinet seulement."""
++    import albarka_presence as pr
++    app = env.c.app
++    api = APIRouter(prefix="/api")
++    api.include_router(pr.router)
++    app.include_router(api)
++    asyncio.run(env.db.users.update_one({"id": "c1"}, {"$set": {"phone": "+22670000001"}}))
++    # Le client ouvre le portail, un collaborateur a son onglet en arrière-plan
++    assert env.c.post("/api/presence/heartbeat", headers=_h("c1"), json={"visible": True, "page": "/portal"}).json()["interval"] == 25
++    env.c.post("/api/presence/heartbeat", headers=_h("compta"), json={"visible": False})
++    data = env.c.get("/api/presence", headers=_h("dir")).json()
++    assert data["items"]["c1"]["status"] == "online" and data["items"]["u-compta"]["status"] == "away"
++    assert data["counts"] == {"staff_online": 1, "client_online": 1}
++    assert "u-sup" not in data["items"]  # jamais connecté : hors ligne par défaut (absent de la liste)
++    # Un client ne lit pas la présence des autres
++    assert env.c.get("/api/presence", headers=_h("c1")).status_code == 403
++    # Messagerie WhatsApp : présence par numéro déjà connu
++    by = env.c.get("/api/presence/by-phone", headers=_h("dir"), params=[("phones", "+22670000001"), ("phones", "+22600000000")]).json()
++    assert by["items"] == {"+22670000001": data["items"]["c1"]}
++    # Déconnexion explicite : hors ligne tout de suite
++    env.c.post("/api/presence/offline", headers=_h("c1"))
++    assert env.c.get("/api/presence", headers=_h("dir")).json()["items"]["c1"]["status"] == "offline"
++    # Plus de battement depuis 70 s : hors ligne
++    old = {"last_seen": "2020-01-01T00:00:00+00:00", "visible": True}
++    assert pr.status_of(old)["status"] == "offline" and pr.status_of(None)["status"] == "offline"
 diff --git a/backend/tests/test_client_space_lot3.py b/backend/tests/test_client_space_lot3.py
 index c1c4f6c..68a4c23 100644
 --- a/backend/tests/test_client_space_lot3.py
@@ -1195,11 +1401,75 @@ index 0000000..f2ce59d
 +    </>
 +  );
 +}
+diff --git a/frontend/src/components/ChatBubble.jsx b/frontend/src/components/ChatBubble.jsx
+index 24c73ce..0e9afc6 100644
+--- a/frontend/src/components/ChatBubble.jsx
++++ b/frontend/src/components/ChatBubble.jsx
+@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
+ import { MessageSquare, X, Send, Users, Mic, Square, Search, Paperclip, Loader2, Plus, FileText, MessageCircle } from "lucide-react";
+ import { toast } from "sonner";
+ import { apiClient, extractError, API } from "@/lib/api";
++import { usePresence, PresenceLabel } from "@/components/Presence";
+ import { Button } from "@/components/ui/button";
+ import { Input } from "@/components/ui/input";
+ import { Textarea } from "@/components/ui/textarea";
+@@ -56,6 +57,10 @@ export default function ChatBubble() {
+   const messageRefs = useRef({});
+ 
+   const threadTitle = (threadId) => threads.find((t) => t.thread_id === threadId)?.title || threadId;
++  // Présence en temps réel (sondée seulement quand la bulle est ouverte)
++  const presence = usePresence(open);
++  const presenceMark = (id) => ({ online: "● ", away: "◐ ", offline: "○ " }[presence.items[id]?.status || "offline"]);
++  const activePeerId = threads.find((t) => t.thread_id === activeThread)?.peer_id;
+ 
+   const loadThreads = async () => {
+     if (!user) return;
+@@ -292,7 +297,7 @@ export default function ChatBubble() {
+               <Users className="w-3 h-3 text-slate-500 shrink-0" />
+               <select className="flex-1 h-7 text-xs bg-white rounded border border-input px-1" value={activeThread || ""} onChange={(e) => setActiveThread(e.target.value)} data-testid="chat-bubble-thread-select">
+                 <option value="">— Choisir un fil —</option>
+-                {threads.map((t) => (<option key={t.thread_id} value={t.thread_id}>{t.title}</option>))}
++                {threads.map((t) => (<option key={t.thread_id} value={t.thread_id}>{t.peer_id ? presenceMark(t.peer_id) : ""}{t.title}</option>))}
+               </select>
+             </div>
+           )}
+@@ -306,7 +311,9 @@ export default function ChatBubble() {
+               data-testid="chat-bubble-dm-select"
+             >
+               <option value="">— Discuter avec un collègue —</option>
+-              {colleagues.map((c) => (<option key={c.id} value={c.id}>{c.full_name}</option>))}
++              {/* ● en ligne · ◐ absent · ○ hors ligne ; les collègues en ligne d'abord */}
++              {[...colleagues].sort((a, b) => (presence.items[b.id]?.status === "online") - (presence.items[a.id]?.status === "online"))
++                .map((c) => (<option key={c.id} value={c.id}>{presenceMark(c.id)}{c.full_name}</option>))}
+             </select>
+             <Button
+               size="sm" variant="outline" className="h-7 px-2 text-xs"
+@@ -336,6 +343,12 @@ export default function ChatBubble() {
+             </div>
+           )}
+ 
++          {/* Discussion directe : l'interlocuteur est-il connecté ? */}
++          {activePeerId && (
++            <div className="px-3 py-1.5 border-b border-border bg-white" data-testid="chat-peer-presence">
++              <PresenceLabel presence={presence.items[activePeerId]} />
++            </div>
++          )}
+           <div ref={scrollRef} className="flex-1 p-3 overflow-y-auto space-y-2 bg-slate-50" data-testid="chat-bubble-messages">
+             {!activeThread && (
+               <div className="text-xs text-muted-foreground text-center py-10">
 diff --git a/frontend/src/components/PortalLayout.jsx b/frontend/src/components/PortalLayout.jsx
-index 54dc204..b5e7a01 100644
+index 54dc204..4978c69 100644
 --- a/frontend/src/components/PortalLayout.jsx
 +++ b/frontend/src/components/PortalLayout.jsx
-@@ -110,8 +110,8 @@ const STAFF_MENU = [
+@@ -36,6 +36,7 @@ import { Button } from "@/components/ui/button";
+ import { apiClient } from "@/lib/api";
+ import ChatBubble from "@/components/ChatBubble";
+ import PaymentBubble from "@/components/PaymentBubble";
++import { usePresenceHeartbeat, sendOffline } from "@/components/Presence";
+ 
+ // Actualisation des badges non-lus (WhatsApp/Diffusion) par polling — pas de
+ // WebSocket/SSE dans l'application, même convention que ChatBubble.jsx.
+@@ -110,8 +111,8 @@ const STAFF_MENU = [
      roles: ["superviseur", "direction", "administrateur", "secretariat", "fiscaliste", "comptable"] },
    { to: "/admin/logs", label: "Journal plateforme", icon: ScrollText,
      roles: ["superviseur", "direction", "administrateur"] },
@@ -1210,28 +1480,163 @@ index 54dc204..b5e7a01 100644
    // Accessible à TOUT collaborateur, quel que soit son rôle (alwaysAllowed) —
    // voir allowedFor() ci-dessous.
    { to: "/admin/mon-compte", label: "Mon compte", icon: UserCog, alwaysAllowed: true },
+@@ -125,6 +126,8 @@ function allowedFor(link, roles) {
+ 
+ export default function PortalLayout({ admin = false }) {
+   const { user, logout } = useAuth();
++  // Keep-alive : signale au cabinet que ce compte (client ou collaborateur) est connecté
++  usePresenceHeartbeat(!!user);
+   const [openSidebar, setOpenSidebar] = useState(false);
+   const navigate = useNavigate();
+   const roles = user?.roles || [];
+@@ -153,7 +156,8 @@ export default function PortalLayout({ admin = false }) {
+     setBadges((b) => ({ ...b, [`${page === "diffusion" ? "diffusion_new" : page}`]: 0 }));
+   };
+ 
+-  const handleLogout = () => {
++  const handleLogout = async () => {
++    await sendOffline(); // hors ligne tout de suite, avant de perdre le jeton
+     logout();
+     navigate("/login");
+   };
+diff --git a/frontend/src/components/Presence.jsx b/frontend/src/components/Presence.jsx
+new file mode 100644
+index 0000000..4f77efe
+--- /dev/null
++++ b/frontend/src/components/Presence.jsx
+@@ -0,0 +1,97 @@
++/*
++  Présence en temps réel (keep-alive) — voir albarka_presence.py.
++    - usePresenceHeartbeat() : à monter une fois par page connectée
++      (PortalLayout) ; envoie « je suis là » toutes les 25 s, tout de suite
++      quand l'onglet change de visibilité, et « hors ligne » à la fermeture.
++    - usePresence()          : côté cabinet, état de tous les comptes,
++      rafraîchi toutes les 15 s (pas de WebSocket dans l'application).
++    - PresenceDot / PresenceLabel : pastille verte (en ligne), orange (onglet
++      en arrière-plan), grise (hors ligne) + « vu il y a … ».
++*/
++import React, { useEffect, useState } from "react";
++import { API, apiClient } from "@/lib/api";
++
++const HEARTBEAT_MS = 25000;
++const POLL_MS = 15000;
++
++// Signal « hors ligne » qui part même pendant la fermeture de l'onglet
++// (fetch keepalive : le jeton d'accès est joint, contrairement à sendBeacon).
++export function sendOffline() {
++  let token = null;
++  try { token = localStorage.getItem("albarka_token"); } catch { /* stockage indisponible */ }
++  if (!token) return Promise.resolve();
++  return fetch(`${API}/presence/offline`, {
++    method: "POST", keepalive: true, headers: { Authorization: `Bearer ${token}` },
++  }).catch(() => {});
++}
++
++export function usePresenceHeartbeat(enabled = true) {
++  useEffect(() => {
++    if (!enabled) return undefined;
++    const beat = () => apiClient.post("/presence/heartbeat", {
++      visible: document.visibilityState === "visible",
++      page: window.location.pathname,
++    }).catch(() => {});
++    beat();
++    const t = setInterval(() => { if (!closing) beat(); }, HEARTBEAT_MS);
++    // Fermeture de l'onglet : le navigateur émet « onglet masqué » juste avant
++    // « pagehide ». Le battement « masqué » est donc différé d'un instant et
++    // abandonné si l'onglet se ferme, pour ne pas écraser le « hors ligne ».
++    let closing = false;
++    const onVisibility = () => {
++      if (document.visibilityState === "visible") beat();
++      else setTimeout(() => { if (!closing) beat(); }, 800);
++    };
++    const onHide = () => { closing = true; sendOffline(); };  // fermeture ou navigation hors du portail
++    document.addEventListener("visibilitychange", onVisibility);
++    window.addEventListener("pagehide", onHide);
++    return () => {
++      clearInterval(t);
++      document.removeEventListener("visibilitychange", onVisibility);
++      window.removeEventListener("pagehide", onHide);
++    };
++  }, [enabled]);
++}
++
++export function usePresence(enabled = true) {
++  const [state, setState] = useState({ items: {}, counts: { staff_online: 0, client_online: 0 } });
++  useEffect(() => {
++    if (!enabled) return undefined;
++    let alive = true;
++    const load = () => apiClient.get("/presence").then(({ data }) => { if (alive) setState(data); }).catch(() => {});
++    load();
++    const t = setInterval(load, POLL_MS);
++    return () => { alive = false; clearInterval(t); };
++  }, [enabled]);
++  return state;
++}
++
++// « à l'instant », « il y a 5 min », « il y a 3 h », sinon la date
++export function sinceText(iso) {
++  if (!iso) return "jamais connecté";
++  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
++  if (s < 60) return "à l'instant";
++  if (s < 3600) return `il y a ${Math.round(s / 60)} min`;
++  if (s < 86400) return `il y a ${Math.round(s / 3600)} h`;
++  return `le ${new Date(iso).toLocaleDateString("fr-FR")}`;
++}
++
++const DOT = { online: "bg-emerald-500", away: "bg-amber-400", offline: "bg-slate-300" };
++const LABEL = { online: "En ligne", away: "Absent (onglet en arrière-plan)", offline: "Hors ligne" };
++
++export function PresenceDot({ presence, className = "" }) {
++  const st = presence?.status || "offline";
++  const title = st === "offline" ? (presence?.last_seen ? `Hors ligne — vu ${sinceText(presence.last_seen)}` : "Jamais connecté") : LABEL[st];
++  return <span className={`inline-block w-2.5 h-2.5 rounded-full ring-2 ring-white shrink-0 ${DOT[st]} ${className}`} title={title} aria-label={title} data-status={st} />;
++}
++
++export function PresenceLabel({ presence }) {
++  const st = presence?.status || "offline";
++  return (
++    <span className="inline-flex items-center gap-1.5 text-xs" data-testid="presence-label" data-status={st}>
++      <PresenceDot presence={presence} />
++      {st === "offline" ? <span className="text-muted-foreground">{presence?.last_seen ? `Vu ${sinceText(presence.last_seen)}` : "Jamais connecté"}</span>
++        : <span className={st === "online" ? "text-emerald-700" : "text-amber-700"}>{st === "online" ? "En ligne" : "Absent"}</span>}
++    </span>
++  );
++}
 diff --git a/frontend/src/pages/admin/AdminClients.jsx b/frontend/src/pages/admin/AdminClients.jsx
-index e6584f2..1e8383e 100644
+index e6584f2..e25038b 100644
 --- a/frontend/src/pages/admin/AdminClients.jsx
 +++ b/frontend/src/pages/admin/AdminClients.jsx
-@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
+@@ -14,6 +14,8 @@ import { Label } from "@/components/ui/label";
  import { Checkbox } from "@/components/ui/checkbox";
  import { Link } from "react-router-dom";
  import { useAuth } from "@/contexts/AuthContext";
 +import AccountActions, { AccountDates } from "@/components/AccountActions";
++import { usePresence, PresenceLabel } from "@/components/Presence";
  
  // Doivent rester identiques aux listes équivalentes côté backend (albarka_models.py).
  const CLIENT_MANAGE_ROLES = ["administrateur", "superviseur", "dg", "direction", "secretariat"];
-@@ -28,6 +29,8 @@ export default function AdminClients() {
+@@ -28,6 +30,10 @@ export default function AdminClients() {
    const { user } = useAuth();
    const myRoles = user?.roles || [];
    const canManage = myRoles.some((r) => CLIENT_MANAGE_ROLES.includes(r));
 +  // Supprimer un client : admin uniquement (super-utilisateur du portail)
 +  const isAdminAccount = (user?.email || "").toLowerCase() === "admin@sawalismartsystems.com";
++  // Présence en temps réel des clients (rafraîchie toutes les 15 s)
++  const presence = usePresence();
    const canVerifyPhone = myRoles.some((r) => VERIFY_PHONE_ROLES.includes(r));
    const [items, setItems] = useState([]);
    const [loading, setLoading] = useState(true);
-@@ -204,13 +207,14 @@ export default function AdminClients() {
+@@ -130,7 +136,8 @@ export default function AdminClients() {
+         <div>
+           <div className="text-xs uppercase tracking-[0.2em] text-[#0F6B4A] mb-2">Cabinet</div>
+           <h1 className="font-display text-3xl md:text-4xl text-foreground">Clients</h1>
+-          <p className="text-muted-foreground mt-1">Gérez les comptes des entreprises accompagnées.</p>
++          <p className="text-muted-foreground mt-1">Gérez les comptes des entreprises accompagnées.
++            <span className="ml-2 text-emerald-700" data-testid="client-online-count">· {presence.counts.client_online} client(s) en ligne</span></p>
+         </div>
+         {canManage && (
+         <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setEditing(null); }}>
+@@ -204,13 +211,14 @@ export default function AdminClients() {
                <TableHead>Téléphone</TableHead>
                <TableHead>WhatsApp</TableHead>
                <TableHead>Statut</TableHead>
@@ -1248,15 +1653,18 @@ index e6584f2..1e8383e 100644
              {items.map((c) => (
                <TableRow key={c.id} className="hover:bg-[#0F6B4A]/5">
                  <TableCell className="font-medium">{c.full_name}</TableCell>
-@@ -249,6 +253,7 @@ export default function AdminClients() {
+@@ -249,6 +257,10 @@ export default function AdminClients() {
                      ? <span className="albarka-chip bg-slate-100 text-slate-500">Inactif</span>
                      : <span className="albarka-chip bg-emerald-100 text-emerald-800">Actif</span>}
                  </TableCell>
-+                <TableCell><AccountDates account={c} /></TableCell>
++                <TableCell>
++                  <PresenceLabel presence={presence.items[c.id]} />
++                  <AccountDates account={c} />
++                </TableCell>
                  <TableCell>
                    <button onClick={() => copyId(c.id)} className="text-xs font-mono flex items-center gap-1 hover:text-[#0F6B4A]" data-testid={`copy-tenant-${c.id}`}>
                      {c.id.slice(0, 10)}… <Copy className="w-3 h-3" />
-@@ -260,6 +265,8 @@ export default function AdminClients() {
+@@ -260,6 +272,8 @@ export default function AdminClients() {
                        <Pencil className="w-4 h-4" />
                      </Button>
                    )}
@@ -1298,19 +1706,20 @@ index 61461a0..8a64e22 100644
                )}
                {isAdministrateur && (
 diff --git a/frontend/src/pages/admin/AdminStaff.jsx b/frontend/src/pages/admin/AdminStaff.jsx
-index 7b48751..ed15f0a 100644
+index 7b48751..ab07a09 100644
 --- a/frontend/src/pages/admin/AdminStaff.jsx
 +++ b/frontend/src/pages/admin/AdminStaff.jsx
-@@ -1,6 +1,7 @@
+@@ -1,6 +1,8 @@
  import React, { useEffect, useState, useMemo } from "react";
  import { toast } from "sonner";
 -import { Plus, Pencil } from "lucide-react";
 +import { Plus, Pencil, FlaskConical } from "lucide-react";
 +import AccountActions, { AccountDates } from "@/components/AccountActions";
++import { usePresence, PresenceLabel } from "@/components/Presence";
  import { apiClient, extractError } from "@/lib/api";
  import { Button } from "@/components/ui/button";
  import {
-@@ -47,6 +48,14 @@ export default function AdminStaff() {
+@@ -47,6 +49,16 @@ export default function AdminStaff() {
    // Point 10 — filtrage selon le rôle du visiteur.
    const isAdmin = myRoles.includes("administrateur");
    const canEdit = isAdmin || myRoles.includes("superviseur") || myRoles.includes("direction");
@@ -1322,10 +1731,12 @@ index 7b48751..ed15f0a 100644
 +  // Ligne du tableau : compte admin / compte Superviseur (protégés)
 +  const isAdminAccountRow = (s) => (s.email || "").toLowerCase() === "admin@sawalismartsystems.com";
 +  const isSupRow = (s) => (s.roles || []).includes("superviseur");
++  // Présence en temps réel (rafraîchie toutes les 15 s)
++  const presence = usePresence();
  
    const [items, setItems] = useState([]);
    const [loading, setLoading] = useState(true);
-@@ -54,13 +63,17 @@ export default function AdminStaff() {
+@@ -54,13 +66,17 @@ export default function AdminStaff() {
    const [editing, setEditing] = useState(null); // null = create mode
    const [form, setForm] = useState(emptyForm());
  
@@ -1348,7 +1759,7 @@ index 7b48751..ed15f0a 100644
    // Table filtrée : masque les comptes administrateurs pour les non-admins.
    const visibleItems = useMemo(
      () => (isAdmin ? items : items.filter((s) => !(s.roles || []).includes("administrateur"))),
-@@ -144,6 +157,30 @@ export default function AdminStaff() {
+@@ -144,14 +160,46 @@ export default function AdminStaff() {
      }
    };
  
@@ -1379,9 +1790,12 @@ index 7b48751..ed15f0a 100644
    return (
      <div className="space-y-6" data-testid="admin-staff-page">
        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-@@ -152,6 +189,13 @@ export default function AdminStaff() {
+         <div>
+           <div className="text-xs uppercase tracking-[0.2em] text-[#0F6B4A] mb-2">Cabinet</div>
            <h1 className="font-display text-3xl md:text-4xl text-foreground">Personnels</h1>
-           <p className="text-muted-foreground mt-1">Équipe du cabinet et leurs rôles.</p>
+-          <p className="text-muted-foreground mt-1">Équipe du cabinet et leurs rôles.</p>
++          <p className="text-muted-foreground mt-1">Équipe du cabinet et leurs rôles.
++            <span className="ml-2 text-emerald-700" data-testid="staff-online-count">· {presence.counts.staff_online} collaborateur(s) en ligne</span></p>
          </div>
 +        <div className="flex flex-wrap gap-2">
 +        {/* Comptes de test de la recette : superviseur uniquement */}
@@ -1393,7 +1807,7 @@ index 7b48751..ed15f0a 100644
          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setEditing(null); }}>
            {canEdit && (
              <DialogTrigger asChild>
-@@ -188,14 +232,16 @@ export default function AdminStaff() {
+@@ -188,14 +236,16 @@ export default function AdminStaff() {
                        <Checkbox
                          checked={form.roles.includes(r.value)}
                          onCheckedChange={() => toggleRole(r.value)}
@@ -1412,7 +1826,7 @@ index 7b48751..ed15f0a 100644
                </div>
                <label className="flex items-center gap-2 text-sm cursor-pointer pt-1">
                  <Checkbox
-@@ -224,6 +270,7 @@ export default function AdminStaff() {
+@@ -224,6 +274,7 @@ export default function AdminStaff() {
              </DialogFooter>
            </DialogContent>
          </Dialog>
@@ -1420,7 +1834,7 @@ index 7b48751..ed15f0a 100644
        </div>
  
        <div className="albarka-card overflow-hidden">
-@@ -235,15 +282,20 @@ export default function AdminStaff() {
+@@ -235,15 +286,20 @@ export default function AdminStaff() {
                <TableHead>Rôles</TableHead>
                <TableHead>Téléphone</TableHead>
                <TableHead>Statut</TableHead>
@@ -1443,17 +1857,20 @@ index 7b48751..ed15f0a 100644
                  <TableCell className="text-sm">{s.email}</TableCell>
                  <TableCell className="text-xs">
                    <div className="flex flex-wrap gap-1">
-@@ -258,7 +310,8 @@ export default function AdminStaff() {
+@@ -258,7 +314,11 @@ export default function AdminStaff() {
                      ? <span className="albarka-chip bg-slate-100 text-slate-500">Inactif</span>
                      : <span className="albarka-chip bg-emerald-100 text-emerald-800">Actif</span>}
                  </TableCell>
 -                <TableCell className="text-right">
-+                <TableCell><AccountDates account={s} /></TableCell>
++                <TableCell>
++                  <PresenceLabel presence={presence.items[s.id]} />
++                  <AccountDates account={s} />
++                </TableCell>
 +                <TableCell className="text-right whitespace-nowrap">
                    {canEdit && (
                      <Button
                        variant="ghost"
-@@ -270,12 +323,56 @@ export default function AdminStaff() {
+@@ -270,12 +330,56 @@ export default function AdminStaff() {
                        <Pencil className="w-4 h-4" />
                      </Button>
                    )}
@@ -1510,6 +1927,60 @@ index 7b48751..ed15f0a 100644
      </div>
    );
  }
+diff --git a/frontend/src/pages/admin/AdminWhatsAppConversations.jsx b/frontend/src/pages/admin/AdminWhatsAppConversations.jsx
+index 8b1bb34..398fb84 100644
+--- a/frontend/src/pages/admin/AdminWhatsAppConversations.jsx
++++ b/frontend/src/pages/admin/AdminWhatsAppConversations.jsx
+@@ -7,6 +7,7 @@ import {
+   Zap, Plus, Trash2, Pencil, Tag, BellRing, BellOff, BarChart3, UserPlus,
+ } from "lucide-react";
+ import { apiClient, extractError } from "@/lib/api";
++import { PresenceDot, PresenceLabel } from "@/components/Presence";
+ import { Button } from "@/components/ui/button";
+ import { Input } from "@/components/ui/input";
+ import { Textarea } from "@/components/ui/textarea";
+@@ -220,6 +221,19 @@ export default function AdminWhatsAppConversations() {
+     }
+   };
+ 
++  // Présence portail des contacts qui sont des clients (par numéro, toutes les 15 s)
++  const [portalPresence, setPortalPresence] = useState({});
++  const phonesKey = conversations.map((c) => c.phone).slice(0, 200).join(",");
++  useEffect(() => {
++    if (!phonesKey) return undefined;
++    let alive = true;
++    const load = () => apiClient.get("/presence/by-phone", { params: { phones: phonesKey.split(",") }, paramsSerializer: { indexes: null } })
++      .then(({ data }) => { if (alive) setPortalPresence(data.items || {}); }).catch(() => {});
++    load();
++    const t = setInterval(load, 15000);
++    return () => { alive = false; clearInterval(t); };
++  }, [phonesKey]);
++
+   const filtered = useMemo(() => {
+     const term = q.trim().toLowerCase();
+     return conversations.filter((c) => {
+@@ -407,6 +421,8 @@ export default function AdminWhatsAppConversations() {
+                     <div className="font-medium text-sm truncate flex items-center gap-1.5">
+                       {lbl && <span className={`inline-block w-2 h-2 rounded-full ${lbl.dot}`} title={lbl.text} />}
+                       {c.contact_name || c.phone}
++                      {/* Client connecté au portail en ce moment */}
++                      {portalPresence[c.phone] && portalPresence[c.phone].status !== "offline" && <PresenceDot presence={portalPresence[c.phone]} />}
+                     </div>
+                     <div className="text-[10px] text-muted-foreground shrink-0">{fmtDate(c.last_at)}</div>
+                   </div>
+@@ -451,7 +467,11 @@ export default function AdminWhatsAppConversations() {
+                 ><ArrowLeft className="w-4 h-4" /></button>
+                 <div className="min-w-0 flex-1">
+                   <div className="font-semibold text-sm truncate">{selectedConv?.contact_name || selectedPhone}</div>
+-                  <div className="text-[11px] opacity-80">{selectedPhone}</div>
++                  <div className="text-[11px] opacity-80 flex items-center gap-2">
++                    {selectedPhone}
++                    {/* Présence sur le portail (contact = client du cabinet) */}
++                    {portalPresence[selectedPhone] && <span className="bg-white rounded px-1.5 py-0.5" data-testid="wa-portal-presence"><PresenceLabel presence={portalPresence[selectedPhone]} /></span>}
++                  </div>
+                 </div>
+                 {/* Étiquette */}
+                 <DropdownMenu>
 -- 
 2.43.0
 
