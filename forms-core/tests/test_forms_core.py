@@ -78,6 +78,26 @@ def test_stats_per_question_and_invitations():
     assert fc.in_period("2026-09-30T23:59", "2026-09-01", "2026-09-30")   # dernier jour inclus
 
 
+def test_stats_charts_data():
+    """1.2.0 : données des graphiques (semaine, heures, répondants, complétion)."""
+    pages = fc.normalize_pages(PAGES)
+    subs = [{"id": "s1", "created_at": "2026-09-07T10:15:00+00:00", "respondent_name": "Awa", "source": "invitation", "data": {"statut": "SA"}},
+            {"id": "s2", "created_at": "2026-09-07T10:45:00+00:00", "respondent_name": "Awa", "data": {"statut": "SA", "note": 4}},
+            {"id": "s3", "created_at": "2026-09-08T16:00:00Z", "respondent_email": "b@x.bf", "data": {}},
+            {"id": "s4", "created_at": "2026-09-09T08:00:00", "data": {"nom": "Z"}}]
+    st = fc.form_stats(pages, subs)
+    assert st["by_weekday"][0] == {"day": "Lun", "count": 2} and st["by_weekday"][1]["count"] == 1   # 07/09/2026 = lundi
+    assert len(st["by_hour"]) == 24 and st["by_hour"][10]["count"] == 2 and st["by_hour"][16]["count"] == 1
+    assert st["identified"] == 3 and st["anonymous"] == 1
+    assert st["top_respondents"][0] == {"label": "Awa", "count": 2}
+    assert [r["id"] for r in st["recent"]] == ["s4", "s3", "s2", "s1"] and st["recent"][3]["source"] == "invitation"
+    assert st["active_days"] == 3
+    nb_q = len(st["questions"])
+    assert st["completion_pct"] == round(4 * 100.0 / (nb_q * 4), 1)    # 4 valeurs remplies au total
+    empty = fc.form_stats(pages, [])
+    assert empty["completion_pct"] == 0.0 and empty["recent"] == [] and sum(d["count"] for d in empty["by_weekday"]) == 0
+
+
 def test_export_csv_is_excel_friendly():
     pages = fc.normalize_pages(PAGES)
     rows = fc.submissions_rows(pages, [{"created_at": "2026-09-01T10:00:00", "respondent_name": "Awa", "source": "invitation",
@@ -290,6 +310,7 @@ def test_categories_and_overview(env):
     assert env.c.get(f"/api/forms/{f['id']}", headers=_h("gest")).json()["category_id"] is None
     ov = env.c.get("/api/forms/overview", headers=_h("gest")).json()
     assert ov["forms"] == 1 and ov["invitations"]["sent"] == 0
+    assert len(ov["series_30d"]) == 30 and all(d["count"] == 0 for d in ov["series_30d"])
     assert len(env.c.get("/api/forms/catalog", headers=_h("gest")).json()["field_types"]) == 19
 
 

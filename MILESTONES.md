@@ -179,6 +179,18 @@ concerné.
   multi-clients OK. Recettes complètes : Sawali
   https://claude.ai/artifact/TX7v7c7WR7LA7S8K6p3meZ (291 points), Albarka
   https://claude.ai/artifact/CmYGd3A1QPm8guDCstdYzC (139 points, v2026.5).
+- **Albarka lot 6 — statistiques graphiques des formulaires (forms-core 1.2.0)**
+  — **livré, en attente de publication** (base `37de42f` = lot 5 publié ;
+  `albarka-portal-livraisons/albarka-portal-corrections_6_6d9a105.patch` +
+  `albarka-portal-prompt_6.md` ; dev `claude/albarka-lot6` 6d9a105). Onglet
+  Stats refait (raccourcis de période, export CSV, 6 indicateurs animés, barres
+  par jour / cumul, provenance, identifiés/anonymes, entonnoir des invitations,
+  jours de la semaine, carte de chaleur des heures, meilleurs répondants,
+  10 dernières réponses, barres ou camembert par question, étoiles, nombres au
+  format français) ; bibliothèque : cartes animées, courbe 30 jours, « Les plus
+  remplis » cliquable. Backend : champs ajoutés seulement. v2026.6. 63 tests
+  autonomes Albarka + 12 tests forms-core OK, build OK, navigateur (bureau et
+  téléphone) OK.
 - **À refaire pour** : `Site-Albarka` — **lot 1 publié et déployé en production le
   2026-09-23** (commit Emergent `ccab0b2`, identique au patch ; routes et
   frontend vérifiés sur albarka-bf.com ; premier retour réel de l'utilisateur

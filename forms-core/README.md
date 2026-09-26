@@ -5,7 +5,7 @@ public, réponses, statistiques), partagé par les sites :
 
 | Site | Dépôt / branche | Copie du backend | Copie du frontend | Adaptateur du site |
 |---|---|---|---|---|
-| Albarka | `ShuyahBF/albarka-portal` · `conflict_030926_0658` | `backend/forms_core/` | `frontend/src/components/forms-core/` | `backend/albarka_forms.py` + `frontend/src/pages/admin/AdminForms.jsx`, `pages/portal/MyForms.jsx`, `pages/public/FillForm.jsx` (lot 3, v1.0.0 ; lot 5, v1.1.0) |
+| Albarka | `ShuyahBF/albarka-portal` · `conflict_030926_0658` | `backend/forms_core/` | `frontend/src/components/forms-core/` | `backend/albarka_forms.py` + `frontend/src/pages/admin/AdminForms.jsx`, `pages/portal/MyForms.jsx`, `pages/public/FillForm.jsx` (lot 3, v1.0.0 ; lot 5, v1.1.0 ; lot 6, v1.2.0) |
 
 Version courante : voir `VERSION` (identique à `__version__` dans `backend/forms_core/__init__.py`).
 
@@ -70,6 +70,17 @@ Collections Mongo : `forms`, `forms_submissions`, `forms_invitations`,
 
 ## Historique des versions
 
+- **1.2.0** — statistiques graphiques animées et colorées : nouveau fichier
+  `frontend/forms-core/charts.jsx` (palette, chiffres animés, cartes
+  d'indicateurs, cartes de graphiques, barres animées, infobulles) ; FormStats
+  refait (raccourcis de période, export CSV, 6 indicateurs, barres par jour ou
+  cumul, provenance, identifiés/anonymes, entonnoir des invitations, jours de la
+  semaine, carte de chaleur des heures, meilleurs répondants, 10 dernières
+  réponses, barres ou camembert par question, étoiles pour les notes) ; vue
+  d'ensemble de la bibliothèque en graphiques. Backend : `form_stats` renvoie en
+  plus `by_weekday`, `by_hour`, `identified`, `anonymous`, `top_respondents`,
+  `recent`, `completion_pct`, `active_days` ; `/overview` renvoie `series_30d`.
+  Champs ajoutés seulement (aucune clé retirée, aucune route nouvelle).
 - **1.1.0** — design des Formulaires de SAWALI : nouvelle boîte à outils de
   styles `frontend/forms-core/ui.js` (boutons pleins colorés, champs compacts à
   étiquette en petites majuscules, pastilles, onglets soulignés, cartes,

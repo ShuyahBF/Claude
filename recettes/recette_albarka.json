@@ -245,6 +245,87 @@
   ]
  },
  {
+  "id": "g-stats6",
+  "title": "Statistiques graphiques des formulaires (lot 6)",
+  "who": "Formulaires → Stats — visible par : rôles qui gèrent les formulaires (Formulaires, Direction, Superviseur…)",
+  "prep": "Un formulaire de TEST-RECETTE avec au moins 5 réponses (dont 2 sur invitation) réparties sur plusieurs jours.",
+  "items": [
+   {
+    "id": "g-stats6-1",
+    "do": "Regarder la barre jaune du menu.",
+    "expect": [
+     "Elle affiche v2026.6."
+    ]
+   },
+   {
+    "id": "g-stats6-2",
+    "do": "Ouvrir Formulaires (bibliothèque).",
+    "expect": [
+     "4 cartes colorées dont les chiffres défilent.",
+     "Courbe « Réponses des 30 derniers jours » et graphique « Les plus remplis »."
+    ]
+   },
+   {
+    "id": "g-stats6-3",
+    "do": "Cliquer sur une barre de « Les plus remplis ».",
+    "expect": [
+     "Les statistiques de ce formulaire s'ouvrent."
+    ]
+   },
+   {
+    "id": "g-stats6-4",
+    "do": "Formulaire de TEST-RECETTE → Stats.",
+    "expect": [
+     "6 indicateurs colorés (Réponses, Ouvertures, Conversion, Complétion, Invitations, Taux de réponse).",
+     "Réponses dans le temps, Provenance, Identifiés vs anonymes, Entonnoir, Jours de la semaine, Heures, Meilleurs répondants, 10 dernières réponses."
+    ]
+   },
+   {
+    "id": "g-stats6-5",
+    "do": "Cliquer sur « Cumul », puis sur « Par jour ».",
+    "expect": [
+     "La courbe cumulée remplace les barres, puis les barres reviennent."
+    ]
+   },
+   {
+    "id": "g-stats6-6",
+    "do": "Cliquer sur 7 j, puis sur Tout.",
+    "expect": [
+     "Les chiffres et graphiques changent selon la période."
+    ]
+   },
+   {
+    "id": "g-stats6-7",
+    "do": "Sur une question à choix, cliquer sur « Camembert ».",
+    "expect": [
+     "Anneau avec le total au centre et légende (nombre et %)."
+    ]
+   },
+   {
+    "id": "g-stats6-8",
+    "do": "Sur une question « note » et une question « nombre », lire la carte.",
+    "expect": [
+     "Note : moyenne en étoiles + répartition.",
+     "Nombre : moyenne, min, médiane, max au format français (espaces des milliers)."
+    ]
+   },
+   {
+    "id": "g-stats6-9",
+    "do": "Cliquer sur « Export Excel (CSV) ».",
+    "expect": [
+     "Le fichier des réponses de la période se télécharge et s'ouvre dans Excel."
+    ]
+   },
+   {
+    "id": "g-stats6-10",
+    "do": "Ouvrir les mêmes statistiques sur téléphone.",
+    "expect": [
+     "Les cartes passent l'une sous l'autre, pas de défilement horizontal."
+    ]
+   }
+  ]
+ },
+ {
   "id": "g-deconnexion-auto",
   "title": "Déconnexion automatique après inactivité",
   "who": "Tous les comptes connectés ; délai réglé dans Paramètres → Cabinet (Superviseur)",
