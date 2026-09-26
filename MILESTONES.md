@@ -146,6 +146,20 @@ concerné.
   par le superviseur (trace deleted_users) ; « Créer comptes de test » (+alias
   e-mail, invisibles sauf superviseur, exclus des envois de masse) ;
   Paramètres superviseur seul (RGPD compris). 57 tests autonomes + navigateur OK.
+- **Albarka lot 5 — design SAWALI sur tout le portail** — **livré, en attente
+  de publication** (base `36d9fc1` = lot 4 publié ;
+  `albarka-portal-livraisons/albarka-portal-corrections_5_17d196a.patch` +
+  `albarka-portal-prompt_5.md` ; dev `claude/albarka-lot5` ffc0307). Thème
+  « portail » (classe `portal-ui` sur body : Space Grotesk + Geist, champs,
+  cases, tableaux, cartes, menu à pastille pleine), briques shadcn restylées
+  (bouton, champ, zone de texte, étiquette, case, interrupteur, liste, tableau,
+  fenêtre, onglets soulignés, badge, carte), forms-core 1.1.0 (`ui.js`,
+  bibliothèque en cartes à boutons colorés, titre en double bloqué), actions
+  colorées dans Clients / Personnels / Dépôt ; version v2026.5. Backend
+  inchangé. 30 pages parcourues sans erreur + parcours Formulaires et dépôt
+  multi-clients OK. Recettes complètes : Sawali
+  https://claude.ai/artifact/TX7v7c7WR7LA7S8K6p3meZ (291 points), Albarka
+  https://claude.ai/artifact/CmYGd3A1QPm8guDCstdYzC (139 points, v2026.5).
 - **À refaire pour** : `Site-Albarka` — **lot 1 publié et déployé en production le
   2026-09-23** (commit Emergent `ccab0b2`, identique au patch ; routes et
   frontend vérifiés sur albarka-bf.com ; premier retour réel de l'utilisateur

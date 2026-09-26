@@ -1,0 +1,1995 @@
+From 17d196ac68cbb55dd884df66f98e728f9e58b65a Mon Sep 17 00:00:00 2001
+From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
+Date: Sat, 26 Sep 2026 04:47:03 +0000
+Subject: [PATCH] =?UTF-8?q?Design=20SAWALI=20sur=20tout=20le=20portail=20:?=
+ =?UTF-8?q?=20champs,=20listes,=20cases,=20tableaux,=20fen=C3=AAtres,=20ac?=
+ =?UTF-8?q?tions=20color=C3=A9es?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Thème « portail » (espaces cabinet et client, site public inchangé) :
+  polices Space Grotesk (titres) et Geist (texte), fond gris clair, titres
+  de page compacts, menu latéral avec lien actif en pastille pleine.
+- Briques communes restylées (toutes les pages en profitent) : boutons,
+  champs texte, zones de texte, listes déroulantes, cases à cocher,
+  interrupteurs, tableaux (en-têtes en petites majuscules), fenêtres
+  (coins arrondis, fond voilé), onglets soulignés, badges et cartes ;
+  champs natifs, cases et tableaux des pages harmonisés par le thème.
+- Module commun forms-core 1.1.0 : boîte à outils de styles ui.js et
+  écrans Formulaires au design SAWALI (cartes avec boutons Envoyer, Éditer,
+  Données, Stats, Dupliquer, Archiver ; pastilles de catégories colorées ;
+  constructeur, envoi, réponses, statistiques, page publique, « Mes
+  formulaires ») ; titre en double signalé à la création.
+- Listes Clients, Personnels et Dépôt espace client : actions en boutons
+  pleins colorés (modifier, désactiver, mot de passe, accès temporaire,
+  supprimer, ouvrir, masquer, prévenir).
+- Version affichée : v2026.5.
+---
+ frontend/src/components/AccountActions.jsx    |  22 +-
+ frontend/src/components/ClientSpacePanel.jsx  |  14 +-
+ frontend/src/components/PortalLayout.jsx      |   9 +-
+ .../src/components/TemporaryAccessButton.jsx  |   8 +-
+ .../src/components/forms-core/FormBuilder.jsx | 105 ++++-----
+ .../src/components/forms-core/FormDetail.jsx  |  27 ++-
+ .../components/forms-core/FormRenderer.jsx    |  46 ++--
+ .../components/forms-core/FormResponses.jsx   |  56 ++---
+ .../components/forms-core/FormSendPanel.jsx   | 105 ++++-----
+ .../src/components/forms-core/FormStats.jsx   |  30 +--
+ .../components/forms-core/FormsLibrary.jsx    | 199 ++++++++++++------
+ .../src/components/forms-core/MyForms.jsx     |  26 +--
+ .../components/forms-core/PublicFormPage.jsx  |  30 +--
+ frontend/src/components/forms-core/ui.js      | 119 +++++++++++
+ frontend/src/components/ui/badge.jsx          |   2 +-
+ frontend/src/components/ui/button.jsx         |  17 +-
+ frontend/src/components/ui/card.jsx           |   4 +-
+ frontend/src/components/ui/checkbox.jsx       |   3 +-
+ frontend/src/components/ui/dialog.jsx         |   8 +-
+ frontend/src/components/ui/input.jsx          |   3 +-
+ frontend/src/components/ui/label.jsx          |   3 +-
+ frontend/src/components/ui/select.jsx         |   5 +-
+ frontend/src/components/ui/switch.jsx         |   2 +-
+ frontend/src/components/ui/table.jsx          |   6 +-
+ frontend/src/components/ui/tabs.jsx           |   5 +-
+ frontend/src/components/ui/textarea.jsx       |   3 +-
+ frontend/src/index.css                        |  81 +++++++
+ frontend/src/pages/admin/AdminClients.jsx     |  10 +-
+ frontend/src/pages/admin/AdminStaff.jsx       |  14 +-
+ frontend/src/version.js                       |   4 +-
+ 30 files changed, 630 insertions(+), 336 deletions(-)
+ create mode 100644 frontend/src/components/forms-core/ui.js
+
+diff --git a/frontend/src/components/AccountActions.jsx b/frontend/src/components/AccountActions.jsx
+index f2ce59d..5102ab6 100644
+--- a/frontend/src/components/AccountActions.jsx
++++ b/frontend/src/components/AccountActions.jsx
+@@ -13,6 +13,7 @@ import { toast } from "sonner";
+ import { Power, KeyRound, Trash2, Copy } from "lucide-react";
+ import { apiClient, extractError } from "@/lib/api";
+ import { Button } from "@/components/ui/button";
++import { ui } from "@/components/forms-core/ui";
+ import { Input } from "@/components/ui/input";
+ import { Label } from "@/components/ui/label";
+ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+@@ -83,19 +84,20 @@ export default function AccountActions({ account, onChanged, canManage = true, c
+     <>
+       {canManage && (
+         <>
+-          <Button variant="ghost" size="sm" title={active ? "Désactiver le compte" : "Réactiver le compte"} onClick={toggleActive}
+-            className={active ? "text-amber-700" : "text-emerald-700"} data-testid={`toggle-active-${account.id}`}>
+-            <Power className="w-4 h-4" />
+-          </Button>
+-          <Button variant="ghost" size="sm" title="Réinitialiser le mot de passe" onClick={() => setOpenReset(true)} data-testid={`reset-pwd-${account.id}`}>
+-            <KeyRound className="w-4 h-4" />
+-          </Button>
++          {/* Boutons pleins colorés (design SAWALI) : orange = désactiver, vert = réactiver, bleu = mot de passe */}
++          <button type="button" title={active ? "Désactiver le compte" : "Réactiver le compte"} onClick={toggleActive}
++            className={`${active ? ui.act.iconAmber : ui.act.iconEmerald} ml-1`} data-testid={`toggle-active-${account.id}`}>
++            <Power className="w-3.5 h-3.5" />
++          </button>
++          <button type="button" title="Réinitialiser le mot de passe" onClick={() => setOpenReset(true)} className={`${ui.act.iconSky} ml-1`} data-testid={`reset-pwd-${account.id}`}>
++            <KeyRound className="w-3.5 h-3.5" />
++          </button>
+         </>
+       )}
+       {canDelete && (
+-        <Button variant="ghost" size="sm" className="text-red-600" title="Supprimer" onClick={() => setOpenDelete(true)} data-testid={`delete-account-${account.id}`}>
+-          <Trash2 className="w-4 h-4" />
+-        </Button>
++        <button type="button" className={`${ui.act.iconDanger} ml-1`} title="Supprimer" onClick={() => setOpenDelete(true)} data-testid={`delete-account-${account.id}`}>
++          <Trash2 className="w-3.5 h-3.5" />
++        </button>
+       )}
+ 
+       {/* Réinitialisation du mot de passe */}
+diff --git a/frontend/src/components/ClientSpacePanel.jsx b/frontend/src/components/ClientSpacePanel.jsx
+index 508b03e..8f1ed7e 100644
+--- a/frontend/src/components/ClientSpacePanel.jsx
++++ b/frontend/src/components/ClientSpacePanel.jsx
+@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
+ import { Input } from "@/components/ui/input";
+ import { Label } from "@/components/ui/label";
+ import { useAuth } from "@/contexts/AuthContext";
++import { ui } from "@/components/forms-core/ui";
+ 
+ // Doit rester identique à CLIENT_MANAGE_ROLES côté backend : qui peut ouvrir/fermer les modules.
+ const CLIENT_MANAGE_ROLES = ["administrateur", "superviseur", "dg", "direction", "secretariat"];
+@@ -218,12 +219,13 @@ export default function ClientSpacePanel({ tenantId }) {
+                 </td>
+                 <td className="p-3">
+                   <div className="flex justify-end gap-1">
+-                    <Button size="sm" variant="ghost" className="px-2" title="Ouvrir" onClick={() => openFile(it)}><Eye className="w-4 h-4" /></Button>
+-                    <Button size="sm" variant="ghost" className="px-2" title={it.visible ? "Masquer au client" : "Rendre visible (le client est prévenu)"} onClick={() => setVisible(it, !it.visible)} data-testid={`cs-toggle-${it.id}`}>
+-                      {it.visible ? <EyeOff className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4 text-[#0F6B4A]" />}
+-                    </Button>
+-                    {it.source === "upload" && it.visible && <Button size="sm" variant="ghost" className="px-2" title="Prévenir à nouveau le client" onClick={() => renotify(it)}><Bell className="w-4 h-4" /></Button>}
+-                    {it.source === "upload" && <Button size="sm" variant="ghost" className="px-2 text-rose-600" title="Retirer" onClick={() => remove(it)}><Trash2 className="w-4 h-4" /></Button>}
++                    {/* Actions : boutons pleins colorés (design SAWALI) */}
++                    <button type="button" className={ui.act.iconSky} title="Ouvrir" onClick={() => openFile(it)}><Eye className="w-3.5 h-3.5" /></button>
++                    <button type="button" className={it.visible ? ui.act.iconDark : ui.act.iconEmerald} title={it.visible ? "Masquer au client" : "Rendre visible (le client est prévenu)"} onClick={() => setVisible(it, !it.visible)} data-testid={`cs-toggle-${it.id}`}>
++                      {it.visible ? <EyeOff className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
++                    </button>
++                    {it.source === "upload" && it.visible && <button type="button" className={ui.act.iconAmber} title="Prévenir à nouveau le client" onClick={() => renotify(it)}><Bell className="w-3.5 h-3.5" /></button>}
++                    {it.source === "upload" && <button type="button" className={ui.act.iconDanger} title="Retirer" onClick={() => remove(it)}><Trash2 className="w-3.5 h-3.5" /></button>}
+                   </div>
+                 </td>
+               </tr>
+diff --git a/frontend/src/components/PortalLayout.jsx b/frontend/src/components/PortalLayout.jsx
+index 904c0f3..a3ba4fe 100644
+--- a/frontend/src/components/PortalLayout.jsx
++++ b/frontend/src/components/PortalLayout.jsx
+@@ -158,6 +158,13 @@ export default function PortalLayout({ admin = false }) {
+     setBadges((b) => ({ ...b, [`${page === "diffusion" ? "diffusion_new" : page}`]: 0 }));
+   };
+ 
++  // Thème « portail » (design SAWALI) : classe sur <body> pour couvrir aussi
++  // les fenêtres rendues hors de la page ; retirée en quittant le portail.
++  useEffect(() => {
++    document.body.classList.add("portal-ui");
++    return () => document.body.classList.remove("portal-ui");
++  }, []);
++
+   const handleLogout = async () => {
+     await sendOffline(); // hors ligne tout de suite, avant de perdre le jeton
+     logout();
+@@ -165,7 +172,7 @@ export default function PortalLayout({ admin = false }) {
+   };
+ 
+   return (
+-    <div className="min-h-screen bg-[var(--albarka-paper)] flex">
++    <div className="min-h-screen bg-slate-50 flex">
+       {/* Sidebar */}
+       <aside
+         data-testid="portal-sidebar"
+diff --git a/frontend/src/components/TemporaryAccessButton.jsx b/frontend/src/components/TemporaryAccessButton.jsx
+index 3d92fce..3b99965 100644
+--- a/frontend/src/components/TemporaryAccessButton.jsx
++++ b/frontend/src/components/TemporaryAccessButton.jsx
+@@ -10,6 +10,7 @@ import { toast } from "sonner";
+ import { TimerReset, Copy } from "lucide-react";
+ import { apiClient, extractError } from "@/lib/api";
+ import { Button } from "@/components/ui/button";
++import { ui } from "@/components/forms-core/ui";
+ import { Label } from "@/components/ui/label";
+ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+ 
+@@ -34,9 +35,10 @@ export default function TemporaryAccessButton({ account }) {
+ 
+   return (
+     <>
+-      <Button variant="ghost" size="sm" title="Accès temporaire" onClick={() => setOpen(true)} data-testid={`temp-access-${account.id}`}>
+-        <TimerReset className="w-4 h-4" />
+-      </Button>
++      {/* Bouton plein violet (design SAWALI) */}
++      <button type="button" title="Accès temporaire" onClick={() => setOpen(true)} className={`${ui.act.iconIndigo} ml-1`} data-testid={`temp-access-${account.id}`}>
++        <TimerReset className="w-3.5 h-3.5" />
++      </button>
+       <Dialog open={open} onOpenChange={(v) => { if (!v) close(); }}>
+         <DialogContent data-testid="temp-access-dialog">
+           <DialogHeader><DialogTitle>Accès temporaire pour {account.full_name}</DialogTitle></DialogHeader>
+diff --git a/frontend/src/components/forms-core/FormBuilder.jsx b/frontend/src/components/forms-core/FormBuilder.jsx
+index 3b1d6f2..8f56dc9 100644
+--- a/frontend/src/components/forms-core/FormBuilder.jsx
++++ b/frontend/src/components/forms-core/FormBuilder.jsx
+@@ -21,8 +21,10 @@ import React, { useEffect, useMemo, useState } from "react";
+ import { GripVertical, ArrowUp, ArrowDown, Copy, Trash2, Plus, Eye, Save, X, Settings2, ListOrdered, Loader2 } from "lucide-react";
+ import FormRenderer from "./FormRenderer";
+ import { FIELD_TYPES, TYPE_BY_KEY, CHOICE_TYPES, newField, newPage } from "./fieldTypes";
++import { ui, cx } from "./ui";
+ 
+-const inputCls = "w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40";
++// Champ compact du panneau de propriétés (design SAWALI)
++const inputCls = ui.inputSm;
+ const clone = (x) => JSON.parse(JSON.stringify(x));
+ 
+ function Properties({ field, pages, pageIdx, update, moveToPage }) {
+@@ -39,48 +41,48 @@ function Properties({ field, pages, pageIdx, update, moveToPage }) {
+ 
+   return (
+     <div className="space-y-3 text-sm" data-testid="field-properties">
+-      <div className="flex items-center gap-2 text-xs text-slate-500">
++      <div className="flex items-center gap-2 text-xs font-semibold text-primary border-b border-slate-100 pb-2">
+         {React.createElement(TYPE_BY_KEY[field.type]?.icon || ListOrdered, { className: "h-4 w-4" })} {TYPE_BY_KEY[field.type]?.label}
+       </div>
+-      <label className="block"><span className="text-xs font-medium text-slate-600">{field.type === "section" ? "Titre" : "Question"}</span>
++      <label className="block"><span className={ui.label}>{field.type === "section" ? "Titre" : "Question"}</span>
+         <input value={field.label} onChange={(e) => set({ label: e.target.value })} className={inputCls} data-testid="prop-label" /></label>
+-      <label className="block"><span className="text-xs font-medium text-slate-600">{field.type === "section" ? "Texte" : "Aide (sous la question)"}</span>
++      <label className="block"><span className={ui.label}>{field.type === "section" ? "Texte" : "Aide (sous la question)"}</span>
+         <textarea rows={2} value={field.help || ""} onChange={(e) => set({ help: e.target.value })} className={inputCls} /></label>
+       {field.type !== "section" && (
+         <div className="flex flex-wrap gap-4">
+-          <label className="inline-flex items-center gap-2"><input type="checkbox" checked={!!field.required} onChange={(e) => set({ required: e.target.checked })} data-testid="prop-required" /> Obligatoire</label>
+-          <label className="inline-flex items-center gap-2"><input type="checkbox" checked={field.width === "half"} onChange={(e) => set({ width: e.target.checked ? "half" : "full" })} /> Demi-largeur</label>
++          <label className="inline-flex items-center gap-2"><input type="checkbox" className={ui.check} checked={!!field.required} onChange={(e) => set({ required: e.target.checked })} data-testid="prop-required" /> Obligatoire</label>
++          <label className="inline-flex items-center gap-2"><input type="checkbox" className={ui.check} checked={field.width === "half"} onChange={(e) => set({ width: e.target.checked ? "half" : "full" })} /> Demi-largeur</label>
+         </div>
+       )}
+       {["text", "textarea", "email", "tel", "url", "number"].includes(field.type) && (
+-        <label className="block"><span className="text-xs font-medium text-slate-600">Texte indicatif</span>
++        <label className="block"><span className={ui.label}>Texte indicatif</span>
+           <input value={field.placeholder || ""} onChange={(e) => set({ placeholder: e.target.value })} className={inputCls} /></label>
+       )}
+       {CHOICE_TYPES.includes(field.type) && (
+-        <label className="block"><span className="text-xs font-medium text-slate-600">Options (une par ligne)</span>
++        <label className="block"><span className={ui.label}>Options (une par ligne)</span>
+           <textarea rows={5} value={(field.options || []).join("\n")} data-testid="prop-options"
+             onChange={(e) => set({ options: e.target.value.split("\n") })}
+             onBlur={(e) => set({ options: e.target.value.split("\n").map((o) => o.trim()).filter(Boolean) })} className={inputCls} /></label>
+       )}
+       {["number", "text", "textarea"].includes(field.type) && (
+         <div className="grid grid-cols-2 gap-2">
+-          <label><span className="text-xs text-slate-600">{field.type === "number" ? "Minimum" : "Longueur min."}</span>
++          <label><span className={ui.label}>{field.type === "number" ? "Minimum" : "Longueur min."}</span>
+             <input type="number" value={field.min ?? ""} onChange={(e) => set({ min: e.target.value === "" ? null : Number(e.target.value) })} className={inputCls} /></label>
+-          <label><span className="text-xs text-slate-600">{field.type === "number" ? "Maximum" : "Longueur max."}</span>
++          <label><span className={ui.label}>{field.type === "number" ? "Maximum" : "Longueur max."}</span>
+             <input type="number" value={field.max ?? ""} onChange={(e) => set({ max: e.target.value === "" ? null : Number(e.target.value) })} className={inputCls} /></label>
+         </div>
+       )}
+       {field.type === "rating" && (
+-        <label className="block"><span className="text-xs text-slate-600">Nombre d'étoiles</span>
++        <label className="block"><span className={ui.label}>Nombre d'étoiles</span>
+           <select value={field.max || 5} onChange={(e) => set({ max: Number(e.target.value) })} className={inputCls}>{[3, 4, 5, 6, 7, 8, 9, 10].map((n) => <option key={n} value={n}>{n}</option>)}</select></label>
+       )}
+       {field.type === "table" && (
+         <div className="space-y-1">
+-          <span className="text-xs font-medium text-slate-600">Colonnes</span>
++          <span className={ui.label}>Colonnes</span>
+           {(field.columns || []).map((c, i) => (
+             <div key={c.key} className="flex gap-1">
+               <input value={c.label} onChange={(e) => set({ columns: field.columns.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })} className={inputCls} />
+-              <select value={c.type} onChange={(e) => set({ columns: field.columns.map((x, j) => (j === i ? { ...x, type: e.target.value } : x)) })} className="rounded border border-slate-300 text-xs px-1">
++              <select value={c.type} onChange={(e) => set({ columns: field.columns.map((x, j) => (j === i ? { ...x, type: e.target.value } : x)) })} className="rounded border border-slate-300 bg-white text-xs px-1">
+                 <option value="text">Texte</option><option value="number">Nombre</option><option value="date">Date</option></select>
+               <button type="button" onClick={() => set({ columns: field.columns.filter((_, j) => j !== i) })} className="text-slate-400 hover:text-rose-600"><X className="h-4 w-4" /></button>
+             </div>
+@@ -90,13 +92,13 @@ function Properties({ field, pages, pageIdx, update, moveToPage }) {
+         </div>
+       )}
+       {field.type === "file" && (
+-        <label className="block"><span className="text-xs text-slate-600">Types acceptés (vide = tous), ex. <code>.pdf,image/*</code></span>
++        <label className="block"><span className={ui.label}>Types acceptés (vide = tous), ex. <code>.pdf,image/*</code></span>
+           <input value={field.accept || ""} onChange={(e) => set({ accept: e.target.value })} className={inputCls} /></label>
+       )}
+       {/* Affichage conditionnel */}
+-      <div className="rounded-lg bg-slate-50 p-2 space-y-1.5">
++      <div className="rounded-lg bg-slate-50 ring-1 ring-slate-200 p-2.5 space-y-1.5">
+         <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700">
+-          <input type="checkbox" checked={!!field.show_if} disabled={!earlier.length} data-testid="prop-condition"
++          <input type="checkbox" className={ui.check} checked={!!field.show_if} disabled={!earlier.length} data-testid="prop-condition"
+             onChange={(e) => set({ show_if: e.target.checked ? { field: earlier[earlier.length - 1]?.id, equals: "" } : null })} />
+           Afficher seulement si…
+         </label>
+@@ -118,7 +120,7 @@ function Properties({ field, pages, pageIdx, update, moveToPage }) {
+         )}
+       </div>
+       {pages.length > 1 && (
+-        <label className="block"><span className="text-xs text-slate-600">Page</span>
++        <label className="block"><span className={ui.label}>Page</span>
+           <select value={pageIdx} onChange={(e) => moveToPage(Number(e.target.value))} className={inputCls}>
+             {pages.map((p, i) => <option key={p.id} value={i}>{p.title}</option>)}</select></label>
+       )}
+@@ -129,25 +131,25 @@ function Properties({ field, pages, pageIdx, update, moveToPage }) {
+ function SettingsTab({ settings, set }) {
+   const s = settings || {};
+   return (
+-    <div className="max-w-2xl space-y-4 text-sm" data-testid="form-settings">
+-      <label className="flex items-center gap-2"><input type="checkbox" checked={s.accepting_responses !== false} onChange={(e) => set({ accepting_responses: e.target.checked })} />
++    <div className={cx(ui.panel, "max-w-2xl space-y-4 text-sm")} data-testid="form-settings">
++      <label className="flex items-center gap-2"><input type="checkbox" className={ui.check} checked={s.accepting_responses !== false} onChange={(e) => set({ accepting_responses: e.target.checked })} />
+         <span><strong>Accepter les réponses</strong> — décocher pour fermer le formulaire.</span></label>
+-      <label className="block"><span className="font-medium">Date limite de réponse</span> <span className="text-xs text-slate-500">(facultatif)</span>
++      <label className="block"><span className={ui.label}>Date limite de réponse</span> <span className="text-xs text-slate-500">(facultatif)</span>
+         <input type="datetime-local" value={(s.close_at || "").slice(0, 16)} onChange={(e) => set({ close_at: e.target.value || null })} className={`${inputCls} max-w-xs`} /></label>
+-      <label className="block"><span className="font-medium">Message affiché après l'envoi</span>
++      <label className="block"><span className={ui.label}>Message affiché après l'envoi</span>
+         <textarea rows={2} value={s.confirmation_message || ""} onChange={(e) => set({ confirmation_message: e.target.value })} className={inputCls} /></label>
+       <fieldset className="space-y-1">
+-        <legend className="font-medium">Identité du répondant (lien public)</legend>
++        <legend className={ui.label}>Identité du répondant (lien public)</legend>
+         {[["none", "Ne pas demander (réponses anonymes)"], ["optional", "Nom et e-mail facultatifs"], ["required", "Nom et e-mail obligatoires"]].map(([v, l]) => (
+-          <label key={v} className="flex items-center gap-2"><input type="radio" name="resp" checked={(s.respondent_info || "optional") === v} onChange={() => set({ respondent_info: v })} /> {l}</label>
++          <label key={v} className="flex items-center gap-2"><input type="radio" className={ui.check} name="resp" checked={(s.respondent_info || "optional") === v} onChange={() => set({ respondent_info: v })} /> {l}</label>
+         ))}
+         <p className="text-xs text-slate-500">Pour un client invité, le nom et l'e-mail sont connus : rien ne lui est demandé.</p>
+       </fieldset>
+-      <label className="flex items-center gap-2"><input type="checkbox" checked={!!s.allow_edit} onChange={(e) => set({ allow_edit: e.target.checked })} />
++      <label className="flex items-center gap-2"><input type="checkbox" className={ui.check} checked={!!s.allow_edit} onChange={(e) => set({ allow_edit: e.target.checked })} />
+         Un client invité peut modifier sa réponse (sinon une seule réponse)</label>
+-      <label className="flex items-center gap-2"><input type="checkbox" checked={s.public_multiple !== false} onChange={(e) => set({ public_multiple: e.target.checked })} />
++      <label className="flex items-center gap-2"><input type="checkbox" className={ui.check} checked={s.public_multiple !== false} onChange={(e) => set({ public_multiple: e.target.checked })} />
+         Lien public : plusieurs réponses possibles avec la même adresse e-mail</label>
+-      <label className="block"><span className="font-medium">Prévenir par e-mail à chaque réponse</span> <span className="text-xs text-slate-500">(adresses séparées par des virgules)</span>
++      <label className="block"><span className={ui.label}>Prévenir par e-mail à chaque réponse</span> <span className="text-xs text-slate-500">(adresses séparées par des virgules)</span>
+         <input value={(s.notify_emails || []).join(", ")} onChange={(e) => set({ notify_emails: e.target.value.split(/[,;\s]+/).filter(Boolean) })} className={inputCls} placeholder="secretariat@cabinet.bf" /></label>
+     </div>
+   );
+@@ -213,23 +215,22 @@ export default function FormBuilder({ form, categories = [], onSave, saving = fa
+   return (
+     <div className="space-y-4" data-testid="form-builder">
+       {/* En-tête : titre, description, catégorie, actions */}
+-      <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
++      <div className={ui.panel}>
+         <div className="flex flex-wrap items-start gap-3">
+-          <input value={draft.title || ""} onChange={(e) => change({ title: e.target.value })} className="flex-1 min-w-[240px] text-lg font-semibold border-0 border-b border-transparent focus:border-primary focus:outline-none" placeholder="Titre du formulaire" data-testid="builder-title" />
+-          <select value={draft.category_id || ""} onChange={(e) => change({ category_id: e.target.value || null })} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
++          <input value={draft.title || ""} onChange={(e) => change({ title: e.target.value })} className="flex-1 min-w-[240px] text-2xl font-display font-bold text-slate-900 focus:outline-none" placeholder="Titre du formulaire" data-testid="builder-title" />
++          <select value={draft.category_id || ""} onChange={(e) => change({ category_id: e.target.value || null })} className={ui.selectInline}>
+             <option value="">Sans catégorie</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+-          <button type="button" onClick={() => { setPreviewData({}); setPreview(true); }} className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm"><Eye className="h-4 w-4" /> Aperçu</button>
+-          <button type="button" onClick={save} disabled={saving || !dirty} data-testid="builder-save"
+-            className="inline-flex items-center gap-1 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium disabled:opacity-50">
++          <button type="button" onClick={() => { setPreviewData({}); setPreview(true); }} className={cx(ui.btnSecondary, "py-1.5")}><Eye className="h-4 w-4" /> Aperçu</button>
++          <button type="button" onClick={save} disabled={saving || !dirty} data-testid="builder-save" className={cx(ui.btnPrimary, "py-1.5")}>
+             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} {dirty ? "Enregistrer" : "Enregistré"}
+           </button>
+         </div>
+-        <textarea rows={1} value={draft.description || ""} onChange={(e) => change({ description: e.target.value })} className="w-full text-sm text-slate-600 border-0 focus:outline-none resize-none" placeholder="Description (affichée en haut du formulaire)" />
++        <textarea rows={1} value={draft.description || ""} onChange={(e) => change({ description: e.target.value })} className="w-full text-sm text-slate-600 focus:outline-none resize-none" placeholder="Description (affichée en haut du formulaire)" />
+       </div>
+ 
+-      <div className="flex gap-2 border-b border-slate-200">
++      <div className={ui.tabs}>
+         {[["questions", "Questions", ListOrdered], ["settings", "Réglages", Settings2]].map(([k, l, I]) => (
+-          <button key={k} type="button" onClick={() => setTab(k)} className={`inline-flex items-center gap-1 px-3 py-2 text-sm -mb-px border-b-2 ${tab === k ? "border-primary text-primary font-medium" : "border-transparent text-slate-500"}`}><I className="h-4 w-4" /> {l}</button>
++          <button key={k} type="button" onClick={() => setTab(k)} className={ui.tab(tab === k)}><I className="h-4 w-4" /> {l}</button>
+         ))}
+       </div>
+ 
+@@ -239,13 +240,13 @@ export default function FormBuilder({ form, categories = [], onSave, saving = fa
+         <div className="grid grid-cols-1 lg:grid-cols-[190px_1fr_280px] gap-4">
+           {/* Palette */}
+           <div className="space-y-1" data-testid="builder-palette">
+-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Ajouter</p>
++            <p className={ui.label}>Ajouter une question</p>
+             <div className="grid grid-cols-2 lg:grid-cols-1 gap-1">
+               {FIELD_TYPES.map((t) => (
+                 <button key={t.type} type="button" draggable onDragStart={() => setDragInfo({ kind: "new", type: t.type })} onDragEnd={() => setDragInfo(null)}
+                   onClick={() => addAfterSelected(t.type)} data-testid={`palette-${t.type}`}
+-                  className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 hover:border-primary hover:text-primary cursor-grab">
+-                  <t.icon className="h-3.5 w-3.5" /> {t.label}
++                  className="flex items-center gap-2 rounded-lg ring-1 ring-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 hover:ring-primary hover:text-primary hover:bg-primary/5 cursor-grab transition">
++                  <t.icon className="h-3.5 w-3.5 text-primary" /> {t.label}
+                 </button>
+               ))}
+             </div>
+@@ -256,20 +257,20 @@ export default function FormBuilder({ form, categories = [], onSave, saving = fa
+             <div className="flex flex-wrap items-center gap-1">
+               {pages.map((p, i) => (
+                 <button key={p.id} type="button" onClick={() => { setPageIdx(i); setSelected(null); }}
+-                  className={`rounded-full px-3 py-1 text-xs border ${i === pageIdx ? "bg-primary text-primary-foreground border-primary" : "bg-white border-slate-300"}`}>{p.title} ({p.fields.length})</button>
++                  className={ui.chip(i === pageIdx)}>{p.title} ({p.fields.length})</button>
+               ))}
+-              <button type="button" onClick={() => { setPages((ps) => [...ps, newPage(ps.length + 1)]); setPageIdx(pages.length); }} className="rounded-full px-2 py-1 text-xs border border-dashed border-slate-400 inline-flex items-center gap-1"><Plus className="h-3 w-3" /> Page</button>
++              <button type="button" onClick={() => { setPages((ps) => [...ps, newPage(ps.length + 1)]); setPageIdx(pages.length); }} className={ui.btnTool}><Plus className="h-3 w-3" /> Page</button>
+             </div>
+             <div className="flex items-center gap-2">
+               <input value={page.title} onChange={(e) => setPages((ps) => { ps[pageIdx].title = e.target.value; return ps; })} className={`${inputCls} max-w-xs`} aria-label="Titre de la page" />
+               {pages.length > 1 && (
+                 <button type="button" onClick={() => { if (!page.fields.length || window.confirm(`Supprimer « ${page.title} » et ses ${page.fields.length} question(s) ?`)) { setPages((ps) => ps.filter((_, i) => i !== pageIdx)); setPageIdx(0); } }}
+-                  className="text-xs text-rose-600 inline-flex items-center gap-1"><Trash2 className="h-3 w-3" /> Supprimer la page</button>
++                  className="text-xs text-rose-500 hover:bg-rose-50 rounded px-1.5 py-1 inline-flex items-center gap-1"><Trash2 className="h-3 w-3" /> Supprimer la page</button>
+               )}
+             </div>
+-            <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/60 p-2 space-y-1.5 min-h-[200px]" data-testid="builder-canvas"
++            <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/60 p-3 space-y-2 min-h-[200px]" data-testid="builder-canvas"
+               onDragOver={(e) => { e.preventDefault(); if (dropIndex === null) setDropIndex(page.fields.length); }} onDrop={(e) => onDrop(e, dropIndex ?? page.fields.length)}>
+-              {page.fields.length === 0 && <p className="text-sm text-slate-400 text-center py-10">Cliquez ou glissez un type de champ depuis la palette.</p>}
++              {page.fields.length === 0 && <p className={ui.empty}>Cliquez ou glissez un type de champ depuis la palette.</p>}
+               {page.fields.map((f, i) => {
+                 const T = TYPE_BY_KEY[f.type];
+                 return (
+@@ -278,9 +279,9 @@ export default function FormBuilder({ form, categories = [], onSave, saving = fa
+                     <div draggable onDragStart={() => setDragInfo({ kind: "move", index: i })} onDragEnd={() => { setDragInfo(null); setDropIndex(null); }}
+                       onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setDropIndex(e.clientY < r.top + r.height / 2 ? i : i + 1); }}
+                       onClick={() => setSelected(f.id)} data-testid={`canvas-field-${i}`}
+-                      className={`group flex items-center gap-2 rounded-lg border bg-white px-2 py-2 cursor-pointer ${selected === f.id ? "border-primary ring-2 ring-primary/20" : "border-slate-200"}`}>
++                      className={cx("group flex items-center gap-2 rounded-xl border bg-white px-3 py-2.5 cursor-pointer transition", selected === f.id ? "border-primary ring-2 ring-primary/20 shadow-sm" : "border-slate-200 hover:border-slate-300")}>
+                       <GripVertical className="h-4 w-4 text-slate-300 cursor-grab shrink-0" />
+-                      {T && <T.icon className="h-4 w-4 text-slate-500 shrink-0" />}
++                      {T && <span className="h-7 w-7 rounded-lg bg-primary/10 text-primary inline-flex items-center justify-center shrink-0"><T.icon className="h-3.5 w-3.5" /></span>}
+                       <div className="min-w-0 flex-1">
+                         <p className={`text-sm truncate ${f.type === "section" ? "font-semibold" : ""}`}>{f.label}{f.required && <span className="text-rose-600"> *</span>}</p>
+                         <p className="text-[11px] text-slate-400">{T?.label}{f.width === "half" ? " · demi-largeur" : ""}{f.show_if ? " · conditionnel" : ""}</p>
+@@ -300,21 +301,21 @@ export default function FormBuilder({ form, categories = [], onSave, saving = fa
+           </div>
+ 
+           {/* Propriétés */}
+-          <div className="rounded-xl border border-slate-200 bg-white p-3 h-fit lg:sticky lg:top-4">
++          <div className={cx(ui.card, "h-fit lg:sticky lg:top-4")}>
+             {selField ? <Properties field={selField} pages={pages} pageIdx={pageIdx} update={updateField} moveToPage={moveToPage} />
+-              : <p className="text-sm text-slate-400">Sélectionnez une question pour la configurer.</p>}
++              : <p className="text-sm text-slate-400 italic">Sélectionnez une question pour la configurer.</p>}
+           </div>
+         </div>
+       )}
+ 
+       {/* Aperçu en direct */}
+       {preview && (
+-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={(e) => e.target === e.currentTarget && setPreview(false)}>
+-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl" data-testid="builder-preview">
+-            <div className="flex items-start justify-between mb-4">
+-              <div><p className="text-xs uppercase tracking-wide text-slate-400">Aperçu</p><h2 className="text-xl font-semibold">{draft.title}</h2>
++        <div className={ui.overlay} onClick={(e) => e.target === e.currentTarget && setPreview(false)}>
++          <div className={ui.modalLg} data-testid="builder-preview">
++            <div className="flex items-start justify-between">
++              <div><p className={ui.eyebrow}>Aperçu</p><h2 className={cx(ui.modalTitle, "text-xl")}><Eye className={ui.modalIcon} /> {draft.title}</h2>
+                 {draft.description && <p className="text-sm text-slate-600 mt-1 whitespace-pre-line">{draft.description}</p>}</div>
+-              <button type="button" onClick={() => setPreview(false)} className="text-slate-400 hover:text-slate-700"><X className="h-5 w-5" /></button>
++              <button type="button" onClick={() => setPreview(false)} className={ui.close} aria-label="Fermer"><X className="h-5 w-5" /></button>
+             </div>
+             <FormRenderer form={{ ...draft, pages }} value={previewData} onChange={setPreviewData} />
+           </div>
+diff --git a/frontend/src/components/forms-core/FormDetail.jsx b/frontend/src/components/forms-core/FormDetail.jsx
+index b1dbe38..d7e6a9d 100644
+--- a/frontend/src/components/forms-core/FormDetail.jsx
++++ b/frontend/src/components/forms-core/FormDetail.jsx
+@@ -18,6 +18,7 @@ import FormSendPanel from "./FormSendPanel";
+ import FormResponses from "./FormResponses";
+ import FormStats from "./FormStats";
+ import { errorText } from "./fieldTypes";
++import { ui, cx } from "./ui";
+ 
+ const TABS = [["build", "Constructeur", PenLine], ["send", "Envoi & suivi", Send], ["responses", "Réponses", Inbox], ["stats", "Statistiques", BarChart3]];
+ 
+@@ -42,20 +43,24 @@ export default function FormDetail({ apiBase = "/forms", basePath = "/admin/form
+     catch (e) { toast.error(errorText(e)); throw e; } finally { setSaving(false); }
+   };
+ 
+-  if (!form) return <p className="text-sm text-slate-500 inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Chargement…</p>;
++  if (!form) return <p className={ui.loading}><Loader2 className="h-4 w-4 animate-spin inline mr-1" /> Chargement…</p>;
+   return (
+-    <div className="space-y-4" data-testid="form-detail">
+-      <div className="flex flex-wrap items-center gap-3">
+-        <button type="button" onClick={() => navigate(basePath)} className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-primary"><ArrowLeft className="h-4 w-4" /> Formulaires</button>
+-        <span className="font-mono text-xs text-slate-400">{form.number}</span>
+-        <h1 className="text-xl font-display font-semibold truncate">{form.title}</h1>
+-        {form.archived_at && <span className="rounded-full bg-slate-800 text-white text-[11px] px-2 py-0.5">Archivé</span>}
+-        {form.closed_reason && !form.archived_at && <span className="rounded-full bg-amber-100 text-amber-900 text-[11px] px-2 py-0.5">Clos</span>}
++    <div className="space-y-5" data-testid="form-detail">
++      {/* Retour, numéro, titre et état du formulaire */}
++      <div className="space-y-1">
++        <button type="button" onClick={() => navigate(basePath)} className="text-sm text-slate-500 hover:text-slate-900 inline-flex items-center gap-1"><ArrowLeft className="h-4 w-4" /> Bibliothèque de formulaires</button>
++        <div className="flex flex-wrap items-center gap-2">
++          <code className={cx(ui.code, "text-[11px] px-2")}>{form.number}</code>
++          <h1 className={cx(ui.h1, "truncate")}>{form.title}</h1>
++          {form.archived_at && <span className={ui.badge.grey}>Archivé</span>}
++          {form.closed_reason && !form.archived_at && <span className={ui.badge.amber}>Clos</span>}
++          {!form.closed_reason && !form.archived_at && <span className={ui.badge.green}>Ouvert</span>}
++        </div>
+       </div>
+-      <div className="flex gap-1 border-b border-slate-200 overflow-x-auto">
++      {/* Onglets soulignés */}
++      <div className={ui.tabs}>
+         {TABS.map(([k, l, I]) => (
+-          <button key={k} type="button" onClick={() => setParams(k === "build" ? {} : { tab: k })} data-testid={`form-tab-${k}`}
+-            className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm -mb-px border-b-2 whitespace-nowrap ${tab === k ? "border-primary text-primary font-medium" : "border-transparent text-slate-500 hover:text-slate-800"}`}>
++          <button key={k} type="button" onClick={() => setParams(k === "build" ? {} : { tab: k })} data-testid={`form-tab-${k}`} className={ui.tab(tab === k)}>
+             <I className="h-4 w-4" /> {l}{k === "responses" ? ` (${form.submissions_count || 0})` : ""}
+           </button>
+         ))}
+diff --git a/frontend/src/components/forms-core/FormRenderer.jsx b/frontend/src/components/forms-core/FormRenderer.jsx
+index 619a251..bc682b9 100644
+--- a/frontend/src/components/forms-core/FormRenderer.jsx
++++ b/frontend/src/components/forms-core/FormRenderer.jsx
+@@ -17,8 +17,10 @@
+ import React, { useEffect, useRef, useState } from "react";
+ import { Star, Paperclip, X, Loader2, ChevronLeft, ChevronRight, Eraser, Plus, Trash2 } from "lucide-react";
+ import { isVisible, isEmpty } from "./fieldTypes";
++import { ui, cx } from "./ui";
+ 
+-const inputCls = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary disabled:bg-slate-50";
++// Champ de saisie du répondant (design SAWALI, couleur du site)
++const inputCls = ui.input;
+ 
+ // --- Signature dessinée au doigt ou à la souris (sans bibliothèque externe)
+ function SignaturePad({ value, onUpload, disabled }) {
+@@ -61,13 +63,13 @@ function SignaturePad({ value, onUpload, disabled }) {
+   return (
+     <div className="space-y-2">
+       <canvas ref={canvasRef} width={600} height={180}
+-        className="w-full h-36 rounded-lg border border-dashed border-slate-400 bg-white touch-none"
++        className="w-full h-40 bg-white rounded-lg ring-1 ring-slate-300 cursor-crosshair touch-none"
+         onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
+         onTouchStart={start} onTouchMove={move} onTouchEnd={end} />
+       <div className="flex gap-2">
+-        <button type="button" onClick={clear} disabled={!dirty || disabled} className="inline-flex items-center gap-1 text-xs rounded border px-2 py-1 disabled:opacity-40"><Eraser className="h-3 w-3" /> Effacer</button>
++        <button type="button" onClick={clear} disabled={!dirty || disabled} className={ui.act.slate}><Eraser className="h-3 w-3" /> Effacer</button>
+         <button type="button" onClick={save} disabled={!dirty || busy || disabled}
+-          className="inline-flex items-center gap-1 text-xs rounded bg-primary text-primary-foreground px-2 py-1 disabled:opacity-40">
++          className={ui.act.primary}>
+           {busy && <Loader2 className="h-3 w-3 animate-spin" />} Valider la signature
+         </button>
+       </div>
+@@ -90,7 +92,7 @@ function Field({ field, value, onChange, error, uploadFile, disabled }) {
+   if (t === "section") {
+     return (
+       <div className="pt-2">
+-        <h3 className="font-semibold text-slate-900 text-base">{field.label}</h3>
++        <h3 className="font-display font-bold text-slate-900 text-base border-b border-slate-100 pb-1">{field.label}</h3>
+         {field.help && <p className="text-sm text-slate-600 mt-1 whitespace-pre-line">{field.help}</p>}
+       </div>
+     );
+@@ -119,7 +121,7 @@ function Field({ field, value, onChange, error, uploadFile, disabled }) {
+       <div className="space-y-1.5">
+         {(field.options || []).map((o) => (
+           <label key={o} className="flex items-center gap-2 text-sm cursor-pointer">
+-            <input type="radio" name={field.id} checked={value === o} disabled={disabled} onChange={() => onChange(o)} className="accent-[hsl(var(--primary))]" /> {o}
++            <input type="radio" name={field.id} checked={value === o} disabled={disabled} onChange={() => onChange(o)} className={ui.check} /> {o}
+           </label>
+         ))}
+       </div>
+@@ -131,10 +133,10 @@ function Field({ field, value, onChange, error, uploadFile, disabled }) {
+       <div className={t === "multiselect" ? "flex flex-wrap gap-1.5" : "space-y-1.5"}>
+         {(field.options || []).map((o) => t === "multiselect" ? (
+           <button key={o} type="button" disabled={disabled} onClick={() => toggle(o)}
+-            className={`rounded-full px-3 py-1 text-xs border ${arr.includes(o) ? "bg-primary text-primary-foreground border-primary" : "bg-white border-slate-300 text-slate-700"}`}>{o}</button>
++            className={ui.chip(arr.includes(o))}>{o}</button>
+         ) : (
+           <label key={o} className="flex items-center gap-2 text-sm cursor-pointer">
+-            <input type="checkbox" checked={arr.includes(o)} disabled={disabled} onChange={() => toggle(o)} className="accent-[hsl(var(--primary))]" /> {o}
++            <input type="checkbox" checked={arr.includes(o)} disabled={disabled} onChange={() => toggle(o)} className={ui.check} /> {o}
+           </label>
+         ))}
+       </div>
+@@ -144,7 +146,7 @@ function Field({ field, value, onChange, error, uploadFile, disabled }) {
+       <div className="flex gap-2">
+         {[["Oui", true], ["Non", false]].map(([label, v]) => (
+           <button key={label} type="button" disabled={disabled} onClick={() => onChange(value === v ? null : v)}
+-            className={`px-4 py-1.5 rounded-lg border text-sm ${value === v ? "bg-primary text-primary-foreground border-primary" : "bg-white border-slate-300"}`}>{label}</button>
++            className={cx("px-5 py-1.5 rounded-lg ring-1 text-sm transition", value === v ? "bg-primary text-primary-foreground ring-primary" : "bg-white ring-slate-300 text-slate-700 hover:ring-primary/50")}>{label}</button>
+         ))}
+       </div>
+     );
+@@ -164,7 +166,7 @@ function Field({ field, value, onChange, error, uploadFile, disabled }) {
+       <div className="flex flex-wrap gap-1">
+         {Array.from({ length: 11 }, (_, i) => i).map((n) => (
+           <button key={n} type="button" disabled={disabled} onClick={() => onChange(value === n ? null : n)}
+-            className={`h-9 w-9 rounded-lg border text-sm ${Number(value) === n && value !== null && value !== "" ? "bg-primary text-primary-foreground border-primary" : "bg-white border-slate-300"}`}>{n}</button>
++            className={cx("h-9 w-9 rounded-lg ring-1 text-sm tabular-nums transition", Number(value) === n && value !== null && value !== "" ? "bg-primary text-primary-foreground ring-primary" : "bg-white ring-slate-300 text-slate-700 hover:ring-primary/50")}>{n}</button>
+         ))}
+       </div>
+     );
+@@ -174,15 +176,15 @@ function Field({ field, value, onChange, error, uploadFile, disabled }) {
+     const setCell = (i, k, v) => onChange(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+     control = (
+       <div className="overflow-x-auto">
+-        <table className="w-full text-sm border border-slate-200 rounded">
+-          <thead className="bg-slate-50"><tr>{cols.map((c) => <th key={c.key} className="text-left px-2 py-1 font-medium">{c.label}</th>)}<th /></tr></thead>
++        <table className="w-full text-sm rounded-lg ring-1 ring-slate-200 overflow-hidden">
++          <thead className={ui.thead}><tr>{cols.map((c) => <th key={c.key} className={ui.th}>{c.label}</th>)}<th /></tr></thead>
+           <tbody>
+             {rows.map((r, i) => (
+               <tr key={i} className="border-t border-slate-100">
+                 {cols.map((c) => (
+                   <td key={c.key} className="p-1">
+                     <input type={c.type === "number" ? "number" : c.type === "date" ? "date" : "text"} value={r[c.key] ?? ""} disabled={disabled}
+-                      onChange={(e) => setCell(i, c.key, e.target.value)} className="w-full rounded border border-slate-200 px-2 py-1 text-sm" />
++                      onChange={(e) => setCell(i, c.key, e.target.value)} className={ui.inputSm} />
+                   </td>
+                 ))}
+                 <td className="p-1 w-8">
+@@ -192,17 +194,17 @@ function Field({ field, value, onChange, error, uploadFile, disabled }) {
+             ))}
+           </tbody>
+         </table>
+-        {!disabled && <button type="button" onClick={() => onChange([...rows, {}])} className="mt-1 inline-flex items-center gap-1 text-xs text-primary"><Plus className="h-3 w-3" /> Ajouter une ligne</button>}
++        {!disabled && <button type="button" onClick={() => onChange([...rows, {}])} className={cx(ui.btnTool, "mt-2")}><Plus className="h-3 w-3" /> Ajouter une ligne</button>}
+       </div>
+     );
+   } else if (t === "file") {
+     control = value?.file_id ? (
+-      <div className="flex items-center gap-2 text-sm">
+-        <Paperclip className="h-4 w-4 text-slate-500" /> <span className="truncate">{value.filename}</span>
++      <div className="flex items-center gap-2 text-sm rounded-lg ring-1 ring-slate-200 bg-slate-50 px-3 py-2">
++        <Paperclip className="h-4 w-4 text-primary" /> <span className="truncate">{value.filename}</span>
+         {!disabled && <button type="button" onClick={() => onChange(null)} className="text-slate-400 hover:text-rose-600"><X className="h-4 w-4" /></button>}
+       </div>
+     ) : (
+-      <label className={`inline-flex items-center gap-2 rounded-lg border border-dashed border-slate-400 px-3 py-2 text-sm ${disabled ? "opacity-50" : "cursor-pointer hover:bg-slate-50"}`}>
++      <label className={cx("flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50/60 px-3 py-4 text-sm text-slate-600", disabled ? "opacity-50" : "cursor-pointer hover:border-primary hover:text-primary")}>
+         {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+         {uploading ? "Envoi…" : "Joindre un fichier"}
+         <input type="file" className="hidden" disabled={disabled || uploading} accept={field.accept || undefined}
+@@ -215,12 +217,12 @@ function Field({ field, value, onChange, error, uploadFile, disabled }) {
+ 
+   return (
+     <div>
+-      <label htmlFor={`ff-${field.id}`} className="block text-sm font-medium text-slate-800 mb-1">
++      <label htmlFor={`ff-${field.id}`} className="block text-sm font-semibold text-slate-800 mb-1">
+         {field.label}{field.required && <span className="text-rose-600"> *</span>}
+       </label>
+       {field.help && <p className="text-xs text-slate-500 mb-1.5 whitespace-pre-line">{field.help}</p>}
+       {control}
+-      {error && <p className="text-xs text-rose-600 mt-1" data-testid={`field-error-${field.id}`}>{error}</p>}
++      {error && <p className={ui.error} data-testid={`field-error-${field.id}`}>{error}</p>}
+     </div>
+   );
+ }
+@@ -276,15 +278,15 @@ export default function FormRenderer({ form, value = {}, onChange, errors = {},
+       </div>
+       <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+         <button type="button" onClick={() => setPageIdx((i) => Math.max(0, i - 1))} disabled={pageIdx === 0}
+-          className="inline-flex items-center gap-1 text-sm text-slate-600 disabled:invisible"><ChevronLeft className="h-4 w-4" /> Précédent</button>
++          className={cx(ui.btnSecondary, "disabled:invisible")}><ChevronLeft className="h-4 w-4" /> Précédent</button>
+         {last ? (
+           <button type="button" onClick={submit} disabled={!onSubmit || submitting || disabled} data-testid="form-submit"
+-            className="inline-flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-5 py-2 text-sm font-medium disabled:opacity-50">
++            className={cx(ui.btnPrimary, "px-5")}>
+             {submitting && <Loader2 className="h-4 w-4 animate-spin" />} {onSubmit ? submitLabel : "Aperçu — envoi désactivé"}
+           </button>
+         ) : (
+           <button type="button" onClick={next} data-testid="form-next"
+-            className="inline-flex items-center gap-1 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-medium">Suivant <ChevronRight className="h-4 w-4" /></button>
++            className={ui.btnPrimary}>Suivant <ChevronRight className="h-4 w-4" /></button>
+         )}
+       </div>
+     </div>
+diff --git a/frontend/src/components/forms-core/FormResponses.jsx b/frontend/src/components/forms-core/FormResponses.jsx
+index 47c5ea6..d2e1d78 100644
+--- a/frontend/src/components/forms-core/FormResponses.jsx
++++ b/frontend/src/components/forms-core/FormResponses.jsx
+@@ -15,6 +15,7 @@ import { toast } from "sonner";
+ import { Download, Search, Trash2, X, Paperclip, Loader2, Inbox } from "lucide-react";
+ import { apiClient } from "@/lib/api";
+ import { errorText, formatDateTime, readableValue, isVisible, downloadBlob } from "./fieldTypes";
++import { ui, cx } from "./ui";
+ 
+ const SOURCES = { invitation: "Invitation", public: "Lien public", portal: "Espace client" };
+ 
+@@ -68,34 +69,35 @@ export default function FormResponses({ apiBase = "/forms", form }) {
+   };
+ 
+   return (
+-    <div className="space-y-3" data-testid="form-responses">
+-      <div className="flex flex-wrap items-end gap-2">
+-        <label className="text-xs text-slate-600">Du<input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="block rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+-        <label className="text-xs text-slate-600">Au<input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="block rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+-        <select value={source} onChange={(e) => setSource(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
++    <div className="space-y-4" data-testid="form-responses">
++      <div className={cx(ui.card, "flex flex-wrap items-end gap-3")}>
++        {/* Période : du … au … */}
++        <label className="block"><span className={ui.label}>Du</span><input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className={ui.inputInline} /></label>
++        <label className="block"><span className={ui.label}>Au</span><input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className={ui.inputInline} /></label>
++        <label className="block"><span className={ui.label}>Origine</span><select value={source} onChange={(e) => setSource(e.target.value)} className={ui.selectInline}>
+           <option value="all">Toutes origines</option><option value="invitation">Invitations</option><option value="public">Lien public</option>
+-        </select>
+-        <div className="relative flex-1 min-w-[180px]"><Search className="h-4 w-4 text-slate-400 absolute left-2.5 top-2.5" />
+-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher dans les réponses…" className="w-full rounded-lg border border-slate-300 pl-8 pr-3 py-1.5 text-sm" /></div>
+-        <button type="button" onClick={exportCsv} className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm" data-testid="responses-export"><Download className="h-4 w-4" /> Export Excel (CSV)</button>
++        </select></label>
++        <div className="relative flex-1 min-w-[180px]"><Search className={ui.searchIcon} />
++          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher dans les réponses…" className={ui.searchInput} /></div>
++        <button type="button" onClick={exportCsv} className={ui.act.emerald} data-testid="responses-export"><Download className="h-3.5 w-3.5" /> Export Excel (CSV)</button>
+       </div>
+-      <p className="text-xs text-slate-500">{items.length} réponse(s){items.length !== data.total ? ` sur ${data.total}` : ""}</p>
+-      {loading ? <p className="text-sm text-slate-500 inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Chargement…</p> : items.length === 0 ? (
+-        <div className="text-center py-12 text-slate-400"><Inbox className="h-10 w-10 mx-auto mb-2" /><p className="text-sm">Aucune réponse pour l'instant.</p></div>
++      <p className={ui.badge.sky}>{items.length} réponse(s){items.length !== data.total ? ` sur ${data.total}` : ""}</p>
++      {loading ? <p className={ui.loading}><Loader2 className="h-4 w-4 animate-spin inline mr-1" /> Chargement…</p> : items.length === 0 ? (
++        <div className={ui.empty}><Inbox className="h-10 w-10 mx-auto mb-2 opacity-40" />Aucune réponse pour l'instant.</div>
+       ) : (
+         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+-          <table className="w-full text-sm">
+-            <thead className="bg-slate-50 text-xs text-slate-500 text-left"><tr>
+-              <th className="px-3 py-2">Date</th><th className="px-3">Répondant</th><th className="px-3">Origine</th>
+-              {cols.map((f) => <th key={f.id} className="px-3 max-w-[180px] truncate">{f.label}</th>)}<th /></tr></thead>
++          <table className={ui.table}>
++            <thead className={ui.thead}><tr>
++              <th className={ui.th}>Date</th><th className={ui.th}>Répondant</th><th className={ui.th}>Origine</th>
++              {cols.map((f) => <th key={f.id} className={cx(ui.th, "max-w-[180px] truncate")}>{f.label}</th>)}<th className={ui.th} /></tr></thead>
+             <tbody>
+               {items.map((s) => (
+-                <tr key={s.id} onClick={() => setOpen(s)} className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer" data-testid="response-row">
++                <tr key={s.id} onClick={() => setOpen(s)} className={cx(ui.tr, "cursor-pointer")} data-testid="response-row">
+                   <td className="px-3 py-2 whitespace-nowrap text-xs">{formatDateTime(s.created_at)}{s.revisions ? <span className="text-slate-400"> (modifiée)</span> : null}</td>
+                   <td className="px-3"><span className="font-medium">{s.respondent_name || "Anonyme"}</span><span className="block text-[11px] text-slate-400">{s.respondent_email}</span></td>
+-                  <td className="px-3 text-xs">{SOURCES[s.source] || s.source}</td>
++                  <td className="px-3"><span className={s.source === "public" ? ui.badge.violet : ui.badge.sky}>{SOURCES[s.source] || s.source}</span></td>
+                   {cols.map((f) => <td key={f.id} className="px-3 max-w-[180px] truncate text-xs">{readableValue(f, s.data?.[f.id])}</td>)}
+-                  <td className="px-2 text-right"><button type="button" onClick={(e) => { e.stopPropagation(); remove(s); }} className="p-1 text-slate-400 hover:text-rose-600" title="Supprimer"><Trash2 className="h-4 w-4" /></button></td>
++                  <td className="px-2 text-right"><button type="button" onClick={(e) => { e.stopPropagation(); remove(s); }} className={cx(ui.act.icon, "hover:text-rose-600")} title="Supprimer"><Trash2 className="h-3.5 w-3.5" /></button></td>
+                 </tr>
+               ))}
+             </tbody>
+@@ -104,19 +106,19 @@ export default function FormResponses({ apiBase = "/forms", form }) {
+       )}
+ 
+       {open && (
+-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={(e) => e.target === e.currentTarget && setOpen(null)}>
+-          <div className="w-full max-w-2xl max-h-[88vh] overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl" data-testid="response-detail">
+-            <div className="flex items-start justify-between mb-3">
+-              <div><h3 className="font-semibold">{open.respondent_name || "Réponse anonyme"}</h3>
++        <div className={ui.overlay} onClick={(e) => e.target === e.currentTarget && setOpen(null)}>
++          <div className={ui.modalLg} data-testid="response-detail">
++            <div className="flex items-start justify-between">
++              <div><h3 className={ui.modalTitle}><Inbox className={ui.modalIcon} /> {open.respondent_name || "Réponse anonyme"}</h3>
+                 <p className="text-xs text-slate-500">{open.respondent_email} · {formatDateTime(open.created_at)} · {SOURCES[open.source] || open.source}</p></div>
+-              <button type="button" onClick={() => setOpen(null)} className="text-slate-400 hover:text-slate-700"><X className="h-5 w-5" /></button>
++              <button type="button" onClick={() => setOpen(null)} className={ui.close} aria-label="Fermer"><X className="h-5 w-5" /></button>
+             </div>
+-            <dl className="divide-y divide-slate-100">
++            <dl className="divide-y divide-slate-100 rounded-lg ring-1 ring-slate-200 px-3">
+               {fields.filter((f) => isVisible(f, open.data || {})).map((f) => {
+                 const v = open.data?.[f.id];
+                 return (
+                   <div key={f.id} className="py-2 grid grid-cols-1 sm:grid-cols-3 gap-1">
+-                    <dt className="text-xs font-medium text-slate-500">{f.label}</dt>
++                    <dt className={ui.label}>{f.label}</dt>
+                     <dd className="sm:col-span-2 text-sm text-slate-800 whitespace-pre-line">
+                       {v && typeof v === "object" && v.file_id ? (
+                         <button type="button" onClick={() => openFile(v.file_id)} className="inline-flex items-center gap-1 text-primary underline"><Paperclip className="h-3.5 w-3.5" /> {f.type === "signature" ? "Voir la signature" : v.filename}</button>
+@@ -129,7 +131,7 @@ export default function FormResponses({ apiBase = "/forms", form }) {
+                 );
+               })}
+             </dl>
+-            <div className="mt-4 flex justify-end"><button type="button" onClick={() => remove(open)} className="inline-flex items-center gap-1 text-sm text-rose-600"><Trash2 className="h-4 w-4" /> Supprimer cette réponse</button></div>
++            <div className={ui.modalFooter}><button type="button" onClick={() => setOpen(null)} className={ui.btnSecondary}>Fermer</button><button type="button" onClick={() => remove(open)} className={ui.btnDanger}><Trash2 className="h-4 w-4" /> Supprimer cette réponse</button></div>
+           </div>
+         </div>
+       )}
+diff --git a/frontend/src/components/forms-core/FormSendPanel.jsx b/frontend/src/components/forms-core/FormSendPanel.jsx
+index 8902c69..2b00ca8 100644
+--- a/frontend/src/components/forms-core/FormSendPanel.jsx
++++ b/frontend/src/components/forms-core/FormSendPanel.jsx
+@@ -17,12 +17,14 @@ import { toast } from "sonner";
+ import { Send, Users, Search, Link as LinkIcon, Copy, QrCode, RotateCcw, Bell, Ban, ExternalLink, Loader2, Mail, MessageCircle, Globe } from "lucide-react";
+ import { apiClient } from "@/lib/api";
+ import { errorText, formatDateTime } from "./fieldTypes";
++import { ui, cx } from "./ui";
+ 
++// Statut d'une invitation : libellé + badge coloré
+ const STATUS = {
+-  sent: ["Envoyé", "bg-slate-100 text-slate-700"],
+-  opened: ["Ouvert", "bg-sky-100 text-sky-800"],
+-  answered: ["Répondu", "bg-emerald-100 text-emerald-800"],
+-  revoked: ["Désactivé", "bg-rose-100 text-rose-700"],
++  sent: ["Envoyé", ui.badge.grey],
++  opened: ["Ouvert", ui.badge.sky],
++  answered: ["Répondu", ui.badge.green],
++  revoked: ["Désactivé", ui.badge.red],
+ };
+ 
+ export default function FormSendPanel({ apiBase = "/forms", form, onChanged, publicPath = "/f" }) {
+@@ -113,74 +115,73 @@ export default function FormSendPanel({ apiBase = "/forms", form, onChanged, pub
+ 
+   return (
+     <div className="space-y-5" data-testid="form-send-panel">
+-      {form.closed_reason && <p className="rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-sm px-3 py-2">{form.closed_reason} Les destinataires ne pourront pas répondre tant qu'il n'est pas rouvert (onglet Constructeur → Réglages).</p>}
++      {form.closed_reason && <p className="rounded-xl bg-amber-50 ring-1 ring-amber-200 text-amber-900 text-sm px-4 py-2.5">{form.closed_reason} Les destinataires ne pourront pas répondre tant qu'il n'est pas rouvert (onglet Constructeur → Réglages).</p>}
+       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+         {/* 1. Envoi à des clients */}
+-        <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+-          <h3 className="font-semibold inline-flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Envoyer à des clients</h3>
++        <section className={ui.panel}>
++          <h3 className={ui.panelTitle}><Users className={ui.panelIcon} /> Envoyer à des clients</h3>
+           <div className="relative">
+-            <Search className="h-4 w-4 text-slate-400 absolute left-2.5 top-2.5" />
+-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher un client (nom, société, e-mail)…" className="w-full rounded-lg border border-slate-300 pl-8 pr-3 py-2 text-sm" data-testid="send-search" />
++            <Search className={ui.searchIcon} />
++            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher un client (nom, société, e-mail)…" className={ui.searchInput} data-testid="send-search" />
+           </div>
+           <div className="flex items-center justify-between text-xs text-slate-600">
+-            <label className="inline-flex items-center gap-2"><input type="checkbox" checked={allFilteredPicked} onChange={(e) => setPicked((p) => { const n = { ...p }; filtered.forEach((r) => { n[r.id] = e.target.checked; }); return n; })} data-testid="send-select-all" /> Tout sélectionner ({filtered.length})</label>
+-            <span>{pickedIds.length} sélectionné(s)</span>
++            <label className={ui.checkLabel}><input type="checkbox" className={ui.check} checked={allFilteredPicked} onChange={(e) => setPicked((p) => { const n = { ...p }; filtered.forEach((r) => { n[r.id] = e.target.checked; }); return n; })} data-testid="send-select-all" /> Tout sélectionner ({filtered.length})</label>
++            <span className={ui.badge.sky}>{pickedIds.length} sélectionné(s)</span>
+           </div>
+-          <div className="max-h-64 overflow-y-auto divide-y divide-slate-100 rounded-lg border border-slate-100" data-testid="send-recipients">
++          <div className="max-h-64 overflow-y-auto divide-y divide-slate-100 rounded-lg ring-1 ring-slate-200" data-testid="send-recipients">
+             {filtered.map((r) => {
+               const inv = statusById[r.id];
+               return (
+-                <label key={r.id} className="flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-slate-50 cursor-pointer">
+-                  <input type="checkbox" checked={!!picked[r.id]} onChange={(e) => setPicked({ ...picked, [r.id]: e.target.checked })} data-testid={`send-pick-${r.id}`} />
++                <label key={r.id} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50 cursor-pointer">
++                  <input type="checkbox" className={ui.check} checked={!!picked[r.id]} onChange={(e) => setPicked({ ...picked, [r.id]: e.target.checked })} data-testid={`send-pick-${r.id}`} />
+                   <span className="min-w-0 flex-1">
+                     <span className="font-medium">{r.name}</span>{r.company && <span className="text-slate-500"> · {r.company}</span>}
+                     <span className="block text-[11px] text-slate-400">
+                       {r.can_email ? <Mail className="inline h-3 w-3" /> : <span className="line-through">e-mail</span>} {r.can_whatsapp ? <MessageCircle className="inline h-3 w-3" /> : <span className="line-through">WhatsApp</span>}
+                     </span>
+                   </span>
+-                  {inv && <span className={`text-[10px] rounded-full px-2 py-0.5 ${STATUS[inv.status][1]}`}>{STATUS[inv.status][0]}</span>}
++                  {inv && <span className={STATUS[inv.status][1]}>{STATUS[inv.status][0]}</span>}
+                 </label>
+               );
+             })}
+-            {filtered.length === 0 && <p className="text-xs text-slate-400 p-3">Aucun client.</p>}
++            {filtered.length === 0 && <p className="text-xs text-slate-400 italic p-3">Aucun client.</p>}
+           </div>
+           <div className="flex flex-wrap gap-4 text-sm">
+-            <label className="inline-flex items-center gap-2"><input type="checkbox" checked={channels.email} onChange={(e) => setChannels({ ...channels, email: e.target.checked })} data-testid="send-channel-email" /> <Mail className="h-4 w-4" /> E-mail</label>
+-            <label className="inline-flex items-center gap-2"><input type="checkbox" checked={channels.whatsapp} onChange={(e) => setChannels({ ...channels, whatsapp: e.target.checked })} data-testid="send-channel-whatsapp" /> <MessageCircle className="h-4 w-4" /> WhatsApp</label>
++            <label className={ui.checkLabel}><input type="checkbox" className={ui.check} checked={channels.email} onChange={(e) => setChannels({ ...channels, email: e.target.checked })} data-testid="send-channel-email" /> <Mail className="h-4 w-4 text-sky-600" /> E-mail</label>
++            <label className={ui.checkLabel}><input type="checkbox" className={ui.check} checked={channels.whatsapp} onChange={(e) => setChannels({ ...channels, whatsapp: e.target.checked })} data-testid="send-channel-whatsapp" /> <MessageCircle className="h-4 w-4 text-emerald-600" /> WhatsApp</label>
+           </div>
+-          <textarea rows={3} value={message} onChange={(e) => setMessage(e.target.value)} maxLength={1000} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
++          <textarea rows={3} value={message} onChange={(e) => setMessage(e.target.value)} maxLength={1000} className={ui.textarea}
+             placeholder="Message d'accompagnement (facultatif) — le lien personnel est ajouté automatiquement." />
+-          <button type="button" onClick={send} disabled={sending || !pickedIds.length} data-testid="send-submit"
+-            className="inline-flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50">
++          <button type="button" onClick={send} disabled={sending || !pickedIds.length} data-testid="send-submit" className={ui.btnPrimary}>
+             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Envoyer à {pickedIds.length} client(s)
+           </button>
+-          <p className="text-[11px] text-slate-500">Un client qui a déjà reçu ce formulaire garde le même lien : le renvoyer ne crée pas de doublon.</p>
++          <p className={ui.help}>Un client qui a déjà reçu ce formulaire garde le même lien : le renvoyer ne crée pas de doublon.</p>
+         </section>
+ 
+         {/* 2. Lien public */}
+-        <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+-          <h3 className="font-semibold inline-flex items-center gap-2"><Globe className="h-4 w-4 text-primary" /> Lien public (non-clients)</h3>
++        <section className={ui.panel}>
++          <h3 className={ui.panelTitle}><Globe className={ui.panelIcon} /> Lien public (non-clients)</h3>
+           <p className="text-xs text-slate-600">Toute personne ayant ce lien peut répondre, sans compte. À partager par e-mail, WhatsApp, affiche (QR code), site web…</p>
+           {link.enabled && link.url ? (
+             <>
+               <div className="flex gap-2">
+-                <input readOnly value={link.url} className="flex-1 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-mono" data-testid="public-link-url" onFocus={(e) => e.target.select()} />
+-                <button type="button" onClick={() => copy(link.url)} className="rounded-lg border px-2" title="Copier"><Copy className="h-4 w-4" /></button>
+-                <a href={link.url} target="_blank" rel="noreferrer" className="rounded-lg border px-2 inline-flex items-center" title="Ouvrir"><ExternalLink className="h-4 w-4" /></a>
++                <input readOnly value={link.url} className="flex-1 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-mono focus:outline-none focus:border-primary" data-testid="public-link-url" onFocus={(e) => e.target.select()} />
++                <button type="button" onClick={() => copy(link.url)} className={ui.act.dark} title="Copier"><Copy className="h-3.5 w-3.5" /> Copier</button>
++                <a href={link.url} target="_blank" rel="noreferrer" className={ui.act.sky} title="Ouvrir"><ExternalLink className="h-3.5 w-3.5" /> Ouvrir</a>
+               </div>
+               {qrUrl && (
+                 <div className="flex items-center gap-3">
+-                  <img src={qrUrl} alt="QR code du lien public" className="h-32 w-32 border rounded" data-testid="public-link-qr" />
+-                  <a href={qrUrl} download={`${form.number || "formulaire"}-qr.png`} className="text-xs text-primary inline-flex items-center gap-1"><QrCode className="h-4 w-4" /> Télécharger le QR code</a>
++                  <img src={qrUrl} alt="QR code du lien public" className="h-32 w-32 rounded-lg ring-1 ring-slate-200 p-1 bg-white" data-testid="public-link-qr" />
++                  <a href={qrUrl} download={`${form.number || "formulaire"}-qr.png`} className={ui.act.indigo}><QrCode className="h-4 w-4" /> Télécharger le QR code</a>
+                 </div>
+               )}
+               <div className="flex flex-wrap gap-2 text-xs">
+-                <button type="button" onClick={() => { if (window.confirm("Créer un nouveau lien ? L'ancien ne fonctionnera plus.")) setPublic({ enabled: true, rotate: true }); }} className="inline-flex items-center gap-1 rounded border px-2 py-1"><RotateCcw className="h-3 w-3" /> Nouveau lien</button>
+-                <button type="button" onClick={() => setPublic({ enabled: false })} className="inline-flex items-center gap-1 rounded border border-rose-300 text-rose-700 px-2 py-1" data-testid="public-link-disable"><Ban className="h-3 w-3" /> Désactiver</button>
++                <button type="button" onClick={() => { if (window.confirm("Créer un nouveau lien ? L'ancien ne fonctionnera plus.")) setPublic({ enabled: true, rotate: true }); }} className={ui.act.amber}><RotateCcw className="h-3.5 w-3.5" /> Nouveau lien</button>
++                <button type="button" onClick={() => setPublic({ enabled: false })} className={ui.act.danger} data-testid="public-link-disable"><Ban className="h-3.5 w-3.5" /> Désactiver</button>
+               </div>
+             </>
+           ) : (
+-            <button type="button" onClick={() => setPublic({ enabled: true })} className="inline-flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-medium" data-testid="public-link-enable">
++            <button type="button" onClick={() => setPublic({ enabled: true })} className={ui.btnPrimary} data-testid="public-link-enable">
+               <LinkIcon className="h-4 w-4" /> Activer le lien public
+             </button>
+           )}
+@@ -188,47 +189,47 @@ export default function FormSendPanel({ apiBase = "/forms", form, onChanged, pub
+       </div>
+ 
+       {/* 3. Suivi */}
+-      <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3" data-testid="send-tracking">
++      <section className={ui.panel} data-testid="send-tracking">
+         <div className="flex flex-wrap items-center justify-between gap-2">
+-          <h3 className="font-semibold">Suivi des envois</h3>
++          <h3 className={ui.panelTitle}><Send className={ui.panelIcon} /> Suivi des envois</h3>
+           <div className="flex flex-wrap items-center gap-3 text-xs">
+-            <span><strong>{st.sent || 0}</strong> envoyé(s)</span><span><strong>{st.opened || 0}</strong> ouvert(s)</span>
+-            <span className="text-emerald-700"><strong>{st.answered || 0}</strong> répondu(s) ({st.response_pct || 0} %)</span>
+-            {st.pending > 0 && <button type="button" onClick={remind} className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 px-2 py-1" data-testid="send-remind"><Bell className="h-3 w-3" /> Relancer les {st.pending} non-répondant(s)</button>}
++            <span className={ui.badge.grey}><strong>{st.sent || 0}</strong> envoyé(s)</span><span className={ui.badge.sky}><strong>{st.opened || 0}</strong> ouvert(s)</span>
++            <span className={ui.badge.green}><strong>{st.answered || 0}</strong> répondu(s) ({st.response_pct || 0} %)</span>
++            {st.pending > 0 && <button type="button" onClick={remind} className={ui.act.amber} data-testid="send-remind"><Bell className="h-3.5 w-3.5" /> Relancer les {st.pending} non-répondant(s)</button>}
+           </div>
+         </div>
+-        <div className="flex gap-1 text-xs">
++        <div className="flex flex-wrap gap-2">
+           {[["all", "Tous"], ["sent", "Envoyés"], ["opened", "Ouverts"], ["answered", "Répondus"], ["revoked", "Désactivés"]].map(([k, l]) => (
+-            <button key={k} type="button" onClick={() => setStatusFilter(k)} className={`rounded-full px-2.5 py-1 border ${statusFilter === k ? "bg-primary text-primary-foreground border-primary" : "bg-white border-slate-300"}`}>{l}</button>
++            <button key={k} type="button" onClick={() => setStatusFilter(k)} className={ui.chip(statusFilter === k)}>{l}</button>
+           ))}
+         </div>
+-        <div className="overflow-x-auto">
+-          <table className="w-full text-sm">
+-            <thead className="text-xs text-slate-500 text-left"><tr><th className="py-1 pr-2">Destinataire</th><th className="pr-2">Statut</th><th className="pr-2">Dernier envoi</th><th className="pr-2">Canaux</th><th className="pr-2">Réponse</th><th /></tr></thead>
++        <div className="overflow-x-auto rounded-lg ring-1 ring-slate-200">
++          <table className={ui.table}>
++            <thead className={ui.thead}><tr><th className={ui.th}>Destinataire</th><th className={ui.th}>Statut</th><th className={ui.th}>Dernier envoi</th><th className={ui.th}>Canaux</th><th className={ui.th}>Réponse</th><th className={ui.th} /></tr></thead>
+             <tbody>
+               {shown.map((i) => {
+                 const last = (i.deliveries || [])[i.deliveries.length - 1];
+                 return (
+-                  <tr key={i.id} className="border-t border-slate-100" data-testid={`invite-row-${i.recipient_id}`}>
+-                    <td className="py-1.5 pr-2"><span className="font-medium">{i.recipient_name || i.recipient_id}</span><span className="block text-[11px] text-slate-400">{i.recipient_email}</span></td>
+-                    <td className="pr-2"><span className={`text-[11px] rounded-full px-2 py-0.5 ${STATUS[i.status][1]}`}>{STATUS[i.status][0]}</span></td>
+-                    <td className="pr-2 text-xs text-slate-500">{formatDateTime(i.last_sent_at)}{(i.deliveries || []).length > 1 ? ` (${i.deliveries.length} envois)` : ""}</td>
+-                    <td className="pr-2 text-xs">
++                  <tr key={i.id} className={ui.tr} data-testid={`invite-row-${i.recipient_id}`}>
++                    <td className={ui.td}><span className="font-medium">{i.recipient_name || i.recipient_id}</span><span className="block text-[11px] text-slate-400">{i.recipient_email}</span></td>
++                    <td className={ui.td}><span className={STATUS[i.status][1]}>{STATUS[i.status][0]}</span></td>
++                    <td className={cx(ui.td, "text-xs text-slate-500")}>{formatDateTime(i.last_sent_at)}{(i.deliveries || []).length > 1 ? ` (${i.deliveries.length} envois)` : ""}</td>
++                    <td className={cx(ui.td, "text-xs")}>
+                       {last && Object.entries(last.results || {}).map(([ch, res]) => (
+                         <span key={ch} title={res.error || "Envoyé"} className={`mr-1 inline-flex items-center gap-0.5 ${res.ok ? "text-emerald-700" : "text-rose-600"}`}>
+                           {ch === "email" ? <Mail className="h-3 w-3" /> : <MessageCircle className="h-3 w-3" />}{res.ok ? "✓" : "✗"}
+                         </span>
+                       ))}
+                     </td>
+-                    <td className="pr-2 text-xs text-slate-500">{i.answered_at ? formatDateTime(i.answered_at) : i.opened_at ? `ouvert le ${formatDateTime(i.opened_at)}` : "—"}</td>
+-                    <td className="text-right whitespace-nowrap">
+-                      <button type="button" onClick={() => copy(i.url)} className="p-1 text-slate-400 hover:text-primary" title="Copier son lien personnel"><Copy className="h-3.5 w-3.5" /></button>
+-                      {i.status !== "revoked" && <button type="button" onClick={() => revoke(i)} className="p-1 text-slate-400 hover:text-rose-600" title="Désactiver son lien"><Ban className="h-3.5 w-3.5" /></button>}
++                    <td className={cx(ui.td, "text-xs text-slate-500")}>{i.answered_at ? formatDateTime(i.answered_at) : i.opened_at ? `ouvert le ${formatDateTime(i.opened_at)}` : "—"}</td>
++                    <td className={cx(ui.td, "text-right whitespace-nowrap space-x-1")}>
++                      <button type="button" onClick={() => copy(i.url)} className={ui.act.icon} title="Copier son lien personnel"><Copy className="h-3.5 w-3.5" /></button>
++                      {i.status !== "revoked" && <button type="button" onClick={() => revoke(i)} className={cx(ui.act.icon, "hover:text-rose-600")} title="Désactiver son lien"><Ban className="h-3.5 w-3.5" /></button>}
+                     </td>
+                   </tr>
+                 );
+               })}
+-              {shown.length === 0 && <tr><td colSpan={6} className="py-4 text-center text-xs text-slate-400">Aucun envoi.</td></tr>}
++              {shown.length === 0 && <tr><td colSpan={6} className="py-6 text-center text-xs text-slate-400 italic">Aucun envoi.</td></tr>}
+             </tbody>
+           </table>
+         </div>
+diff --git a/frontend/src/components/forms-core/FormStats.jsx b/frontend/src/components/forms-core/FormStats.jsx
+index c349332..fa0ca14 100644
+--- a/frontend/src/components/forms-core/FormStats.jsx
++++ b/frontend/src/components/forms-core/FormStats.jsx
+@@ -17,12 +17,13 @@ import { Loader2 } from "lucide-react";
+ import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, BarChart, Bar, CartesianGrid } from "recharts";
+ import { apiClient } from "@/lib/api";
+ import { errorText, formatDateTime } from "./fieldTypes";
++import { ui, cx } from "./ui";
+ 
+ function Kpi({ label, value, hint }) {
+   return (
+-    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+-      <p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p>
+-      <p className="text-2xl font-semibold text-slate-900 tabular-nums">{value}</p>
++    <div className={ui.stat}>
++      <p className={ui.statLabel}>{label}</p>
++      <p className={ui.statValue}>{value}</p>
+       {hint && <p className="text-[11px] text-slate-400">{hint}</p>}
+     </div>
+   );
+@@ -31,9 +32,9 @@ function Kpi({ label, value, hint }) {
+ function QuestionCard({ q, color }) {
+   const bars = q.options || q.distribution;
+   return (
+-    <div className="rounded-xl border border-slate-200 bg-white p-4" data-testid={`stats-q-${q.id}`}>
+-      <p className="font-medium text-sm text-slate-900">{q.label}</p>
+-      <p className="text-[11px] text-slate-500 mb-2">{q.answered} réponse(s) · {q.answered_pct} % des répondants</p>
++    <div className={ui.card} data-testid={`stats-q-${q.id}`}>
++      <p className="font-display font-bold text-sm text-slate-900">{q.label}</p>
++      <p className="text-[11px] text-slate-500 mb-2"><span className={ui.badge.sky}>{q.answered_pct} %</span> {q.answered} réponse(s) sur l'ensemble des répondants</p>
+       {q.avg !== undefined && (
+         <p className="text-sm mb-2">Moyenne <strong className="tabular-nums">{q.avg}</strong>
+           <span className="text-slate-500"> · min {q.min} · médiane {q.median} · max {q.max}</span></p>
+@@ -72,14 +73,15 @@ export default function FormStats({ apiBase = "/forms", form, color = "#0F6B4A"
+       .then((r) => setSt(r.data)).catch((e) => toast.error(errorText(e)));
+   }, [apiBase, form.id, dateFrom, dateTo]);
+ 
+-  if (!st) return <p className="text-sm text-slate-500 inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Calcul des statistiques…</p>;
++  if (!st) return <p className={ui.loading}><Loader2 className="h-4 w-4 animate-spin inline mr-1" /> Calcul des statistiques…</p>;
+   const inv = st.invitations || {};
+   return (
+     <div className="space-y-4" data-testid="form-stats">
+-      <div className="flex flex-wrap items-end gap-2">
+-        <label className="text-xs text-slate-600">Du<input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="block rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+-        <label className="text-xs text-slate-600">Au<input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="block rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+-        {(dateFrom || dateTo) && <button type="button" onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-primary">Toute la période</button>}
++      <div className={cx(ui.card, "flex flex-wrap items-end gap-3")}>
++        {/* Période : du … au … */}
++        <label className="block"><span className={ui.label}>Du</span><input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className={ui.inputInline} /></label>
++        <label className="block"><span className={ui.label}>Au</span><input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className={ui.inputInline} /></label>
++        {(dateFrom || dateTo) && <button type="button" onClick={() => { setDateFrom(""); setDateTo(""); }} className={ui.btnTool}>Toute la période</button>}
+       </div>
+       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+         <Kpi label="Réponses" value={st.total_submissions} hint={st.last_at ? `dernière : ${formatDateTime(st.last_at)}` : "aucune pour l'instant"} />
+@@ -88,8 +90,8 @@ export default function FormStats({ apiBase = "/forms", form, color = "#0F6B4A"
+         <Kpi label="Taux de réponse (invités)" value={`${inv.response_pct || 0} %`} hint={`${inv.answered || 0} réponse(s), ${inv.pending || 0} en attente`} />
+       </div>
+       {st.series.length > 0 && (
+-        <div className="rounded-xl border border-slate-200 bg-white p-4">
+-          <p className="text-sm font-medium mb-2">Réponses par jour</p>
++        <div className={ui.card}>
++          <p className="font-display font-bold text-sm mb-2">Réponses par jour</p>
+           <div className="h-48">
+             <ResponsiveContainer width="100%" height="100%">
+               <AreaChart data={st.series} margin={{ left: -20, right: 10 }}>
+@@ -106,7 +108,7 @@ export default function FormStats({ apiBase = "/forms", form, color = "#0F6B4A"
+       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+         {st.questions.map((q) => <QuestionCard key={q.id} q={q} color={color} />)}
+       </div>
+-      {st.questions.length === 0 && <p className="text-sm text-slate-400">Ce formulaire n'a pas encore de question.</p>}
++      {st.questions.length === 0 && <p className={ui.empty}>Ce formulaire n'a pas encore de question.</p>}
+     </div>
+   );
+ }
+diff --git a/frontend/src/components/forms-core/FormsLibrary.jsx b/frontend/src/components/forms-core/FormsLibrary.jsx
+index 8842314..b48dc31 100644
+--- a/frontend/src/components/forms-core/FormsLibrary.jsx
++++ b/frontend/src/components/forms-core/FormsLibrary.jsx
+@@ -7,8 +7,8 @@
+     - recherche, formulaires actifs / archivés ;
+     - une carte par formulaire : numéro, statut (ouvert, clos, lien public),
+       nombre de questions, réponses, invitations et taux de réponse ;
+-      actions : Ouvrir, Envoyer, Réponses, Statistiques, Dupliquer, Archiver /
+-      Restaurer ;
++      actions (boutons pleins colorés, design SAWALI) : Envoyer, Éditer,
++      Données (réponses), Stats, Dupliquer, Archiver / Restaurer ;
+     - création : titre + catégorie, puis ouverture du constructeur.
+ 
+   Props : apiBase ("/forms"), basePath ("/admin/forms"), title
+@@ -16,15 +16,17 @@
+ import React, { useEffect, useState } from "react";
+ import { useNavigate } from "react-router-dom";
+ import { toast } from "sonner";
+-import { Plus, Search, Send, BarChart3, Inbox, Copy, Archive, RotateCcw, FileText, Globe, Settings2, X, Loader2, ClipboardList } from "lucide-react";
++import { Plus, Search, Send, BarChart3, Inbox, Copy, Archive, RotateCcw, FileText, Globe, Settings2, X, Loader2, Folder, Edit, Trash2, Database, Lock } from "lucide-react";
+ import { apiClient } from "@/lib/api";
+ import { errorText, formatDateTime } from "./fieldTypes";
++import { ui, cx } from "./ui";
+ 
+ const COLORS = ["#0F6B4A", "#2563eb", "#7c3aed", "#db2777", "#ea580c", "#ca8a04", "#0891b2", "#475569"];
+ 
+ function CategoriesManager({ apiBase, categories, onClose, onChanged }) {
+   const [name, setName] = useState("");
+   const [color, setColor] = useState(COLORS[0]);
++  // Ajout d'une catégorie (nom + couleur choisie)
+   const add = async () => {
+     try { await apiClient.post(`${apiBase}/categories`, { name, color }); setName(""); onChanged(); } catch (e) { toast.error(errorText(e)); }
+   };
+@@ -33,29 +35,39 @@ function CategoriesManager({ apiBase, categories, onClose, onChanged }) {
+     try { await apiClient.delete(`${apiBase}/categories/${c.id}`); onChanged(); } catch (e) { toast.error(errorText(e)); }
+   };
+   const rename = async (c) => {
+-    const n = window.prompt("Nouveau nom", c.name);
++    const n = window.prompt(`Renommer « ${c.name} » :`, c.name);
+     if (!n || n === c.name) return;
+     try { await apiClient.put(`${apiBase}/categories/${c.id}`, { name: n }); onChanged(); } catch (e) { toast.error(errorText(e)); }
+   };
+   return (
+-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={(e) => e.target === e.currentTarget && onClose()}>
+-      <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl space-y-3" data-testid="categories-manager">
+-        <div className="flex justify-between"><h3 className="font-semibold">Catégories</h3><button type="button" onClick={onClose}><X className="h-5 w-5 text-slate-400" /></button></div>
+-        <ul className="space-y-1">
++    <div className={ui.overlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
++      <div className={ui.modal} data-testid="categories-manager">
++        <div className="flex items-center justify-between">
++          <h2 className={ui.modalTitle}><Folder className={ui.modalIcon} /> Catégories ({categories.length})</h2>
++          <button type="button" onClick={onClose} className={ui.close} aria-label="Fermer"><X className="h-4 w-4" /></button>
++        </div>
++        <p className={ui.modalText}>Les catégories rangent vos formulaires. Supprimer une catégorie ne supprime pas ses formulaires.</p>
++        {/* Liste des catégories existantes */}
++        <div className="space-y-2 max-h-72 overflow-y-auto">
++          {categories.length === 0 && <p className="text-xs text-slate-400 italic">Aucune catégorie pour l'instant.</p>}
+           {categories.map((c) => (
+-            <li key={c.id} className="flex items-center gap-2 text-sm">
+-              <span className="h-3 w-3 rounded-full" style={{ background: c.color }} /> <span className="flex-1">{c.name}</span>
+-              <button type="button" onClick={() => rename(c)} className="text-xs text-slate-500 underline">Renommer</button>
+-              <button type="button" onClick={() => del(c)} className="text-xs text-rose-600 underline">Supprimer</button>
+-            </li>
++            <div key={c.id} className="flex items-center gap-2 px-2 py-1.5 ring-1 ring-slate-200 rounded-lg">
++              <span className="h-3 w-3 rounded-full" style={{ background: c.color }} />
++              <span className="flex-1 text-sm">{c.name}</span>
++              <button type="button" onClick={() => rename(c)} className="text-slate-500 hover:text-slate-800 p-1" title="Renommer"><Edit className="h-3.5 w-3.5" /></button>
++              <button type="button" onClick={() => del(c)} className="text-rose-500 hover:bg-rose-50 rounded p-1" title="Supprimer"><Trash2 className="h-3.5 w-3.5" /></button>
++            </div>
+           ))}
+-          {categories.length === 0 && <li className="text-xs text-slate-400">Aucune catégorie.</li>}
+-        </ul>
+-        <div className="flex gap-2">
+-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nouvelle catégorie" className="flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+-          <button type="button" onClick={add} disabled={!name.trim()} className="rounded-lg bg-primary text-primary-foreground px-3 text-sm disabled:opacity-50">Ajouter</button>
+         </div>
+-        <div className="flex gap-1">{COLORS.map((c) => <button key={c} type="button" onClick={() => setColor(c)} className={`h-6 w-6 rounded-full ${color === c ? "ring-2 ring-offset-1 ring-slate-500" : ""}`} style={{ background: c }} aria-label={c} />)}</div>
++        {/* Nouvelle catégorie : nom + couleur */}
++        <div className="border-t border-slate-100 pt-3 space-y-2">
++          <label className={ui.label}>Nouvelle catégorie</label>
++          <div className="flex gap-2">
++            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex. : Fiscalité" className={ui.input} />
++            <button type="button" onClick={add} disabled={!name.trim()} className={ui.btnPrimary}><Plus className="h-4 w-4" /> Ajouter</button>
++          </div>
++          <div className="flex gap-1.5">{COLORS.map((c) => <button key={c} type="button" onClick={() => setColor(c)} className={cx("h-6 w-6 rounded-full transition", color === c && "ring-2 ring-offset-2 ring-slate-500")} style={{ background: c }} aria-label={c} />)}</div>
++        </div>
+       </div>
+     </div>
+   );
+@@ -85,6 +97,7 @@ export default function FormsLibrary({ apiBase = "/forms", basePath = "/admin/fo
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+   useEffect(() => { loadCats(); }, []);
+ 
++  // Création : titre + catégorie, puis ouverture du constructeur
+   const create = async () => {
+     setBusy(true);
+     try {
+@@ -94,75 +107,112 @@ export default function FormsLibrary({ apiBase = "/forms", basePath = "/admin/fo
+   };
+   const act = async (fn, okMsg) => { try { await fn(); if (okMsg) toast.success(okMsg); load(); } catch (e) { toast.error(errorText(e)); } };
+ 
++  // Titre déjà utilisé : signalé dans la fenêtre de création (comme SAWALI)
++  const titleConflict = (() => {
++    const t = newTitle.trim().toLowerCase();
++    return t ? (items || []).find((f) => (f.title || "").trim().toLowerCase() === t) || null : null;
++  })();
++
+   const catById = Object.fromEntries(categories.map((c) => [c.id, c]));
+   const list = (items || []).filter((f) => (cat === "all" || (cat === "none" ? !f.category_id : f.category_id === cat))
+     && (!query.trim() || `${f.title} ${f.description} ${f.number}`.toLowerCase().includes(query.trim().toLowerCase())));
+   const count = (id) => (items || []).filter((f) => (id === "none" ? !f.category_id : f.category_id === id)).length;
+ 
+   return (
+-    <div className="space-y-5" data-testid="forms-library">
+-      <div className="flex flex-wrap items-center justify-between gap-3">
+-        <h1 className="text-2xl font-display font-semibold inline-flex items-center gap-2"><ClipboardList className="h-6 w-6 text-primary" /> {title}</h1>
+-        <button type="button" onClick={() => setCreating(true)} className="inline-flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-medium" data-testid="forms-new"><Plus className="h-4 w-4" /> Nouveau formulaire</button>
++    <div className="space-y-6" data-testid="forms-library">
++      {/* En-tête : petite ligne, titre avec icône, bouton de création */}
++      <div className="flex items-center justify-between gap-4 flex-wrap">
++        <div>
++          <p className={ui.eyebrow}>Formulaires</p>
++          <h1 className={ui.h1}><FileText className={ui.h1Icon} /> {title === "Formulaires" ? "Bibliothèque de formulaires" : title}</h1>
++        </div>
++        <button type="button" onClick={() => setCreating(true)} className={ui.btnPrimary} data-testid="forms-new"><Plus className="h-4 w-4" /> Nouveau formulaire</button>
+       </div>
+ 
++      {/* Vue d'ensemble chiffrée */}
+       {overview && (
+         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" data-testid="forms-overview">
+-          {[["Formulaires actifs", overview.forms], ["Réponses (total)", overview.submissions_total], ["Réponses sur 30 jours", overview.submissions_30d],
+-            ["Taux de réponse des invités", `${overview.invitations?.response_pct || 0} %`]].map(([l, v]) => (
+-            <div key={l} className="rounded-xl border border-slate-200 bg-white px-4 py-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{l}</p><p className="text-2xl font-semibold tabular-nums">{v}</p></div>
++          {[["Formulaires actifs", overview.forms, FileText], ["Réponses (total)", overview.submissions_total, Database], ["Réponses sur 30 jours", overview.submissions_30d, Inbox],
++            ["Taux de réponse des invités", `${overview.invitations?.response_pct || 0} %`, BarChart3]].map(([l, v, Icon]) => (
++            <div key={l} className={ui.stat}>
++              <p className={cx(ui.statLabel, "flex items-center gap-1.5")}><Icon className="h-3 w-3 text-primary" /> {l}</p>
++              <p className={ui.statValue}>{v}</p>
++            </div>
+           ))}
+         </div>
+       )}
+ 
+-      <div className="flex flex-wrap items-center gap-2">
+-        {[["all", "Tous", (items || []).length], ...categories.map((c) => [c.id, c.name, count(c.id), c.color]), ["none", "Sans catégorie", count("none")]].map(([id, l, n, color]) => (
+-          <button key={id} type="button" onClick={() => setCat(id)} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs border ${cat === id ? "bg-primary text-primary-foreground border-primary" : "bg-white border-slate-300"}`}>
+-            {color && <span className="h-2 w-2 rounded-full" style={{ background: color }} />}{l} ({n})
++      {/* Onglets soulignés : formulaires actifs / archivés */}
++      <div className={ui.tabs}>
++        {[[false, "Mes formulaires"], [true, "Archivés"]].map(([k, l]) => (
++          <button key={l} type="button" onClick={() => setArchived(k)} className={ui.tab(archived === k)} data-testid={`forms-tab-${k ? "archived" : "active"}`}>
++            {k ? <Archive className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />} {l}
+           </button>
+         ))}
+-        <button type="button" onClick={() => setManageCats(true)} className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-400 px-2.5 py-1 text-xs"><Settings2 className="h-3 w-3" /> Catégories</button>
+-        <div className="relative ml-auto"><Search className="h-4 w-4 text-slate-400 absolute left-2.5 top-2" />
+-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher…" className="rounded-lg border border-slate-300 pl-8 pr-3 py-1.5 text-sm" /></div>
+-        <button type="button" onClick={() => setArchived(!archived)} className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs ${archived ? "bg-slate-800 text-white" : ""}`}><Archive className="h-3.5 w-3.5" /> {archived ? "Voir les actifs" : "Archivés"}</button>
+       </div>
+ 
+-      {items === null ? <p className="text-sm text-slate-500 inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Chargement…</p> : list.length === 0 ? (
+-        <div className="text-center py-16 text-slate-400"><FileText className="h-10 w-10 mx-auto mb-2" /><p className="text-sm">{archived ? "Aucun formulaire archivé." : "Aucun formulaire. Créez le premier !"}</p></div>
++      {/* Pastilles de catégories (remplies de leur couleur quand choisies) + recherche */}
++      <div className="flex flex-wrap items-center gap-2" data-testid="forms-category-bar">
++        <button type="button" onClick={() => setCat("all")} className={ui.chip(cat === "all")}>Tous ({(items || []).length})</button>
++        {categories.map((c) => {
++          const active = cat === c.id;
++          return (
++            <button key={c.id} type="button" onClick={() => setCat(c.id)} style={active ? { background: c.color } : {}}
++              className={cx("text-xs px-3 py-1.5 rounded-full ring-1 transition inline-flex items-center gap-1", active ? "text-white ring-transparent" : "bg-white text-slate-700 ring-slate-200 hover:ring-slate-400")}>
++              <Folder className="h-3 w-3" /> {c.name} <span className="opacity-70">({count(c.id)})</span>
++            </button>
++          );
++        })}
++        <button type="button" onClick={() => setCat("none")} className={cx("text-xs px-3 py-1.5 rounded-full ring-1 transition", cat === "none" ? "bg-slate-600 text-white ring-slate-600" : "bg-white text-slate-700 ring-slate-200 hover:ring-slate-400")}>
++          Sans catégorie ({count("none")})
++        </button>
++        <button type="button" onClick={() => setManageCats(true)} className={cx(ui.btnTool, "ml-auto")} data-testid="forms-manage-cats"><Settings2 className="h-3 w-3" /> Gérer ({categories.length})</button>
++        <div className={ui.searchWrap}>
++          <Search className={ui.searchIcon} />
++          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Recherche (titre, description, n°)…" className={ui.searchInput} data-testid="forms-search" />
++        </div>
++      </div>
++
++      {/* Cartes des formulaires */}
++      {items === null ? <p className={ui.loading}><Loader2 className="h-4 w-4 animate-spin inline mr-1" /> Chargement…</p> : list.length === 0 ? (
++        <div className={ui.empty}><FileText className="h-10 w-10 mx-auto mb-2 opacity-40" />{archived ? "Aucun formulaire archivé." : "Aucun formulaire. Créez le premier !"}</div>
+       ) : (
+-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
++        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="forms-grid">
+           {list.map((f) => {
+             const c = catById[f.category_id];
+             const inv = f.invitations || {};
+             return (
+-              <div key={f.id} className="rounded-xl border border-slate-200 bg-white p-4 flex flex-col gap-2" data-testid={`form-card-${f.id}`}>
+-                <div className="flex items-center justify-between gap-2 text-[11px]">
+-                  <span className="font-mono text-slate-500">{f.number}</span>
++              <div key={f.id} className={cx(ui.card, "flex flex-col")} data-testid={`form-card-${f.id}`}>
++                {/* Numéro + état (ouvert / clos / public) */}
++                <div className="flex items-start justify-between gap-2 mb-2">
++                  <code className={ui.code}>{f.number}</code>
+                   <span className="flex gap-1">
+-                    {f.public_link_enabled && <span className="inline-flex items-center gap-0.5 rounded-full bg-sky-50 text-sky-700 px-2 py-0.5"><Globe className="h-3 w-3" /> Public</span>}
+-                    <span className={`rounded-full px-2 py-0.5 ${f.closed_reason ? "bg-slate-100 text-slate-600" : "bg-emerald-50 text-emerald-700"}`}>{f.closed_reason ? "Clos" : "Ouvert"}</span>
++                    {f.public_link_enabled && <span className={ui.badge.sky}><Globe className="h-3 w-3" /> Public</span>}
++                    {f.closed_reason ? <span className={ui.badge.grey}><Lock className="h-3 w-3" /> Clos</span> : <span className={ui.badge.green}>Ouvert</span>}
+                   </span>
+                 </div>
+-                <button type="button" onClick={() => navigate(`${basePath}/${f.id}`)} className="text-left font-semibold text-slate-900 hover:text-primary">{f.title}</button>
+-                {c && <span className="text-[11px] inline-flex items-center gap-1 text-slate-600"><span className="h-2 w-2 rounded-full" style={{ background: c.color }} /> {c.name}</span>}
+-                {f.description && <p className="text-xs text-slate-500 line-clamp-2">{f.description}</p>}
+-                <div className="grid grid-cols-3 gap-2 text-center text-xs mt-1">
+-                  <div className="rounded-lg bg-slate-50 py-1.5"><p className="font-semibold text-sm">{f.fields_count}</p>questions</div>
+-                  <div className="rounded-lg bg-slate-50 py-1.5"><p className="font-semibold text-sm">{f.submissions_count || 0}</p>réponses</div>
+-                  <div className="rounded-lg bg-slate-50 py-1.5"><p className="font-semibold text-sm">{inv.sent ? `${inv.response_pct} %` : "—"}</p>{inv.sent ? `de ${inv.sent} invités` : "invités"}</div>
+-                </div>
+-                <p className="text-[11px] text-slate-400">Modifié le {formatDateTime(f.updated_at)}{f.created_by_label ? ` · créé par ${f.created_by_label}` : ""}</p>
+-                <div className="flex flex-wrap gap-1 mt-auto pt-2">
++                <h3 className="text-sm font-display font-bold mb-1 line-clamp-2 text-slate-900">{f.title}</h3>
++                {c && <span className="text-[11px] inline-flex items-center gap-1 text-slate-600 mb-1"><span className="h-2 w-2 rounded-full" style={{ background: c.color }} /> {c.name}</span>}
++                <p className="text-[11px] text-slate-500 line-clamp-2 mb-2">{f.description || "—"}</p>
++                {/* Chiffres clés : réponses, questions, invitations */}
++                <p className="text-[10px] text-slate-400 mb-3">
++                  <span className={cx(ui.badge.sky, "mb-1")} data-testid={`form-submissions-count-${f.id}`}><Database className="h-3 w-3" /> {f.submissions_count || 0} réponse(s) reçue(s)</span>
++                  <span className="ml-1 text-slate-500">{f.fields_count} question(s){inv.sent ? ` · ${inv.response_pct} % de ${inv.sent} invité(s)` : ""}</span>
++                  <br />Modifié le {formatDateTime(f.updated_at)}
++                  {f.created_by_label && <><br />Par <strong>{f.created_by_label}</strong></>}
++                </p>
++                {/* Actions : boutons pleins colorés */}
++                <div className="mt-auto flex gap-1 flex-wrap">
+                   {archived ? (
+-                    <button type="button" onClick={() => act(() => apiClient.post(`${apiBase}/${f.id}/restore`), "Formulaire restauré.")} className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs"><RotateCcw className="h-3.5 w-3.5" /> Restaurer</button>
++                    <button type="button" onClick={() => act(() => apiClient.post(`${apiBase}/${f.id}/restore`), "Formulaire restauré.")} className={ui.act.emerald}><RotateCcw className="h-3.5 w-3.5" /> Restaurer</button>
+                   ) : (
+                     <>
+-                      <button type="button" onClick={() => navigate(`${basePath}/${f.id}`)} className="rounded-lg bg-primary text-primary-foreground px-2.5 py-1 text-xs">Ouvrir</button>
+-                      <button type="button" onClick={() => navigate(`${basePath}/${f.id}?tab=send`)} className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs"><Send className="h-3.5 w-3.5" /> Envoyer</button>
+-                      <button type="button" onClick={() => navigate(`${basePath}/${f.id}?tab=responses`)} className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs"><Inbox className="h-3.5 w-3.5" /> Réponses</button>
+-                      <button type="button" onClick={() => navigate(`${basePath}/${f.id}?tab=stats`)} className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs"><BarChart3 className="h-3.5 w-3.5" /> Stats</button>
+-                      <button type="button" title="Dupliquer" onClick={() => act(() => apiClient.post(`${apiBase}/${f.id}/duplicate`), "Copie créée.")} className="rounded-lg border px-2 py-1 text-xs"><Copy className="h-3.5 w-3.5" /></button>
+-                      <button type="button" title="Archiver" onClick={() => { if (window.confirm(`Archiver « ${f.title} » ? Ses liens cessent de fonctionner ; les réponses sont conservées.`)) act(() => apiClient.delete(`${apiBase}/${f.id}`), "Formulaire archivé."); }} className="rounded-lg border px-2 py-1 text-xs text-rose-600"><Archive className="h-3.5 w-3.5" /></button>
++                      <button type="button" onClick={() => navigate(`${basePath}/${f.id}?tab=send`)} className={ui.act.primary} data-testid={`form-send-${f.id}`}><Send className="h-3.5 w-3.5" /> Envoyer</button>
++                      <button type="button" onClick={() => navigate(`${basePath}/${f.id}`)} className={ui.act.dark} data-testid={`form-edit-${f.id}`}><Edit className="h-3.5 w-3.5" /> Éditer</button>
++                      <button type="button" onClick={() => navigate(`${basePath}/${f.id}?tab=responses`)} className={ui.act.sky} title="Voir les réponses reçues"><Database className="h-3.5 w-3.5" /> Données</button>
++                      <button type="button" onClick={() => navigate(`${basePath}/${f.id}?tab=stats`)} className={ui.act.indigo} title="Statistiques du formulaire"><BarChart3 className="h-3.5 w-3.5" /> Stats</button>
++                      <button type="button" title="Dupliquer" onClick={() => act(() => apiClient.post(`${apiBase}/${f.id}/duplicate`), "Copie créée.")} className={ui.act.slate}><Copy className="h-3.5 w-3.5" /></button>
++                      <button type="button" title="Archiver" onClick={() => { if (window.confirm(`Archiver « ${f.title} » ? Ses liens cessent de fonctionner ; les réponses sont conservées.`)) act(() => apiClient.delete(`${apiBase}/${f.id}`), "Formulaire archivé."); }} className={ui.act.danger} data-testid={`form-archive-${f.id}`}><Archive className="h-3.5 w-3.5" /></button>
+                     </>
+                   )}
+                 </div>
+@@ -172,18 +222,27 @@ export default function FormsLibrary({ apiBase = "/forms", basePath = "/admin/fo
+         </div>
+       )}
+ 
++      {/* Fenêtre « Nouveau formulaire » */}
+       {creating && (
+-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={(e) => e.target === e.currentTarget && setCreating(false)}>
+-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl space-y-3" data-testid="forms-create">
+-            <h3 className="font-semibold">Nouveau formulaire</h3>
+-            <input autoFocus value={newTitle} onChange={(e) => setNewTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && newTitle.trim() && create()}
+-              placeholder="Ex. : Questionnaire de satisfaction 2026" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" data-testid="forms-create-title" />
+-            <select value={newCat} onChange={(e) => setNewCat(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+-              <option value="">Sans catégorie</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+-            <div className="flex justify-end gap-2">
+-              <button type="button" onClick={() => setCreating(false)} className="px-3 py-1.5 text-sm text-slate-600">Annuler</button>
+-              <button type="button" onClick={create} disabled={!newTitle.trim() || busy} className="inline-flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-1.5 text-sm disabled:opacity-50" data-testid="forms-create-submit">
+-                {busy && <Loader2 className="h-4 w-4 animate-spin" />} Créer et construire</button>
++        <div className={ui.overlay} onClick={(e) => e.target === e.currentTarget && !busy && setCreating(false)}>
++          <div className={ui.modal} data-testid="forms-create">
++            <h2 className={ui.modalTitle}><FileText className={ui.modalIcon} /> Nouveau formulaire</h2>
++            <p className={ui.modalText}>Donnez un titre unique au formulaire, choisissez sa catégorie, puis construisez les questions.</p>
++            <div>
++              <label className={ui.label}>Titre du formulaire</label>
++              <input autoFocus value={newTitle} onChange={(e) => setNewTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && newTitle.trim() && !titleConflict && create()}
++                placeholder="Ex. : Questionnaire de satisfaction 2026" className={titleConflict ? ui.inputError : ui.input} data-testid="forms-create-title" />
++              {titleConflict && <p className={ui.error} data-testid="forms-title-conflict">Un formulaire porte déjà ce titre : <strong>{titleConflict.number}</strong></p>}
++            </div>
++            <div>
++              <label className={ui.label}>Catégorie</label>
++              <select value={newCat} onChange={(e) => setNewCat(e.target.value)} className={ui.select}>
++                <option value="">Sans catégorie</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
++            </div>
++            <div className={ui.modalFooter}>
++              <button type="button" onClick={() => setCreating(false)} disabled={busy} className={ui.btnSecondary}>Annuler</button>
++              <button type="button" onClick={create} disabled={!newTitle.trim() || busy || !!titleConflict} className={ui.btnPrimary} data-testid="forms-create-submit">
++                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Créer et construire</button>
+             </div>
+           </div>
+         </div>
+diff --git a/frontend/src/components/forms-core/MyForms.jsx b/frontend/src/components/forms-core/MyForms.jsx
+index 9a79461..94ee878 100644
+--- a/frontend/src/components/forms-core/MyForms.jsx
++++ b/frontend/src/components/forms-core/MyForms.jsx
+@@ -10,6 +10,7 @@ import React, { useEffect, useState } from "react";
+ import { ClipboardList, CheckCircle2, Clock, Loader2 } from "lucide-react";
+ import { apiClient } from "@/lib/api";
+ import { formatDateTime } from "./fieldTypes";
++import { ui, cx } from "./ui";
+ 
+ export default function MyForms({ portalApiBase = "/me/forms" }) {
+   const [items, setItems] = useState(null);
+@@ -19,24 +20,25 @@ export default function MyForms({ portalApiBase = "/me/forms" }) {
+   return (
+     <div className="space-y-4" data-testid="my-forms">
+       <div>
+-        <h1 className="text-2xl font-display font-semibold inline-flex items-center gap-2"><ClipboardList className="h-6 w-6 text-primary" /> Mes formulaires</h1>
+-        <p className="text-sm text-slate-600">{items === null ? "" : todo ? `${todo} formulaire(s) à remplir.` : "Vous êtes à jour : aucun formulaire en attente."}</p>
++        <p className={ui.eyebrow}>Mon espace</p>
++        <h1 className={ui.h1}><ClipboardList className={ui.h1Icon} /> Mes formulaires</h1>
++        <p className={ui.subtitle}>{items === null ? "" : todo ? `${todo} formulaire(s) à remplir.` : "Vous êtes à jour : aucun formulaire en attente."}</p>
+       </div>
+-      {items === null ? <p className="text-sm text-slate-500 inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Chargement…</p> : items.length === 0 ? (
+-        <p className="text-sm text-slate-400 py-10 text-center">Vous n'avez reçu aucun formulaire.</p>
++      {items === null ? <p className={ui.loading}><Loader2 className="h-4 w-4 animate-spin inline mr-1" /> Chargement…</p> : items.length === 0 ? (
++        <p className={ui.empty}>Vous n'avez reçu aucun formulaire.</p>
+       ) : (
+-        <div className="space-y-2">
++        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+           {items.map((i) => (
+-            <div key={i.id} className="rounded-xl border border-slate-200 bg-white p-4 flex flex-wrap items-center gap-3" data-testid={`my-form-${i.id}`}>
+-              {i.answered_at ? <CheckCircle2 className="h-6 w-6 text-emerald-600" /> : <Clock className="h-6 w-6 text-amber-500" />}
+-              <div className="flex-1 min-w-[200px]">
+-                <p className="font-medium">{i.title}</p>
+-                <p className="text-xs text-slate-500">Reçu le {formatDateTime(i.received_at)}{i.answered_at ? ` · répondu le ${formatDateTime(i.answered_at)}` : ""}{i.closed_reason ? ` · ${i.closed_reason}` : ""}</p>
++            <div key={i.id} className={cx(ui.card, "flex flex-col gap-2")} data-testid={`my-form-${i.id}`}>
++              <div className="flex items-center justify-between">{i.answered_at ? <span className={ui.badge.green}><CheckCircle2 className="h-3 w-3" /> Répondu</span> : <span className={ui.badge.amber}><Clock className="h-3 w-3" /> À remplir</span>}</div>
++              <div className="flex-1">
++                <p className="text-sm font-display font-bold text-slate-900">{i.title}</p>
++                <p className="text-[11px] text-slate-500 mt-1">Reçu le {formatDateTime(i.received_at)}{i.answered_at ? ` · répondu le ${formatDateTime(i.answered_at)}` : ""}{i.closed_reason ? ` · ${i.closed_reason}` : ""}</p>
+               </div>
+               {!i.closed_reason && (!i.answered_at || i.can_edit) && (
+-                <a href={i.path} className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-medium">{i.answered_at ? "Modifier ma réponse" : "Remplir"}</a>
++                <a href={i.path} className={cx(i.answered_at ? ui.act.dark : ui.act.primary, "self-start")}>{i.answered_at ? "Modifier ma réponse" : "Remplir"}</a>
+               )}
+-              {i.answered_at && !i.can_edit && <span className="text-xs text-emerald-700 font-medium">Répondu</span>}
++              {i.answered_at && !i.can_edit && <span className="text-[11px] text-slate-400">Réponse envoyée</span>}
+             </div>
+           ))}
+         </div>
+diff --git a/frontend/src/components/forms-core/PublicFormPage.jsx b/frontend/src/components/forms-core/PublicFormPage.jsx
+index 566facf..3357f60 100644
+--- a/frontend/src/components/forms-core/PublicFormPage.jsx
++++ b/frontend/src/components/forms-core/PublicFormPage.jsx
+@@ -17,6 +17,7 @@ import { CheckCircle2, Loader2, Lock } from "lucide-react";
+ import { apiClient } from "@/lib/api";
+ import FormRenderer from "./FormRenderer";
+ import { errorText } from "./fieldTypes";
++import { ui, cx } from "./ui";
+ 
+ export default function PublicFormPage({ publicApiBase = "/public/forms", token, brand = {} }) {
+   const [ctx, setCtx] = useState(null);
+@@ -68,10 +69,10 @@ export default function PublicFormPage({ publicApiBase = "/public/forms", token,
+         {(brand.logoUrl || brand.name) && (
+           <div className="flex items-center gap-2 mb-4">
+             {brand.logoUrl && <img src={brand.logoUrl} alt="" className="h-9 w-auto" />}
+-            {brand.name && <span className="font-semibold text-slate-800">{brand.name}</span>}
++            {brand.name && <span className="font-display font-bold text-slate-800">{brand.name}</span>}
+           </div>
+         )}
+-        <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6">{children}</div>
++        <div className="rounded-2xl bg-white shadow-xl shadow-slate-200/60 ring-1 ring-slate-200 p-6 md:p-8">{children}</div>
+         <p className="text-center text-[11px] text-slate-400 mt-4 inline-flex items-center gap-1 w-full justify-center"><Lock className="h-3 w-3" /> Vos réponses sont transmises de façon sécurisée{brand.name ? ` à ${brand.name}` : ""}.</p>
+       </div>
+     </div>
+@@ -83,13 +84,13 @@ export default function PublicFormPage({ publicApiBase = "/public/forms", token,
+   if (done) return shell(
+     <div className="text-center py-8" data-testid="public-form-done">
+       <CheckCircle2 className="h-12 w-12 text-emerald-600 mx-auto mb-3" />
+-      <h1 className="text-xl font-semibold mb-2">{form.title}</h1>
++      <h1 className="text-xl font-display font-bold mb-2">{form.title}</h1>
+       <p className="text-slate-700 whitespace-pre-line">{done}</p>
+     </div>
+   );
+-  if (ctx.closed_reason) return shell(<div className="text-center py-8"><h1 className="text-xl font-semibold mb-2">{form.title}</h1><p className="text-slate-600">{ctx.closed_reason}</p></div>);
++  if (ctx.closed_reason) return shell(<div className="text-center py-8"><h1 className="text-xl font-display font-bold mb-2">{form.title}</h1><p className="text-slate-600">{ctx.closed_reason}</p></div>);
+   if (ctx.already_answered && !ctx.can_edit) return shell(
+-    <div className="text-center py-8"><CheckCircle2 className="h-12 w-12 text-emerald-600 mx-auto mb-3" /><h1 className="text-xl font-semibold mb-2">{form.title}</h1>
++    <div className="text-center py-8"><CheckCircle2 className="h-12 w-12 text-emerald-600 mx-auto mb-3" /><h1 className="text-xl font-display font-bold mb-2">{form.title}</h1>
+       <p className="text-slate-600">Vous avez déjà répondu à ce formulaire. Merci !</p></div>
+   );
+ 
+@@ -99,13 +100,13 @@ export default function PublicFormPage({ publicApiBase = "/public/forms", token,
+     <>
+       {ctx.recipient?.name && <p className="text-sm text-slate-600">Bonjour <strong>{ctx.recipient.name}</strong>{ctx.already_answered ? " — vous pouvez modifier votre réponse." : ","}</p>}
+       {askIdentity && (
+-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 rounded-lg bg-slate-50 p-3">
+-          <label className="text-sm"><span className="font-medium">Votre nom{required && <span className="text-rose-600"> *</span>}</span>
+-            <input value={respondent.name} onChange={(e) => setRespondent({ ...respondent, name: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" data-testid="respondent-name" />
+-            {errors._respondent_name && <span className="text-xs text-rose-600">{errors._respondent_name}</span>}</label>
+-          <label className="text-sm"><span className="font-medium">Votre e-mail{required && <span className="text-rose-600"> *</span>}</span>
+-            <input type="email" value={respondent.email} onChange={(e) => setRespondent({ ...respondent, email: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" data-testid="respondent-email" />
+-            {errors._respondent_email && <span className="text-xs text-rose-600">{errors._respondent_email}</span>}</label>
++        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 rounded-xl bg-slate-50 ring-1 ring-slate-200 p-4">
++          <label className="block"><span className={ui.label}>Votre nom{required && <span className="text-rose-600"> *</span>}</span>
++            <input value={respondent.name} onChange={(e) => setRespondent({ ...respondent, name: e.target.value })} className={ui.input} data-testid="respondent-name" />
++            {errors._respondent_name && <span className={ui.error}>{errors._respondent_name}</span>}</label>
++          <label className="block"><span className={ui.label}>Votre e-mail{required && <span className="text-rose-600"> *</span>}</span>
++            <input type="email" value={respondent.email} onChange={(e) => setRespondent({ ...respondent, email: e.target.value })} className={ui.input} data-testid="respondent-email" />
++            {errors._respondent_email && <span className={ui.error}>{errors._respondent_email}</span>}</label>
+         </div>
+       )}
+       {/* Champ piège : invisible pour un humain, rempli par les robots */}
+@@ -115,9 +116,10 @@ export default function PublicFormPage({ publicApiBase = "/public/forms", token,
+ 
+   return shell(
+     <>
+-      <h1 className="text-2xl font-semibold text-slate-900">{form.title}</h1>
++      <p className={ui.eyebrow}>Formulaire</p>
++      <h1 className="text-2xl font-display font-bold text-slate-900">{form.title}</h1>
+       {form.description && <p className="text-sm text-slate-600 mt-1 mb-4 whitespace-pre-line">{form.description}</p>}
+-      {globalError && <p className="rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-sm px-3 py-2 mb-3" data-testid="public-form-error">{globalError}</p>}
++      {globalError && <p className="rounded-xl bg-rose-50 ring-1 ring-rose-200 text-rose-800 text-sm px-4 py-2.5 mb-3" data-testid="public-form-error">{globalError}</p>}
+       <div className="mt-4">
+         <FormRenderer form={form} value={data} onChange={setData} errors={errors} uploadFile={upload} onSubmit={submit} submitting={submitting}
+           submitLabel={ctx.already_answered ? "Mettre à jour ma réponse" : "Envoyer mes réponses"} header={header} />
+diff --git a/frontend/src/components/forms-core/ui.js b/frontend/src/components/forms-core/ui.js
+new file mode 100644
+index 0000000..aa0d5bb
+--- /dev/null
++++ b/frontend/src/components/forms-core/ui.js
+@@ -0,0 +1,119 @@
++/*
++  forms-core — module commun (NE PAS MODIFIER DANS UN SITE).
++
++  ui.js : boîte à outils de styles (classes Tailwind) partagée par les écrans,
++  reprise du design des Formulaires de SAWALI :
++    - boutons pleins colorés et compacts (Remplir, Éditer, Données, Stats…) ;
++    - champs compacts avec étiquette en petites majuscules ;
++    - pastilles filtrantes arrondies, onglets soulignés ;
++    - cartes blanches arrondies, fenêtres (modales) avec en-tête à icône.
++  La couleur principale est celle du site (jeton Tailwind « primary »).
++  Utilisation : import { ui, cx } from "@/components/forms-core/ui";
++*/
++
++// Assemble des classes en ignorant les valeurs vides (cx("a", cond && "b"))
++export const cx = (...parts) => parts.filter(Boolean).join(" ");
++
++export const ui = {
++  // ---- En-tête de page : petite ligne au-dessus du titre, titre, sous-titre
++  eyebrow: "text-xs uppercase tracking-[0.3em] text-slate-500",
++  h1: "text-2xl font-display font-bold flex items-center gap-2 text-slate-900",
++  h1Icon: "h-5 w-5 text-primary",
++  subtitle: "text-sm text-slate-500 mt-1 max-w-3xl",
++
++  // ---- Boutons principaux (taille normale)
++  btnPrimary: "inline-flex items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition",
++  btnSecondary: "inline-flex items-center justify-center gap-2 rounded-lg ring-1 ring-slate-300 bg-white text-slate-700 px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-50 transition",
++  btnGhost: "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 disabled:opacity-50",
++  btnDanger: "inline-flex items-center justify-center gap-2 rounded-lg bg-rose-500 text-white px-4 py-2 text-sm font-medium hover:bg-rose-600 disabled:opacity-50 transition",
++  // Lien discret « outil » (ex. « Analytics global », « Gérer »)
++  btnSoft: "inline-flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 text-primary px-3 py-1.5 text-xs hover:bg-primary hover:text-primary-foreground transition",
++  btnTool: "inline-flex items-center gap-1 rounded ring-1 ring-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-50",
++
++  // ---- Petits boutons d'action pleins colorés (cartes, lignes de tableau)
++  act: {
++    primary: "inline-flex items-center gap-1 text-[11px] rounded bg-primary text-primary-foreground px-2.5 py-1.5 hover:opacity-90 disabled:opacity-50",
++    dark: "inline-flex items-center gap-1 text-[11px] rounded bg-slate-900 text-white px-2.5 py-1.5 hover:bg-slate-800 disabled:opacity-50",
++    sky: "inline-flex items-center gap-1 text-[11px] rounded bg-sky-600 text-white px-2.5 py-1.5 hover:bg-sky-700 disabled:opacity-50",
++    indigo: "inline-flex items-center gap-1 text-[11px] rounded bg-indigo-600 text-white px-2.5 py-1.5 hover:bg-indigo-700 disabled:opacity-50",
++    emerald: "inline-flex items-center gap-1 text-[11px] rounded bg-emerald-600 text-white px-2.5 py-1.5 hover:bg-emerald-700 disabled:opacity-50",
++    amber: "inline-flex items-center gap-1 text-[11px] rounded bg-amber-500 text-white px-2.5 py-1.5 hover:bg-amber-600 disabled:opacity-50",
++    slate: "inline-flex items-center gap-1 text-[11px] rounded bg-slate-500 text-white px-2.5 py-1.5 hover:bg-slate-600 disabled:opacity-50",
++    danger: "inline-flex items-center gap-1 text-[11px] rounded bg-rose-500 text-white px-2.5 py-1.5 hover:bg-rose-600 disabled:opacity-50",
++    // Bouton icône seul, plein et coloré (actions d'une ligne de liste)
++    iconDark: "inline-flex items-center justify-center h-7 w-7 rounded bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50",
++    iconAmber: "inline-flex items-center justify-center h-7 w-7 rounded bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50",
++    iconEmerald: "inline-flex items-center justify-center h-7 w-7 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50",
++    iconSky: "inline-flex items-center justify-center h-7 w-7 rounded bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-50",
++    iconIndigo: "inline-flex items-center justify-center h-7 w-7 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50",
++    iconDanger: "inline-flex items-center justify-center h-7 w-7 rounded bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50",
++    // Bouton icône seul, discret (ligne de tableau)
++    icon: "inline-flex items-center justify-center h-7 w-7 rounded ring-1 ring-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 disabled:opacity-40",
++  },
++
++  // ---- Champs de saisie
++  label: "block text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1",
++  input: "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:bg-slate-50 disabled:text-slate-500",
++  inputError: "w-full rounded-lg border border-rose-400 ring-2 ring-rose-200 bg-white px-3 py-2 text-sm focus:outline-none",
++  inputSm: "w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm focus:outline-none focus:border-primary",
++  select: "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15",
++  textarea: "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15",
++  // Variantes « en ligne » (largeur du contenu, pour les barres de filtres)
++  selectInline: "w-auto rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15",
++  inputInline: "w-auto rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15",
++  help: "mt-1 text-[11px] text-slate-400",
++  error: "mt-1 text-xs text-rose-600 flex items-center gap-1",
++  // Case à cocher / bouton radio aux couleurs du site
++  check: "h-4 w-4 rounded border-slate-300 accent-[hsl(var(--primary))] cursor-pointer",
++  checkLabel: "inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none",
++  // Recherche avec loupe (placer l'icône avec searchIcon)
++  searchWrap: "relative w-full md:w-72",
++  searchIcon: "absolute left-2 top-2 h-3.5 w-3.5 text-slate-400",
++  searchInput: "w-full pl-7 pr-2 py-1.5 text-xs rounded ring-1 ring-slate-300 bg-white focus:outline-none focus:ring-primary",
++
++  // ---- Pastilles filtrantes (catégories) et onglets soulignés
++  chip: (active) => cx("text-xs px-3 py-1.5 rounded-full ring-1 transition inline-flex items-center gap-1",
++    active ? "bg-primary text-primary-foreground ring-primary" : "bg-white text-slate-700 ring-slate-200 hover:ring-primary/50"),
++  tabs: "flex gap-2 border-b border-slate-200 overflow-x-auto",
++  tab: (active) => cx("px-3 py-2 text-sm border-b-2 transition whitespace-nowrap inline-flex items-center gap-1.5",
++    active ? "border-primary text-primary font-semibold" : "border-transparent text-slate-500 hover:text-slate-900"),
++
++  // ---- Conteneurs
++  card: "rounded-xl border border-slate-200 bg-white p-4",
++  panel: "rounded-xl border border-slate-200 bg-white p-5 space-y-3",
++  panelTitle: "font-display font-bold text-slate-900 flex items-center gap-2",
++  panelIcon: "h-4 w-4 text-primary",
++  stat: "rounded-xl border border-slate-200 bg-white px-4 py-3",
++  statLabel: "text-[10px] uppercase tracking-wider text-slate-500 font-semibold",
++  statValue: "text-2xl font-display font-bold tabular-nums text-slate-900",
++  code: "text-[10px] font-mono bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded",
++  empty: "text-center text-slate-400 py-10 italic text-sm",
++  loading: "text-center text-slate-500 py-10 text-sm",
++
++  // ---- Badges d'état
++  badge: {
++    green: "text-[10px] inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700",
++    grey: "text-[10px] inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600",
++    sky: "text-[10px] inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 font-semibold tabular-nums",
++    amber: "text-[10px] inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800",
++    red: "text-[10px] inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 text-rose-700",
++    violet: "text-[10px] inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-100 text-violet-700",
++  },
++
++  // ---- Tableaux
++  table: "w-full text-sm",
++  thead: "bg-slate-50 text-left text-[10px] uppercase tracking-wider text-slate-500",
++  th: "px-3 py-2 font-semibold",
++  tr: "border-t border-slate-100 hover:bg-slate-50/60",
++  td: "px-3 py-2 align-middle",
++
++  // ---- Fenêtres (modales)
++  overlay: "fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4",
++  modal: "bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4 max-h-[92vh] overflow-y-auto",
++  modalLg: "bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 space-y-4 max-h-[92vh] overflow-y-auto",
++  modalTitle: "font-display font-bold text-lg flex items-center gap-2 text-slate-900",
++  modalIcon: "h-5 w-5 text-primary",
++  modalText: "text-xs text-slate-600",
++  modalFooter: "flex items-center justify-end gap-2 pt-1",
++  close: "text-slate-400 hover:text-slate-700",
++};
+diff --git a/frontend/src/components/ui/badge.jsx b/frontend/src/components/ui/badge.jsx
+index a687eba..674e188 100644
+--- a/frontend/src/components/ui/badge.jsx
++++ b/frontend/src/components/ui/badge.jsx
+@@ -4,7 +4,7 @@ import { cva } from "class-variance-authority";
+ import { cn } from "@/lib/utils"
+ 
+ const badgeVariants = cva(
+-  "inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
++  "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+   {
+     variants: {
+       variant: {
+diff --git a/frontend/src/components/ui/button.jsx b/frontend/src/components/ui/button.jsx
+index 91db9be..7aa8939 100644
+--- a/frontend/src/components/ui/button.jsx
++++ b/frontend/src/components/ui/button.jsx
+@@ -5,25 +5,26 @@ import { cva } from "class-variance-authority";
+ import { cn } from "@/lib/utils"
+ 
+ const buttonVariants = cva(
+-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
++  // Design SAWALI : coins arrondis, sans ombre, anneau de focus aux couleurs du site
++  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+   {
+     variants: {
+       variant: {
+         default:
+-          "bg-primary text-primary-foreground shadow hover:bg-primary/90",
++          "bg-primary text-primary-foreground hover:opacity-90",
+         destructive:
+-          "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
++          "bg-rose-500 text-white hover:bg-rose-600",
+         outline:
+-          "border border-input shadow-sm hover:bg-accent hover:text-accent-foreground",
++          "ring-1 ring-slate-300 bg-white text-slate-700 hover:bg-slate-50",
+         secondary:
+-          "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
+-        ghost: "hover:bg-accent hover:text-accent-foreground",
++          "bg-slate-900 text-white hover:bg-slate-800",
++        ghost: "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+         link: "text-primary underline-offset-4 hover:underline",
+       },
+       size: {
+         default: "h-9 px-4 py-2",
+-        sm: "h-8 rounded-md px-3 text-xs",
+-        lg: "h-10 rounded-md px-8",
++        sm: "h-8 rounded-lg px-3 text-xs",
++        lg: "h-10 rounded-lg px-8",
+         icon: "h-9 w-9",
+       },
+     },
+diff --git a/frontend/src/components/ui/card.jsx b/frontend/src/components/ui/card.jsx
+index 2985cca..58ac26a 100644
+--- a/frontend/src/components/ui/card.jsx
++++ b/frontend/src/components/ui/card.jsx
+@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
+ const Card = React.forwardRef(({ className, ...props }, ref) => (
+   <div
+     ref={ref}
+-    className={cn("rounded-xl border bg-card text-card-foreground shadow", className)}
++    className={cn("rounded-xl border border-slate-200 bg-white text-card-foreground", className)}
+     {...props} />
+ ))
+ Card.displayName = "Card"
+@@ -21,7 +21,7 @@ CardHeader.displayName = "CardHeader"
+ const CardTitle = React.forwardRef(({ className, ...props }, ref) => (
+   <div
+     ref={ref}
+-    className={cn("font-semibold leading-none tracking-tight", className)}
++    className={cn("font-display font-bold leading-none tracking-tight text-slate-900", className)}
+     {...props} />
+ ))
+ CardTitle.displayName = "CardTitle"
+diff --git a/frontend/src/components/ui/checkbox.jsx b/frontend/src/components/ui/checkbox.jsx
+index 5e0c96b..9219ac1 100644
+--- a/frontend/src/components/ui/checkbox.jsx
++++ b/frontend/src/components/ui/checkbox.jsx
+@@ -8,7 +8,8 @@ const Checkbox = React.forwardRef(({ className, ...props }, ref) => (
+   <CheckboxPrimitive.Root
+     ref={ref}
+     className={cn(
+-      "peer h-4 w-4 shrink-0 rounded-sm border border-primary shadow focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
++      // Case à cocher (design SAWALI)
++      "peer h-4 w-4 shrink-0 rounded border border-slate-300 bg-white data-[state=checked]:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
+       className
+     )}
+     {...props}>
+diff --git a/frontend/src/components/ui/dialog.jsx b/frontend/src/components/ui/dialog.jsx
+index b41b8e1..344faf7 100644
+--- a/frontend/src/components/ui/dialog.jsx
++++ b/frontend/src/components/ui/dialog.jsx
+@@ -16,7 +16,7 @@ const DialogOverlay = React.forwardRef(({ className, ...props }, ref) => (
+   <DialogPrimitive.Overlay
+     ref={ref}
+     className={cn(
+-      "fixed inset-0 z-50 bg-black/80  data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
++      "fixed inset-0 z-50 bg-slate-900/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+       className
+     )}
+     {...props} />
+@@ -29,7 +29,7 @@ const DialogContent = React.forwardRef(({ className, children, ...props }, ref)
+     <DialogPrimitive.Content
+       ref={ref}
+       className={cn(
+-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
++        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 bg-white p-6 shadow-2xl duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] rounded-2xl",
+         className
+       )}
+       {...props}>
+@@ -67,7 +67,7 @@ DialogFooter.displayName = "DialogFooter"
+ const DialogTitle = React.forwardRef(({ className, ...props }, ref) => (
+   <DialogPrimitive.Title
+     ref={ref}
+-    className={cn("text-lg font-semibold leading-none tracking-tight", className)}
++    className={cn("font-display text-lg font-bold leading-tight text-slate-900 flex items-center gap-2", className)}
+     {...props} />
+ ))
+ DialogTitle.displayName = DialogPrimitive.Title.displayName
+@@ -75,7 +75,7 @@ DialogTitle.displayName = DialogPrimitive.Title.displayName
+ const DialogDescription = React.forwardRef(({ className, ...props }, ref) => (
+   <DialogPrimitive.Description
+     ref={ref}
+-    className={cn("text-sm text-muted-foreground", className)}
++    className={cn("text-xs text-slate-600", className)}
+     {...props} />
+ ))
+ DialogDescription.displayName = DialogPrimitive.Description.displayName
+diff --git a/frontend/src/components/ui/input.jsx b/frontend/src/components/ui/input.jsx
+index 764b48f..b35560f 100644
+--- a/frontend/src/components/ui/input.jsx
++++ b/frontend/src/components/ui/input.jsx
+@@ -7,7 +7,8 @@ const Input = React.forwardRef(({ className, type, ...props }, ref) => {
+     <input
+       type={type}
+       className={cn(
+-        "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
++        // Champ compact (design SAWALI) : bord gris, focus aux couleurs du site
++        "flex h-9 w-full rounded-lg border border-slate-300 bg-white px-3 py-1 text-base text-slate-900 transition file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-slate-400 focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60 md:text-sm",
+         className
+       )}
+       ref={ref}
+diff --git a/frontend/src/components/ui/label.jsx b/frontend/src/components/ui/label.jsx
+index a1f4099..41d76d9 100644
+--- a/frontend/src/components/ui/label.jsx
++++ b/frontend/src/components/ui/label.jsx
+@@ -5,7 +5,8 @@ import { cva } from "class-variance-authority";
+ import { cn } from "@/lib/utils"
+ 
+ const labelVariants = cva(
+-  "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
++  // Étiquette de champ en petites majuscules (design SAWALI)
++  "text-[10px] uppercase tracking-wider font-semibold text-slate-500 leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+ )
+ 
+ const Label = React.forwardRef(({ className, ...props }, ref) => (
+diff --git a/frontend/src/components/ui/select.jsx b/frontend/src/components/ui/select.jsx
+index b1367bf..f79680e 100644
+--- a/frontend/src/components/ui/select.jsx
++++ b/frontend/src/components/ui/select.jsx
+@@ -14,7 +14,8 @@ const SelectTrigger = React.forwardRef(({ className, children, ...props }, ref)
+   <SelectPrimitive.Trigger
+     ref={ref}
+     className={cn(
+-      "flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background data-[placeholder]:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
++      // Liste déroulante (design SAWALI)
++      "flex h-9 w-full items-center justify-between whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 data-[placeholder]:text-slate-400 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
+       className
+     )}
+     {...props}>
+@@ -83,7 +84,7 @@ const SelectItem = React.forwardRef(({ className, children, ...props }, ref) =>
+   <SelectPrimitive.Item
+     ref={ref}
+     className={cn(
+-      "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
++      "relative flex w-full cursor-default select-none items-center rounded-md py-1.5 pl-2 pr-8 text-sm outline-none focus:bg-primary/10 focus:text-primary data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+       className
+     )}
+     {...props}>
+diff --git a/frontend/src/components/ui/switch.jsx b/frontend/src/components/ui/switch.jsx
+index 5ef3287..ee2ece2 100644
+--- a/frontend/src/components/ui/switch.jsx
++++ b/frontend/src/components/ui/switch.jsx
+@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
+ const Switch = React.forwardRef(({ className, ...props }, ref) => (
+   <SwitchPrimitives.Root
+     className={cn(
+-      "peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=unchecked]:bg-input",
++      "peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=unchecked]:bg-slate-300",
+       className
+     )}
+     {...props}
+diff --git a/frontend/src/components/ui/table.jsx b/frontend/src/components/ui/table.jsx
+index 07443a1..ea03072 100644
+--- a/frontend/src/components/ui/table.jsx
++++ b/frontend/src/components/ui/table.jsx
+@@ -37,7 +37,7 @@ const TableRow = React.forwardRef(({ className, ...props }, ref) => (
+   <tr
+     ref={ref}
+     className={cn(
+-      "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
++      "border-b border-slate-100 transition-colors hover:bg-slate-50/70 data-[state=selected]:bg-slate-100",
+       className
+     )}
+     {...props} />
+@@ -48,7 +48,7 @@ const TableHead = React.forwardRef(({ className, ...props }, ref) => (
+   <th
+     ref={ref}
+     className={cn(
+-      "h-10 px-2 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
++      "h-9 px-3 text-left align-middle text-[10px] uppercase tracking-wider font-semibold text-slate-500 bg-slate-50 [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+       className
+     )}
+     {...props} />
+@@ -59,7 +59,7 @@ const TableCell = React.forwardRef(({ className, ...props }, ref) => (
+   <td
+     ref={ref}
+     className={cn(
+-      "p-2 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
++      "px-3 py-2 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+       className
+     )}
+     {...props} />
+diff --git a/frontend/src/components/ui/tabs.jsx b/frontend/src/components/ui/tabs.jsx
+index e12f604..06e7e3d 100644
+--- a/frontend/src/components/ui/tabs.jsx
++++ b/frontend/src/components/ui/tabs.jsx
+@@ -9,7 +9,8 @@ const TabsList = React.forwardRef(({ className, ...props }, ref) => (
+   <TabsPrimitive.List
+     ref={ref}
+     className={cn(
+-      "inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground",
++      // Onglets soulignés (design SAWALI)
++      "inline-flex h-auto items-center justify-start gap-2 border-b border-slate-200 bg-transparent p-0 text-slate-500 overflow-x-auto max-w-full",
+       className
+     )}
+     {...props} />
+@@ -24,7 +25,7 @@ const TabsTrigger = React.forwardRef(({ className, ...props }, ref) => (
+       // fond de l'onglet actif se distingue à peine du fond de la page —
+       // filet rouge de secours pour marquer la sélection quel que soit le
+       // thème (bordure transparente au repos pour ne pas décaler la taille).
+-      "inline-flex items-center justify-center whitespace-nowrap rounded-md border border-transparent px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow data-[state=active]:border-red-500",
++      "inline-flex items-center justify-center gap-1.5 whitespace-nowrap border-b-2 border-transparent -mb-px px-3 py-2 text-sm transition hover:text-slate-900 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:font-semibold",
+       className
+     )}
+     {...props} />
+diff --git a/frontend/src/components/ui/textarea.jsx b/frontend/src/components/ui/textarea.jsx
+index 9a3276c..1d1def6 100644
+--- a/frontend/src/components/ui/textarea.jsx
++++ b/frontend/src/components/ui/textarea.jsx
+@@ -6,7 +6,8 @@ const Textarea = React.forwardRef(({ className, ...props }, ref) => {
+   return (
+     <textarea
+       className={cn(
+-        "flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
++        // Zone de texte (design SAWALI)
++        "flex min-h-[60px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 placeholder:text-slate-400 focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60 md:text-sm",
+         className
+       )}
+       ref={ref}
+diff --git a/frontend/src/index.css b/frontend/src/index.css
+index b011565..5ae029d 100644
+--- a/frontend/src/index.css
++++ b/frontend/src/index.css
+@@ -1,5 +1,9 @@
+ @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Manrope:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+ 
++/* Polices du portail (design SAWALI) : Space Grotesk (titres) + Geist (texte) */
++@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
++@import url('https://cdn.jsdelivr.net/npm/geist@1.3.1/dist/fonts/geist-sans/style.css');
++
+ @tailwind base;
+ @tailwind components;
+ @tailwind utilities;
+@@ -115,3 +119,80 @@
+     border-left: 2px solid #E5A24B;
+     padding-left: calc(1rem - 2px);
+ }
++
++/* =====================================================================
++   Thème « portail » (design SAWALI) — espaces connectés cabinet et client.
++   La classe portal-ui est posée sur <body> par PortalLayout : elle couvre
++   aussi les fenêtres (rendues hors de la page). Le site public n'est pas
++   concerné. Couleur principale = celle d'Albarka (--primary).
++   ===================================================================== */
++body.portal-ui {
++    font-family: 'Geist', 'Manrope', -apple-system, sans-serif;
++    background: #f8fafc;
++}
++body.portal-ui h1, body.portal-ui h2, body.portal-ui h3, body.portal-ui h4,
++body.portal-ui .font-display {
++    font-family: 'Space Grotesk', 'Geist', sans-serif;
++    letter-spacing: -0.02em;
++}
++/* Titres de page : taille et graisse des pages SAWALI */
++body.portal-ui main h1 {
++    font-size: 1.5rem;
++    line-height: 2rem;
++    font-weight: 700;
++    color: #0f172a;
++}
++body.portal-ui main h2 { font-weight: 700; }
++
++/* Champs texte, zones de texte et listes déroulantes natifs */
++body.portal-ui input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=color]):not([data-input-otp]),
++body.portal-ui textarea,
++body.portal-ui select {
++    border-radius: 0.5rem;
++    border-color: rgb(203 213 225);
++    transition: border-color .15s, box-shadow .15s;
++}
++body.portal-ui input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=color]):not([data-input-otp]):focus,
++body.portal-ui textarea:focus,
++body.portal-ui select:focus {
++    outline: none;
++    border-color: hsl(var(--primary));
++    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.15);
++}
++body.portal-ui input::placeholder, body.portal-ui textarea::placeholder { color: rgb(148 163 184); }
++/* Cases à cocher et boutons radio aux couleurs du site */
++body.portal-ui input[type=checkbox], body.portal-ui input[type=radio] {
++    accent-color: hsl(var(--primary));
++    width: 1rem;
++    height: 1rem;
++    cursor: pointer;
++}
++/* Tableaux : en-tête en petites majuscules sur fond gris clair, lignes survolées */
++body.portal-ui main table thead { background: rgb(248 250 252); }
++body.portal-ui main table thead th {
++    font-size: 10px;
++    text-transform: uppercase;
++    letter-spacing: 0.05em;
++    font-weight: 600;
++    color: rgb(100 116 139);
++}
++body.portal-ui main table tbody tr:hover { background: rgb(248 250 252 / 0.7); }
++/* Cartes : bord gris clair, coins arrondis */
++body.portal-ui .albarka-card { border-color: rgb(226 232 240); background: #fff; }
++body.portal-ui .albarka-card:hover { border-color: rgb(203 213 225); box-shadow: 0 4px 16px -8px rgba(15, 23, 42, 0.12); }
++
++/* Menu latéral : lien actif en pastille pleine (comme SAWALI) */
++body.portal-ui .albarka-sidebar-link {
++    font-weight: 600;
++    color: rgba(255, 255, 255, 0.86);
++    border-left: 0;
++    padding-left: 1rem;
++}
++body.portal-ui .albarka-sidebar-link:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
++body.portal-ui .albarka-sidebar-link.active {
++    background: hsl(var(--primary));
++    color: #fff;
++    border-left: 0;
++    padding-left: 1rem;
++    box-shadow: 0 6px 18px -8px hsl(var(--primary) / 0.8);
++}
+diff --git a/frontend/src/pages/admin/AdminClients.jsx b/frontend/src/pages/admin/AdminClients.jsx
+index e25038b..592f60a 100644
+--- a/frontend/src/pages/admin/AdminClients.jsx
++++ b/frontend/src/pages/admin/AdminClients.jsx
+@@ -15,6 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
+ import { Link } from "react-router-dom";
+ import { useAuth } from "@/contexts/AuthContext";
+ import AccountActions, { AccountDates } from "@/components/AccountActions";
++import { ui } from "@/components/forms-core/ui";
+ import { usePresence, PresenceLabel } from "@/components/Presence";
+ 
+ // Doivent rester identiques aux listes équivalentes côté backend (albarka_models.py).
+@@ -268,14 +269,15 @@ export default function AdminClients() {
+                 </TableCell>
+                 <TableCell className="text-right whitespace-nowrap">
+                   {canManage && (
+-                    <Button variant="ghost" size="sm" onClick={() => openEdit(c)} title="Modifier" data-testid={`edit-client-${c.id}`}>
+-                      <Pencil className="w-4 h-4" />
+-                    </Button>
++                    // Modifier : bouton plein noir (design SAWALI)
++                    <button type="button" onClick={() => openEdit(c)} title="Modifier" className={ui.act.iconDark} data-testid={`edit-client-${c.id}`}>
++                      <Pencil className="w-3.5 h-3.5" />
++                    </button>
+                   )}
+                   {/* Désactiver / réinitialiser le mot de passe ; Supprimer : admin uniquement */}
+                   <AccountActions account={c} onChanged={load} canManage={canManage} canDelete={isAdminAccount} deleteLabel="ce client" />
+                   <Link to={`/admin/clients/${c.id}`}>
+-                    <Button variant="outline" size="sm" data-testid={`view-client-${c.id}`}>Ouvrir</Button>
++                    <span className={`${ui.act.primary} ml-1`} data-testid={`view-client-${c.id}`}>Ouvrir</span>
+                   </Link>
+                 </TableCell>
+               </TableRow>
+diff --git a/frontend/src/pages/admin/AdminStaff.jsx b/frontend/src/pages/admin/AdminStaff.jsx
+index 271f6d0..eaf0f39 100644
+--- a/frontend/src/pages/admin/AdminStaff.jsx
++++ b/frontend/src/pages/admin/AdminStaff.jsx
+@@ -4,6 +4,7 @@ import { Plus, Pencil, FlaskConical } from "lucide-react";
+ import AccountActions, { AccountDates } from "@/components/AccountActions";
+ import { usePresence, PresenceLabel } from "@/components/Presence";
+ import TemporaryAccessButton from "@/components/TemporaryAccessButton";
++import { ui } from "@/components/forms-core/ui";
+ import { apiClient, extractError } from "@/lib/api";
+ import { Button } from "@/components/ui/button";
+ import {
+@@ -324,15 +325,10 @@ export default function AdminStaff() {
+                 </TableCell>
+                 <TableCell className="text-right whitespace-nowrap">
+                   {canEdit && (
+-                    <Button
+-                      variant="ghost"
+-                      size="sm"
+-                      onClick={() => openEdit(s)}
+-                      title="Modifier"
+-                      data-testid={`edit-staff-${s.id}`}
+-                    >
+-                      <Pencil className="w-4 h-4" />
+-                    </Button>
++                    // Modifier : bouton plein noir (design SAWALI)
++                    <button type="button" onClick={() => openEdit(s)} title="Modifier" className={ui.act.iconDark} data-testid={`edit-staff-${s.id}`}>
++                      <Pencil className="w-3.5 h-3.5" />
++                    </button>
+                   )}
+                   {/* Désactiver / réinitialiser le mot de passe (jamais sur soi ; compte admin :
+                       lui seul ; superviseur : superviseur ou admin) + Supprimer (superviseur) */}
+diff --git a/frontend/src/version.js b/frontend/src/version.js
+index a3be2ca..31b1c88 100644
+--- a/frontend/src/version.js
++++ b/frontend/src/version.js
+@@ -1,6 +1,6 @@
+ /*
+   Numéro de version du portail, affiché à droite de la barre jaune en haut
+   de la sidebar (SidebarInfoBar). À modifier ici à chaque nouvelle livraison.
+-  Format : v<année>.<n° de lot>  (ex. v2026.4 = lot 4 de 2026)
++  Format : v<année>.<n° de lot>  (ex. v2026.5 = lot 5 de 2026)
+ */
+-export const APP_VERSION = "v2026.4";
++export const APP_VERSION = "v2026.5";
+-- 
+2.43.0
+

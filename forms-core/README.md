@@ -5,7 +5,7 @@ public, réponses, statistiques), partagé par les sites :
 
 | Site | Dépôt / branche | Copie du backend | Copie du frontend | Adaptateur du site |
 |---|---|---|---|---|
-| Albarka | `ShuyahBF/albarka-portal` · `conflict_030926_0658` | `backend/forms_core/` | `frontend/src/components/forms-core/` | `backend/albarka_forms.py` + `frontend/src/pages/admin/AdminForms.jsx`, `pages/portal/MyForms.jsx`, `pages/public/FillForm.jsx` (lot 3, v1.0.0) |
+| Albarka | `ShuyahBF/albarka-portal` · `conflict_030926_0658` | `backend/forms_core/` | `frontend/src/components/forms-core/` | `backend/albarka_forms.py` + `frontend/src/pages/admin/AdminForms.jsx`, `pages/portal/MyForms.jsx`, `pages/public/FillForm.jsx` (lot 3, v1.0.0 ; lot 5, v1.1.0) |
 
 Version courante : voir `VERSION` (identique à `__version__` dans `backend/forms_core/__init__.py`).
 
@@ -67,3 +67,14 @@ Collections Mongo : `forms`, `forms_submissions`, `forms_invitations`,
 4. Pour chaque site : `./forms-core/sync.sh <racine du clone>` puis
    `./forms-core/sync.sh --check <racine>` (doit afficher « identique »).
 5. Produire un lot par site (patch + prompt, `PATCH_DELIVERY_CONVENTIONS.md`).
+
+## Historique des versions
+
+- **1.1.0** — design des Formulaires de SAWALI : nouvelle boîte à outils de
+  styles `frontend/forms-core/ui.js` (boutons pleins colorés, champs compacts à
+  étiquette en petites majuscules, pastilles, onglets soulignés, cartes,
+  fenêtres, tableaux, badges) utilisée par tous les écrans ; bibliothèque en
+  cartes (Envoyer, Éditer, Données, Stats, Dupliquer, Archiver), titre en double
+  signalé à la création. Aucun changement du backend ni des routes.
+- **1.0.0** — première version (constructeur, invitations, lien public, réponses,
+  statistiques, export CSV).

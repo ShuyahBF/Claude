@@ -95,7 +95,7 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Albarka · albarka-bf.com · version v2026.4</div>
+    <div class="eyebrow">Albarka · albarka-bf.com · version v2026.5</div>
     <h1>Recette complète Albarka</h1>
     <p class="lead">Tous les modules du portail, côté cabinet et côté client, plus la connexion et les éléments communs. Pour chaque point : faites l'action, puis cochez <b>OK</b> ou <b>Problème</b> (avec le compte utilisé et le message exact). Toute l'équipe voit les coches en direct. Cette liste sert de référence avant chaque mise en production.</p>
   </header>
@@ -263,7 +263,7 @@ const SECTIONS = [
 "do": "Se connecter (cabinet puis client) et regarder la bande jaune tout en haut de la barre latérale ; attendre quelques secondes.",
 "expect": [
 "À gauche : date et heure au format 26/09/2026 14:05:09, les secondes avancent chaque seconde.",
-"À droite : « v2026.4 »."
+"À droite : « v2026.5 »."
 ]
 },
 {
@@ -272,6 +272,55 @@ const SECTIONS = [
 "expect": [
 "La barre jaune est visible en haut du menu ouvert, sans espace vide en bas du menu.",
 "Sous le menu : nom, badges de rôles, « Dernière connexion : … » et bouton « Déconnexion »."
+]
+}
+],
+"part": "Connexion & commun"
+},
+{
+"id": "g-design",
+"title": "Design du portail (v2026.5)",
+"who": "Toutes les pages du cabinet et de l'espace client — visible par : tous",
+"prep": "",
+"items": [
+{
+"id": "g-design-1",
+"do": "Parcourir le menu latéral, côté cabinet puis côté client.",
+"expect": [
+"Le lien de la page ouverte est une pastille verte pleine, les liens sont en gras.",
+"Titres de page compacts en police Space Grotesk, fond gris très clair."
+]
+},
+{
+"id": "g-design-2",
+"do": "Clients → « Nouveau client » ; cliquer dans un champ.",
+"expect": [
+"Fenêtre aux coins arrondis sur fond voilé léger, étiquettes en petites majuscules grises.",
+"Champ actif entouré d'un cadre vert."
+]
+},
+{
+"id": "g-design-3",
+"do": "Regarder les listes Clients, Personnels et Dépôt espace client.",
+"expect": [
+"En-têtes de tableau en petites majuscules sur fond gris clair, ligne surlignée au survol.",
+"Actions en petits boutons pleins colorés : noir Modifier, orange Désactiver, bleu Mot de passe, violet Accès temporaire, rouge Supprimer."
+]
+},
+{
+"id": "g-design-4",
+"do": "Paramètres : passer d'un onglet à l'autre ; cocher / décocher une case et un interrupteur.",
+"expect": [
+"Onglets soulignés en vert (plus d'encadré rouge).",
+"Cases et interrupteurs verts une fois activés."
+]
+},
+{
+"id": "g-design-5",
+"do": "Ouvrir la page d'accueil publique puis la page de connexion.",
+"expect": [
+"Polices et fond crème Albarka inchangés.",
+"Page de connexion : étiquettes EMAIL / MOT DE PASSE en petites majuscules, champs arrondis ; connexion identique."
 ]
 }
 ],
@@ -884,6 +933,14 @@ const SECTIONS = [
 "expect": [
 "« Copie créée. » ; archivé : ses liens cessent de fonctionner.",
 "Secrétariat : pas de lien « Formulaires »."
+]
+},
+{
+"id": "c-formulaires-5",
+"do": "Bibliothèque : regarder une carte, puis « Nouveau formulaire » avec le titre d'un formulaire existant.",
+"expect": [
+"Carte : numéro, état Ouvert/Clos/Public, « N réponse(s) reçue(s) », boutons pleins Envoyer (vert), Éditer (noir), Données (bleu), Stats (violet), Dupliquer (gris), Archiver (rouge).",
+"« Un formulaire porte déjà ce titre : FORM-… » et le bouton « Créer et construire » reste grisé."
 ]
 }
 ],
