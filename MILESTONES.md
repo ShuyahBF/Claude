@@ -157,7 +157,7 @@ concerné.
   Voice Studio grisé, « Générer l'image », liste noire anti-verrouillage ;
   16 tests nouveaux, 67 autonomes OK, build OK.
 - **Sawali lot 26 — le serveur ne se fige plus + valeurs des modèles WhatsApp**
-  — **livré, en attente de publication** (base `793ef31` = lot 25 publié ;
+  — **publié le 2026-09-26** (GitHub 55e46f2→d091c30, code identique hors `.emergent`) (base `793ef31` = lot 25 publié ;
   `sawali-portal-livraisons/sawali-portal-corrections_26_6bf4403.patch` +
   `sawali-portal-prompt_26.md` ; dev `claude/lot26` 6bf4403). Diagnostic :
   gel de ~35 s mesuré en production (17:58:35→17:59:10, 520 Cloudflare), cause
