@@ -170,10 +170,10 @@ concerné.
   modèles WA (#132018/#131008) dans _wa_send_template. 74 tests autonomes
   (7 nouveaux), build OK. Signalé, non corrigé : bloc APScheduler jamais exécuté
   (server.py ~22426-22865, après un return) → tâches planifiées inactives.
-- **Sawali lot 27 — tâches planifiées réactivées (garde-fous) + modèles WA à Flow + emojis + annotation d'images + sondages WhatsApp**
+- **Sawali lot 27 — tâches planifiées réactivées (garde-fous) + modèles WA à Flow + emojis + annotation d'images + sondages WhatsApp + facturation/bilans IA + éditeur de formulaires**
   — **livré, en attente de publication** (base `d091c30` = lot 26 publié ;
-  `sawali-portal-livraisons/sawali-portal-corrections_27_c83fc89.patch` +
-  `sawali-portal-prompt_27.md`, remplace 8e70384, 4ca6874, 6eb9527 non publiés ; dev `claude/lot27` c83fc89). Bloc APScheduler
+  `sawali-portal-livraisons/sawali-portal-corrections_27_cf6ef53.patch` +
+  `sawali-portal-prompt_27.md`, remplace 8e70384, 4ca6874, 6eb9527, c83fc89 non publiés ; dev `claude/lot27` cf6ef53). Bloc APScheduler
   (26 tâches) sorti du code mort vers `_start_scheduler` (add_job protégés,
   start garanti, jamais en preview, DISABLE_SCHEDULER, page d'état
   /api/admin/scheduler/status). Garde-fous : envois WA/SMS programmés > 3 h de
@@ -194,8 +194,14 @@ concerné.
   reprise au démarrage hors preview ; résultats avec filtre période, NPS,
   par entreprise ; relance ; CSV) + pages Surveys/SurveyEditor/SurveyResults,
   SurveySendModal, PublicSurvey /s/:token ; 97 tests autonomes, E2E navigateur OK.
-  Objectif annoncé par l'utilisateur : facturer par client la gestion des
-  formulaires/sondages + bilan de période avec analyse IA (lot suivant). Ensuite : découpage de server.py par lots. Lot 26 : 395/395 sondes OK sur 15 min.
+  Ajouts : contributeurs (/me/wa-surveys-contributors, tenant ou global),
+  sondage créé pour un client (client_id admin) ; routes/portfolio_billing.py
+  (tarifs + prompt par client dans AdminClientFeatures, bilans avec IA
+  claude-sonnet-5 via EMERGENT_LLM_KEY, PDF reportlab, lien public, facture via
+  crochet cashier.create_invoice_for_client, TVA choisie par facture par le
+  Superviseur, page /portal/portfolio-invoices) ; FormEditor façon Albarka
+  (même modèle de données) ; Production : Recette -> Formulation.
+  105 tests autonomes, E2E navigateur OK. Ensuite : découpage de server.py par lots. Lot 26 : 395/395 sondes OK sur 15 min.
 - **Albarka lot 5 — design SAWALI sur tout le portail + corrections de droits**
   — **publié le 2026-09-26** (GitHub d30e280→37de42f, code identique hors
   `.emergent`/`.gitignore` ; production v2026.5) (base `36d9fc1` = lot 4 publié ;

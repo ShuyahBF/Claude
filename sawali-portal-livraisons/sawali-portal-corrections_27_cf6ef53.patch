@@ -1,10 +1,10 @@
-From c83fc89c203ee13c51ebca170d42d972555e473d Mon Sep 17 00:00:00 2001
+From cf6ef539e8998501b203b028b04fa8fa5139d14d Mon Sep 17 00:00:00 2001
 From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
 Date: Sat, 26 Sep 2026 18:57:21 +0000
 Subject: [PATCH] =?UTF-8?q?Lot=2027=20:=20t=C3=A2ches=20planifi=C3=A9es=20?=
  =?UTF-8?q?r=C3=A9activ=C3=A9es,=20mod=C3=A8les=20WhatsApp=20=C3=A0=20form?=
  =?UTF-8?q?ulaire=20(Flow),=20emojis,=20annotation=20d'images,=20sondages?=
- =?UTF-8?q?=20WhatsApp?=
+ =?UTF-8?q?=20WhatsApp=20et=20leur=20facturation?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -44,41 +44,69 @@ par destinataire, par modèle Meta ou message libre selon la fenêtre de 24 h,
 en tâche de fond ; page de réponse sans compte ; résultats (taux d'ouverture
 et de réponse, graphiques par question, par entreprise, par période), relance
 des non-répondants et export Excel.
+Meilleurs contributeurs aux sondages (par client ou pour tous les clients),
+et l'admin peut créer un sondage pour un client (il le voit et il lui est facturé).
+Facturation du portefeuille formulaires & sondages par client, réglée dans sa
+page SMART Communications : tarifs (forfait, formulaire actif, sondage actif,
+message WhatsApp, réponses, bilan IA, TVA, échéance) et prompt de l'analyse IA ;
+bilan de période (chiffres, analyse IA, PDF, lien pour le client) et facture
+créée dans la Caisse/Facturation ; page « Bilans à facturer » pour l'admin et le
+Superviseur, qui choisit pour chaque facture d'appliquer ou non la TVA.
+Éditeur de formulaires à la manière d'ALBARKA (palette, glisser-déposer,
+propriétés, pages, aperçu en direct), sur le même format de formulaire.
+Production (clients Fabricant) : le terme « Recette » devient « Formulation ».
 ---
- backend/health_report.py                     |   4 +-
- backend/models.py                            |   4 +
- backend/routes/cashier.py                    |  26 +
- backend/routes/wa_surveys.py                 | 846 +++++++++++++++++++
- backend/routes/whatsapp_helpers.py           | 149 ++++
- backend/server.py                            | 258 +++++-
- backend/tests/test_scheduler_lot27.py        | 157 ++++
- backend/tests/test_wa_flow_lot27.py          | 249 ++++++
- backend/tests/test_wa_surveys_lot27.py       | 255 ++++++
- frontend/src/App.js                          |  13 +
- frontend/src/components/EmojiPicker.jsx      | 175 ++++
- frontend/src/components/FormsSurveysTabs.jsx |  27 +
- frontend/src/components/ImageAnnotator.jsx   | 441 ++++++++++
- frontend/src/components/PortalLayout.jsx     |   3 +
- frontend/src/components/SurveySendModal.jsx  | 329 ++++++++
- frontend/src/pages/admin/AdminSettings.jsx   |   7 +
- frontend/src/pages/portal/Contacts.jsx       |  59 +-
- frontend/src/pages/portal/FormsList.jsx      |   3 +
- frontend/src/pages/portal/SmsBulk.jsx        |   5 +-
- frontend/src/pages/portal/SurveyEditor.jsx   | 253 ++++++
- frontend/src/pages/portal/SurveyResults.jsx  | 345 ++++++++
- frontend/src/pages/portal/Surveys.jsx        | 197 +++++
- frontend/src/pages/portal/UnifiedInbox.jsx   |   7 +-
- frontend/src/pages/portal/WaBulk.jsx         |   4 +
- frontend/src/pages/public/PublicSurvey.jsx   | 161 ++++
- 25 files changed, 3933 insertions(+), 44 deletions(-)
+ backend/health_report.py                      |   4 +-
+ backend/models.py                             |   4 +
+ backend/routes/cashier.py                     |  84 ++
+ backend/routes/portfolio_billing.py           | 535 ++++++++++
+ backend/routes/production.py                  |  22 +-
+ backend/routes/wa_surveys.py                  | 958 ++++++++++++++++++
+ backend/routes/whatsapp_helpers.py            | 149 +++
+ backend/server.py                             | 272 ++++-
+ backend/tests/test_portfolio_billing_lot27.py | 210 ++++
+ backend/tests/test_scheduler_lot27.py         | 157 +++
+ backend/tests/test_wa_flow_lot27.py           | 249 +++++
+ backend/tests/test_wa_surveys_lot27.py        | 310 ++++++
+ frontend/src/App.js                           |  16 +
+ frontend/src/components/EmojiPicker.jsx       | 175 ++++
+ frontend/src/components/FormsSurveysTabs.jsx  |  27 +
+ frontend/src/components/ImageAnnotator.jsx    | 441 ++++++++
+ frontend/src/components/InvoiceTvaDialog.jsx  |  76 ++
+ frontend/src/components/PortalLayout.jsx      |   6 +
+ .../src/components/SurveyContributors.jsx     | 140 +++
+ frontend/src/components/SurveySendModal.jsx   | 329 ++++++
+ .../src/pages/admin/AdminClientFeatures.jsx   |   4 +
+ frontend/src/pages/admin/AdminSettings.jsx    |   7 +
+ .../sections/PortfolioBillingSection.jsx      | 255 +++++
+ frontend/src/pages/portal/Contacts.jsx        |  59 +-
+ frontend/src/pages/portal/FormEditor.jsx      | 523 ++++++----
+ frontend/src/pages/portal/FormRunner.jsx      |   4 +-
+ frontend/src/pages/portal/FormsList.jsx       |   3 +
+ .../src/pages/portal/PortfolioInvoices.jsx    |  98 ++
+ frontend/src/pages/portal/Production.jsx      |  42 +-
+ frontend/src/pages/portal/SmsBulk.jsx         |   5 +-
+ frontend/src/pages/portal/SurveyEditor.jsx    | 270 +++++
+ frontend/src/pages/portal/SurveyResults.jsx   | 345 +++++++
+ frontend/src/pages/portal/Surveys.jsx         | 212 ++++
+ frontend/src/pages/portal/UnifiedInbox.jsx    |   7 +-
+ frontend/src/pages/portal/WaBulk.jsx          |   4 +
+ frontend/src/pages/public/PublicSurvey.jsx    | 161 +++
+ 36 files changed, 5891 insertions(+), 272 deletions(-)
+ create mode 100644 backend/routes/portfolio_billing.py
  create mode 100644 backend/routes/wa_surveys.py
+ create mode 100644 backend/tests/test_portfolio_billing_lot27.py
  create mode 100644 backend/tests/test_scheduler_lot27.py
  create mode 100644 backend/tests/test_wa_flow_lot27.py
  create mode 100644 backend/tests/test_wa_surveys_lot27.py
  create mode 100644 frontend/src/components/EmojiPicker.jsx
  create mode 100644 frontend/src/components/FormsSurveysTabs.jsx
  create mode 100644 frontend/src/components/ImageAnnotator.jsx
+ create mode 100644 frontend/src/components/InvoiceTvaDialog.jsx
+ create mode 100644 frontend/src/components/SurveyContributors.jsx
  create mode 100644 frontend/src/components/SurveySendModal.jsx
+ create mode 100644 frontend/src/pages/admin/sections/PortfolioBillingSection.jsx
+ create mode 100644 frontend/src/pages/portal/PortfolioInvoices.jsx
  create mode 100644 frontend/src/pages/portal/SurveyEditor.jsx
  create mode 100644 frontend/src/pages/portal/SurveyResults.jsx
  create mode 100644 frontend/src/pages/portal/Surveys.jsx
@@ -120,7 +148,7 @@ index 060e539..416d454 100644
      # OpenAI — used for audio transcription (Whisper) inside Reports/Suivis
      openai_api_key: Optional[str] = None  # secret — masked when read (Whisper)
 diff --git a/backend/routes/cashier.py b/backend/routes/cashier.py
-index f3dc5d0..de13951 100644
+index f3dc5d0..5272e59 100644
 --- a/backend/routes/cashier.py
 +++ b/backend/routes/cashier.py
 @@ -2447,7 +2447,31 @@ def make_router(*, db, get_current_user, get_current_admin, get_current_supervis
@@ -164,12 +192,711 @@ index f3dc5d0..de13951 100644
              "grace_days": grace_days,
              "business_clients_count": len(eligible_bcs),
              "email_report": {"sent": False, "to": recipient, "error": None},
+@@ -2650,4 +2676,62 @@ def make_router(*, db, get_current_user, get_current_admin, get_current_supervis
+             "canonical_users_sample": sample,
+         }
+ 
++    # ----------------------------------------------------------------
++    # Lot 27 — Facture créée par le serveur (bilan « Formulaires & Sondages »).
++    # Même numérotation, mêmes totaux, même QR code qu'une facture saisie dans
++    # la Caisse. Émise par le tenant de `user` (ex. SAWALI) au client
++    # `client_user` : sa fiche « client en compte » est retrouvée (champ
++    # linked_user_id) ou créée à partir de son compte.
++    # ----------------------------------------------------------------
++    async def create_invoice_for_client(user: dict, client_user: dict, items: List[dict], *,
++                                        notes: Optional[str] = None, due_date: Optional[str] = None,
++                                        kind: str = "invoice") -> dict:
++        if kind not in ("proforma", "invoice"):
++            raise HTTPException(status_code=400, detail="kind doit être 'proforma' ou 'invoice'")
++        if not items:
++            raise HTTPException(status_code=400, detail="Aucune ligne à facturer")
++        tid = await _tenant_id_of(user)
++        bc = await db.business_clients.find_one(
++            {"tenant_id": tid, "linked_user_id": client_user["id"], "deleted_at": None}, {"_id": 0})
++        if not bc:
++            from routes._counters import gen_internal_id  # import local (évite les cycles)
++            bc = {
++                "id": str(uuid.uuid4()), "client_no": await gen_internal_id(db, "CLI"),
++                "name": client_user.get("company") or client_user.get("full_name") or client_user.get("email") or "Client",
++                "phone": client_user.get("phone"), "whatsapp": client_user.get("whatsapp") or client_user.get("phone"),
++                "email": client_user.get("email"),
++                "billing_address": client_user.get("billing_address") or client_user.get("city"),
++                "nif": client_user.get("nif") or client_user.get("ifu"), "rccm": client_user.get("rccm"),
++                "linked_user_id": client_user["id"], "balance": 0.0, "auto_relance_enabled": False,
++                "relance_channel": "whatsapp", "created_at": _now_iso(), "created_by": user["id"],
++                "tenant_id": tid, "deleted_at": None,
++            }
++            await db.business_clients.insert_one(bc.copy())
++        lines = [{"product_id": None, "label": str(it["label"])[:300], "quantity": float(it["quantity"]),
++                  "unit_price_ht": float(it["unit_price_ht"]), "tva_pct": float(it.get("tva_pct") or 0),
++                  "unit": it.get("unit")} for it in items]
++        totals = _compute_invoice_totals(lines, "none", 0)
++        year = datetime.now(timezone.utc).year
++        seq = await _next_year_seq(f"invoices:{kind}", year)
++        token = secrets.token_urlsafe(24)
++        doc = {
++            "id": str(uuid.uuid4()), "number": f"{'FP' if kind == 'proforma' else 'F'}-{year}-{seq:04d}",
++            "year": year, "seq": seq, "kind": kind, "status": "issued",
++            "business_client_id": bc["id"],
++            "business_client_snapshot": {k: bc.get(k) for k in ("name", "billing_address", "shipping_address",
++                                                                "nif", "rccm", "phone", "whatsapp", "email")},
++            "items": lines, **totals, "discount_kind": "none", "discount_value": 0.0,
++            "amount_in_words": amount_to_words_fr(totals["net_to_pay"]),
++            "notes": notes, "due_date": due_date,
++            "created_by": user["id"], "created_by_name": user.get("full_name") or user.get("email"),
++            "created_at": _now_iso(), "paid_at": None, "paid_via_receipt_id": None, "cancelled_at": None,
++            "qr_token": token, "qr_url": await _build_verify_url(token),
++            "tenant_id": tid, "tenant_snapshot": await _resolve_client_lie(user),
++            "source": "portfolio_report",
++        }
++        await db.invoices.insert_one(doc.copy())
++        doc.pop("_id", None)
++        return doc
++
++    router.create_invoice_for_client = create_invoice_for_client
+     return router, run_auto_relance
+diff --git a/backend/routes/portfolio_billing.py b/backend/routes/portfolio_billing.py
+new file mode 100644
+index 0000000..0977e3a
+--- /dev/null
++++ b/backend/routes/portfolio_billing.py
+@@ -0,0 +1,535 @@
++"""Lot 27 — Facturation du portefeuille « Formulaires & Sondages WhatsApp » par client.
++
++L'admin règle, dans la page SMART Communications de chaque client (tenant) :
++  - les TARIFS : forfait mensuel, prix par formulaire actif, par sondage actif,
++    par message WhatsApp envoyé, par réponse de sondage, par réponse de
++    formulaire, par bilan avec analyse IA, et le taux de TVA ;
++  - le PROMPT de l'analyse IA (un prompt par défaut est proposé).
++
++En fin de période, il génère le BILAN du client :
++  - chiffres de la période (formulaires, réponses, sondages, messages
++    envoyés, taux de réponse, NPS, meilleurs contributeurs) ;
++  - analyse rédigée par l'IA selon le prompt ;
++  - lignes de facturation calculées avec les tarifs ;
++  - PDF à livrer au client (lien public à jeton) ;
++  - facture créée dans la Caisse/Facturation (émise par SAWALI au client).
++
++Définitions (période = du … au …, jours inclus) :
++  - formulaire actif : au moins une réponse reçue pendant la période ;
++  - sondage actif : au moins un message envoyé ou une réponse pendant la période ;
++  - message WhatsApp : invitation ou relance de sondage envoyée avec succès.
++
++Collections : portfolio_billing (réglages par client), portfolio_reports (bilans).
++"""
++from __future__ import annotations
++
++import io
++import json
++import logging
++import os
++import re
++import secrets
++from datetime import date, datetime, timedelta, timezone
++from typing import Any, Callable, Dict, List, Optional
++
++from fastapi import Depends, HTTPException, Request
++from fastapi.responses import Response
++from pydantic import BaseModel, Field
++
++from routes.wa_surveys import compute_question_stats, in_period, rank_contributors
++
++logger = logging.getLogger("sawali.portfolio_billing")
++
++AI_MODEL = "claude-sonnet-5"
++DEFAULT_PROMPT = (
++    "Tu es consultant en relation client. À partir des statistiques ci-dessous (formulaires et "
++    "sondages WhatsApp du client sur la période), rédige en français une analyse claire pour le "
++    "dirigeant : 1) les chiffres clés en 3 phrases ; 2) les points forts ; 3) les points à améliorer "
++    "(taux de réponse, insatisfactions, NPS, commentaires récurrents) ; 4) trois recommandations "
++    "concrètes et chiffrées pour la période suivante. Reste factuel, n'invente aucun chiffre, "
++    "utilise des titres courts (## ) et des listes à puces (- ). 400 mots maximum."
++)
++# Tarifs : clé -> libellé de la ligne de facture
++TARIFFS = [
++    ("monthly_fee", "Forfait mensuel — gestion du portefeuille formulaires & sondages", "mois"),
++    ("per_active_form", "Formulaires actifs", "formulaire"),
++    ("per_active_survey", "Sondages WhatsApp actifs", "sondage"),
++    ("per_wa_message", "Messages WhatsApp envoyés (sondages)", "message"),
++    ("per_survey_response", "Réponses aux sondages", "réponse"),
++    ("per_form_submission", "Réponses aux formulaires", "réponse"),
++    ("per_ai_report", "Bilan de période avec analyse IA", "bilan"),
++]
++
++
++def _now() -> str:
++    return datetime.now(timezone.utc).isoformat()
++
++
++class BillingSettings(BaseModel):
++    enabled: bool = True
++    monthly_fee: float = Field(0, ge=0)
++    per_active_form: float = Field(0, ge=0)
++    per_active_survey: float = Field(0, ge=0)
++    per_wa_message: float = Field(0, ge=0)
++    per_survey_response: float = Field(0, ge=0)
++    per_form_submission: float = Field(0, ge=0)
++    per_ai_report: float = Field(0, ge=0)
++    tva_pct: float = Field(18, ge=0, le=100)
++    ai_prompt: Optional[str] = Field(None, max_length=6000)
++    due_days: int = Field(15, ge=0, le=180)            # échéance de la facture
++    invoice_notes: Optional[str] = Field(None, max_length=1000)
++
++
++class ReportRequest(BaseModel):
++    date_from: str
++    date_to: str
++    with_ai: bool = True
++
++
++class InvoiceRequest(BaseModel):
++    kind: str = "invoice"                                # invoice | proforma
++    apply_tva: Optional[bool] = None                     # choix du Superviseur pour CETTE facture (None = tarif du client)
++
++
++# ---------------------------------------------------------------------------
++# Fonctions pures (testées sans base)
++# ---------------------------------------------------------------------------
++def period_months(date_from: str, date_to: str) -> int:
++    """Nombre de mois facturés pour le forfait : 1 par tranche de ~30 jours (au moins 1)."""
++    d1 = date.fromisoformat(date_from[:10])
++    d2 = date.fromisoformat(date_to[:10])
++    days = (d2 - d1).days + 1
++    return max(1, round(days / 30.4))
++
++
++def billing_lines(settings: Dict[str, Any], metrics: Dict[str, Any], *, months: int, with_ai: bool) -> List[Dict[str, Any]]:
++    """Lignes de facture (quantité × prix) à partir des tarifs et des chiffres de la période."""
++    qty = {
++        "monthly_fee": months,
++        "per_active_form": metrics["forms"]["active"],
++        "per_active_survey": metrics["surveys"]["active"],
++        "per_wa_message": metrics["surveys"]["messages_sent"],
++        "per_survey_response": metrics["surveys"]["responses"],
++        "per_form_submission": metrics["forms"]["submissions"],
++        "per_ai_report": 1 if with_ai else 0,
++    }
++    tva = float(settings.get("tva_pct") if settings.get("tva_pct") is not None else 18)
++    lines = []
++    for key, label, unit in TARIFFS:
++        price = float(settings.get(key) or 0)
++        q = qty[key]
++        if price > 0 and q > 0:
++            lines.append({"key": key, "label": label, "unit": unit, "quantity": q, "unit_price_ht": price,
++                          "tva_pct": tva, "total_ht": round(q * price, 2)})
++    return lines
++
++
++def totals_of(lines: List[Dict[str, Any]]) -> Dict[str, float]:
++    ht = sum(line["total_ht"] for line in lines)
++    tva = sum(line["total_ht"] * line["tva_pct"] / 100 for line in lines)
++    return {"total_ht": round(ht, 2), "total_tva": round(tva, 2), "total_ttc": round(ht + tva, 2)}
++
++
++def _latin(text: str) -> str:
++    """Texte affichable par la police PDF standard (émojis et symboles retirés)."""
++    out = []
++    for ch in str(text or ""):
++        try:
++            ch.encode("cp1252")
++            out.append(ch)
++        except UnicodeEncodeError:
++            out.append({"→": "->", "≥": ">=", "≤": "<=", "•": "-", "…": "..."}.get(ch, ""))
++    return "".join(out)
++
++
++# ---------------------------------------------------------------------------
++# Routes
++# ---------------------------------------------------------------------------
++def attach_portfolio_billing_routes(
++    *,
++    api,
++    db,
++    get_current_admin,
++    uuid_fn: Callable[[], str],
++    get_billing_manager=None,                     # admin ou Superviseur : bilans et factures
++    public_base_url,                              # (request) -> str
++    create_invoice_for_client=None,               # routes.cashier (hook)
++    llm_send=None,                                # async (system, user_text) -> (texte, tokens)
++    track_ai_usage=None,                          # routes.ai_quotas.track_ai_usage
++) -> None:
++    # Consulter les bilans et créer les factures : admin ET Superviseur (rôles système).
++    # Les tarifs, le prompt et la génération des bilans restent à l'admin.
++    manager = get_billing_manager or get_current_admin
++
++    async def _client(cid: str) -> dict:
++        u = await db.users.find_one({"id": cid}, {"_id": 0, "password_hash": 0})
++        if not u:
++            raise HTTPException(status_code=404, detail="Client introuvable")
++        return u
++
++    async def _settings(cid: str) -> Dict[str, Any]:
++        doc = await db.portfolio_billing.find_one({"client_id": cid}, {"_id": 0}) or {}
++        base = BillingSettings().model_dump()
++        base.update({k: v for k, v in doc.items() if k in base})
++        return base
++
++    # ---- Réglages (tarifs + prompt) ---------------------------------------
++    @api.get("/admin/clients/{cid}/portfolio-billing", tags=["Facturation portefeuille"])
++    async def get_billing(cid: str, _: dict = Depends(get_current_admin)):
++        await _client(cid)
++        return {"settings": await _settings(cid), "default_prompt": DEFAULT_PROMPT,
++                "tariffs": [{"key": k, "label": lbl, "unit": u} for k, lbl, u in TARIFFS]}
++
++    @api.put("/admin/clients/{cid}/portfolio-billing", tags=["Facturation portefeuille"])
++    async def put_billing(cid: str, payload: BillingSettings, admin: dict = Depends(get_current_admin)):
++        await _client(cid)
++        data = payload.model_dump()
++        data["ai_prompt"] = (data.get("ai_prompt") or "").strip() or None      # vide = prompt par défaut
++        await db.portfolio_billing.update_one(
++            {"client_id": cid},
++            {"$set": {**data, "client_id": cid, "updated_at": _now(), "updated_by": admin.get("email")}},
++            upsert=True)
++        return {"ok": True, "settings": await _settings(cid)}
++
++    # ---- Chiffres de la période -------------------------------------------
++    async def _metrics(cid: str, date_from: str, date_to: str) -> Dict[str, Any]:
++        # Formulaires du client et réponses reçues pendant la période
++        # Formulaires du client + formulaires partagés avec lui (« clients autorisés ») :
++        # pour ces derniers, seules les réponses des utilisateurs du client comptent.
++        forms = await db.forms.find({"$or": [{"client_id": cid}, {"access_client_ids": cid}]},
++                                    {"_id": 0, "id": 1, "title": 1, "number": 1, "client_id": 1}).to_list(5000)
++        own = {f["id"] for f in forms if f.get("client_id") == cid}
++        fids = [f["id"] for f in forms]
++        subs = await db.form_submissions.find({"form_id": {"$in": fids}},
++                                              {"_id": 0, "form_id": 1, "client_id": 1, "created_at": 1}).to_list(None)
++        subs = [x for x in subs if in_period(x.get("created_at"), date_from, date_to)
++                and (x["form_id"] in own or x.get("client_id") == cid)]
++        per_form: Dict[str, int] = {}
++        for x in subs:
++            per_form[x["form_id"]] = per_form.get(x["form_id"], 0) + 1
++        form_rows = sorted(({"title": f["title"], "number": f.get("number"), "submissions": per_form.get(f["id"], 0)}
++                            for f in forms if per_form.get(f["id"])), key=lambda r: -r["submissions"])
++        # Sondages : messages envoyés (envois et relances), réponses, taux
++        surveys = await db.wa_surveys.find({"client_id": cid}, {"_id": 0}).to_list(5000)
++        sids = [s["id"] for s in surveys]
++        camps = await db.wa_survey_campaigns.find({"survey_id": {"$in": sids}},
++                                                   {"_id": 0, "survey_id": 1, "sent_ok": 1, "created_at": 1}).to_list(None)
++        camps = [c for c in camps if in_period(c.get("created_at"), date_from, date_to)]
++        responses = await db.wa_survey_responses.find({"survey_id": {"$in": sids}}, {"_id": 0}).to_list(None)
++        responses = [r for r in responses if in_period(r.get("created_at"), date_from, date_to)]
++        invites = await db.wa_survey_invites.find({"survey_id": {"$in": sids}}, {"_id": 0}).to_list(None)
++        sent_by: Dict[str, int] = {}
++        for c in camps:
++            sent_by[c["survey_id"]] = sent_by.get(c["survey_id"], 0) + int(c.get("sent_ok") or 0)
++        resp_by: Dict[str, List[dict]] = {}
++        for r in responses:
++            resp_by.setdefault(r["survey_id"], []).append(r)
++        survey_rows = []
++        for s in surveys:
++            sent = sent_by.get(s["id"], 0)
++            rs = resp_by.get(s["id"], [])
++            if not sent and not rs:
++                continue
++            stats = compute_question_stats(s.get("questions") or [], rs, bool(s.get("anonymous")))
++            nps = next((q.get("nps") for q in stats if q["type"] == "nps" and q.get("nps") is not None), None)
++            survey_rows.append({"title": s["title"], "messages_sent": sent, "responses": len(rs),
++                                "response_rate": round(100 * len(rs) / sent, 1) if sent else None,
++                                "nps": nps, "questions": stats})
++        survey_rows.sort(key=lambda r: -r["responses"])
++        period_invites = [i for i in invites if in_period(i.get("answered_at") or i.get("last_sent_at"), date_from, date_to)]
++        period_invites = [{**i, "answered_at": i.get("answered_at") if in_period(i.get("answered_at"), date_from, date_to) else None}
++                          for i in period_invites]
++        anonymous = {s["id"] for s in surveys if s.get("anonymous")}
++        contributors = rank_contributors([i for i in period_invites if i["survey_id"] not in anonymous], 10)
++        total_sent = sum(sent_by.values())
++        return {
++            "forms": {"total": len(forms), "active": len(form_rows), "submissions": len(subs), "items": form_rows[:30]},
++            "surveys": {"total": len(surveys), "active": len(survey_rows), "messages_sent": total_sent,
++                        "responses": len(responses),
++                        "response_rate": round(100 * len(responses) / total_sent, 1) if total_sent else None,
++                        "items": survey_rows[:30]},
++            "contributors": [{k: c.get(k) for k in ("rank", "name", "company", "answered", "response_rate", "avg_delay_hours")}
++                             for c in contributors],
++        }
++
++    # ---- Analyse IA -------------------------------------------------------
++    async def _default_llm(system_text: str, user_text: str):
++        from emergentintegrations.llm.chat import LlmChat, UserMessage   # import local : dépendance lourde
++        key = os.environ.get("EMERGENT_LLM_KEY")
++        if not key:
++            raise HTTPException(status_code=503, detail="Clé IA absente (EMERGENT_LLM_KEY)")
++        chat = LlmChat(api_key=key, session_id=f"bilan-{secrets.token_hex(6)}", system_message=system_text).with_model("anthropic", AI_MODEL)
++        reply = await chat.send_message(UserMessage(text=user_text))
++        return reply or "", max(1, int((len(system_text) + len(user_text) + len(reply or "")) / 4))
++
++    def _ai_input(client: dict, date_from: str, date_to: str, m: Dict[str, Any]) -> str:
++        """Statistiques compactes envoyées à l'IA (pas de numéros de téléphone)."""
++        surveys = []
++        for s in m["surveys"]["items"][:10]:
++            qs = []
++            for q in s["questions"]:
++                item = {"question": q["label"], "type": q["type"], "reponses": q["answered"]}
++                if q.get("options"):
++                    item["repartition"] = {o["label"]: f"{o['pct']} %" for o in q["options"]}
++                for k in ("average", "nps", "promoters", "passives", "detractors"):
++                    if q.get(k) is not None:
++                        item[k] = q[k]
++                if q["type"] == "text":
++                    item["commentaires"] = [a["text"][:300] for a in (q.get("answers") or [])[:25]]
++                qs.append(item)
++            surveys.append({"sondage": s["title"], "messages_envoyes": s["messages_sent"], "reponses": s["responses"],
++                            "taux_reponse": s["response_rate"], "questions": qs})
++        data = {
++            "client": client.get("company") or client.get("full_name"),
++            "periode": f"du {date_from} au {date_to}",
++            "formulaires": {"total": m["forms"]["total"], "actifs": m["forms"]["active"],
++                            "reponses": m["forms"]["submissions"], "detail": m["forms"]["items"][:15]},
++            "sondages": {"total": m["surveys"]["total"], "actifs": m["surveys"]["active"],
++                         "messages_envoyes": m["surveys"]["messages_sent"], "reponses": m["surveys"]["responses"],
++                         "taux_reponse": m["surveys"]["response_rate"], "detail": surveys},
++            "meilleurs_contributeurs": [{"rang": c["rank"], "reponses": c["answered"], "taux": c["response_rate"]}
++                                        for c in m["contributors"][:5]],
++        }
++        return json.dumps(data, ensure_ascii=False, indent=1)
++
++    # ---- Bilans -----------------------------------------------------------
++    @api.post("/admin/clients/{cid}/portfolio-reports", tags=["Facturation portefeuille"])
++    async def create_report(cid: str, payload: ReportRequest, request: Request, admin: dict = Depends(get_current_admin)):
++        client = await _client(cid)
++        try:
++            d1, d2 = date.fromisoformat(payload.date_from[:10]), date.fromisoformat(payload.date_to[:10])
++        except ValueError:
++            raise HTTPException(status_code=400, detail="Dates invalides (AAAA-MM-JJ)")
++        if d2 < d1:
++            raise HTTPException(status_code=400, detail="La date de fin précède la date de début")
++        settings = await _settings(cid)
++        metrics = await _metrics(cid, d1.isoformat(), d2.isoformat())
++        analysis, ai_error = None, None
++        if payload.with_ai:
++            prompt = settings.get("ai_prompt") or DEFAULT_PROMPT
++            try:
++                analysis, tokens = await (llm_send or _default_llm)(prompt, _ai_input(client, d1.isoformat(), d2.isoformat(), metrics))
++                if track_ai_usage:
++                    try:
++                        await track_ai_usage(db, user=admin, resource="chat", units=tokens, model=AI_MODEL,
++                                             metadata={"feature": "portfolio_report", "client_id": cid})
++                    except Exception:  # noqa: BLE001
++                        logger.warning("[bilan] suivi de consommation IA impossible", exc_info=True)
++            except HTTPException as exc:
++                ai_error = str(exc.detail)
++            except Exception as exc:  # noqa: BLE001
++                ai_error = f"Analyse IA indisponible : {str(exc)[:200]}"
++        with_ai = bool(analysis)
++        lines = billing_lines(settings, metrics, months=period_months(d1.isoformat(), d2.isoformat()), with_ai=with_ai)
++        doc = {
++            "id": uuid_fn(), "client_id": cid,
++            "client_name": client.get("company") or client.get("full_name") or client.get("email"),
++            "date_from": d1.isoformat(), "date_to": d2.isoformat(),
++            "metrics": metrics, "analysis": analysis, "ai_error": ai_error, "with_ai": with_ai,
++            "lines": lines, **totals_of(lines), "tva_pct": settings.get("tva_pct"),
++            "billing_enabled": bool(settings.get("enabled")),
++            "token": secrets.token_urlsafe(18),
++            "base_url": (public_base_url(request) or "").rstrip("/"),
++            "invoice_id": None, "invoice_number": None,
++            "created_by": admin.get("email"), "created_at": _now(),
++        }
++        await db.portfolio_reports.insert_one(doc.copy())
++        return doc
++
++    @api.get("/admin/clients/{cid}/portfolio-reports", tags=["Facturation portefeuille"])
++    async def list_reports(cid: str, _: dict = Depends(get_current_admin)):
++        items = await db.portfolio_reports.find({"client_id": cid}, {"_id": 0, "metrics": 0}).sort("created_at", -1).to_list(100)
++        return {"items": items}
++
++    @api.get("/admin/portfolio-reports", tags=["Facturation portefeuille"])
++    async def list_all_reports(status: Optional[str] = None, _: dict = Depends(manager)):
++        """Bilans de tous les clients (page « Bilans à facturer ») : à facturer, facturés ou tous."""
++        q: Dict[str, Any] = {}
++        if status == "to_invoice":
++            q = {"invoice_id": None, "total_ttc": {"$gt": 0}}
++        elif status == "invoiced":
++            q = {"invoice_id": {"$ne": None}}
++        items = await db.portfolio_reports.find(q, {"_id": 0, "metrics": 0, "analysis": 0}).sort("created_at", -1).to_list(500)
++        return {"items": items}
++
++    @api.get("/admin/portfolio-reports/{rid}", tags=["Facturation portefeuille"])
++    async def get_report(rid: str, _: dict = Depends(manager)):
++        r = await db.portfolio_reports.find_one({"id": rid}, {"_id": 0})
++        if not r:
++            raise HTTPException(status_code=404, detail="Bilan introuvable")
++        return r
++
++    @api.delete("/admin/portfolio-reports/{rid}", tags=["Facturation portefeuille"])
++    async def delete_report(rid: str, _: dict = Depends(get_current_admin)):
++        await db.portfolio_reports.delete_one({"id": rid})
++        return {"ok": True}
++
++    @api.post("/admin/portfolio-reports/{rid}/invoice", tags=["Facturation portefeuille"])
++    async def invoice_report(rid: str, payload: InvoiceRequest, admin: dict = Depends(manager)):
++        r = await db.portfolio_reports.find_one({"id": rid}, {"_id": 0})
++        if not r:
++            raise HTTPException(status_code=404, detail="Bilan introuvable")
++        if r.get("invoice_id") and payload.kind == "invoice":
++            raise HTTPException(status_code=409, detail=f"Ce bilan est déjà facturé ({r.get('invoice_number')})")
++        if not r.get("lines"):
++            raise HTTPException(status_code=400, detail="Rien à facturer : aucun tarif ne s'applique à cette période")
++        if not create_invoice_for_client:
++            raise HTTPException(status_code=503, detail="Caisse/Facturation indisponible")
++        settings = await _settings(r["client_id"])
++        client = await _client(r["client_id"])
++        period = f"du {datetime.fromisoformat(r['date_from']).strftime('%d/%m/%Y')} au {datetime.fromisoformat(r['date_to']).strftime('%d/%m/%Y')}"
++        # TVA : décidée pour chaque facture par le Superviseur (ou l'admin) ; par défaut, taux du client
++        apply_tva = payload.apply_tva if payload.apply_tva is not None else float(r.get("tva_pct") or 0) > 0
++        items = [{"label": f"{ln['label']} — {period}", "quantity": ln["quantity"], "unit_price_ht": ln["unit_price_ht"],
++                  "tva_pct": (ln["tva_pct"] if apply_tva else 0), "unit": ln["unit"]} for ln in r["lines"]]
++        due = (datetime.now(timezone.utc) + timedelta(days=int(settings.get("due_days") or 15))).date().isoformat()
++        notes = settings.get("invoice_notes") or f"Bilan Formulaires & Sondages WhatsApp {period}."
++        inv = await create_invoice_for_client(admin, client, items, notes=notes, due_date=due, kind=payload.kind)
++        if payload.kind == "invoice":
++            await db.portfolio_reports.update_one({"id": rid}, {"$set": {"invoice_id": inv["id"], "invoice_number": inv["number"],
++                                                                         "invoiced_at": _now(), "invoiced_with_tva": apply_tva,
++                                                                         "invoiced_amount": inv.get("net_to_pay"),
++                                                                         "invoiced_by": admin.get("email")}})
++        return {"ok": True, "apply_tva": apply_tva,
++                "invoice": {k: inv.get(k) for k in ("id", "number", "kind", "net_to_pay", "total_tva", "due_date", "qr_url")}}
++
++    # ---- PDF --------------------------------------------------------------
++    def _pdf(r: Dict[str, Any]) -> bytes:
++        from reportlab.graphics.charts.barcharts import HorizontalBarChart
++        from reportlab.graphics.shapes import Drawing
++        from reportlab.lib import colors
++        from reportlab.lib.pagesizes import A4
++        from reportlab.lib.styles import ParagraphStyle
++        from reportlab.lib.units import mm
++        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
++
++        navy, blue = colors.HexColor("#0E1F3D"), colors.HexColor("#1E90FF")
++        st = {
++            "h1": ParagraphStyle("h1", fontName="Helvetica-Bold", fontSize=17, textColor=navy, leading=21),
++            "sub": ParagraphStyle("sub", fontName="Helvetica", fontSize=10, textColor=colors.HexColor("#64748B"), leading=13),
++            "h2": ParagraphStyle("h2", fontName="Helvetica-Bold", fontSize=12.5, textColor=blue, spaceBefore=10, spaceAfter=4),
++            "h3": ParagraphStyle("h3", fontName="Helvetica-Bold", fontSize=10.5, textColor=navy, spaceBefore=6, spaceAfter=2),
++            "body": ParagraphStyle("body", fontName="Helvetica", fontSize=9.5, leading=13),
++            "bullet": ParagraphStyle("bullet", fontName="Helvetica", fontSize=9.5, leading=13, leftIndent=10, bulletIndent=2),
++        }
++
++        def esc(t):
++            t = _latin(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
++            return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", t)
++
++        def table(rows, widths, header=True):
++            t = Table(rows, colWidths=widths, hAlign="LEFT")
++            style = [("FONT", (0, 0), (-1, -1), "Helvetica", 8.8), ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
++                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")])]
++            if header:
++                style += [("BACKGROUND", (0, 0), (-1, 0), navy), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
++                          ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 8.8)]
++            t.setStyle(TableStyle(style))
++            return t
++
++        def pct(v):
++            # Pourcentage à la française : 66,7 %
++            return f"{v:g} %".replace(".", ",")
++
++        def money(v):
++            return f"{v:,.0f}".replace(",", " ") + " FCFA"
++
++        m = r["metrics"]
++        fmt = lambda d: datetime.fromisoformat(d).strftime("%d/%m/%Y")  # noqa: E731
++        buf = io.BytesIO()
++        doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=16 * mm, bottomMargin=16 * mm,
++                                title=f"Bilan {r['client_name']}", author="SAWALI SMART SYSTEMS")
++        el = [Paragraph(esc("Bilan Formulaires & Sondages WhatsApp"), st["h1"]),
++              Paragraph(esc(f"{r['client_name']} — période du {fmt(r['date_from'])} au {fmt(r['date_to'])}"), st["sub"]),
++              Spacer(1, 8)]
++        # Chiffres clés
++        s, f = m["surveys"], m["forms"]
++        kpi = [["Sondages actifs", "Messages envoyés", "Réponses sondages", "Taux de réponse", "Formulaires actifs", "Réponses formulaires"],
++               [str(s["active"]), str(s["messages_sent"]), str(s["responses"]),
++                "—" if s["response_rate"] is None else pct(s['response_rate']), str(f["active"]), str(f["submissions"])]]
++        k = table(kpi, [29 * mm] * 6)
++        k.setStyle(TableStyle([("FONT", (0, 1), (-1, 1), "Helvetica-Bold", 14), ("ALIGN", (0, 0), (-1, -1), "CENTER"),
++                               ("TEXTCOLOR", (0, 1), (-1, 1), blue), ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 7.5)]))
++        el += [k]
++        # Sondages : tableau + graphique des taux de réponse
++        if s["items"]:
++            el.append(Paragraph("Sondages WhatsApp", st["h2"]))
++            rows = [["Sondage", "Envoyés", "Réponses", "Taux", "NPS"]]
++            for it in s["items"]:
++                rows.append([Paragraph(esc(it["title"]), st["body"]), it["messages_sent"], it["responses"],
++                             "—" if it["response_rate"] is None else pct(it['response_rate']),
++                             "—" if it["nps"] is None else f"{it['nps']:+d}"])
++            el.append(table(rows, [86 * mm, 22 * mm, 22 * mm, 22 * mm, 22 * mm]))
++            rated = [it for it in s["items"][:8] if it["response_rate"] is not None]
++            if rated:
++                h = 14 + 14 * len(rated)
++                d = Drawing(178 * mm, h * 1.25)
++                ch = HorizontalBarChart()
++                ch.x, ch.y, ch.width, ch.height = 55 * mm, 6, 110 * mm, h
++                ch.data = [[min(100, it["response_rate"]) for it in rated]]
++                ch.categoryAxis.categoryNames = [_latin(it["title"])[:32] for it in rated]
++                ch.categoryAxis.labels.fontName = "Helvetica"
++                ch.categoryAxis.labels.fontSize = 7
++                ch.valueAxis.valueMin, ch.valueAxis.valueMax, ch.valueAxis.valueStep = 0, 100, 20
++                ch.valueAxis.labels.fontSize = 7
++                ch.bars[0].fillColor = colors.HexColor("#10B981")
++                d.add(ch)
++                el += [Spacer(1, 4), Paragraph("Taux de réponse par sondage (%)", st["h3"]), d]
++        if f["items"]:
++            el.append(Paragraph("Formulaires", st["h2"]))
++            rows = [["Formulaire", "N°", "Réponses"]] + [[Paragraph(esc(it["title"]), st["body"]), it.get("number") or "", it["submissions"]]
++                                                        for it in f["items"]]
++            el.append(table(rows, [110 * mm, 40 * mm, 24 * mm]))
++        if m["contributors"]:
++            el.append(Paragraph("Meilleurs contributeurs", st["h2"]))
++            rows = [["#", "Contact", "Entreprise", "Réponses", "Taux"]] + [
++                [c["rank"], Paragraph(esc(c["name"]), st["body"]), Paragraph(esc(c.get("company") or ""), st["body"]),
++                 c["answered"], pct(c['response_rate'])] for c in m["contributors"]]
++            el.append(table(rows, [10 * mm, 62 * mm, 62 * mm, 20 * mm, 20 * mm]))
++        # Analyse IA (titres « ## », puces « - », gras « ** »)
++        if r.get("analysis"):
++            el.append(Paragraph("Analyse", st["h2"]))
++            for line in r["analysis"].splitlines():
++                t = line.strip()
++                if not t:
++                    continue
++                if t.startswith("#"):
++                    el.append(Paragraph(esc(t.lstrip("# ")), st["h3"]))
++                elif t[:2] in ("- ", "* ", "• "):
++                    el.append(Paragraph(esc(t[2:]), st["bullet"], bulletText="•"))
++                else:
++                    el.append(Paragraph(esc(t), st["body"]))
++        # Facturation de la période
++        if r.get("lines"):
++            el.append(Paragraph("Facturation de la période", st["h2"]))
++            rows = [["Désignation", "Qté", "Prix unitaire HT", "Total HT"]] + [
++                [Paragraph(esc(ln["label"]), st["body"]), ln["quantity"], money(ln["unit_price_ht"]), money(ln["total_ht"])] for ln in r["lines"]]
++            rows += [["", "", "Total HT", money(r["total_ht"])], ["", "", f"TVA {r.get('tva_pct') or 0:g} %", money(r["total_tva"])],
++                     ["", "", "Total TTC", money(r["total_ttc"])]]
++            t = table(rows, [92 * mm, 16 * mm, 34 * mm, 32 * mm])
++            t.setStyle(TableStyle([("FONT", (2, -1), (-1, -1), "Helvetica-Bold", 9.5), ("ALIGN", (1, 1), (-1, -1), "RIGHT")]))
++            el.append(t)
++            if r.get("invoice_number"):
++                el.append(Paragraph(esc(f"Facture n° {r['invoice_number']}"), st["sub"]))
++        el += [Spacer(1, 10), Paragraph(esc(f"Document généré le {datetime.now(timezone.utc).strftime('%d/%m/%Y')} par SAWALI SMART SYSTEMS."), st["sub"])]
++        doc.build(el)
++        return buf.getvalue()
++
++    def _pdf_response(r: Dict[str, Any], pdf: bytes) -> Response:
++        name = re.sub(r"[^A-Za-z0-9_-]+", "_", f"Bilan_{r['client_name']}_{r['date_from']}_{r['date_to']}")[:90]
++        return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}.pdf"'})
++
++    @api.get("/admin/portfolio-reports/{rid}/pdf", tags=["Facturation portefeuille"])
++    async def report_pdf(rid: str, _: dict = Depends(manager)):
++        import asyncio
++        r = await get_report(rid, _)
++        return _pdf_response(r, await asyncio.to_thread(_pdf, r))          # PDF construit hors de la boucle
++
++    @api.get("/public/portfolio-report/{token}", tags=["Facturation portefeuille"])
++    async def public_report_pdf(token: str):
++        """Lien à transmettre au client : le PDF du bilan, sans compte."""
++        import asyncio
++        r = await db.portfolio_reports.find_one({"token": token}, {"_id": 0})
++        if not r:
++            raise HTTPException(status_code=404, detail="Bilan introuvable")
++        return _pdf_response(r, await asyncio.to_thread(_pdf, r))
+diff --git a/backend/routes/production.py b/backend/routes/production.py
+index 5ef8809..0371518 100644
+--- a/backend/routes/production.py
++++ b/backend/routes/production.py
+@@ -320,14 +320,14 @@ def attach_production_routes(*, api, db, get_current_user):
+     @api.delete("/production/intrants/{iid}", tags=["Production"])
+     async def delete_intrant(iid: str, user: Dict = Depends(get_current_user)):
+         await _require_fabricant_admin(db, user)
+-        # Refuser si utilisé dans au moins une recette (protège l'historique)
++        # Refuser si utilisé dans au moins une formulation (protège l'historique)
+         in_use = await db.production_recipes.count_documents(
+             {"client_id": _tenant_scope(user), "intrants.intrant_id": iid},
+         )
+         if in_use > 0:
+             raise HTTPException(
+                 status_code=409,
+-                detail=f"Impossible de supprimer : {in_use} recette(s) utilisent cet intrant.",
++                detail=f"Impossible de supprimer : {in_use} formulation(s) utilisent cet intrant.",
+             )
+         res = await db.production_intrants.delete_one({"id": iid, "client_id": _tenant_scope(user)})
+         if res.deleted_count == 0:
+@@ -384,7 +384,7 @@ def attach_production_routes(*, api, db, get_current_user):
+         if await db.production_recipes.find_one(_dup_q, {"_id": 0, "id": 1}):
+             raise HTTPException(
+                 status_code=409,
+-                detail=f"Une recette existe déjà avec ce nom + dosage : « {payload.name.strip()} {dosage_number or ''} {dosage_unit or ''} ».",
++                detail=f"Une formulation existe déjà avec ce nom + dosage : « {payload.name.strip()} {dosage_number or ''} {dosage_unit or ''} ».",
+             )
+         doc: Dict[str, Any] = {
+             "id": str(uuid.uuid4()),
+@@ -436,7 +436,7 @@ def attach_production_routes(*, api, db, get_current_user):
+         if await db.production_recipes.find_one(_dup_q, {"_id": 0, "id": 1}):
+             raise HTTPException(
+                 status_code=409,
+-                detail=f"Une autre recette existe déjà avec ce nom + dosage : « {payload.name.strip()} {dosage_number or ''} {dosage_unit or ''} ».",
++                detail=f"Une autre formulation existe déjà avec ce nom + dosage : « {payload.name.strip()} {dosage_number or ''} {dosage_unit or ''} ».",
+             )
+         res = await db.production_recipes.update_one(
+             {"id": rid, "client_id": tenant},
+@@ -458,7 +458,7 @@ def attach_production_routes(*, api, db, get_current_user):
+             }},
+         )
+         if res.matched_count == 0:
+-            raise HTTPException(status_code=404, detail="Recette introuvable")
++            raise HTTPException(status_code=404, detail="Formulation introuvable")
+         doc = await db.production_recipes.find_one({"id": rid, "client_id": tenant}, {"_id": 0})
+         return _compute_recipe(doc, default_m)
+ 
+@@ -467,7 +467,7 @@ def attach_production_routes(*, api, db, get_current_user):
+         await _require_fabricant_admin(db, user)
+         res = await db.production_recipes.delete_one({"id": rid, "client_id": _tenant_scope(user)})
+         if res.deleted_count == 0:
+-            raise HTTPException(status_code=404, detail="Recette introuvable")
++            raise HTTPException(status_code=404, detail="Formulation introuvable")
+         return {"ok": True, "id": rid}
+ 
+     # Iter43-fix24az-l (2026-02-26) — Task 3 : Duplicate a recipe.
+@@ -481,13 +481,13 @@ def attach_production_routes(*, api, db, get_current_user):
+         tenant = _tenant_scope(user)
+         src = await db.production_recipes.find_one({"id": rid, "client_id": tenant}, {"_id": 0})
+         if not src:
+-            raise HTTPException(status_code=404, detail="Recette source introuvable")
++            raise HTTPException(status_code=404, detail="Formulation source introuvable")
+         default_m = await _default_margin(db)
+         now = _now_iso()
+         new_id = str(uuid.uuid4())
+         # Compute a unique suffix on the name to avoid the uniqueness clash
+         # when the user later saves without changing the dosage.
+-        base_name = src.get("name") or "Recette"
++        base_name = src.get("name") or "Formulation"
+         candidate = f"{base_name} (copie)"
+         idx = 2
+         while await db.production_recipes.find_one({
+@@ -576,7 +576,7 @@ def attach_production_routes(*, api, db, get_current_user):
+             {"id": rid, "client_id": _tenant_scope(user)}, {"_id": 0},
+         )
+         if not r:
+-            raise HTTPException(status_code=404, detail="Recette introuvable")
++            raise HTTPException(status_code=404, detail="Formulation introuvable")
+         rec = _compute_recipe(r, default_m)
+         # Iter43-fix24az-l retest — Offload CPU-intensive ReportLab rendering.
+         import asyncio as _asyncio
+@@ -605,10 +605,10 @@ def _render_recipes_pdf(recipes: List[Dict[str, Any]], *, tenant_name: str) -> b
+     story: List[Any] = []
+     now_str = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
+     story.append(Paragraph(f"<b>PRIX DE REVIENT / COÛT DE PRODUCTION</b> — {tenant_name}", styles["Title"]))
+-    story.append(Paragraph(f"<font size=8 color='#666'>Édité le {now_str} · {len(recipes)} recette(s)</font>", styles["Normal"]))
++    story.append(Paragraph(f"<font size=8 color='#666'>Édité le {now_str} · {len(recipes)} formulation(s)</font>", styles["Normal"]))
+     story.append(Spacer(1, 6 * mm))
+     if not recipes:
+-        story.append(Paragraph("Aucune recette enregistrée.", styles["Normal"]))
++        story.append(Paragraph("Aucune formulation enregistrée.", styles["Normal"]))
+     else:
+         # Build a matrix : rows = intrants (union), cols = recipes
+         intrant_key = lambda i: i.get("name_snapshot", "?")  # noqa: E731
 diff --git a/backend/routes/wa_surveys.py b/backend/routes/wa_surveys.py
 new file mode 100644
-index 0000000..4aead63
+index 0000000..2a7a18a
 --- /dev/null
 +++ b/backend/routes/wa_surveys.py
-@@ -0,0 +1,846 @@
+@@ -0,0 +1,958 @@
 +"""Lot 27 — Sondages WhatsApp.
 +
 +On conçoit un sondage (questions à choix, notes, recommandation, oui/non,
@@ -271,6 +998,7 @@ index 0000000..4aead63
 +    anonymous: bool = False                            # résultats sans nom des répondants
 +    closes_at: Optional[str] = None                    # date limite de réponse (facultative)
 +    message_text: Optional[str] = None                 # message libre proposé à l'envoi
++    client_id: Optional[str] = None                    # admin/Superviseur : client propriétaire (facturation)
 +
 +
 +class RecipientsQuery(BaseModel):
@@ -432,6 +1160,46 @@ index 0000000..4aead63
 +    return True
 +
 +
++def rank_contributors(invites: List[Dict[str, Any]], limit: int = 20) -> List[Dict[str, Any]]:
++    """Classement des meilleurs contributeurs aux sondages.
++    Une ligne par contact (à défaut, par numéro) : sondages reçus, réponses,
++    taux de réponse, délai moyen de réponse (heures) et dernière réponse.
++    Tri : réponses, puis taux, puis rapidité."""
++    by: Dict[str, Dict[str, Any]] = {}
++    for i in invites:
++        key = i.get("contact_id") or i.get("phone") or i.get("id")
++        row = by.setdefault(key, {"contact_id": i.get("contact_id"), "name": i.get("name") or "", "company": i.get("company") or "",
++                                  "tenant_id": i.get("tenant_id"), "phone": i.get("phone") or "", "received": 0,
++                                  "answered": 0, "_delays": [], "last_answer_at": None, "surveys": set()})
++        if i.get("status") == "sent" or i.get("answered_at"):
++            row["received"] += 1
++        if i.get("answered_at"):
++            row["answered"] += 1
++            row["surveys"].add(i.get("survey_id"))
++            if not row["last_answer_at"] or i["answered_at"] > row["last_answer_at"]:
++                row["last_answer_at"] = i["answered_at"]
++            try:
++                sent = datetime.fromisoformat(str(i.get("first_sent_at") or i.get("last_sent_at") or i.get("created_at")).replace("Z", "+00:00"))
++                ans = datetime.fromisoformat(str(i["answered_at"]).replace("Z", "+00:00"))
++                if ans >= sent:
++                    row["_delays"].append((ans - sent).total_seconds() / 3600)
++            except (TypeError, ValueError):
++                pass
++    out = []
++    for row in by.values():
++        if not row["answered"]:
++            continue
++        d = row.pop("_delays")
++        row["surveys"] = len(row["surveys"])
++        row["response_rate"] = round(100 * row["answered"] / row["received"], 1) if row["received"] else None
++        row["avg_delay_hours"] = round(sum(d) / len(d), 1) if d else None
++        out.append(row)
++    out.sort(key=lambda r: (-r["answered"], -(r["response_rate"] or 0), r["avg_delay_hours"] if r["avg_delay_hours"] is not None else 1e9))
++    for n, r in enumerate(out, start=1):
++        r["rank"] = n
++    return out[:limit]
++
++
 +def mask_phone(phone: str) -> str:
 +    """+226 70 12 34 56 -> 226701•••56 (affichage dans les listes)."""
 +    d = "".join(ch for ch in (phone or "") if ch.isdigit())
@@ -477,6 +1245,15 @@ index 0000000..4aead63
 +                raise HTTPException(status_code=404, detail="Sondage introuvable")
 +        return s
 +
++    async def _owner_for(user: dict, wanted: Optional[str]) -> str:
++        """Client propriétaire du sondage : celui de l'utilisateur ; l'admin et le
++        Superviseur peuvent le créer pour un client (il lui est alors facturé)."""
++        if wanted and is_admin_like(user):
++            if not await db.users.find_one({"id": wanted}, {"_id": 0, "id": 1}):
++                raise HTTPException(status_code=400, detail="Client inconnu")
++            return wanted
++        return _scope(user)
++
 +    def _clean_in(payload: SurveyIn) -> Dict[str, Any]:
 +        title = (payload.title or "").strip()
 +        if not title:
@@ -517,7 +1294,12 @@ index 0000000..4aead63
 +                        "answered": {"$sum": {"$cond": [{"$ifNull": ["$answered_at", False]}, 1, 0]}}}},
 +        ]):
 +            counts[row["_id"]] = {k: row.get(k, 0) for k in ("invited", "sent", "opened", "answered")}
++        owners = {}
++        async for u in db.users.find({"id": {"$in": list({s.get("client_id") for s in items if s.get("client_id")})}},
++                                     {"_id": 0, "id": 1, "company": 1, "full_name": 1}):
++            owners[u["id"]] = u.get("company") or u.get("full_name") or u["id"]
 +        for s in items:
++            s["client_name"] = owners.get(s.get("client_id"), "")
 +            c = counts.get(s["id"]) or {}
 +            s["stats"] = {**c, "response_rate": round(100 * c.get("answered", 0) / c["sent"], 1) if c.get("sent") else None}
 +            s["questions_count"] = len(s.get("questions") or [])
@@ -527,7 +1309,7 @@ index 0000000..4aead63
 +    @api.post("/me/wa-surveys", tags=["Sondages WhatsApp"])
 +    async def create_survey(payload: SurveyIn, user: dict = Depends(get_current_user)):
 +        doc = {
-+            "id": uuid_fn(), **_clean_in(payload), "client_id": _scope(user),
++            "id": uuid_fn(), **_clean_in(payload), "client_id": await _owner_for(user, payload.client_id),
 +            "created_by_id": user["id"], "created_by_label": user.get("full_name") or user.get("email"),
 +            "created_at": _now(), "updated_at": _now(),
 +        }
@@ -544,6 +1326,8 @@ index 0000000..4aead63
 +    async def update_survey(sid: str, payload: SurveyIn, user: dict = Depends(get_current_user)):
 +        await _get_survey(sid, user)
 +        upd = {**_clean_in(payload), "updated_at": _now()}
++        if payload.client_id and is_admin_like(user):
++            upd["client_id"] = await _owner_for(user, payload.client_id)     # changement de client propriétaire
 +        await db.wa_surveys.update_one({"id": sid}, {"$set": upd})
 +        return await _get_survey(sid, user)
 +
@@ -718,6 +1502,8 @@ index 0000000..4aead63
 +            if ok:
 +                upd.update({"status": "sent", "last_sent_at": _now(), "message_id": res.get("message_id"),
 +                            "channel": res.get("channel")})
++                if not inv.get("first_sent_at"):
++                    upd["first_sent_at"] = upd["last_sent_at"]
 +                inc["sent_count"] = 1
 +            elif inv.get("status") != "sent":
 +                upd["status"] = "skipped" if skipped else "failed"   # une relance ratée garde « envoyé »
@@ -899,6 +1685,59 @@ index 0000000..4aead63
 +            "by_company": companies,
 +            "timeline": [{"date": d, "count": c} for d, c in sorted(per_day.items())],
 +        }
++
++    @api.get("/me/wa-surveys-contributors", tags=["Sondages WhatsApp"])
++    async def top_contributors(client_id: Optional[str] = None, survey_id: Optional[str] = None,
++                               date_from: Optional[str] = None, date_to: Optional[str] = None,
++                               limit: int = 20, user: dict = Depends(get_current_user)):
++        """Meilleurs contributeurs aux sondages WhatsApp : pour un client (tenant)
++        ou, pour l'admin/Superviseur, pour tous les clients (« globalement »).
++        Renvoie aussi le classement des clients (tenants) par nombre de réponses."""
++        limit = max(1, min(int(limit or 20), 200))
++        sq: Dict[str, Any] = {}
++        if not is_admin_like(user):
++            sq["client_id"] = {"$in": list({_scope(user), user.get("client_id") or user["id"], user["id"]})}
++        elif client_id:
++            sq["client_id"] = client_id
++        if survey_id:
++            sq["id"] = survey_id
++        surveys = await db.wa_surveys.find(sq, {"_id": 0, "id": 1, "client_id": 1, "title": 1, "anonymous": 1}).to_list(5000)
++        tenant_of = {s["id"]: s.get("client_id") for s in surveys}
++        anonymous_ids = {s["id"] for s in surveys if s.get("anonymous")}
++        invites = await db.wa_survey_invites.find({"survey_id": {"$in": list(tenant_of)}}, {"_id": 0}).to_list(None)
++        if date_from or date_to:
++            invites = [i for i in invites if in_period(i.get("answered_at") or i.get("last_sent_at") or i.get("created_at"),
++                                                       date_from, date_to)]
++            invites = [{**i, "answered_at": i.get("answered_at") if in_period(i.get("answered_at"), date_from, date_to) else None}
++                       for i in invites]
++        # Les réponses aux sondages anonymes comptent, mais sans nom
++        for i in invites:
++            i["tenant_id"] = tenant_of.get(i["survey_id"])
++        named = [i for i in invites if i["survey_id"] not in anonymous_ids]
++        rows = rank_contributors(named, limit)
++        for r in rows:
++            r["phone"] = mask_phone(r.get("phone"))
++        # Classement des clients (tenants) : réponses reçues et taux
++        tenants: Dict[str, Dict[str, Any]] = {}
++        for i in invites:
++            t = tenants.setdefault(i["tenant_id"] or "—", {"tenant_id": i["tenant_id"], "sent": 0, "answered": 0, "respondents": set()})
++            t["sent"] += 1 if (i.get("status") == "sent" or i.get("answered_at")) else 0
++            if i.get("answered_at"):
++                t["answered"] += 1
++                t["respondents"].add(i.get("contact_id") or i.get("phone"))
++        names = {}
++        if tenants:
++            async for u in db.users.find({"id": {"$in": [k for k in tenants if k != "—"]}},
++                                         {"_id": 0, "id": 1, "company": 1, "full_name": 1, "client_code": 1}):
++                names[u["id"]] = u.get("company") or u.get("full_name") or u["id"]
++        tenant_rows = sorted(({"tenant_id": t["tenant_id"], "name": names.get(t["tenant_id"], t["tenant_id"] or "—"),
++                               "sent": t["sent"], "answered": t["answered"], "respondents": len(t["respondents"]),
++                               "response_rate": round(100 * t["answered"] / t["sent"], 1) if t["sent"] else None}
++                              for t in tenants.values()), key=lambda x: -x["answered"])
++        for r in rows:
++            r["tenant_name"] = names.get(r.get("tenant_id"), "")
++        return {"items": rows, "tenants": tenant_rows[:100], "scope": "global" if is_admin_like(user) and not client_id else "tenant",
++                "anonymous_excluded": sum(1 for i in invites if i["survey_id"] in anonymous_ids and i.get("answered_at"))}
 +
 +    @api.get("/me/wa-surveys/{sid}/invites", tags=["Sondages WhatsApp"])
 +    async def survey_invites(sid: str, status: Optional[str] = None, user: dict = Depends(get_current_user)):
@@ -1209,7 +2048,7 @@ index 3b84e63..ea9785a 100644
                  err_msg = None
                  err_details = None
 diff --git a/backend/server.py b/backend/server.py
-index 2ffb81a..983cb91 100644
+index 2ffb81a..268a9a5 100644
 --- a/backend/server.py
 +++ b/backend/server.py
 @@ -5458,9 +5458,14 @@ async def _create_snapshot_record(comment: str, mask_secrets: bool, author_id: O
@@ -1730,7 +2569,7 @@ index 2ffb81a..983cb91 100644
  
  
  # ====================================================================
-@@ -25408,6 +25556,42 @@ _attach_admin_settings(
+@@ -25408,6 +25556,56 @@ _attach_admin_settings(
  from routes.contact_groups import attach_contact_groups_routes as _attach_contact_groups  # noqa: E402
  _attach_contact_groups(api=api, db=db, get_current_user=get_current_user)
  
@@ -1765,6 +2604,20 @@ index 2ffb81a..983cb91 100644
 +)
 +
 +
++# Lot 27 — Facturation du portefeuille formulaires & sondages par client :
++# tarifs + prompt IA (page SMART Communications du client), bilan de période
++# (chiffres, analyse IA, PDF) et facture dans la Caisse (routes/portfolio_billing.py).
++from routes.portfolio_billing import attach_portfolio_billing_routes as _attach_portfolio_billing  # noqa: E402
++from routes.ai_quotas import track_ai_usage as _track_ai_usage_pf  # noqa: E402
++_attach_portfolio_billing(
++    api=api, db=db, get_current_admin=get_current_admin, uuid_fn=_uuid,
++    get_billing_manager=get_admin_or_supervisor,     # le Superviseur facture (et choisit la TVA)
++    public_base_url=_public_base_url,
++    create_invoice_for_client=getattr(_cashier_router, "create_invoice_for_client", None),
++    track_ai_usage=_track_ai_usage_pf,
++)
++
++
 +@app.on_event("startup")
 +async def _resume_wa_surveys():
 +    """Reprend un envoi de sondage interrompu par un redémarrage (hors preview)."""
@@ -1773,6 +2626,222 @@ index 2ffb81a..983cb91 100644
  # Iter40 (2026-02) — Form categories (max 6 per tenant)
  from routes.form_categories import attach_form_categories_routes as _attach_form_categories  # noqa: E402
  _attach_form_categories(api=api, db=db, get_current_user=get_current_user)
+diff --git a/backend/tests/test_portfolio_billing_lot27.py b/backend/tests/test_portfolio_billing_lot27.py
+new file mode 100644
+index 0000000..a5918d6
+--- /dev/null
++++ b/backend/tests/test_portfolio_billing_lot27.py
+@@ -0,0 +1,210 @@
++"""Lot 27 — Facturation du portefeuille « Formulaires & Sondages WhatsApp » par client.
++
++Tarifs et prompt par client (page SMART Communications), bilan de période
++(chiffres, analyse IA, lignes de facture, PDF, lien public) et facture créée
++dans la Caisse avec le vrai crochet de routes/cashier.py.
++Tests autonomes : MongoDB simulé (mongomock-motor), IA simulée.
++"""
++from __future__ import annotations
++
++import sys
++import uuid
++from pathlib import Path
++
++import pytest
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++mongomock_motor = pytest.importorskip("mongomock_motor")
++
++from fastapi import APIRouter, FastAPI  # noqa: E402
++from fastapi.testclient import TestClient  # noqa: E402
++
++import routes.portfolio_billing as pb  # noqa: E402
++
++# num2words (somme en lettres des factures) n'est pas indispensable au test
++try:
++    import num2words  # noqa: F401
++except ImportError:
++    import types
++    _m = types.ModuleType("num2words")
++    _m.num2words = lambda n, **k: str(n)
++    sys.modules["num2words"] = _m
++
++D1, D2 = "2026-09-01", "2026-09-30"
++
++
++def test_pure_helpers():
++    assert pb.period_months("2026-09-01", "2026-09-30") == 1
++    assert pb.period_months("2026-07-01", "2026-09-30") == 3
++    assert pb.period_months("2026-09-10", "2026-09-12") == 1
++    m = {"forms": {"active": 2, "submissions": 30}, "surveys": {"active": 1, "messages_sent": 100, "responses": 40}}
++    s = {"monthly_fee": 25000, "per_active_form": 0, "per_active_survey": 5000, "per_wa_message": 50,
++         "per_survey_response": 100, "per_form_submission": 0, "per_ai_report": 10000, "tva_pct": 18}
++    lines = pb.billing_lines(s, m, months=1, with_ai=True)
++    assert [(ln["key"], ln["quantity"], ln["total_ht"]) for ln in lines] == [
++        ("monthly_fee", 1, 25000), ("per_active_survey", 1, 5000), ("per_wa_message", 100, 5000),
++        ("per_survey_response", 40, 4000), ("per_ai_report", 1, 10000)]
++    t = pb.totals_of(lines)
++    assert t == {"total_ht": 49000, "total_tva": 8820, "total_ttc": 57820}
++    assert not any(ln["key"] == "per_ai_report" for ln in pb.billing_lines(s, m, months=1, with_ai=False))
++    assert pb._latin("Très bien 👍 → ok") == "Très bien  -> ok"
++
++
++@pytest.fixture()
++def env():
++    import asyncio
++    db = mongomock_motor.AsyncMongoMockClient()["sawali_pb"]
++    admin = {"id": "u-admin", "role": "admin", "email": "admin@sawalismartsystems.com", "full_name": "Admin", "company": "SAWALI"}
++    prompts = []
++
++    async def get_admin():
++        return admin
++
++    async def fake_llm(system, user_text):
++        prompts.append((system, user_text))
++        return "## Chiffres clés\n- 2 réponses sur 3 envois (**66,7 %**)\n## Recommandations\n- Relancer les non-répondants", 1200
++
++    tracked = []
++
++    async def track(db_, **kw):
++        tracked.append(kw)
++        return {"allowed": True}
++
++    # Vrai crochet de la Caisse (routes/cashier.py)
++    from routes.cashier import make_router
++
++    async def cur_user():
++        return admin
++    router, _ = make_router(db=db, get_current_user=cur_user, get_current_admin=cur_user, get_current_supervisor=cur_user)
++    app = FastAPI()
++    api = APIRouter(prefix="/api")
++    pb.attach_portfolio_billing_routes(api=api, db=db, get_current_admin=get_admin, uuid_fn=lambda: uuid.uuid4().hex,
++                                       public_base_url=lambda r: "https://sawali.test",
++                                       create_invoice_for_client=router.create_invoice_for_client,
++                                       llm_send=fake_llm, track_ai_usage=track)
++    app.include_router(api)
++    loop = asyncio.new_event_loop()
++
++    async def seed():
++        await db.users.insert_many([dict(admin), {"id": "u-phl", "role": "client", "company": "PHL", "full_name": "PHL Admin",
++                                                  "phone": "+22670000000", "email": "phl@x.bf"}])
++        await db.forms.insert_many([{"id": "f1", "client_id": "u-phl", "title": "Fiche de visite", "number": "FORM-PHL-0001"},
++                                    {"id": "f2", "client_id": "u-phl", "title": "Inutilisé", "number": "FORM-PHL-0002"},
++                                    {"id": "f3", "client_id": "u-autre", "title": "Autre client"}])
++        await db.form_submissions.insert_many([
++            {"form_id": "f1", "created_at": "2026-09-05T10:00:00+00:00"},
++            {"form_id": "f1", "created_at": "2026-09-20T10:00:00+00:00"},
++            {"form_id": "f1", "created_at": "2026-08-20T10:00:00+00:00"},          # hors période
++            {"form_id": "f3", "created_at": "2026-09-05T10:00:00+00:00"}])         # autre client
++        q = [{"id": "q1", "type": "nps", "label": "Reco", "required": True, "options": []},
++             {"id": "q2", "type": "text", "label": "Avis", "required": False, "options": []}]
++        await db.wa_surveys.insert_one({"id": "s1", "client_id": "u-phl", "title": "Satisfaction", "questions": q})
++        await db.wa_survey_campaigns.insert_many([
++            {"survey_id": "s1", "sent_ok": 3, "created_at": "2026-09-10T08:00:00+00:00"},
++            {"survey_id": "s1", "sent_ok": 5, "created_at": "2026-08-10T08:00:00+00:00"}])   # hors période
++        await db.wa_survey_invites.insert_many([
++            {"id": "i1", "survey_id": "s1", "contact_id": "c1", "name": "Awa", "status": "sent",
++             "last_sent_at": "2026-09-10T08:00:00+00:00", "answered_at": "2026-09-10T09:00:00+00:00"},
++            {"id": "i2", "survey_id": "s1", "contact_id": "c2", "name": "Brice", "status": "sent",
++             "last_sent_at": "2026-09-10T08:00:00+00:00", "answered_at": "2026-09-11T08:00:00+00:00"},
++            {"id": "i3", "survey_id": "s1", "contact_id": "c3", "name": "Chantal", "status": "sent",
++             "last_sent_at": "2026-09-10T08:00:00+00:00", "answered_at": None}])
++        await db.wa_survey_responses.insert_many([
++            {"survey_id": "s1", "invite_id": "i1", "answers": {"q1": 10, "q2": "Très bien"}, "created_at": "2026-09-10T09:00:00+00:00"},
++            {"survey_id": "s1", "invite_id": "i2", "answers": {"q1": 6}, "created_at": "2026-09-11T08:00:00+00:00"}])
++    loop.run_until_complete(seed())
++    yield {"db": db, "client": TestClient(app), "prompts": prompts, "tracked": tracked, "loop": loop}
++    loop.close()
++
++
++def test_settings_report_invoice(env):
++    c = env["client"]
++    g = c.get("/api/admin/clients/u-phl/portfolio-billing").json()
++    assert g["settings"]["tva_pct"] == 18 and g["default_prompt"] and len(g["tariffs"]) == 7
++    assert c.get("/api/admin/clients/inconnu/portfolio-billing").status_code == 404
++    r = c.put("/api/admin/clients/u-phl/portfolio-billing", json={
++        "monthly_fee": 25000, "per_active_form": 2000, "per_wa_message": 50, "per_survey_response": 100,
++        "per_ai_report": 10000, "tva_pct": 18, "ai_prompt": "Analyse pour le pharmacien. Sois bref.", "due_days": 10})
++    assert r.status_code == 200 and r.json()["settings"]["ai_prompt"].startswith("Analyse pour")
++
++    rep = c.post("/api/admin/clients/u-phl/portfolio-reports", json={"date_from": D1, "date_to": D2, "with_ai": True})
++    assert rep.status_code == 200, rep.text
++    rep = rep.json()
++    m = rep["metrics"]
++    assert (m["forms"]["total"], m["forms"]["active"], m["forms"]["submissions"]) == (2, 1, 2)
++    assert (m["surveys"]["active"], m["surveys"]["messages_sent"], m["surveys"]["responses"]) == (1, 3, 2)
++    assert m["surveys"]["items"][0]["nps"] == 0 and m["surveys"]["response_rate"] == 66.7
++    assert [x["name"] for x in m["contributors"]] == ["Awa", "Brice"]
++    # Prompt du client utilisé ; aucune donnée de téléphone envoyée à l'IA
++    system, user_text = env["prompts"][0]
++    assert system.startswith("Analyse pour le pharmacien") and "Très bien" in user_text and "+226" not in user_text
++    assert env["tracked"][0]["resource"] == "chat"
++    assert rep["analysis"].startswith("## Chiffres clés")
++    assert [(ln["key"], ln["quantity"]) for ln in rep["lines"]] == [
++        ("monthly_fee", 1), ("per_active_form", 1), ("per_wa_message", 3), ("per_survey_response", 2), ("per_ai_report", 1)]
++    assert rep["total_ht"] == 25000 + 2000 + 150 + 200 + 10000 and rep["total_ttc"] == round(rep["total_ht"] * 1.18, 2)
++
++    # PDF (admin) et lien public pour le client
++    pdf = c.get(f"/api/admin/portfolio-reports/{rep['id']}/pdf")
++    assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF" and len(pdf.content) > 2000
++    assert c.get(f"/api/public/portfolio-report/{rep['token']}").content[:4] == b"%PDF"
++    assert c.get("/api/public/portfolio-report/faux").status_code == 404
++
++    # Facture dans la Caisse : émise par SAWALI au client PHL
++    inv = c.post(f"/api/admin/portfolio-reports/{rep['id']}/invoice", json={"kind": "invoice"})
++    assert inv.status_code == 200, inv.text
++    inv = inv.json()["invoice"]
++    assert inv["number"].startswith("F-") and inv["net_to_pay"] == rep["total_ttc"]
++    doc = env["loop"].run_until_complete(env["db"].invoices.find_one({"id": inv["id"]}))
++    assert doc["business_client_snapshot"]["name"] == "PHL" and doc["tenant_id"] == "u-admin" and len(doc["items"]) == 5
++    assert "du 01/09/2026 au 30/09/2026" in doc["items"][0]["label"] and doc["source"] == "portfolio_report"
++    bc = env["loop"].run_until_complete(env["db"].business_clients.find_one({"linked_user_id": "u-phl"}))
++    assert bc and bc["tenant_id"] == "u-admin"
++    # Déjà facturé : refus ; une 2e facture réutilise la même fiche client
++    assert c.post(f"/api/admin/portfolio-reports/{rep['id']}/invoice", json={"kind": "invoice"}).status_code == 409
++    assert c.post(f"/api/admin/portfolio-reports/{rep['id']}/invoice", json={"kind": "proforma"}).json()["invoice"]["number"].startswith("FP-")
++    assert env["loop"].run_until_complete(env["db"].business_clients.count_documents({"linked_user_id": "u-phl"})) == 1
++
++    lst = c.get("/api/admin/clients/u-phl/portfolio-reports").json()["items"]
++    assert lst[0]["invoice_number"] == inv["number"] and "metrics" not in lst[0]
++
++
++def test_report_without_ai_and_errors(env):
++    c = env["client"]
++    r = c.post("/api/admin/clients/u-phl/portfolio-reports", json={"date_from": D1, "date_to": D2, "with_ai": False}).json()
++    assert r["analysis"] is None and r["lines"] == [] and r["total_ttc"] == 0      # aucun tarif réglé
++    assert c.post(f"/api/admin/portfolio-reports/{r['id']}/invoice", json={}).status_code == 400
++    assert c.post("/api/admin/clients/u-phl/portfolio-reports", json={"date_from": D2, "date_to": D1}).status_code == 400
++
++
++def test_shared_form_counts_only_client_submissions(env):
++    db, loop = env["db"], env["loop"]
++
++    async def seed():
++        await db.forms.insert_one({"id": "fs", "client_id": "u-admin", "title": "Formulaire SAWALI partagé", "access_client_ids": ["u-phl"]})
++        await db.form_submissions.insert_many([
++            {"form_id": "fs", "client_id": "u-phl", "created_at": "2026-09-12T10:00:00+00:00"},
++            {"form_id": "fs", "client_id": "u-autre", "created_at": "2026-09-12T10:00:00+00:00"}])
++    loop.run_until_complete(seed())
++    r = env["client"].post("/api/admin/clients/u-phl/portfolio-reports", json={"date_from": D1, "date_to": D2, "with_ai": False}).json()
++    f = r["metrics"]["forms"]
++    assert (f["total"], f["active"], f["submissions"]) == (3, 2, 3)
++
++
++def test_supervisor_chooses_vat_per_invoice(env):
++    c, db, loop = env["client"], env["db"], env["loop"]
++    c.put("/api/admin/clients/u-phl/portfolio-billing", json={"monthly_fee": 10000, "tva_pct": 18})
++    r1 = c.post("/api/admin/clients/u-phl/portfolio-reports", json={"date_from": D1, "date_to": D2, "with_ai": False}).json()
++    r2 = c.post("/api/admin/clients/u-phl/portfolio-reports", json={"date_from": "2026-08-01", "date_to": "2026-08-31", "with_ai": False}).json()
++    todo = c.get("/api/admin/portfolio-reports?status=to_invoice").json()["items"]
++    assert {x["id"] for x in todo} == {r1["id"], r2["id"]} and "analysis" not in todo[0]
++    # Sans TVA : total = HT
++    a = c.post(f"/api/admin/portfolio-reports/{r1['id']}/invoice", json={"kind": "invoice", "apply_tva": False}).json()
++    assert a["apply_tva"] is False and a["invoice"]["net_to_pay"] == 10000 and a["invoice"]["total_tva"] == 0
++    # Avec TVA : 18 %
++    b = c.post(f"/api/admin/portfolio-reports/{r2['id']}/invoice", json={"kind": "invoice", "apply_tva": True}).json()
++    assert b["invoice"]["net_to_pay"] == 11800
++    rep = loop.run_until_complete(db.portfolio_reports.find_one({"id": r1["id"]}))
++    assert rep["invoiced_with_tva"] is False and rep["invoiced_amount"] == 10000
++    assert c.get("/api/admin/portfolio-reports?status=to_invoice").json()["items"] == []
++    assert len(c.get("/api/admin/portfolio-reports?status=invoiced").json()["items"]) == 2
 diff --git a/backend/tests/test_scheduler_lot27.py b/backend/tests/test_scheduler_lot27.py
 new file mode 100644
 index 0000000..7bb737c
@@ -2193,10 +3262,10 @@ index 0000000..7305a33
 +    assert ev[0][1]["extra_ctx"]["wa_flow_template"] == "suivilogiciels_fr"
 diff --git a/backend/tests/test_wa_surveys_lot27.py b/backend/tests/test_wa_surveys_lot27.py
 new file mode 100644
-index 0000000..c4cb3dc
+index 0000000..81daf17
 --- /dev/null
 +++ b/backend/tests/test_wa_surveys_lot27.py
-@@ -0,0 +1,255 @@
+@@ -0,0 +1,310 @@
 +"""Lot 27 — Sondages WhatsApp.
 +
 +Parcours complet : création, destinataires (tous les contacts d'un client,
@@ -2452,11 +3521,66 @@ index 0000000..c4cb3dc
 +    inv = env["run"](env["db"].wa_survey_invites.find_one({"contact_id": "c1"}))
 +    assert inv["status"] == "skipped" and "24 h" in inv["error"]
 +    assert c.get("/api/public/surveys/inconnu").status_code == 404
++
++
++def test_rank_contributors_pure():
++    base = "2026-09-20T10:00:00+00:00"
++    inv = [
++        {"id": "1", "contact_id": "a", "name": "Awa", "survey_id": "s1", "status": "sent", "last_sent_at": base, "answered_at": "2026-09-20T12:00:00+00:00"},
++        {"id": "2", "contact_id": "a", "name": "Awa", "survey_id": "s2", "status": "sent", "last_sent_at": base, "answered_at": "2026-09-20T11:00:00+00:00"},
++        {"id": "3", "contact_id": "b", "name": "Brice", "survey_id": "s1", "status": "sent", "last_sent_at": base, "answered_at": "2026-09-21T10:00:00+00:00"},
++        {"id": "4", "contact_id": "b", "name": "Brice", "survey_id": "s2", "status": "sent", "last_sent_at": base, "answered_at": None},
++        {"id": "5", "contact_id": "c", "name": "Chantal", "survey_id": "s1", "status": "sent", "last_sent_at": base, "answered_at": None},
++    ]
++    rows = ws.rank_contributors(inv)
++    assert [(r["name"], r["answered"], r["response_rate"]) for r in rows] == [("Awa", 2, 100.0), ("Brice", 1, 50.0)]
++    assert rows[0]["avg_delay_hours"] == 1.5 and rows[0]["surveys"] == 2 and rows[0]["rank"] == 1
++
++
++def test_contributors_route(env):
++    c = env["client"]
++    sid = c.post("/api/me/wa-surveys", json={"title": "S", "questions": QUESTIONS[:1]}).json()["id"]
++    c.post(f"/api/me/wa-surveys/{sid}/send", json={"contact_ids": ["c1", "c2"], "mode": "text"})
++    _wait(env, sid)
++    tok = env["run"](env["db"].wa_survey_invites.find_one({"contact_id": "c2"}))["token"]
++    q0 = c.get(f"/api/public/surveys/{tok}").json()["questions"][0]["id"]
++    assert c.post(f"/api/public/surveys/{tok}", json={"answers": {q0: "Sage"}}).status_code == 200
++    r = c.get("/api/me/wa-surveys-contributors").json()
++    assert [x["name"] for x in r["items"]] == ["Brice"] and r["items"][0]["phone"].count("•") == 3
++    assert r["tenants"][0]["answered"] == 1 and r["tenants"][0]["name"] == "PHL"
++    # Autre client : rien de ce client
++    env["current"]["user"] = env["users"]["u-other"]
++    assert c.get("/api/me/wa-surveys-contributors").json()["items"] == []
++
++
++def test_admin_creates_survey_for_client(env):
++    c = env["client"]
++    env["h"]  # admin-like simulé : on bascule le test sur un is_admin_like vrai via un 2e attachement
++    import uuid as _u
++    from fastapi import APIRouter, FastAPI
++    app = FastAPI(); api = APIRouter(prefix="/api")
++    admin = {"id": "u-admin", "role": "admin"}
++
++    async def gu():
++        return admin
++    ws.attach_wa_survey_routes(api=api, db=env["db"], get_current_user=gu, uuid_fn=lambda: _u.uuid4().hex,
++        can_send_wa=lambda u: True, is_admin_like=lambda u: True, resolve_visible_client_ids=None, wa_enabled_for=None,
++        enforce_demo_quota=None, wa_send_template=None, wa_send_text=None, wa_window_open=lambda i: False,
++        build_recipient_ctx=None, build_components=None, public_base_url=lambda r: "")
++    app.include_router(api)
++    from fastapi.testclient import TestClient
++    a = TestClient(app)
++    s = a.post("/api/me/wa-surveys", json={"title": "Pour PHL", "questions": QUESTIONS[:1], "client_id": "u-phl"}).json()
++    assert s["client_id"] == "u-phl"
++    assert a.post("/api/me/wa-surveys", json={"title": "X", "client_id": "inconnu"}).status_code == 400
++    assert a.get("/api/me/wa-surveys").json()["items"][0]["client_name"] == "PHL"
++    # Le client PHL voit le sondage créé pour lui
++    assert c.get(f"/api/me/wa-surveys/{s['id']}").status_code == 200
 diff --git a/frontend/src/App.js b/frontend/src/App.js
-index 059b02c..d08369b 100644
+index 059b02c..bee6dfe 100644
 --- a/frontend/src/App.js
 +++ b/frontend/src/App.js
-@@ -130,6 +130,11 @@ import VoiceStudio from "@/pages/portal/VoiceStudio";
+@@ -130,6 +130,12 @@ import VoiceStudio from "@/pages/portal/VoiceStudio";
  import { CheckoutSuccess, CheckoutCancel } from "@/pages/public/CheckoutPages";
  import SmsBulk from "@/pages/portal/SmsBulk";
  import WaBulk from "@/pages/portal/WaBulk";
@@ -2465,10 +3589,11 @@ index 059b02c..d08369b 100644
 +import SurveyEditor from "@/pages/portal/SurveyEditor";
 +import SurveyResults from "@/pages/portal/SurveyResults";
 +import PublicSurvey from "@/pages/public/PublicSurvey";
++import PortfolioInvoices from "@/pages/portal/PortfolioInvoices";
  import ComingSoon from "@/pages/portal/ComingSoon";
  import Tickets from "@/pages/portal/Tickets";
  import CashBilling from "@/pages/portal/CashBilling";
-@@ -274,6 +279,8 @@ export default function App() {
+@@ -274,6 +280,8 @@ export default function App() {
            {/* 2026-02 fork (P3 recap) — Deep-link auto-login from médecin planning WA digest */}
            <Route path="/wa-recap" element={<WaPlanningRecap />} />
            <Route path="/f/:fid" element={<PublicForm />} />
@@ -2477,23 +3602,25 @@ index 059b02c..d08369b 100644
            <Route path="/pay/:slug" element={<PayLink />} />
            <Route path="/remote/support/:token" element={<RemoteSupportConsole />} />
            <Route path="/documentation" element={<ApiDocs />} />
-@@ -318,6 +325,9 @@ export default function App() {
+@@ -318,6 +326,10 @@ export default function App() {
              <Route path="forms/:fid/edit" element={<FormEditor />} />
              <Route path="forms/:fid/fill" element={<FormRunner />} />
              <Route path="forms/:fid/analytics" element={<FormAnalyticsDetail />} />
 +            <Route path="surveys" element={<Surveys />} />
 +            <Route path="surveys/:sid/edit" element={<SurveyEditor />} />
 +            <Route path="surveys/:sid/results" element={<SurveyResults />} />
++            <Route path="portfolio-invoices" element={<PortfolioInvoices />} />
              <Route path="contacts" element={<Contacts />} />
              <Route path="contact-groups" element={<ContactGroups />} />
              <Route path="error-registry" element={<ErrorRegistry />} />
-@@ -411,6 +421,9 @@ export default function App() {
+@@ -411,6 +423,10 @@ export default function App() {
              <Route path="forms/:fid/edit" element={<FormEditor />} />
              <Route path="forms/:fid/fill" element={<FormRunner />} />
              <Route path="forms/:fid/analytics" element={<FormAnalyticsDetail />} />
 +            <Route path="surveys" element={<Surveys />} />
 +            <Route path="surveys/:sid/edit" element={<SurveyEditor />} />
 +            <Route path="surveys/:sid/results" element={<SurveyResults />} />
++            <Route path="portfolio-invoices" element={<PortfolioInvoices />} />
              <Route path="messaging" element={<AdminMessaging />} />
              <Route path="automations" element={<AdminAutomations />} />
              <Route path="whatsapp-templates" element={<AdminWaTemplates />} />
@@ -3158,27 +4285,258 @@ index 0000000..48cfd60
 +    document.body,
 +  );
 +}
+diff --git a/frontend/src/components/InvoiceTvaDialog.jsx b/frontend/src/components/InvoiceTvaDialog.jsx
+new file mode 100644
+index 0000000..34d0a85
+--- /dev/null
++++ b/frontend/src/components/InvoiceTvaDialog.jsx
+@@ -0,0 +1,76 @@
++/*
++  InvoiceTvaDialog — lot 27 : création de la facture (ou proforma) d'un bilan
++  « Formulaires & Sondages ». Le Superviseur (ou l'admin) décide, POUR CETTE
++  FACTURE, s'il applique la TVA : les montants HT, TVA et TTC sont affichés
++  pour les deux cas avant de valider.
++
++  Props : report {id, client_name, total_ht, total_tva, tva_pct}, kind ("invoice" | "proforma"),
++          onClose(), onDone(résultat du serveur)
++*/
++import React, { useState } from "react";
++import { apiClient } from "@/lib/api";
++import { toast } from "sonner";
++import { Receipt, X, Loader2 } from "lucide-react";
++
++const money = (v) => `${Math.round(v || 0).toLocaleString("fr-FR")} FCFA`;
++
++export default function InvoiceTvaDialog({ report, kind = "invoice", onClose, onDone }) {
++  const rate = Number(report.tva_pct || 18);
++  const [applyTva, setApplyTva] = useState(rate > 0);
++  const [busy, setBusy] = useState(false);
++  const ht = report.total_ht || 0;
++  const tva = applyTva ? Math.round(ht * rate) / 100 : 0;
++
++  const create = async () => {
++    setBusy(true);
++    try {
++      const r = await apiClient.post(`/admin/portfolio-reports/${report.id}/invoice`, { kind, apply_tva: applyTva });
++      toast.success(`${kind === "invoice" ? "Facture" : "Proforma"} ${r.data.invoice.number} créée ${applyTva ? "avec" : "sans"} TVA — ${money(r.data.invoice.net_to_pay)}`);
++      onDone?.(r.data);
++    } catch (e) {
++      toast.error(e?.response?.data?.detail || "Facture impossible");
++    } finally {
++      setBusy(false);
++    }
++  };
++
++  const choice = (active) => `flex-1 rounded-xl ring-1 px-4 py-3 text-left transition ${active ? "ring-2 ring-emerald-500 bg-emerald-50" : "ring-slate-200 hover:ring-slate-300"}`;
++  return (
++    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40" onClick={(e) => e.target === e.currentTarget && onClose?.()}>
++      <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl space-y-4" data-testid="invoice-tva-dialog">
++        <div className="flex items-start justify-between gap-2">
++          <div>
++            <p className="text-xs uppercase tracking-wider text-slate-500">{kind === "invoice" ? "Nouvelle facture" : "Nouvelle proforma"}</p>
++            <h3 className="font-semibold text-slate-900">{report.client_name}</h3>
++          </div>
++          <button onClick={onClose} className="p-1 rounded hover:bg-slate-100" aria-label="Fermer"><X className="h-5 w-5" /></button>
++        </div>
++        <p className="text-sm font-medium text-slate-800">Appliquer la TVA sur cette facture ?</p>
++        <div className="flex gap-2">
++          <button onClick={() => setApplyTva(true)} className={choice(applyTva)} data-testid="tva-yes">
++            <p className="font-semibold text-sm">Oui, TVA {rate || 18} %</p>
++            <p className="text-[11px] text-slate-500">{money(ht + Math.round(ht * (rate || 18)) / 100)} TTC</p>
++          </button>
++          <button onClick={() => setApplyTva(false)} className={choice(!applyTva)} data-testid="tva-no">
++            <p className="font-semibold text-sm">Non, sans TVA</p>
++            <p className="text-[11px] text-slate-500">{money(ht)} net</p>
++          </button>
++        </div>
++        <table className="w-full text-sm">
++          <tbody>
++            <tr><td className="text-slate-600">Total HT</td><td className="text-right tabular-nums">{money(ht)}</td></tr>
++            <tr><td className="text-slate-600">TVA {applyTva ? `${rate || 18} %` : "(non appliquée)"}</td><td className="text-right tabular-nums">{money(tva)}</td></tr>
++            <tr className="font-bold border-t border-slate-200"><td className="pt-1">Net à payer</td><td className="pt-1 text-right tabular-nums">{money(ht + tva)}</td></tr>
++          </tbody>
++        </table>
++        <div className="flex justify-end gap-2">
++          <button onClick={onClose} className="rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">Annuler</button>
++          <button onClick={create} disabled={busy} data-testid="tva-confirm"
++            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 text-white px-4 py-2 text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50">
++            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Receipt className="h-4 w-4" />} Créer {kind === "invoice" ? "la facture" : "la proforma"}
++          </button>
++        </div>
++      </div>
++    </div>
++  );
++}
 diff --git a/frontend/src/components/PortalLayout.jsx b/frontend/src/components/PortalLayout.jsx
-index 95929d0..287cd7f 100644
+index 95929d0..e2ddd82 100644
 --- a/frontend/src/components/PortalLayout.jsx
 +++ b/frontend/src/components/PortalLayout.jsx
-@@ -45,6 +45,8 @@ const clientLinks = [
+@@ -45,6 +45,10 @@ const clientLinks = [
    { to: "/portal/notes/reports", label: "Mes rapports", tKey: "nav.reports", icon: FileEdit, module: "reports" },
    { to: "/portal/notes/suivis", label: "Mes suivis", tKey: "nav.followups", icon: FileEdit, module: "suivis" },
    { to: "/portal/forms", label: "Formulaires", tKey: "nav.forms", icon: FileText },
 +  // Lot 27 — Sondages WhatsApp (lien personnel par destinataire, mesure des retours)
 +  { to: "/portal/surveys", label: "Sondages WhatsApp", icon: BarChart3, module: "whatsapp" },
++  // Lot 27 — bilans formulaires & sondages à facturer (admin et Superviseur : choix de la TVA)
++  { to: "/portal/portfolio-invoices", label: "Bilans à facturer", icon: Receipt, adminOrSup: true },
    { to: "/portal/contacts", label: "Centre de Messagerie", tKey: "nav.contacts", icon: MessageCircle, module: "contacts_unread", noMarkSeen: true },
    { to: "/portal/contact-groups", label: "Groupes de contacts", icon: Users },
    // Lot 25 — `errorRegistryOnly` : lien affiché seulement aux rôles système que le
-@@ -116,6 +118,7 @@ const adminLinks = [
+@@ -116,6 +120,8 @@ const adminLinks = [
    { to: "/admin/interventions", label: "Interventions", icon: Wrench, module: "admin_interventions", badgeKey: "tickets_pending" },
    { to: "/admin/documents", label: "Documents", icon: FileText },
    { to: "/admin/forms", label: "Formulaires", icon: FileEdit },
 +  { to: "/admin/surveys", label: "Sondages WhatsApp", icon: BarChart3 },   // lot 27
++  { to: "/admin/portfolio-invoices", label: "Bilans à facturer", icon: Receipt },   // lot 27
    { to: "/admin/messaging", label: "Messagerie WhatsApp", icon: MessageCircle },
    { to: "/admin/whatsapp-templates", label: "Templates WhatsApp", icon: FileEdit },
    { to: "/admin/automations", label: "Automations", icon: Zap },
+diff --git a/frontend/src/components/SurveyContributors.jsx b/frontend/src/components/SurveyContributors.jsx
+new file mode 100644
+index 0000000..05c1f5e
+--- /dev/null
++++ b/frontend/src/components/SurveyContributors.jsx
+@@ -0,0 +1,140 @@
++/*
++  SurveyContributors — lot 27 : meilleurs contributeurs aux sondages WhatsApp.
++
++  - Podium des 3 premiers puis tableau : réponses, sondages, taux de réponse,
++    délai moyen de réponse, dernière réponse ;
++  - période (du … au …) ;
++  - admin / Superviseur : « Tous les clients » (classement global) ou un client
++    (tenant) précis, et classement des clients par nombre de réponses ;
++  - les réponses aux sondages anonymes comptent pour les clients mais ne
++    donnent aucun nom.
++*/
++import React, { useEffect, useState } from "react";
++import { apiClient } from "@/lib/api";
++import { useAuth } from "@/contexts/AuthContext";
++import { Trophy, Medal, Clock, Building2 } from "lucide-react";
++
++const fmtDelay = (h) => (h == null ? "—" : h < 1 ? `${Math.max(1, Math.round(h * 60))} min` : h < 48 ? `${Math.round(h)} h` : `${Math.round(h / 24)} j`);
++const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString("fr-FR") : "—");
++const PODIUM = [
++  ["bg-amber-100 ring-amber-300 text-amber-800", "🥇"],
++  ["bg-slate-100 ring-slate-300 text-slate-700", "🥈"],
++  ["bg-orange-100 ring-orange-300 text-orange-800", "🥉"],
++];
++
++export default function SurveyContributors() {
++  const { user } = useAuth();
++  const isAdmin = user?.role === "admin" || user?.role === "superviseur";
++  const [clientId, setClientId] = useState("");
++  const [dateFrom, setDateFrom] = useState("");
++  const [dateTo, setDateTo] = useState("");
++  const [roster, setRoster] = useState([]);
++  const [data, setData] = useState(null);
++
++  useEffect(() => {
++    if (isAdmin) apiClient.get("/me/clients-roster").then((r) => setRoster(Array.isArray(r.data) ? r.data : [])).catch(() => {});
++  }, [isAdmin]);
++
++  useEffect(() => {
++    const params = { limit: 50 };
++    if (clientId) params.client_id = clientId;
++    if (dateFrom) params.date_from = dateFrom;
++    if (dateTo) params.date_to = dateTo;
++    apiClient.get("/me/wa-surveys-contributors", { params })
++      .then((r) => setData(r.data)).catch(() => setData({ items: [], tenants: [] }));
++  }, [clientId, dateFrom, dateTo]);
++
++  const items = data?.items || [];
++  return (
++    <div className="space-y-4" data-testid="survey-contributors">
++      <div className="flex flex-wrap items-end gap-3 rounded-xl bg-white ring-1 ring-slate-200 p-3 text-sm">
++        {isAdmin && (
++          <label className="text-xs text-slate-600">Client
++            <select value={clientId} onChange={(e) => setClientId(e.target.value)} data-testid="contrib-client"
++              className="mt-1 block rounded-lg border border-slate-300 px-2 py-1.5 text-sm min-w-[14rem]">
++              <option value="">Tous les clients (classement global)</option>
++              {roster.map((c) => <option key={c.id} value={c.id}>{c.company || c.full_name}{c.client_code ? ` · ${c.client_code}` : ""}</option>)}
++            </select>
++          </label>
++        )}
++        <label className="text-xs text-slate-600">Du
++          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="mt-1 block rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
++        </label>
++        <label className="text-xs text-slate-600">Au
++          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="mt-1 block rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
++        </label>
++      </div>
++
++      {!data ? <p className="text-sm text-slate-500">Chargement…</p> : !items.length ? (
++        <p className="rounded-xl border-2 border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">
++          Aucune réponse sur cette période.
++        </p>
++      ) : (
++        <>
++          {/* Podium des 3 premiers */}
++          <div className="grid sm:grid-cols-3 gap-3">
++            {items.slice(0, 3).map((r, i) => (
++              <div key={r.contact_id || r.rank} className={`rounded-2xl ring-1 p-4 ${PODIUM[i][0]}`} data-testid={`contrib-podium-${i}`}>
++                <p className="text-3xl">{PODIUM[i][1]}</p>
++                <p className="font-bold truncate">{r.name}</p>
++                <p className="text-xs opacity-80 truncate">{r.company}{isAdmin && !clientId && r.tenant_name ? ` · ${r.tenant_name}` : ""}</p>
++                <p className="mt-2 text-sm"><b className="text-xl tabular-nums">{r.answered}</b> réponse(s) · {r.response_rate} %</p>
++                <p className="text-[11px] opacity-80 flex items-center gap-1"><Clock className="h-3 w-3" /> répond en {fmtDelay(r.avg_delay_hours)}</p>
++              </div>
++            ))}
++          </div>
++          {/* Tableau complet */}
++          <div className="rounded-xl bg-white ring-1 ring-slate-200 overflow-auto">
++            <table className="w-full text-sm">
++              <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
++                <tr><th className="px-3 py-2 text-left">#</th><th className="text-left">Contact</th>
++                  {isAdmin && !clientId && <th className="text-left">Client</th>}
++                  <th className="text-right">Réponses</th><th className="text-right">Sondages</th><th className="text-right">Taux</th>
++                  <th className="text-right">Délai moyen</th><th className="text-right px-3">Dernière réponse</th></tr>
++              </thead>
++              <tbody>
++                {items.map((r) => (
++                  <tr key={r.contact_id || r.rank} className="border-t border-slate-100">
++                    <td className="px-3 py-1.5 tabular-nums">{r.rank <= 3 ? <Medal className="h-4 w-4 text-amber-500" /> : r.rank}</td>
++                    <td><p className="font-medium text-slate-800">{r.name}</p><p className="text-[11px] text-slate-400">{r.company} · {r.phone}</p></td>
++                    {isAdmin && !clientId && <td className="text-xs text-slate-600">{r.tenant_name}</td>}
++                    <td className="text-right font-semibold tabular-nums">{r.answered}</td>
++                    <td className="text-right tabular-nums">{r.surveys}</td>
++                    <td className="text-right tabular-nums">{r.response_rate} %</td>
++                    <td className="text-right tabular-nums">{fmtDelay(r.avg_delay_hours)}</td>
++                    <td className="text-right px-3 text-xs">{fmtDate(r.last_answer_at)}</td>
++                  </tr>
++                ))}
++              </tbody>
++            </table>
++          </div>
++          {data.anonymous_excluded > 0 && (
++            <p className="text-[11px] text-slate-500">{data.anonymous_excluded} réponse(s) à des sondages anonymes ne sont pas nominatives et n'apparaissent pas ici.</p>
++          )}
++        </>
++      )}
++
++      {/* Classement des clients (admin, vue globale) */}
++      {isAdmin && !clientId && (data?.tenants || []).length > 0 && (
++        <div className="rounded-xl bg-white ring-1 ring-slate-200 p-4" data-testid="contrib-tenants">
++          <p className="font-semibold text-slate-900 mb-2 flex items-center gap-2"><Trophy className="h-4 w-4 text-amber-500" /> Classement des clients</p>
++          <table className="w-full text-sm">
++            <thead className="text-[11px] uppercase text-slate-500"><tr><th className="text-left">Client</th><th className="text-right">Envoyés</th>
++              <th className="text-right">Réponses</th><th className="text-right">Répondants</th><th className="text-right">Taux</th></tr></thead>
++            <tbody>
++              {data.tenants.map((t) => (
++                <tr key={t.tenant_id || t.name} className="border-t border-slate-100">
++                  <td className="py-1 flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 text-slate-400" /> {t.name}</td>
++                  <td className="text-right tabular-nums">{t.sent}</td>
++                  <td className="text-right tabular-nums font-semibold">{t.answered}</td>
++                  <td className="text-right tabular-nums">{t.respondents}</td>
++                  <td className="text-right tabular-nums">{t.response_rate == null ? "—" : `${t.response_rate} %`}</td>
++                </tr>
++              ))}
++            </tbody>
++          </table>
++        </div>
++      )}
++    </div>
++  );
++}
 diff --git a/frontend/src/components/SurveySendModal.jsx b/frontend/src/components/SurveySendModal.jsx
 new file mode 100644
 index 0000000..f97d554
@@ -3514,6 +4872,28 @@ index 0000000..f97d554
 +    </div>
 +  );
 +}
+diff --git a/frontend/src/pages/admin/AdminClientFeatures.jsx b/frontend/src/pages/admin/AdminClientFeatures.jsx
+index 7e24fea..c6401ce 100644
+--- a/frontend/src/pages/admin/AdminClientFeatures.jsx
++++ b/frontend/src/pages/admin/AdminClientFeatures.jsx
+@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
+ import { useParams, Link } from "react-router-dom";
+ import { apiClient } from "@/lib/api";
+ import { formatBytes } from "@/components/R2StorageGauge";
++import PortfolioBillingSection from "@/pages/admin/sections/PortfolioBillingSection";
+ import { toast } from "sonner";
+ import { ArrowLeft, MessageCircle, Smartphone, Sparkles, CreditCard, Save, ShieldCheck, Webhook, Building2, Volume2, MessageSquareText, Facebook, Megaphone, Image as ImageIcon, Film, Gauge, Wallet, Download, FileSpreadsheet, FileText, HardDrive } from "lucide-react";
+ 
+@@ -506,6 +507,9 @@ export default function AdminClientFeatures() {
+       {/* Lot 20 — Espace de stockage R2 (Gestion de Stocks) alloué à ce client */}
+       <R2StorageQuotaSection clientId={id} />
+ 
++      {/* Lot 27 — facturation du portefeuille formulaires & sondages WhatsApp (tarifs, prompt IA, bilans) */}
++      <PortfolioBillingSection clientId={id} clientLabel={data?.client?.company || data?.client?.full_name || id} />
++
+       {/* Iter41 Phase 2 — VIDAL mode selector (only shown when vidal_enabled=true) */}
+       {features.vidal_enabled && (
+         <div className="rounded-2xl ring-1 ring-rose-200 bg-rose-50/40 p-5 space-y-3" data-testid="vidal-client-config-section">
 diff --git a/frontend/src/pages/admin/AdminSettings.jsx b/frontend/src/pages/admin/AdminSettings.jsx
 index d393573..3ca4ad3 100644
 --- a/frontend/src/pages/admin/AdminSettings.jsx
@@ -3532,6 +4912,267 @@ index d393573..3ca4ad3 100644
            <button
              type="button"
              onClick={async () => {
+diff --git a/frontend/src/pages/admin/sections/PortfolioBillingSection.jsx b/frontend/src/pages/admin/sections/PortfolioBillingSection.jsx
+new file mode 100644
+index 0000000..e7c8ecf
+--- /dev/null
++++ b/frontend/src/pages/admin/sections/PortfolioBillingSection.jsx
+@@ -0,0 +1,255 @@
++/*
++  PortfolioBillingSection — lot 27 : facturation du portefeuille
++  « Formulaires & Sondages WhatsApp » d'un client, dans sa page SMART Communications.
++
++  1. Tarifs (FCFA HT) : forfait mensuel, formulaire actif, sondage actif,
++     message WhatsApp envoyé, réponse de sondage, réponse de formulaire,
++     bilan avec analyse IA ; TVA ; échéance ; mention sur la facture.
++  2. Prompt de l'analyse IA (vide = prompt par défaut, affiché).
++  3. Bilans de période : « Mois dernier », « Ce mois-ci » ou dates au choix,
++     avec ou sans analyse IA. Chaque bilan montre les chiffres, l'analyse et
++     les lignes de facture ; boutons PDF, lien pour le client, Créer la facture
++     (ou une proforma), Supprimer.
++  Props : clientId, clientLabel
++*/
++import React, { useEffect, useState } from "react";
++import { Link } from "react-router-dom";
++import { apiClient } from "@/lib/api";
++import { toast } from "sonner";
++import InvoiceTvaDialog from "@/components/InvoiceTvaDialog";
++import { Receipt, Save, Sparkles, FileText, Loader2, Link2, Trash2, RotateCcw, ChevronDown, ChevronUp } from "lucide-react";
++
++const money = (v) => `${Math.round(v || 0).toLocaleString("fr-FR")} FCFA`;
++const iso = (d) => d.toISOString().slice(0, 10);
++// Périodes rapides : mois précédent et mois en cours
++const lastMonth = () => { const n = new Date(); return [iso(new Date(n.getFullYear(), n.getMonth() - 1, 1, 12)), iso(new Date(n.getFullYear(), n.getMonth(), 0, 12))]; };
++const thisMonth = () => { const n = new Date(); return [iso(new Date(n.getFullYear(), n.getMonth(), 1, 12)), iso(n)]; };
++
++// Analyse IA : titres « ## », puces « - », gras « **…** » mis en forme
++function Analysis({ text }) {
++  const bold = (t) => t.split(/\*\*(.+?)\*\*/g).map((part, i) => (i % 2 ? <b key={i}>{part}</b> : part));
++  return (
++    <div className="rounded-lg bg-fuchsia-50/50 ring-1 ring-fuchsia-100 p-3 text-slate-800 text-[13px] leading-relaxed space-y-1" data-testid="pb-analysis">
++      {text.split("\n").map((raw, i) => {
++        const t = raw.trim();
++        if (!t) return null;
++        if (t.startsWith("#")) return <p key={i} className="pt-1 font-semibold text-fuchsia-800">{bold(t.replace(/^#+\s*/, ""))}</p>;
++        if (/^[-*•]\s/.test(t)) return <p key={i} className="pl-4 relative before:content-['•'] before:absolute before:left-1 before:text-fuchsia-500">{bold(t.slice(2))}</p>;
++        return <p key={i}>{bold(t)}</p>;
++      })}
++    </div>
++  );
++}
++
++export default function PortfolioBillingSection({ clientId, clientLabel }) {
++  const [cfg, setCfg] = useState(null);
++  const [tariffs, setTariffs] = useState([]);
++  const [defaultPrompt, setDefaultPrompt] = useState("");
++  const [saving, setSaving] = useState(false);
++  const [reports, setReports] = useState([]);
++  const [open, setOpen] = useState(null);           // bilan déplié (détail complet)
++  const [[from, to], setPeriod] = useState(lastMonth());
++  const [withAi, setWithAi] = useState(true);
++  const [generating, setGenerating] = useState(false);
++  const [showPrompt, setShowPrompt] = useState(false);
++  const [invoiceFor, setInvoiceFor] = useState(null);  // {report, kind} : choix de la TVA puis facture
++
++  const load = async () => {
++    try {
++      const [b, r] = await Promise.all([
++        apiClient.get(`/admin/clients/${clientId}/portfolio-billing`),
++        apiClient.get(`/admin/clients/${clientId}/portfolio-reports`),
++      ]);
++      setCfg(b.data.settings); setTariffs(b.data.tariffs || []); setDefaultPrompt(b.data.default_prompt || "");
++      setReports(r.data.items || []);
++    } catch { setCfg(null); }
++  };
++  // eslint-disable-next-line react-hooks/exhaustive-deps
++  useEffect(() => { load(); }, [clientId]);
++
++  const set = (patch) => setCfg((c) => ({ ...c, ...patch }));
++  const save = async () => {
++    setSaving(true);
++    try {
++      const r = await apiClient.put(`/admin/clients/${clientId}/portfolio-billing`, cfg);
++      setCfg(r.data.settings); toast.success("Tarifs et prompt enregistrés");
++    } catch (e) { toast.error(e?.response?.data?.detail || "Erreur"); } finally { setSaving(false); }
++  };
++
++  const generate = async () => {
++    setGenerating(true);
++    try {
++      const r = await apiClient.post(`/admin/clients/${clientId}/portfolio-reports`, { date_from: from, date_to: to, with_ai: withAi });
++      if (r.data.ai_error) toast.warning(`Bilan créé sans analyse IA : ${r.data.ai_error}`);
++      else toast.success("Bilan généré");
++      setOpen(r.data); load();
++    } catch (e) { toast.error(e?.response?.data?.detail || "Génération impossible"); } finally { setGenerating(false); }
++  };
++
++  const openReport = async (rep) => {
++    if (open?.id === rep.id) { setOpen(null); return; }
++    try { setOpen((await apiClient.get(`/admin/portfolio-reports/${rep.id}`)).data); } catch { toast.error("Bilan introuvable"); }
++  };
++  const pdf = async (rep) => {
++    try {
++      const r = await apiClient.get(`/admin/portfolio-reports/${rep.id}/pdf`, { responseType: "blob" });
++      window.open(URL.createObjectURL(r.data), "_blank");
++    } catch { toast.error("PDF indisponible"); }
++  };
++  const copyLink = async (rep) => {
++    const url = `${rep.base_url || window.location.origin}/api/public/portfolio-report/${rep.token}`;
++    try { await navigator.clipboard.writeText(url); toast.success("Lien du bilan copié : transmettez-le au client"); }
++    catch { window.prompt("Lien du bilan à transmettre au client :", url); }
++  };
++  // Facture : fenêtre de choix de la TVA (appliquée ou non pour cette facture)
++  const invoice = (rep, kind) => setInvoiceFor({ report: { ...rep, client_name: rep.client_name || clientLabel }, kind });
++  const invoiced = (res) => {
++    const rep = invoiceFor.report;
++    setInvoiceFor(null); load();
++    if (open?.id === rep.id && invoiceFor.kind === "invoice") setOpen((o) => ({ ...o, invoice_number: res.invoice.number }));
++  };
++  const remove = async (rep) => {
++    if (!window.confirm("Supprimer ce bilan ? (la facture éventuelle reste dans la Caisse)")) return;
++    await apiClient.delete(`/admin/portfolio-reports/${rep.id}`); if (open?.id === rep.id) setOpen(null); load();
++  };
++
++  if (!cfg) return null;
++  const input = "mt-1 w-full text-sm rounded-lg ring-1 ring-slate-300 px-3 py-2 bg-white";
++  return (
++    <div className="rounded-2xl ring-1 ring-indigo-200 bg-indigo-50/40 p-5 space-y-4" data-testid="portfolio-billing-section">
++      <div className="flex items-start gap-3">
++        <div className="h-10 w-10 rounded-xl bg-indigo-100 flex items-center justify-center"><Receipt className="h-5 w-5 text-indigo-600" /></div>
++        <div className="flex-1">
++          <h3 className="font-display font-semibold text-slate-900">Facturation — Formulaires & Sondages WhatsApp</h3>
++          <p className="text-xs text-slate-500 mt-1">
++            Tarifs appliqués à ce client en fin de période, et prompt de l'analyse IA de son bilan. Formulaire actif = au moins une
++            réponse dans la période ; sondage actif = au moins un envoi ou une réponse ; message = invitation ou relance envoyée.
++          </p>
++        </div>
++        <label className="inline-flex items-center gap-2 text-xs text-slate-700">
++          <input type="checkbox" checked={!!cfg.enabled} onChange={(e) => set({ enabled: e.target.checked })} data-testid="pb-enabled" /> Facturation active
++        </label>
++      </div>
++
++      {/* Tarifs */}
++      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
++        {tariffs.map((t) => (
++          <label key={t.key} className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
++            {t.label.split(" — ")[0]} <span className="normal-case font-normal">(FCFA HT / {t.unit})</span>
++            <input type="number" min="0" step="1" value={cfg[t.key] ?? 0} data-testid={`pb-${t.key}`}
++              onChange={(e) => set({ [t.key]: e.target.value === "" ? 0 : Number(e.target.value) })} className={input} />
++          </label>
++        ))}
++        <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">TVA (%)
++          <input type="number" min="0" max="100" value={cfg.tva_pct ?? 18} onChange={(e) => set({ tva_pct: Number(e.target.value) })} className={input} />
++        </label>
++        <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Échéance (jours)
++          <input type="number" min="0" max="180" value={cfg.due_days ?? 15} onChange={(e) => set({ due_days: Number(e.target.value) })} className={input} />
++        </label>
++        <label className="block sm:col-span-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Mention sur la facture (facultatif)
++          <input value={cfg.invoice_notes || ""} onChange={(e) => set({ invoice_notes: e.target.value })} className={input} maxLength={1000} />
++        </label>
++      </div>
++
++      {/* Prompt IA */}
++      <div className="rounded-xl bg-white ring-1 ring-slate-200 p-3">
++        <button type="button" onClick={() => setShowPrompt(!showPrompt)} className="w-full flex items-center justify-between text-sm font-semibold text-slate-800">
++          <span className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-fuchsia-500" /> Prompt de l'analyse IA {cfg.ai_prompt ? "(personnalisé)" : "(par défaut)"}</span>
++          {showPrompt ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
++        </button>
++        {showPrompt && (
++          <div className="mt-2 space-y-2">
++            <textarea rows={6} value={cfg.ai_prompt ?? ""} placeholder={defaultPrompt} data-testid="pb-prompt"
++              onChange={(e) => set({ ai_prompt: e.target.value })} className="w-full text-sm rounded-lg ring-1 ring-slate-300 px-3 py-2" maxLength={6000} />
++            <div className="flex flex-wrap gap-3 text-xs">
++              <button type="button" onClick={() => set({ ai_prompt: defaultPrompt })} className="text-indigo-700 hover:underline">Partir du prompt par défaut</button>
++              <button type="button" onClick={() => set({ ai_prompt: "" })} className="inline-flex items-center gap-1 text-slate-600 hover:underline"><RotateCcw className="h-3 w-3" /> Revenir au prompt par défaut</button>
++              <span className="text-slate-400">L'IA reçoit les chiffres de la période et les commentaires, jamais les numéros de téléphone.</span>
++            </div>
++          </div>
++        )}
++      </div>
++      <button onClick={save} disabled={saving} data-testid="pb-save"
++        className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60">
++        <Save className="h-4 w-4" /> {saving ? "Enregistrement…" : "Enregistrer les tarifs et le prompt"}
++      </button>
++
++      {/* Bilans */}
++      <div className="border-t border-indigo-100 pt-4 space-y-3">
++        <p className="text-sm font-semibold text-slate-800">Bilans de période</p>
++        <div className="flex flex-wrap items-end gap-2 text-sm">
++          <button onClick={() => setPeriod(lastMonth())} className="rounded-full ring-1 ring-slate-300 bg-white px-3 py-1 text-xs hover:ring-indigo-400">Mois dernier</button>
++          <button onClick={() => setPeriod(thisMonth())} className="rounded-full ring-1 ring-slate-300 bg-white px-3 py-1 text-xs hover:ring-indigo-400">Ce mois-ci</button>
++          <label className="text-xs text-slate-600">Du <input type="date" value={from} onChange={(e) => setPeriod([e.target.value, to])} className="ml-1 rounded-lg ring-1 ring-slate-300 px-2 py-1" data-testid="pb-from" /></label>
++          <label className="text-xs text-slate-600">au <input type="date" value={to} onChange={(e) => setPeriod([from, e.target.value])} className="ml-1 rounded-lg ring-1 ring-slate-300 px-2 py-1" data-testid="pb-to" /></label>
++          <label className="inline-flex items-center gap-1.5 text-xs text-slate-700"><input type="checkbox" checked={withAi} onChange={(e) => setWithAi(e.target.checked)} /> Analyse IA</label>
++          <button onClick={generate} disabled={generating} data-testid="pb-generate"
++            className="inline-flex items-center gap-2 rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm hover:bg-slate-800 disabled:opacity-50">
++            {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Générer le bilan
++          </button>
++        </div>
++
++        {reports.map((rep) => {
++          const detail = open?.id === rep.id ? open : null;
++          return (
++            <div key={rep.id} className="rounded-xl bg-white ring-1 ring-slate-200" data-testid={`pb-report-${rep.id}`}>
++              <div className="flex flex-wrap items-center gap-2 px-3 py-2">
++                <button onClick={() => openReport(rep)} className="flex-1 min-w-[12rem] text-left">
++                  <p className="text-sm font-semibold text-slate-900">
++                    Du {new Date(rep.date_from).toLocaleDateString("fr-FR")} au {new Date(rep.date_to).toLocaleDateString("fr-FR")}
++                    {rep.with_ai && <Sparkles className="inline h-3.5 w-3.5 ml-1 text-fuchsia-500" />}
++                  </p>
++                  <p className="text-[11px] text-slate-500">
++                    {rep.invoice_number
++                      ? <>facturé {money(rep.invoiced_amount ?? rep.total_ttc)} {rep.invoiced_with_tva === false ? "(sans TVA)" : "(TVA incluse)"}</>
++                      : <>{money(rep.total_ht)} HT · {money(rep.total_ttc)} avec TVA</>} · créé le {new Date(rep.created_at).toLocaleDateString("fr-FR")}
++                    {rep.invoice_number && <> · <span className="text-emerald-700 font-medium">facture {rep.invoice_number}</span></>}</p>
++                </button>
++                <button onClick={() => pdf(rep)} className="inline-flex items-center gap-1 text-xs rounded ring-1 ring-slate-300 px-2 py-1 hover:bg-slate-50" data-testid="pb-pdf"><FileText className="h-3.5 w-3.5" /> PDF</button>
++                <button onClick={() => copyLink(rep)} className="inline-flex items-center gap-1 text-xs rounded ring-1 ring-slate-300 px-2 py-1 hover:bg-slate-50"><Link2 className="h-3.5 w-3.5" /> Lien client</button>
++                {!rep.invoice_number ? (
++                  <button onClick={() => invoice(rep, "invoice")} disabled={!rep.total_ttc} data-testid="pb-invoice"
++                    className="inline-flex items-center gap-1 text-xs rounded bg-emerald-600 text-white px-2 py-1 hover:bg-emerald-700 disabled:opacity-40"><Receipt className="h-3.5 w-3.5" /> Créer la facture</button>
++                ) : (
++                  <Link to="/portal/billing" className="text-xs text-emerald-700 hover:underline">Voir dans la Caisse</Link>
++                )}
++                <button onClick={() => invoice(rep, "proforma")} disabled={!rep.total_ttc} className="text-xs text-slate-600 hover:underline disabled:opacity-40">Proforma</button>
++                <button onClick={() => remove(rep)} className="p-1 text-slate-400 hover:text-rose-600" title="Supprimer"><Trash2 className="h-3.5 w-3.5" /></button>
++              </div>
++              {detail && (
++                <div className="border-t border-slate-100 p-3 space-y-3 text-sm" data-testid="pb-report-detail">
++                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center">
++                    {[["Sondages actifs", detail.metrics.surveys.active], ["Messages", detail.metrics.surveys.messages_sent],
++                      ["Réponses sondages", detail.metrics.surveys.responses],
++                      ["Taux", detail.metrics.surveys.response_rate == null ? "—" : `${detail.metrics.surveys.response_rate} %`],
++                      ["Formulaires actifs", detail.metrics.forms.active], ["Réponses formulaires", detail.metrics.forms.submissions]].map(([l, v]) => (
++                      <div key={l} className="rounded-lg bg-slate-50 py-2"><p className="text-lg font-bold text-indigo-700 tabular-nums">{v}</p><p className="text-[10px] text-slate-500">{l}</p></div>
++                    ))}
++                  </div>
++                  {detail.ai_error && <p className="text-xs text-amber-700">Analyse IA non disponible : {detail.ai_error}</p>}
++                  {detail.analysis && <Analysis text={detail.analysis} />}
++                  {detail.lines.length ? (
++                    <table className="w-full text-xs">
++                      <thead className="text-[10px] uppercase text-slate-500"><tr><th className="text-left">Désignation</th><th className="text-right">Qté</th><th className="text-right">PU HT</th><th className="text-right">Total HT</th></tr></thead>
++                      <tbody>
++                        {detail.lines.map((ln) => (
++                          <tr key={ln.key} className="border-t border-slate-100"><td className="py-1">{ln.label}</td><td className="text-right">{ln.quantity}</td>
++                            <td className="text-right">{money(ln.unit_price_ht)}</td><td className="text-right">{money(ln.total_ht)}</td></tr>
++                        ))}
++                        <tr className="border-t border-slate-200"><td colSpan={3} className="text-right py-1">Total HT</td><td className="text-right">{money(detail.total_ht)}</td></tr>
++                        <tr><td colSpan={3} className="text-right">TVA {detail.tva_pct} %</td><td className="text-right">{money(detail.total_tva)}</td></tr>
++                        <tr className="font-bold"><td colSpan={3} className="text-right">Total TTC</td><td className="text-right">{money(detail.total_ttc)}</td></tr>
++                      </tbody>
++                    </table>
++                  ) : <p className="text-xs text-slate-500">Aucun tarif ne s'applique à cette période (réglez les tarifs ci-dessus puis régénérez).</p>}
++                </div>
++              )}
++            </div>
++          );
++        })}
++        {!reports.length && <p className="text-xs text-slate-500">Aucun bilan pour l'instant.</p>}
++        {invoiceFor && <InvoiceTvaDialog report={invoiceFor.report} kind={invoiceFor.kind} onClose={() => setInvoiceFor(null)} onDone={invoiced} />}
++      </div>
++    </div>
++  );
++}
 diff --git a/frontend/src/pages/portal/Contacts.jsx b/frontend/src/pages/portal/Contacts.jsx
 index a24c2ed..66492e0 100644
 --- a/frontend/src/pages/portal/Contacts.jsx
@@ -3682,6 +5323,607 @@ index a24c2ed..66492e0 100644
                  <p className="text-[10px] text-slate-400 mt-0.5">
                    Astuce : utilisez le bouton « Insérer un lien de paiement » pour ajouter un lien <code>/pay/&#123;slug&#125;</code>.
                  </p>
+diff --git a/frontend/src/pages/portal/FormEditor.jsx b/frontend/src/pages/portal/FormEditor.jsx
+index cc52df9..45d80e1 100644
+--- a/frontend/src/pages/portal/FormEditor.jsx
++++ b/frontend/src/pages/portal/FormEditor.jsx
+@@ -1,252 +1,385 @@
++/*
++  FormEditor — lot 27 : éditeur de formulaires à la manière d'ALBARKA.
++
++  Même format de formulaire qu'avant (pages → champs, grille de 12 colonnes) :
++  le remplissage, le lien public, les réponses et les statistiques ne changent pas.
++  Nouveautés d'édition :
++    - palette des types de champs : clic pour ajouter (après le champ
++      sélectionné) ou glisser-déposer à l'endroit voulu ;
++    - champs réordonnés par glisser-déposer (ou flèches), dupliqués,
++      supprimés, déplacés vers une autre page ;
++    - pages nommées, ajoutées, supprimées (avec confirmation) ;
++    - panneau de propriétés : question, type, obligatoire, largeur (pleine,
++      3/4, 2/3, moitié, 1/3, 1/4), texte indicatif, valeur par défaut,
++      options, colonnes de tableau, types de fichiers acceptés ;
++    - aperçu en direct avec le même rendu que le formulaire réel ;
++    - alerte avant de quitter la page avec des modifications non enregistrées.
++*/
+ import React, { useEffect, useState } from "react";
+-import { useParams, useNavigate } from "react-router-dom";
++import { useParams, useNavigate, useLocation } from "react-router-dom";
+ import { apiClient } from "@/lib/api";
+ import { toast } from "sonner";
+-import { Save, Plus, Trash2, ArrowLeft, Globe, Lock, GripVertical, PlayCircle, Share2 } from "lucide-react";
++import {
++  Save, Plus, Trash2, ArrowLeft, Globe, Lock, GripVertical, PlayCircle, Share2, Eye, X, Copy, ArrowUp, ArrowDown,
++  Type, AlignLeft, Hash, ToggleLeft, List, ListChecks, Calendar, Clock, Mail, Phone, Link2, MapPin, Table2, Paperclip, PenLine, Loader2,
++} from "lucide-react";
+ import ShareFormModal from "@/components/ShareFormModal";
+ import ClientAccessSelector from "@/components/ClientAccessSelector";
++import { FieldInput } from "@/pages/portal/FormRunner";
+ 
++// Types de champs de Sawali (inchangés) avec leur icône pour la palette
+ const FIELD_TYPES = [
+-  { v: "text", l: "Texte court" }, { v: "textarea", l: "Texte long" },
+-  { v: "number", l: "Numérique" }, { v: "boolean", l: "Oui/Non" },
+-  { v: "select", l: "Liste déroulante" }, { v: "multiselect", l: "Liste à choix multiples" },
+-  { v: "date", l: "Date" }, { v: "datetime", l: "Date & heure" },
+-  { v: "email", l: "Email" }, { v: "tel", l: "Téléphone" }, { v: "url", l: "URL" },
+-  { v: "location", l: "Géolocalisation" },
+-  { v: "table", l: "Tableau (lignes dynamiques)" },
+-  { v: "file", l: "Fichier joint (≤ 1 Mo)" },
+-  { v: "signature", l: "Signature manuscrite" },
++  { v: "text", l: "Texte court", icon: Type }, { v: "textarea", l: "Texte long", icon: AlignLeft },
++  { v: "number", l: "Numérique", icon: Hash }, { v: "boolean", l: "Oui / Non", icon: ToggleLeft },
++  { v: "select", l: "Liste déroulante", icon: List }, { v: "multiselect", l: "Choix multiples", icon: ListChecks },
++  { v: "date", l: "Date", icon: Calendar }, { v: "datetime", l: "Date & heure", icon: Clock },
++  { v: "email", l: "E-mail", icon: Mail }, { v: "tel", l: "Téléphone", icon: Phone }, { v: "url", l: "Lien (URL)", icon: Link2 },
++  { v: "location", l: "Géolocalisation", icon: MapPin }, { v: "table", l: "Tableau", icon: Table2 },
++  { v: "file", l: "Fichier joint (≤ 1 Mo)", icon: Paperclip }, { v: "signature", l: "Signature", icon: PenLine },
+ ];
++const TYPE_BY = Object.fromEntries(FIELD_TYPES.map((t) => [t.v, t]));
++// Largeur dans la grille de 12 colonnes
++const WIDTHS = [[12, "Pleine largeur"], [9, "3/4"], [8, "2/3"], [6, "Moitié"], [4, "1/3"], [3, "1/4"]];
++const WITH_PLACEHOLDER = ["text", "textarea", "number", "email", "tel", "url"];
++const clone = (x) => JSON.parse(JSON.stringify(x));
++const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
++const newField = (type) => ({
++  id: uid(), type, label: TYPE_BY[type]?.l || "Nouveau champ", required: false, col_start: 1, col_span: 12, row: 0,
++  ...(type === "select" || type === "multiselect" ? { options: ["Option 1", "Option 2"] } : {}),
++  ...(type === "table" ? { columns: [{ key: "col0", label: "Désignation", type: "text" }, { key: "col1", label: "Quantité", type: "number" }] } : {}),
++});
+ 
+-// Limit signature fields to 1 per form (UX simplification)
+-const isSignatureUnique = (form, currentFieldId) => {
+-  const all = (form?.pages || []).flatMap((p) => p.fields || []);
+-  return !all.some((f) => f.type === "signature" && f.id !== currentFieldId);
+-};
++// Panneau de propriétés du champ sélectionné
++function Properties({ field, pages, pageIdx, update, moveToPage, signatureTaken }) {
++  const set = (patch) => update({ ...field, ...patch });
++  const input = "mt-1 w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm focus:outline-none focus:border-sawali-blue";
++  const label = "text-[10px] uppercase tracking-wider text-slate-500 font-semibold";
++  const T = TYPE_BY[field.type];
++  return (
++    <div className="space-y-3 text-sm" data-testid="field-properties">
++      <div className="flex items-center gap-2 text-xs font-semibold text-sawali-blue border-b border-slate-100 pb-2">
++        {T && <T.icon className="h-4 w-4" />} {T?.l || field.type}
++      </div>
++      <label className="block"><span className={label}>Question</span>
++        <input value={field.label} onChange={(e) => set({ label: e.target.value })} className={input} data-testid="prop-label" /></label>
++      <label className="block"><span className={label}>Type</span>
++        <select value={field.type} data-testid="prop-type" className={input}
++          onChange={(e) => set({ type: e.target.value, ...(["select", "multiselect"].includes(e.target.value) && !field.options?.length ? { options: ["Option 1", "Option 2"] } : {}) })}>
++          {FIELD_TYPES.map((t) => <option key={t.v} value={t.v}>{t.l}</option>)}
++        </select></label>
++      <label className="inline-flex items-center gap-2"><input type="checkbox" checked={!!field.required} onChange={(e) => set({ required: e.target.checked })} data-testid="prop-required" /> Obligatoire</label>
++      <label className="block"><span className={label}>Largeur</span>
++        <select value={Math.min(12, field.col_span || 12)} onChange={(e) => set({ col_span: Number(e.target.value), col_start: 1 })} className={input} data-testid="prop-width">
++          {WIDTHS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
++          {!WIDTHS.some(([v]) => v === (field.col_span || 12)) && <option value={field.col_span}>{field.col_span}/12</option>}
++        </select></label>
++      {WITH_PLACEHOLDER.includes(field.type) && (
++        <>
++          <label className="block"><span className={label}>Texte indicatif</span>
++            <input value={field.placeholder || ""} onChange={(e) => set({ placeholder: e.target.value })} className={input} /></label>
++          <label className="block"><span className={label}>Valeur par défaut</span>
++            <input value={field.default_value ?? ""} onChange={(e) => set({ default_value: e.target.value === "" ? null : e.target.value })} className={input} /></label>
++        </>
++      )}
++      {(field.type === "select" || field.type === "multiselect") && (
++        <label className="block"><span className={label}>Options (une par ligne)</span>
++          <textarea rows={5} value={(field.options || []).join("\n")} data-testid="prop-options" className={`${input} font-mono`}
++            onChange={(e) => set({ options: e.target.value.split("\n") })}
++            onBlur={(e) => set({ options: e.target.value.split("\n").map((o) => o.trim()).filter(Boolean) })} /></label>
++      )}
++      {field.type === "table" && (
++        <div className="space-y-1">
++          <span className={label}>Colonnes du tableau</span>
++          {(field.columns || []).map((c, i) => (
++            <div key={c.key || i} className="flex gap-1">
++              <input value={c.label || ""} placeholder="Libellé" onChange={(e) => set({ columns: field.columns.map((x, j) => (j === i ? { ...x, label: e.target.value, key: x.key || `col${j}` } : x)) })}
++                className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs" />
++              <select value={c.type || "text"} onChange={(e) => set({ columns: field.columns.map((x, j) => (j === i ? { ...x, type: e.target.value } : x)) })}
++                className="rounded border border-slate-300 px-1 text-xs"><option value="text">Texte</option><option value="number">Numérique</option><option value="date">Date</option></select>
++              <button type="button" onClick={() => set({ columns: field.columns.filter((_, j) => j !== i) })} className="px-1 text-slate-400 hover:text-rose-600"><X className="h-4 w-4" /></button>
++            </div>
++          ))}
++          <button type="button" onClick={() => set({ columns: [...(field.columns || []), { key: `col${Date.now().toString(36)}`, label: "", type: "text" }] })}
++            className="text-xs text-sawali-blue inline-flex items-center gap-1"><Plus className="h-3 w-3" /> Colonne</button>
++        </div>
++      )}
++      {field.type === "file" && (
++        <label className="block"><span className={label}>Types acceptés (vide = tous)</span>
++          <input value={field.accept || ""} placeholder=".pdf,image/*" onChange={(e) => set({ accept: e.target.value })} className={`${input} font-mono`} />
++          <span className="text-[10px] text-slate-400">Limite : 1 Mo par fichier.</span></label>
++      )}
++      {field.type === "signature" && signatureTaken && (
++        <p className="text-[11px] text-amber-700 bg-amber-50 ring-1 ring-amber-200 rounded p-2">Un seul champ signature par formulaire : supprimez l'autre ou changez de type.</p>
++      )}
++      {pages.length > 1 && (
++        <label className="block"><span className={label}>Déplacer vers la page</span>
++          <select value={pageIdx} onChange={(e) => moveToPage(Number(e.target.value))} className={input}>
++            {pages.map((p, i) => <option key={p.id} value={i}>{p.title || `Page ${i + 1}`}</option>)}</select></label>
++      )}
++    </div>
++  );
++}
+ 
+-// Form builder — multi-page, 12-col grid, simple field reordering
+ export default function FormEditor() {
+   const { fid } = useParams();
+   const navigate = useNavigate();
++  const { pathname } = useLocation();
++  const base = pathname.startsWith("/admin") ? "/admin" : "/portal";
+   const [form, setForm] = useState(null);
+   const [saving, setSaving] = useState(false);
+-  const [activePage, setActivePage] = useState(0);
++  const [dirty, setDirty] = useState(false);
++  const [pageIdx, setPageIdx] = useState(0);
++  const [selected, setSelected] = useState(null);
+   const [showShare, setShowShare] = useState(false);
+   const [categories, setCategories] = useState([]);
++  const [preview, setPreview] = useState(false);
++  const [previewData, setPreviewData] = useState({});
++  const [previewPage, setPreviewPage] = useState(0);
++  const [dragInfo, setDragInfo] = useState(null);     // {kind:"new", type} | {kind:"move", index}
++  const [dropIndex, setDropIndex] = useState(null);
+ 
+   useEffect(() => {
+-    apiClient.get(`/me/forms/${fid}`).then((r) => setForm(r.data)).catch(() => toast.error("Formulaire introuvable"));
++    apiClient.get(`/me/forms/${fid}`).then((r) => {
++      const f = r.data;
++      setForm({ ...f, pages: f.pages?.length ? f.pages : [{ id: uid(), title: "Page 1", fields: [] }] });
++    }).catch(() => toast.error("Formulaire introuvable"));
+     apiClient.get("/me/form-categories").then((r) => setCategories(r.data || [])).catch(() => setCategories([]));
+   }, [fid]);
+ 
++  // Alerte avant de quitter avec des modifications non enregistrées
++  useEffect(() => {
++    const h = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ""; } };
++    window.addEventListener("beforeunload", h);
++    return () => window.removeEventListener("beforeunload", h);
++  }, [dirty]);
++
++  // Échap ferme l'aperçu
++  useEffect(() => {
++    if (!preview) return undefined;
++    const h = (e) => { if (e.key === "Escape") setPreview(false); };
++    window.addEventListener("keydown", h);
++    return () => window.removeEventListener("keydown", h);
++  }, [preview]);
++
++  const change = (patch) => { setForm((f) => ({ ...f, ...patch })); setDirty(true); };
++  const pages = form?.pages || [];
++  const page = pages[Math.min(pageIdx, Math.max(0, pages.length - 1))] || { fields: [] };
++  const setPages = (fn) => change({ pages: fn(clone(pages)) });
++  const selField = page.fields.find((f) => f.id === selected);   // champ sélectionné (panneau de droite)
++  const signatureCount = pages.flatMap((p) => p.fields).filter((f) => f.type === "signature").length;
++
++  // ---- Champs ------------------------------------------------------------
++  const insertField = (type, at) => {
++    const f = newField(type);
++    setPages((ps) => { const fs = ps[pageIdx].fields; fs.splice(at ?? fs.length, 0, f); return ps; });
++    setSelected(f.id);
++  };
++  const addAfterSelected = (type) => {
++    const idx = page.fields.findIndex((f) => f.id === selected);
++    insertField(type, idx >= 0 ? idx + 1 : page.fields.length);
++  };
++  const updateField = (nf) => setPages((ps) => { ps[pageIdx].fields = ps[pageIdx].fields.map((f) => (f.id === nf.id ? nf : f)); return ps; });
++  const moveField = (from, to) => setPages((ps) => {
++    const fs = ps[pageIdx].fields;
++    if (to < 0 || to >= fs.length) return ps;
++    const [x] = fs.splice(from, 1); fs.splice(to, 0, x); return ps;
++  });
++  const dupField = (i) => setPages((ps) => { const c = { ...clone(ps[pageIdx].fields[i]), id: uid() }; ps[pageIdx].fields.splice(i + 1, 0, c); return ps; });
++  const delField = (i) => { setPages((ps) => { ps[pageIdx].fields.splice(i, 1); return ps; }); setSelected(null); };
++  const moveToPage = (target) => {
++    if (target === pageIdx || !selField) return;
++    setPages((ps) => { ps[pageIdx].fields = ps[pageIdx].fields.filter((f) => f.id !== selField.id); ps[target].fields.push(selField); return ps; });
++    setPageIdx(target);
++  };
++  // Glisser-déposer (HTML5) : depuis la palette ou pour réordonner
++  const onDrop = (e, at) => {
++    e.preventDefault();
++    if (dragInfo?.kind === "new") insertField(dragInfo.type, at);
++    else if (dragInfo?.kind === "move") moveField(dragInfo.index, at > dragInfo.index ? at - 1 : at);
++    setDragInfo(null); setDropIndex(null);
++  };
++
++  // ---- Pages --------------------------------------------------------------
++  const addPage = () => { setPages((ps) => [...ps, { id: uid(), title: `Page ${ps.length + 1}`, fields: [] }]); setPageIdx(pages.length); setSelected(null); };
++  const removePage = () => {
++    if (pages.length <= 1) return;
++    if (page.fields.length && !window.confirm(`Supprimer « ${page.title || `Page ${pageIdx + 1}`} » et ses ${page.fields.length} champ(s) ?`)) return;
++    setPages((ps) => ps.filter((_, i) => i !== pageIdx)); setPageIdx(0); setSelected(null);
++  };
++
+   const save = async () => {
++    if (signatureCount > 1) { toast.error("Un seul champ signature par formulaire"); return; }
+     setSaving(true);
+     try {
++      // Ordre d'affichage enregistré dans `row` ; options vides retirées
++      const cleanPages = pages.map((p) => ({ ...p, fields: p.fields.map((f, i) => ({ ...f, row: i,
++        ...(f.options ? { options: f.options.map((o) => String(o).trim()).filter(Boolean) } : {}) })) }));
+       await apiClient.put(`/me/forms/${fid}`, {
+         title: form.title, description: form.description, is_public: form.is_public,
+-        category_id: form.category_id || null, pages: form.pages,
++        category_id: form.category_id || null, pages: cleanPages,
+         access_client_ids: Array.isArray(form.access_client_ids) ? form.access_client_ids : [],
+       });
++      setDirty(false);
+       toast.success("Formulaire sauvegardé");
+-    } catch (err) { toast.error(err?.response?.data?.detail || "Erreur"); }
+-    finally { setSaving(false); }
+-  };
+-
+-  const addPage = () => setForm((f) => ({ ...f, pages: [...(f.pages || []), { id: crypto.randomUUID(), title: `Page ${(f.pages?.length || 0) + 1}`, fields: [] }] }));
+-  const removePage = (idx) => setForm((f) => ({ ...f, pages: f.pages.filter((_, i) => i !== idx) }));
+-  const updatePage = (idx, patch) => setForm((f) => ({ ...f, pages: f.pages.map((p, i) => i === idx ? { ...p, ...patch } : p) }));
+-
+-  const addField = () => {
+-    const newF = { id: crypto.randomUUID(), type: "text", label: "Nouveau champ", required: false, col_start: 1, col_span: 12, row: (form.pages[activePage].fields || []).length };
+-    updatePage(activePage, { fields: [...(form.pages[activePage].fields || []), newF] });
+-  };
+-  const updateField = (fidx, patch) => updatePage(activePage, { fields: form.pages[activePage].fields.map((fd, i) => i === fidx ? { ...fd, ...patch } : fd) });
+-  const removeField = (fidx) => updatePage(activePage, { fields: form.pages[activePage].fields.filter((_, i) => i !== fidx) });
+-  const moveField = (fidx, dir) => {
+-    const fields = [...form.pages[activePage].fields];
+-    const swap = fidx + dir;
+-    if (swap < 0 || swap >= fields.length) return;
+-    [fields[fidx], fields[swap]] = [fields[swap], fields[fidx]];
+-    updatePage(activePage, { fields });
++    } catch (err) { toast.error(err?.response?.data?.detail || "Erreur"); } finally { setSaving(false); }
+   };
+ 
+   if (!form) return <div className="text-center text-slate-500 py-10">Chargement…</div>;
+ 
+-  const page = form.pages[activePage] || { fields: [] };
+-
+   return (
+-    <div className="max-w-5xl space-y-5" data-testid="form-editor-page">
+-      <div className="flex items-center gap-3">
+-        <button onClick={() => navigate("/portal/forms")} className="text-sm text-slate-500 hover:text-slate-900 inline-flex items-center gap-1"><ArrowLeft className="h-4 w-4" /> Retour</button>
++    <div className="max-w-7xl space-y-4" data-testid="form-editor-page">
++      {/* Barre d'actions */}
++      <div className="flex flex-wrap items-center gap-3">
++        <button onClick={() => { if (!dirty || window.confirm("Quitter sans enregistrer les modifications ?")) navigate(`${base}/forms`); }}
++          className="text-sm text-slate-500 hover:text-slate-900 inline-flex items-center gap-1"><ArrowLeft className="h-4 w-4" /> Retour</button>
+         <code className="text-[11px] font-mono bg-slate-100 px-2 py-0.5 rounded">{form.number}</code>
+         <div className="flex-1" />
+-        <button onClick={() => navigate(`/portal/forms/${fid}/fill`)} className="inline-flex items-center gap-1.5 text-sm rounded-lg bg-slate-100 hover:bg-slate-200 px-3 py-2" data-testid="form-preview-btn"><PlayCircle className="h-4 w-4" /> Aperçu</button>
++        <button onClick={() => { setPreviewData({}); setPreviewPage(pageIdx); setPreview(true); }} data-testid="builder-preview-btn"
++          className="inline-flex items-center gap-1.5 text-sm rounded-lg bg-slate-100 hover:bg-slate-200 px-3 py-2"><Eye className="h-4 w-4" /> Aperçu</button>
++        <button onClick={() => navigate(`${base}/forms/${fid}/fill`)} className="inline-flex items-center gap-1.5 text-sm rounded-lg bg-slate-100 hover:bg-slate-200 px-3 py-2" data-testid="form-preview-btn"><PlayCircle className="h-4 w-4" /> Remplir</button>
+         {form.is_public && (
+           <button onClick={() => setShowShare(true)} className="inline-flex items-center gap-1.5 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2" data-testid="form-share-btn"><Share2 className="h-4 w-4" /> Partager</button>
+         )}
+-        <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-sawali-blue text-white px-4 py-2 text-sm hover:bg-sawali-blue-light disabled:opacity-50" data-testid="form-save-btn"><Save className="h-4 w-4" /> {saving ? "Sauvegarde…" : "Sauvegarder"}</button>
++        <button onClick={save} disabled={saving} data-testid="form-save-btn"
++          className="inline-flex items-center gap-2 rounded-lg bg-sawali-blue text-white px-4 py-2 text-sm hover:bg-sawali-blue-light disabled:opacity-50">
++          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} {dirty ? "Sauvegarder" : "Sauvegardé"}
++        </button>
+       </div>
+-
+       {showShare && <ShareFormModal form={form} onClose={() => setShowShare(false)} />}
+ 
++      {/* En-tête du formulaire */}
+       <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-3">
+-        <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full text-2xl font-display font-bold focus:outline-none" placeholder="Titre du formulaire" data-testid="form-title-input" />
+-        <textarea value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full text-sm text-slate-600 focus:outline-none resize-none" placeholder="Brève description…" rows={2} data-testid="form-desc-input" />
+-        <label className="inline-flex items-center gap-2 text-sm" data-testid="form-public-toggle-wrap">
+-          <input type="checkbox" checked={form.is_public} onChange={(e) => setForm({ ...form, is_public: e.target.checked })} data-testid="form-public-toggle" />
+-          {form.is_public ? <><Globe className="h-4 w-4 text-emerald-600" /> Public — importable par les autres clients</> : <><Lock className="h-4 w-4 text-slate-500" /> Privé</>}
+-        </label>
+-        {categories.length > 0 && (
+-          <label className="block text-xs">
+-            <span className="text-slate-600 mr-2">Catégorie :</span>
+-            <select
+-              value={form.category_id || ""}
+-              onChange={(e) => setForm({ ...form, category_id: e.target.value || null })}
+-              className="text-sm rounded ring-1 ring-slate-300 px-2 py-1"
+-              data-testid="form-category-select"
+-            >
+-              <option value="">— Sans catégorie —</option>
+-              {categories.map((c) => (
+-                <option key={c.id} value={c.id}>{c.name}{c.is_default ? " (défaut)" : ""}</option>
+-              ))}
+-            </select>
++        <input value={form.title} onChange={(e) => change({ title: e.target.value })} className="w-full text-2xl font-display font-bold focus:outline-none" placeholder="Titre du formulaire" data-testid="form-title-input" />
++        <textarea value={form.description || ""} onChange={(e) => change({ description: e.target.value })} className="w-full text-sm text-slate-600 focus:outline-none resize-none" placeholder="Brève description…" rows={2} data-testid="form-desc-input" />
++        <div className="flex flex-wrap items-center gap-4">
++          <label className="inline-flex items-center gap-2 text-sm" data-testid="form-public-toggle-wrap">
++            <input type="checkbox" checked={form.is_public} onChange={(e) => change({ is_public: e.target.checked })} data-testid="form-public-toggle" />
++            {form.is_public ? <><Globe className="h-4 w-4 text-emerald-600" /> Public — importable par les autres clients</> : <><Lock className="h-4 w-4 text-slate-500" /> Privé</>}
+           </label>
+-        )}
+-        <ClientAccessSelector
+-          value={Array.isArray(form.access_client_ids) ? form.access_client_ids : []}
+-          onChange={(ids) => setForm({ ...form, access_client_ids: ids })}
+-          label="Clients autorisés à voir ce formulaire"
+-          testIdPrefix="form-access-clients"
+-        />
++          {categories.length > 0 && (
++            <label className="text-xs"><span className="text-slate-600 mr-2">Catégorie :</span>
++              <select value={form.category_id || ""} onChange={(e) => change({ category_id: e.target.value || null })} className="text-sm rounded ring-1 ring-slate-300 px-2 py-1" data-testid="form-category-select">
++                <option value="">— Sans catégorie —</option>
++                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}{c.is_default ? " (défaut)" : ""}</option>)}
++              </select></label>
++          )}
++        </div>
++        <ClientAccessSelector value={Array.isArray(form.access_client_ids) ? form.access_client_ids : []}
++          onChange={(ids) => change({ access_client_ids: ids })} label="Clients autorisés à voir ce formulaire" testIdPrefix="form-access-clients" />
+       </div>
+ 
+-      {/* Page tabs */}
+-      <div className="flex gap-2 items-center flex-wrap border-b border-slate-200">
+-        {form.pages.map((p, i) => (
+-          <button key={p.id} onClick={() => setActivePage(i)} className={`inline-flex items-center gap-2 px-3 py-2 text-sm border-b-2 ${activePage === i ? "border-sawali-blue text-sawali-blue font-semibold" : "border-transparent text-slate-500 hover:text-slate-900"}`} data-testid={`form-page-tab-${i}`}>
+-            Page {i + 1}
+-            {form.pages.length > 1 && <span onClick={(e) => { e.stopPropagation(); removePage(i); setActivePage(Math.max(0, i - 1)); }} className="h-4 w-4 inline-flex items-center justify-center rounded-full hover:bg-rose-100" data-testid={`form-page-remove-${i}`}><Trash2 className="h-3 w-3 text-rose-500" /></span>}
+-          </button>
+-        ))}
+-        <button onClick={addPage} className="inline-flex items-center gap-1 text-sm text-sawali-blue hover:underline" data-testid="form-page-add"><Plus className="h-3.5 w-3.5" /> Page</button>
+-      </div>
++      <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr_290px] gap-4">
++        {/* Palette */}
++        <div className="space-y-1" data-testid="builder-palette">
++          <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Ajouter un champ</p>
++          <div className="grid grid-cols-2 lg:grid-cols-1 gap-1">
++            {FIELD_TYPES.map((t) => (
++              <button key={t.v} type="button" draggable onDragStart={() => setDragInfo({ kind: "new", type: t.v })} onDragEnd={() => setDragInfo(null)}
++                onClick={() => addAfterSelected(t.v)} data-testid={`palette-${t.v}`}
++                className="flex items-center gap-2 rounded-lg ring-1 ring-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 hover:ring-sawali-blue hover:text-sawali-blue hover:bg-sawali-blue/5 cursor-grab transition">
++                <t.icon className="h-3.5 w-3.5 text-sawali-blue" /> {t.l}
++              </button>
++            ))}
++          </div>
++          <p className="text-[10px] text-slate-400 pt-1">Clic : ajoute après le champ sélectionné. Glisser : dépose à l'endroit voulu.</p>
++        </div>
+ 
+-      {/* Page content */}
+-      <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-3" data-testid="form-page-content">
+-        <input value={page.title || ""} onChange={(e) => updatePage(activePage, { title: e.target.value })} className="text-lg font-display font-bold w-full focus:outline-none" placeholder="Titre de la page" />
+-        {page.fields.length === 0 ? (
+-          <p className="text-sm text-slate-400 italic">Aucun champ. Cliquez sur « Ajouter un champ » ci-dessous.</p>
+-        ) : (
+-          <div className="space-y-2">
+-            {page.fields.map((fd, fidx) => (
+-              <div key={fd.id} className="rounded-lg border border-slate-200 p-3 flex gap-2 items-start" data-testid={`form-field-${fidx}`}>
+-                <div className="flex flex-col gap-0.5 pt-1">
+-                  <button onClick={() => moveField(fidx, -1)} className="text-slate-400 hover:text-slate-900" title="Monter">↑</button>
+-                  <GripVertical className="h-4 w-4 text-slate-300" />
+-                  <button onClick={() => moveField(fidx, 1)} className="text-slate-400 hover:text-slate-900" title="Descendre">↓</button>
+-                </div>
+-                <div className="flex-1 grid sm:grid-cols-2 gap-2">
+-                  <div>
+-                    <label className="text-[10px] uppercase tracking-wider text-slate-500">Libellé</label>
+-                    <input value={fd.label} onChange={(e) => updateField(fidx, { label: e.target.value })} className="w-full rounded border border-slate-300 px-2 py-1 text-sm" data-testid={`field-label-${fidx}`} />
+-                  </div>
+-                  <div>
+-                    <label className="text-[10px] uppercase tracking-wider text-slate-500">Type</label>
+-                    <select value={fd.type} onChange={(e) => updateField(fidx, { type: e.target.value })} className="w-full rounded border border-slate-300 px-2 py-1 text-sm" data-testid={`field-type-${fidx}`}>
+-                      {FIELD_TYPES.map((t) => <option key={t.v} value={t.v}>{t.l}</option>)}
+-                    </select>
+-                  </div>
+-                  {(fd.type === "select" || fd.type === "multiselect") && (
+-                    <div className="sm:col-span-2">
+-                      <label className="text-[10px] uppercase tracking-wider text-slate-500">Options (une par ligne)</label>
+-                      <textarea value={(fd.options || []).join("\n")} onChange={(e) => updateField(fidx, { options: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })} rows={3} className="w-full rounded border border-slate-300 px-2 py-1 text-sm font-mono" data-testid={`field-options-${fidx}`} />
+-                    </div>
+-                  )}
+-                  {fd.type === "table" && (
+-                    <div className="sm:col-span-2 rounded bg-slate-50 ring-1 ring-slate-200 p-2">
+-                      <label className="text-[10px] uppercase tracking-wider text-slate-500 block mb-1">Colonnes du tableau</label>
+-                      {(fd.columns || []).map((col, ci) => (
+-                        <div key={ci} className="flex gap-2 mb-1" data-testid={`field-table-col-${fidx}-${ci}`}>
+-                          <input
+-                            value={col.label || ""}
+-                            onChange={(e) => {
+-                              const next = [...(fd.columns || [])];
+-                              next[ci] = { ...col, label: e.target.value, key: col.key || `col${ci}` };
+-                              updateField(fidx, { columns: next });
+-                            }}
+-                            placeholder="Libellé"
+-                            className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs"
+-                          />
+-                          <select
+-                            value={col.type || "text"}
+-                            onChange={(e) => {
+-                              const next = [...(fd.columns || [])];
+-                              next[ci] = { ...col, type: e.target.value };
+-                              updateField(fidx, { columns: next });
+-                            }}
+-                            className="rounded border border-slate-300 px-2 py-1 text-xs"
+-                          >
+-                            <option value="text">Texte</option>
+-                            <option value="number">Numérique</option>
+-                            <option value="date">Date</option>
+-                          </select>
+-                          <button
+-                            type="button"
+-                            onClick={() => updateField(fidx, { columns: (fd.columns || []).filter((_, i) => i !== ci) })}
+-                            className="text-rose-500 hover:bg-rose-50 px-1 rounded text-xs"
+-                          >×</button>
+-                        </div>
+-                      ))}
+-                      <button
+-                        type="button"
+-                        onClick={() => updateField(fidx, { columns: [...(fd.columns || []), { key: `col${(fd.columns || []).length}`, label: "", type: "text" }] })}
+-                        className="text-xs text-sawali-blue hover:underline mt-1"
+-                        data-testid={`field-table-addcol-${fidx}`}
+-                      >
+-                        + Ajouter une colonne
+-                      </button>
+-                    </div>
+-                  )}
+-                  {fd.type === "file" && (
+-                    <div className="sm:col-span-2">
+-                      <label className="text-[10px] uppercase tracking-wider text-slate-500">Types acceptés (facultatif)</label>
+-                      <input
+-                        value={fd.accept || ""}
+-                        onChange={(e) => updateField(fidx, { accept: e.target.value })}
+-                        placeholder=".pdf,image/*"
+-                        className="w-full rounded border border-slate-300 px-2 py-1 text-sm font-mono"
+-                        data-testid={`field-accept-${fidx}`}
+-                      />
+-                      <p className="text-[10px] text-slate-400 mt-0.5">Limite : 1 Mo par fichier.</p>
+-                    </div>
+-                  )}
+-                  {fd.type === "signature" && !isSignatureUnique(form, fd.id) && (
+-                    <div className="sm:col-span-2 text-[11px] text-amber-700 bg-amber-50 ring-1 ring-amber-200 rounded p-2">
+-                      ⚠ Un seul champ signature autorisé par formulaire — supprimez le précédent ou changez de type.
+-                    </div>
+-                  )}
+-                  <div className="grid grid-cols-3 gap-2 sm:col-span-2">
+-                    <div>
+-                      <label className="text-[10px] uppercase tracking-wider text-slate-500">Col. départ (1-12)</label>
+-                      <input type="number" min={1} max={12} value={fd.col_start} onChange={(e) => updateField(fidx, { col_start: parseInt(e.target.value) || 1 })} className="w-full rounded border border-slate-300 px-2 py-1 text-sm" />
+-                    </div>
+-                    <div>
+-                      <label className="text-[10px] uppercase tracking-wider text-slate-500">Largeur (1-12)</label>
+-                      <input type="number" min={1} max={12} value={fd.col_span} onChange={(e) => updateField(fidx, { col_span: parseInt(e.target.value) || 12 })} className="w-full rounded border border-slate-300 px-2 py-1 text-sm" />
++        {/* Pages + champs */}
++        <div className="space-y-2 min-w-0">
++          <div className="flex flex-wrap items-center gap-1">
++            {pages.map((p, i) => (
++              <button key={p.id} type="button" onClick={() => { setPageIdx(i); setSelected(null); }} data-testid={`form-page-tab-${i}`}
++                className={`text-xs px-3 py-1.5 rounded-full ring-1 transition ${i === pageIdx ? "bg-sawali-blue text-white ring-sawali-blue" : "bg-white ring-slate-200 hover:ring-sawali-blue/50"}`}>
++                {p.title || `Page ${i + 1}`} ({p.fields.length})
++              </button>
++            ))}
++            <button type="button" onClick={addPage} className="inline-flex items-center gap-1 text-xs text-sawali-blue hover:underline px-2" data-testid="form-page-add"><Plus className="h-3 w-3" /> Page</button>
++          </div>
++          <div className="flex items-center gap-2">
++            <input value={page.title || ""} onChange={(e) => setPages((ps) => { ps[pageIdx].title = e.target.value; return ps; })} placeholder="Titre de la page"
++              className="max-w-xs rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm font-semibold" aria-label="Titre de la page" data-testid="form-page-title" />
++            {pages.length > 1 && (
++              <button type="button" onClick={removePage} className="text-xs text-rose-500 hover:bg-rose-50 rounded px-1.5 py-1 inline-flex items-center gap-1" data-testid={`form-page-remove-${pageIdx}`}>
++                <Trash2 className="h-3 w-3" /> Supprimer la page</button>
++            )}
++          </div>
++          <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/60 p-3 space-y-2 min-h-[240px]" data-testid="builder-canvas"
++            onDragOver={(e) => { e.preventDefault(); if (dropIndex === null) setDropIndex(page.fields.length); }}
++            onDrop={(e) => onDrop(e, dropIndex ?? page.fields.length)}>
++            {page.fields.length === 0 && <p className="text-sm text-slate-400 italic py-10 text-center">Cliquez ou glissez un type de champ depuis la palette.</p>}
++            {page.fields.map((f, i) => {
++              const T = TYPE_BY[f.type];
++              return (
++                <div key={f.id}>
++                  {dropIndex === i && dragInfo && <div className="h-1 rounded bg-sawali-blue/60 my-1" />}
++                  <div draggable onDragStart={() => setDragInfo({ kind: "move", index: i })} onDragEnd={() => { setDragInfo(null); setDropIndex(null); }}
++                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setDropIndex(e.clientY < r.top + r.height / 2 ? i : i + 1); }}
++                    onClick={() => setSelected(f.id)} data-testid={`form-field-${i}`}
++                    className={`group flex items-center gap-2 rounded-xl border bg-white px-3 py-2.5 cursor-pointer transition ${selected === f.id ? "border-sawali-blue ring-2 ring-sawali-blue/20 shadow-sm" : "border-slate-200 hover:border-slate-300"}`}>
++                    <GripVertical className="h-4 w-4 text-slate-300 cursor-grab shrink-0" />
++                    {T && <span className="h-7 w-7 rounded-lg bg-sawali-blue/10 text-sawali-blue inline-flex items-center justify-center shrink-0"><T.icon className="h-3.5 w-3.5" /></span>}
++                    <div className="min-w-0 flex-1">
++                      <p className="text-sm truncate">{f.label || "(sans libellé)"}{f.required && <span className="text-rose-600"> *</span>}</p>
++                      <p className="text-[11px] text-slate-400">{T?.l || f.type} · {(WIDTHS.find(([v]) => v === (f.col_span || 12)) || [0, `${f.col_span}/12`])[1]}
++                        {(f.options || []).length ? ` · ${f.options.length} option(s)` : ""}</p>
+                     </div>
+-                    <div>
+-                      <label className="text-[10px] uppercase tracking-wider text-slate-500 block">Obligatoire</label>
+-                      <input type="checkbox" checked={!!fd.required} onChange={(e) => updateField(fidx, { required: e.target.checked })} className="mt-2" data-testid={`field-required-${fidx}`} />
++                    <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100">
++                      <button type="button" title="Monter" onClick={(e) => { e.stopPropagation(); moveField(i, i - 1); }} className="p-1 hover:text-sawali-blue"><ArrowUp className="h-3.5 w-3.5" /></button>
++                      <button type="button" title="Descendre" onClick={(e) => { e.stopPropagation(); moveField(i, i + 1); }} className="p-1 hover:text-sawali-blue"><ArrowDown className="h-3.5 w-3.5" /></button>
++                      <button type="button" title="Dupliquer" onClick={(e) => { e.stopPropagation(); dupField(i); }} className="p-1 hover:text-sawali-blue" data-testid={`field-dup-${i}`}><Copy className="h-3.5 w-3.5" /></button>
++                      <button type="button" title="Supprimer" onClick={(e) => { e.stopPropagation(); delField(i); }} className="p-1 hover:text-rose-600" data-testid={`field-remove-${i}`}><Trash2 className="h-3.5 w-3.5" /></button>
+                     </div>
+                   </div>
+                 </div>
+-                <button onClick={() => removeField(fidx)} className="text-rose-500 hover:bg-rose-50 p-1 rounded" data-testid={`field-remove-${fidx}`}><Trash2 className="h-4 w-4" /></button>
+-              </div>
+-            ))}
++              );
++            })}
++            {dropIndex === page.fields.length && dragInfo && page.fields.length > 0 && <div className="h-1 rounded bg-sawali-blue/60 my-1" />}
+           </div>
+-        )}
+-        <button onClick={addField} className="inline-flex items-center gap-1 text-sm text-sawali-blue hover:underline" data-testid="form-field-add"><Plus className="h-3.5 w-3.5" /> Ajouter un champ</button>
++        </div>
++
++        {/* Propriétés */}
++        <div className="rounded-xl border border-slate-200 bg-white p-4 h-fit lg:sticky lg:top-4">
++          {selField ? (
++            <Properties field={selField} pages={pages} pageIdx={pageIdx} update={updateField} moveToPage={moveToPage}
++              signatureTaken={selField.type === "signature" && signatureCount > 1} />
++          ) : <p className="text-sm text-slate-400 italic">Sélectionnez un champ pour le configurer.</p>}
++        </div>
+       </div>
++
++      {/* Aperçu en direct : même rendu que le formulaire réel */}
++      {preview && (
++        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={(e) => e.target === e.currentTarget && setPreview(false)}>
++          <div className="w-full max-w-4xl max-h-[90vh] overflow-auto rounded-2xl bg-white p-6 shadow-2xl space-y-4" data-testid="builder-preview">
++            <div className="flex items-start justify-between gap-3">
++              <div>
++                <p className="text-xs uppercase tracking-wider text-slate-500">Aperçu (rien n'est enregistré)</p>
++                <h2 className="text-xl font-display font-bold text-slate-900">{form.title}</h2>
++                {form.description && <p className="text-sm text-slate-600 mt-1 whitespace-pre-line">{form.description}</p>}
++              </div>
++              <button onClick={() => setPreview(false)} className="p-1 rounded hover:bg-slate-100" aria-label="Fermer"><X className="h-5 w-5" /></button>
++            </div>
++            {pages.length > 1 && (
++              <div className="flex flex-wrap gap-1">
++                {pages.map((p, i) => (
++                  <button key={p.id} onClick={() => setPreviewPage(i)} className={`text-xs px-3 py-1 rounded-full ring-1 ${i === previewPage ? "bg-sawali-blue text-white ring-sawali-blue" : "ring-slate-200"}`}>
++                    {p.title || `Page ${i + 1}`}</button>
++                ))}
++              </div>
++            )}
++            <div className="grid grid-cols-12 gap-3 rounded-xl border border-slate-200 p-5">
++              {(pages[previewPage]?.fields || []).map((f) => (
++                <div key={f.id} className="min-w-0" style={{ gridColumn: `span ${Math.min(12, f.col_span || 12)} / span ${Math.min(12, f.col_span || 12)}` }}>
++                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 mb-1">{f.label}{f.required && <span className="text-rose-500 ml-1">*</span>}</label>
++                  {f.type === "file"
++                    ? <p className="rounded-lg border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-400">Fichier joint{f.accept ? ` (${f.accept})` : ""} — envoi possible dans le vrai formulaire</p>
++                    : <FieldInput field={f} value={previewData[f.id] ?? f.default_value ?? undefined} onChange={(v) => setPreviewData((d) => ({ ...d, [f.id]: v }))} />}
++                </div>
++              ))}
++              {!(pages[previewPage]?.fields || []).length && <p className="col-span-12 text-sm text-slate-400 italic">Aucun champ sur cette page.</p>}
++            </div>
++          </div>
++        </div>
++      )}
+     </div>
+   );
+ }
+diff --git a/frontend/src/pages/portal/FormRunner.jsx b/frontend/src/pages/portal/FormRunner.jsx
+index 5b21a45..1681ff5 100644
+--- a/frontend/src/pages/portal/FormRunner.jsx
++++ b/frontend/src/pages/portal/FormRunner.jsx
+@@ -226,8 +226,10 @@ export default function FormRunner() {
+ 
+ // =====================================================================
+ // Per-field input. New types: table, file, signature.
++// Lot 27 — exporté : l'aperçu en direct de l'éditeur de formulaires utilise
++// exactement le même rendu que le formulaire réel.
+ // =====================================================================
+-const FieldInput = ({ field, value, onChange }) => {
++export const FieldInput = ({ field, value, onChange }) => {
+   const commonCls = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:border-sawali-blue focus:ring-2 focus:ring-sawali-blue/20";
+   switch (field.type) {
+     case "textarea":
 diff --git a/frontend/src/pages/portal/FormsList.jsx b/frontend/src/pages/portal/FormsList.jsx
 index 1cab64d..064e28f 100644
 --- a/frontend/src/pages/portal/FormsList.jsx
@@ -3703,6 +5945,285 @@ index 1cab64d..064e28f 100644
        <div className="flex items-center justify-between gap-4 flex-wrap">
          <div>
            <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Formulaires</p>
+diff --git a/frontend/src/pages/portal/PortfolioInvoices.jsx b/frontend/src/pages/portal/PortfolioInvoices.jsx
+new file mode 100644
+index 0000000..84fc34d
+--- /dev/null
++++ b/frontend/src/pages/portal/PortfolioInvoices.jsx
+@@ -0,0 +1,98 @@
++/*
++  PortfolioInvoices — lot 27 : « Bilans à facturer » (admin et Superviseur).
++
++  Tous les bilans « Formulaires & Sondages WhatsApp » des clients, générés par
++  l'admin dans la page SMART Communications de chaque client :
++    - onglets À facturer / Facturés / Tous ;
++    - PDF du bilan, lien à transmettre au client ;
++    - Créer la facture (ou une proforma) : le Superviseur choisit, pour chaque
++      facture, d'appliquer ou non la TVA ; la facture arrive dans la Caisse/Facturation.
++*/
++import React, { useCallback, useEffect, useState } from "react";
++import { Link } from "react-router-dom";
++import { apiClient } from "@/lib/api";
++import { toast } from "sonner";
++import { Receipt, FileText, Link2, CheckCircle2 } from "lucide-react";
++import InvoiceTvaDialog from "@/components/InvoiceTvaDialog";
++
++const money = (v) => `${Math.round(v || 0).toLocaleString("fr-FR")} FCFA`;
++const d = (iso) => (iso ? new Date(iso).toLocaleDateString("fr-FR") : "—");
++
++export default function PortfolioInvoices() {
++  const [status, setStatus] = useState("to_invoice");
++  const [items, setItems] = useState(null);
++  const [dialog, setDialog] = useState(null);        // {report, kind}
++
++  const load = useCallback(async () => {
++    try { setItems((await apiClient.get("/admin/portfolio-reports", { params: { status } })).data.items || []); }
++    catch (e) { toast.error(e?.response?.data?.detail || "Chargement impossible"); setItems([]); }
++  }, [status]);
++  useEffect(() => { load(); }, [load]);
++
++  const pdf = async (r) => {
++    try { window.open(URL.createObjectURL((await apiClient.get(`/admin/portfolio-reports/${r.id}/pdf`, { responseType: "blob" })).data), "_blank"); }
++    catch { toast.error("PDF indisponible"); }
++  };
++  const copyLink = async (r) => {
++    const url = `${r.base_url || window.location.origin}/api/public/portfolio-report/${r.token}`;
++    try { await navigator.clipboard.writeText(url); toast.success("Lien du bilan copié"); } catch { window.prompt("Lien du bilan :", url); }
++  };
++
++  return (
++    <div className="max-w-6xl space-y-5" data-testid="portfolio-invoices-page">
++      <div>
++        <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Facturation</p>
++        <h1 className="text-2xl font-display font-bold flex items-center gap-2"><Receipt className="h-5 w-5 text-sawali-blue" /> Bilans à facturer</h1>
++        <p className="text-sm text-slate-500 mt-1">Bilans Formulaires & Sondages WhatsApp des clients. Pour chaque facture, vous choisissez d'appliquer ou non la TVA.</p>
++      </div>
++      <div className="flex gap-2 border-b border-slate-200">
++        {[["to_invoice", "À facturer"], ["invoiced", "Facturés"], ["", "Tous"]].map(([k, l]) => (
++          <button key={k || "all"} onClick={() => setStatus(k)} data-testid={`pi-tab-${k || "all"}`}
++            className={`px-3 py-2 text-sm border-b-2 ${status === k ? "border-sawali-blue text-sawali-blue font-semibold" : "border-transparent text-slate-500 hover:text-slate-900"}`}>{l}</button>
++        ))}
++      </div>
++      {items === null ? <p className="text-sm text-slate-500">Chargement…</p> : !items.length ? (
++        <p className="rounded-xl border-2 border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">
++          {status === "to_invoice" ? "Aucun bilan en attente de facturation." : "Aucun bilan."}
++        </p>
++      ) : (
++        <div className="rounded-xl bg-white ring-1 ring-slate-200 overflow-auto">
++          <table className="w-full text-sm">
++            <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
++              <tr><th className="px-3 py-2 text-left">Client</th><th className="text-left">Période</th><th className="text-right">Total HT</th>
++                <th className="text-right">TTC (si TVA)</th><th className="text-left px-3">Facture</th><th className="px-3" /></tr>
++            </thead>
++            <tbody>
++              {items.map((r) => (
++                <tr key={r.id} className="border-t border-slate-100" data-testid={`pi-row-${r.id}`}>
++                  <td className="px-3 py-2 font-medium text-slate-800">{r.client_name}</td>
++                  <td className="text-xs text-slate-600">du {d(r.date_from)} au {d(r.date_to)}</td>
++                  <td className="text-right tabular-nums">{money(r.total_ht)}</td>
++                  <td className="text-right tabular-nums text-slate-500">{money(r.total_ttc)}</td>
++                  <td className="px-3 text-xs">
++                    {r.invoice_number ? (
++                      <span className="inline-flex items-center gap-1 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />
++                        {r.invoice_number} · {money(r.invoiced_amount)} {r.invoiced_with_tva === false ? "(sans TVA)" : r.invoiced_with_tva ? "(TVA incluse)" : ""}</span>
++                    ) : <span className="text-amber-600">à facturer</span>}
++                  </td>
++                  <td className="px-3 whitespace-nowrap text-right space-x-1">
++                    <button onClick={() => pdf(r)} className="inline-flex items-center gap-1 text-xs rounded ring-1 ring-slate-300 px-2 py-1 hover:bg-slate-50"><FileText className="h-3.5 w-3.5" /> PDF</button>
++                    <button onClick={() => copyLink(r)} className="inline-flex items-center gap-1 text-xs rounded ring-1 ring-slate-300 px-2 py-1 hover:bg-slate-50"><Link2 className="h-3.5 w-3.5" /></button>
++                    {!r.invoice_number && (
++                      <button onClick={() => setDialog({ report: r, kind: "invoice" })} disabled={!r.total_ht} data-testid={`pi-invoice-${r.id}`}
++                        className="inline-flex items-center gap-1 text-xs rounded bg-emerald-600 text-white px-2 py-1 hover:bg-emerald-700 disabled:opacity-40"><Receipt className="h-3.5 w-3.5" /> Facturer</button>
++                    )}
++                    <button onClick={() => setDialog({ report: r, kind: "proforma" })} disabled={!r.total_ht} className="text-xs text-slate-600 hover:underline disabled:opacity-40">Proforma</button>
++                  </td>
++                </tr>
++              ))}
++            </tbody>
++          </table>
++        </div>
++      )}
++      <p className="text-xs text-slate-500">Les factures créées apparaissent dans <Link to="/portal/billing" className="text-sawali-blue hover:underline">Caisse/Facturation</Link>.
++        Les tarifs et le prompt de l'analyse IA se règlent par l'admin dans la page SMART Communications de chaque client.</p>
++      {dialog && <InvoiceTvaDialog report={dialog.report} kind={dialog.kind} onClose={() => setDialog(null)} onDone={() => { setDialog(null); load(); }} />}
++    </div>
++  );
++}
+diff --git a/frontend/src/pages/portal/Production.jsx b/frontend/src/pages/portal/Production.jsx
+index 44ae0b8..4cd1fe4 100644
+--- a/frontend/src/pages/portal/Production.jsx
++++ b/frontend/src/pages/portal/Production.jsx
+@@ -3,12 +3,12 @@
+  *
+  * 3 onglets simples :
+  *   1. Intrants (matières premières + eau + électricité + main d'œuvre …)
+- *   2. Recettes (produits fabriqués, coût de revient auto, marge/prix vente)
++ *   2. Formulations (produits fabriqués, coût de revient auto, marge/prix vente)
+  *   3. Paramètres (marge par défaut, export global)
+  *
+  * Le calcul est temps réel : dès qu'un intrant est modifié, toutes les
+- * recettes qui l'utilisent voient leur coût recalculé au prochain load.
+- * L'export PDF (global ou par recette) délègue à reportlab côté serveur.
++ * formulations qui l'utilisent voient leur coût recalculé au prochain load.
++ * L'export PDF (global ou par formulation) délègue à reportlab côté serveur.
+  */
+ import React, { useCallback, useEffect, useMemo, useState } from "react";
+ import {
+@@ -78,7 +78,7 @@ export default function Production() {
+ 
+       <nav className="flex flex-wrap gap-1 border-b border-slate-200">
+         {[
+-          { id: "recipes", label: "Recettes", icon: Factory },
++          { id: "recipes", label: "Formulations", icon: Factory },
+           { id: "intrants", label: `Intrants (${intrants.length})`, icon: Package },
+           { id: "analytics", label: "Analyses", icon: BarChart3 },
+           { id: "settings", label: "Paramètres", icon: Cog },
+@@ -109,16 +109,16 @@ export default function Production() {
+               defaultMargin={settings.production_default_margin_pct}
+               onEdit={setEditingRecipe}
+               onDelete={async (id) => {
+-                if (!window.confirm("Supprimer cette recette ?")) return;
++                if (!window.confirm("Supprimer cette formulation ?")) return;
+                 try {
+                   await apiClient.delete(`/production/recipes/${id}`);
+-                  toast.success("Recette supprimée"); await load();
++                  toast.success("Formulation supprimée"); await load();
+                 } catch (e) { toast.error(e?.response?.data?.detail || "Échec"); }
+               }}
+               onDuplicate={async (id) => {
+                 try {
+                   const r = await apiClient.post(`/production/recipes/${id}/duplicate`);
+-                  toast.success("Recette dupliquée — définissez le dosage puis enregistrez");
++                  toast.success("Formulation dupliquée — définissez le dosage puis enregistrez");
+                   await load();
+                   setEditingRecipe(r.data); // open the copy so user sets the dosage
+                 } catch (e) { toast.error(e?.response?.data?.detail || "Échec de la duplication"); }
+@@ -132,7 +132,7 @@ export default function Production() {
+               intrants={intrants}
+               onEdit={setEditingIntrant}
+               onDelete={async (id) => {
+-                if (!window.confirm("Supprimer cet intrant ? (refusé s'il est utilisé dans une recette)")) return;
++                if (!window.confirm("Supprimer cet intrant ? (refusé s'il est utilisé dans une formulation)")) return;
+                 try {
+                   await apiClient.delete(`/production/intrants/${id}`);
+                   toast.success("Intrant supprimé"); await load();
+@@ -187,7 +187,7 @@ const RecipesTab = ({ recipes, summary, intrants, defaultMargin, onEdit, onDelet
+         onClick={() => onEdit({ __new: true, name: "", pricing_mode: "margin_first", margin_pct: defaultMargin, output_batch_units: 1, output_unit_label: "unit", intrants: [] })}
+         className="text-sm px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white inline-flex items-center gap-1 font-semibold"
+         data-testid="production-new-recipe"
+-      ><Plus className="h-4 w-4" /> Nouvelle recette</button>
++      ><Plus className="h-4 w-4" /> Nouvelle formulation</button>
+       <button
+         onClick={onExportAll}
+         disabled={recipes.length === 0}
+@@ -198,7 +198,7 @@ const RecipesTab = ({ recipes, summary, intrants, defaultMargin, onEdit, onDelet
+ 
+     {summary && recipes.length > 0 && (
+       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+-        <KpiCard label="Recettes" value={summary.total_recipes} color="#4f46e5" icon={Factory} />
++        <KpiCard label="Formulations" value={summary.total_recipes} color="#4f46e5" icon={Factory} />
+         <KpiCard label="Coût moyen" value={summary.avg_cost_price?.toLocaleString("fr-FR", { maximumFractionDigits: 0 }) + " CFA"} color="#0284c7" icon={DollarSign} />
+         <KpiCard label="Prix public moyen" value={summary.avg_public_price?.toLocaleString("fr-FR", { maximumFractionDigits: 0 }) + " CFA"} color="#0891b2" icon={DollarSign} />
+         <KpiCard label="Marge moyenne" value={(summary.avg_margin_pct || 0).toFixed(1) + " %"} color="#059669" icon={Percent} />
+@@ -207,7 +207,7 @@ const RecipesTab = ({ recipes, summary, intrants, defaultMargin, onEdit, onDelet
+ 
+     {recipes.length === 0 ? (
+       <div className="rounded-xl ring-1 ring-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+-        Aucune recette. Commencez par créer des <strong>intrants</strong> (onglet Intrants), puis créez une <strong>recette</strong> en cochant les intrants nécessaires avec leurs quantités.
++        Aucune formulation. Commencez par créer des <strong>intrants</strong> (onglet Intrants), puis créez une <strong>formulation</strong> en cochant les intrants nécessaires avec leurs quantités.
+       </div>
+     ) : (
+       <div className="overflow-x-auto rounded-xl ring-1 ring-slate-200 bg-white">
+@@ -399,7 +399,7 @@ const AnalyticsTab = ({ recipes, summary }) => {
+     return (
+       <div className="rounded-xl ring-1 ring-slate-200 bg-white p-8 text-center text-sm text-slate-500" data-testid="analytics-empty">
+         <BarChart3 className="h-8 w-8 mx-auto mb-2 text-slate-300" />
+-        Aucune donnée analytique. Créez au moins une recette pour visualiser les analyses.
++        Aucune donnée analytique. Créez au moins une formulation pour visualiser les analyses.
+       </div>
+     );
+   }
+@@ -409,7 +409,7 @@ const AnalyticsTab = ({ recipes, summary }) => {
+       {/* KPI cards */}
+       {summary && (
+         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+-          <KpiCard label="Recettes" value={summary.total_recipes} color="#4f46e5" icon={Factory} />
++          <KpiCard label="Formulations" value={summary.total_recipes} color="#4f46e5" icon={Factory} />
+           <KpiCard label="Coût moyen" value={fmtCFA(summary.avg_cost_price) + " CFA"} color="#0284c7" icon={DollarSign} />
+           <KpiCard label="Prix public moyen" value={fmtCFA(summary.avg_public_price) + " CFA"} color="#0891b2" icon={DollarSign} />
+           <KpiCard label="Marge moyenne" value={(summary.avg_margin_pct || 0).toFixed(1) + " %"} color="#059669" icon={Percent} />
+@@ -428,7 +428,7 @@ const AnalyticsTab = ({ recipes, summary }) => {
+             testid="analytics-highlight-top"
+             icon={Trophy}
+             color="#059669"
+-            label="Recette la plus rentable"
++            label="Formulation la plus rentable"
+             title={analytics.mostProfitable?.name || "—"}
+             subtitle={
+               analytics.mostProfitable
+@@ -489,7 +489,7 @@ const AnalyticsTab = ({ recipes, summary }) => {
+           })}
+         </div>
+         {barData.length === 0 ? (
+-          <div className="py-8 text-center text-xs text-slate-400">Cochez au moins une recette ci-dessus.</div>
++          <div className="py-8 text-center text-xs text-slate-400">Cochez au moins une formulation ci-dessus.</div>
+         ) : (
+           <div className="h-96" data-testid="analytics-bar-chart">
+             <ResponsiveContainer width="100%" height="100%">
+@@ -519,7 +519,7 @@ const AnalyticsTab = ({ recipes, summary }) => {
+       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+         <div className="rounded-xl ring-1 ring-slate-200 bg-white p-4">
+           <h3 className="text-sm font-semibold inline-flex items-center gap-1.5 mb-2"><PieIcon className="h-4 w-4 text-fuchsia-600" /> Répartition des coûts par catégorie</h3>
+-          <p className="text-[11px] text-slate-500 mb-2">Vue agrégée sur toutes les recettes ({recipes.length}).</p>
++          <p className="text-[11px] text-slate-500 mb-2">Vue agrégée sur toutes les formulations ({recipes.length}).</p>
+           {pieData.length === 0 ? (
+             <div className="py-8 text-center text-xs text-slate-400">Aucune donnée à afficher.</div>
+           ) : (
+@@ -581,7 +581,7 @@ const AnalyticsTab = ({ recipes, summary }) => {
+       {/* LineChart — cost evolution */}
+       <div className="rounded-xl ring-1 ring-slate-200 bg-white p-4">
+         <h3 className="text-sm font-semibold inline-flex items-center gap-1.5 mb-1"><LineIcon className="h-4 w-4 text-emerald-600" /> Évolution des coûts dans le temps</h3>
+-        <p className="text-[11px] text-slate-500 mb-2">Recettes ordonnées par date de création — utile pour détecter l&apos;inflation ou l&apos;amélioration des marges.</p>
++        <p className="text-[11px] text-slate-500 mb-2">Formulations ordonnées par date de création — utile pour détecter l&apos;inflation ou l&apos;amélioration des marges.</p>
+         {lineData.length === 0 ? (
+           <div className="py-8 text-center text-xs text-slate-400">Pas encore d&apos;historique disponible.</div>
+         ) : (
+@@ -699,7 +699,7 @@ const SettingsTab = ({ settings, onSave }) => {
+     <div className="rounded-xl ring-1 ring-slate-200 bg-white p-5 max-w-lg">
+       <h3 className="text-sm font-semibold mb-2 inline-flex items-center gap-1"><Cog className="h-4 w-4" /> Marge bénéficiaire par défaut</h3>
+       <p className="text-xs text-slate-500 mb-3">
+-        Utilisée pour les nouvelles recettes. Chaque recette peut ensuite être ajustée individuellement.
++        Utilisée pour les nouvelles formulations. Chaque formulation peut ensuite être ajustée individuellement.
+       </p>
+       <div className="flex items-center gap-2">
+         <input
+@@ -874,7 +874,7 @@ const RecipeModal = ({ recipe, intrants, defaultMargin, onClose, onSaved }) => {
+       };
+       if (recipe.__new) await apiClient.post("/production/recipes", payload);
+       else await apiClient.put(`/production/recipes/${recipe.id}`, payload);
+-      toast.success("Recette enregistrée"); onSaved();
++      toast.success("Formulation enregistrée"); onSaved();
+     } catch (e) { toast.error(e?.response?.data?.detail || "Échec"); }
+     finally { setSaving(false); }
+   };
+@@ -890,7 +890,7 @@ const RecipeModal = ({ recipe, intrants, defaultMargin, onClose, onSaved }) => {
+     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={(e) => e.target === e.currentTarget && onClose()}>
+       <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[95vh] flex flex-col">
+         <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
+-          <h2 className="font-display font-bold">{recipe.__new ? "Nouvelle recette" : "Modifier la recette"}</h2>
++          <h2 className="font-display font-bold">{recipe.__new ? "Nouvelle formulation" : "Modifier la formulation"}</h2>
+           <button onClick={onClose} className="p-1 rounded hover:bg-slate-100"><X className="h-4 w-4" /></button>
+         </div>
+         <div className="p-5 space-y-4 overflow-y-auto flex-1">
+@@ -968,7 +968,7 @@ const RecipeModal = ({ recipe, intrants, defaultMargin, onClose, onSaved }) => {
+                               <span
+                                 className="text-[10px] font-mono font-semibold text-emerald-700 min-w-[70px] text-right"
+                                 data-testid={`recipe-intrant-contrib-${i.id}`}
+-                                title={`Coût dans la recette : ${contribCost.toFixed(4)} CFA`}
++                                title={`Coût dans la formulation : ${contribCost.toFixed(4)} CFA`}
+                               >
+                                 = {contribCost.toLocaleString("fr-FR", { maximumFractionDigits: 4 })}
+                               </span>
 diff --git a/frontend/src/pages/portal/SmsBulk.jsx b/frontend/src/pages/portal/SmsBulk.jsx
 index 968e894..53b8ee3 100644
 --- a/frontend/src/pages/portal/SmsBulk.jsx
@@ -3721,10 +6242,10 @@ index 968e894..53b8ee3 100644
                        <td className="px-3 py-2">
 diff --git a/frontend/src/pages/portal/SurveyEditor.jsx b/frontend/src/pages/portal/SurveyEditor.jsx
 new file mode 100644
-index 0000000..5111049
+index 0000000..cffa7f9
 --- /dev/null
 +++ b/frontend/src/pages/portal/SurveyEditor.jsx
-@@ -0,0 +1,253 @@
+@@ -0,0 +1,270 @@
 +/*
 +  SurveyEditor — lot 27 : conception d'un sondage WhatsApp.
 +
@@ -3740,6 +6261,7 @@ index 0000000..5111049
 +import React, { useEffect, useState } from "react";
 +import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 +import { apiClient } from "@/lib/api";
++import { useAuth } from "@/contexts/AuthContext";
 +import { toast } from "sonner";
 +import { ArrowLeft, Plus, Trash2, Copy, ChevronUp, ChevronDown, Save, Star, X } from "lucide-react";
 +
@@ -3763,6 +6285,9 @@ index 0000000..5111049
 +  const { pathname } = useLocation();
 +  const base = pathname.startsWith("/admin") ? "/admin" : "/portal";
 +  const navigate = useNavigate();
++  const { user } = useAuth();
++  const isAdmin = user?.role === "admin" || user?.role === "superviseur";
++  const [roster, setRoster] = useState([]);           // clients (admin : sondage créé pour un client)
 +  const [loading, setLoading] = useState(!isNew);
 +  const [saving, setSaving] = useState(false);
 +  const [answeredCount, setAnsweredCount] = useState(0);
@@ -3770,6 +6295,11 @@ index 0000000..5111049
 +    title: "", description: "", thank_you: "Merci pour vos réponses !", status: "draft",
 +    anonymous: false, closes_at: "", message_text: DEFAULT_MESSAGE, questions: [blankQuestion()],
 +  });
++
++  // Admin / Superviseur : liste des clients pour choisir le propriétaire du sondage
++  useEffect(() => {
++    if (isAdmin) apiClient.get("/me/clients-roster").then((r) => setRoster(Array.isArray(r.data) ? r.data : [])).catch(() => {});
++  }, [isAdmin]);
 +
 +  // Chargement d'un sondage existant
 +  useEffect(() => {
@@ -3876,6 +6406,14 @@ index 0000000..5111049
 +                <input type="date" value={s.closes_at || ""} onChange={(e) => set({ closes_at: e.target.value })} className={`${input} mt-1`} />
 +              </label>
 +            </div>
++            {isAdmin && (
++              <label className="block text-xs text-slate-600">Client propriétaire (il voit le sondage et il lui est facturé)
++                <select value={s.client_id || ""} onChange={(e) => set({ client_id: e.target.value || null })} className={`${input} mt-1`} data-testid="survey-client">
++                  <option value="">{isNew ? "Mon compte" : "— inchangé —"}</option>
++                  {roster.map((c) => <option key={c.id} value={c.id}>{c.company || c.full_name}{c.client_code ? ` · ${c.client_code}` : ""}</option>)}
++                </select>
++              </label>
++            )}
 +            <label className="inline-flex items-center gap-2 text-sm text-slate-700">
 +              <input type="checkbox" checked={!!s.anonymous} onChange={(e) => set({ anonymous: e.target.checked })} data-testid="survey-anonymous" />
 +              Résultats anonymes (les noms des répondants ne sont pas affichés)
@@ -4331,10 +6869,10 @@ index 0000000..1be6ba3
 +}
 diff --git a/frontend/src/pages/portal/Surveys.jsx b/frontend/src/pages/portal/Surveys.jsx
 new file mode 100644
-index 0000000..9255162
+index 0000000..bf4b6e3
 --- /dev/null
 +++ b/frontend/src/pages/portal/Surveys.jsx
-@@ -0,0 +1,197 @@
+@@ -0,0 +1,212 @@
 +/*
 +  Surveys — lot 27 : portefeuille des sondages WhatsApp.
 +
@@ -4349,9 +6887,10 @@ index 0000000..9255162
 +import { Link, useLocation, useNavigate } from "react-router-dom";
 +import { apiClient } from "@/lib/api";
 +import { toast } from "sonner";
-+import { BarChart3, Plus, Edit, Trash2, Copy, Send, Search, Users, Eye, CheckCircle2 } from "lucide-react";
++import { BarChart3, Plus, Edit, Trash2, Copy, Send, Search, Users, Eye, CheckCircle2, Trophy } from "lucide-react";
 +import FormsSurveysTabs from "@/components/FormsSurveysTabs";
 +import SurveySendModal from "@/components/SurveySendModal";
++import SurveyContributors from "@/components/SurveyContributors";
 +
 +// Statut -> [libellé, classes du badge]
 +export const SURVEY_STATUS = {
@@ -4369,6 +6908,7 @@ index 0000000..9255162
 +  const [search, setSearch] = useState("");
 +  const [status, setStatus] = useState("all");
 +  const [sendFor, setSendFor] = useState(null);     // sondage à envoyer (fenêtre d'envoi)
++  const [view, setView] = useState("surveys");      // surveys | contributors
 +
 +  const load = async () => {
 +    setLoading(true);
@@ -4430,6 +6970,17 @@ index 0000000..9255162
 +        </Link>
 +      </div>
 +
++      {/* Vue : liste des sondages ou meilleurs contributeurs */}
++      <div className="flex gap-2 border-b border-slate-200">
++        {[["surveys", "Mes sondages", BarChart3], ["contributors", "Meilleurs contributeurs", Trophy]].map(([k, l, Icon]) => (
++          <button key={k} onClick={() => setView(k)} data-testid={`surveys-view-${k}`}
++            className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm border-b-2 transition ${view === k ? "border-sawali-blue text-sawali-blue font-semibold" : "border-transparent text-slate-500 hover:text-slate-900"}`}>
++            <Icon className="h-4 w-4" /> {l}
++          </button>
++        ))}
++      </div>
++
++      {view === "contributors" ? <SurveyContributors /> : (<>
 +      {/* Chiffres du portefeuille */}
 +      <div className="grid grid-cols-3 gap-3">
 +        {[["Sondages", totals.surveys, "text-sawali-blue"], ["Messages envoyés", totals.sent, "text-sky-600"],
@@ -4479,6 +7030,7 @@ index 0000000..9255162
 +                    <h3 className="font-semibold text-slate-900 truncate">{s.title}</h3>
 +                    <p className="text-xs text-slate-500">
 +                      {s.questions_count} question(s) · créé par {s.created_by_label || "—"}
++                      {s.client_name && <> · client <b className="text-slate-700">{s.client_name}</b></>}
 +                    </p>
 +                  </div>
 +                  <span className={`shrink-0 text-[11px] font-medium rounded-full px-2 py-0.5 ${stCls}`}>{stLabel}</span>
@@ -4525,6 +7077,7 @@ index 0000000..9255162
 +          })}
 +        </div>
 +      )}
++      </>)}
 +      {sendFor && (
 +        <SurveySendModal survey={sendFor} onClose={() => setSendFor(null)}
 +          onSent={() => { setSendFor(null); navigate(`${base}/surveys/${sendFor.id}/results`); }} />

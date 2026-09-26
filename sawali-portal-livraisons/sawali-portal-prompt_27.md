@@ -1,10 +1,10 @@
-# Sawali — Lot 27 : tâches planifiées réactivées (avec garde-fous), modèles WhatsApp à formulaire (Flow), emojis, annotation d'images, sondages WhatsApp
+# Sawali — Lot 27 : tâches planifiées réactivées (avec garde-fous), modèles WhatsApp à formulaire (Flow), emojis, annotation d'images, sondages WhatsApp et leur facturation, éditeur de formulaires
 
 **Interdiction explicite** : je ne veux AUCUNE commande de test, de build ou
 de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 évaluateur ou analyseur automatique**. Tu appliques et tu déploies directement.
 
-Applique `sawali-portal-corrections_27_c83fc89.patch` sur la branche
+Applique `sawali-portal-corrections_27_cf6ef53.patch` sur la branche
 `conflict_230926_1008`. Base attendue : ton commit `d091c30` (« Auto-generated
 changes », juste après `55e46f2`, le lot 26 que tu as publié). Le patch ne
 touche pas au dossier `.emergent`. C'est un `git format-patch` d'un seul
@@ -162,15 +162,94 @@ en tête des deux pages permettent de passer de l'une à l'autre.
 Les sondages sont rangés par client (tenant) : chaque client ne voit que les
 siens ; l'admin et le Superviseur voient tout.
 
+5. **Meilleurs contributeurs** (onglet de la page Sondages) :
+   - podium des 3 premiers, puis un tableau : réponses, sondages, taux,
+     délai moyen de réponse, dernière réponse ;
+   - filtre par période ;
+   - l'admin et le Superviseur choisissent un client ou « Tous les clients »
+     (classement global) et voient le classement des clients ;
+   - les réponses aux sondages anonymes ne sont pas nominatives.
+6. L'admin ou le Superviseur peut **créer un sondage pour un client**
+   (champ « Client propriétaire ») : le client le voit et il lui est facturé.
+
 Nouvelles collections Mongo : `wa_surveys`, `wa_survey_invites`,
 `wa_survey_responses`, `wa_survey_campaigns`. Les index sont créés au démarrage.
+
+## Facturation des formulaires et sondages par client, avec bilan IA
+
+1. **Réglages par client** : page SMART Communications du client (Clients →
+   un client → fonctionnalités), nouvelle section « Facturation — Formulaires
+   & Sondages WhatsApp ».
+   - Tarifs en FCFA HT : forfait mensuel, formulaire actif, sondage actif,
+     message WhatsApp envoyé, réponse de sondage, réponse de formulaire,
+     bilan avec analyse IA.
+   - TVA par défaut, échéance en jours, mention sur la facture,
+     « Facturation active ».
+   - **Prompt de l'analyse IA** propre au client ; laissé vide, c'est le prompt
+     par défaut qui est utilisé.
+   - Définitions :
+     - formulaire actif = au moins une réponse dans la période ;
+     - sondage actif = au moins un envoi ou une réponse ;
+     - message = invitation ou relance envoyée ;
+     - les formulaires partagés avec le client (« clients autorisés »)
+       comptent pour les réponses de ses utilisateurs.
+2. **Bilan de période** (même section, par l'admin) :
+   - choix « Mois dernier », « Ce mois-ci » ou des dates, avec ou sans
+     analyse IA ;
+   - chiffres de la période, meilleurs contributeurs, analyse rédigée par
+     l'IA (Claude via `EMERGENT_LLM_KEY`, déjà configurée ; aucun numéro de
+     téléphone n'est envoyé à l'IA) et lignes de facture ;
+   - **PDF** du bilan (tableaux, graphique des taux, analyse, facturation) et
+     **lien public** à transmettre au client.
+3. **Facture** : bouton « Créer la facture », ou une proforma.
+   - Le **Superviseur (ou l'admin) choisit pour chaque facture d'appliquer
+     la TVA ou non**. Les deux montants sont affichés avant de valider.
+   - La facture est créée dans la **Caisse/Facturation** de SAWALI, avec la
+     même numérotation (F-2026-…), le QR code et la somme en lettres.
+   - La fiche « client en compte » du client est créée automatiquement la
+     première fois (champ `linked_user_id`).
+4. **Page « Bilans à facturer »** (menu, admin et Superviseur SAWALI
+   uniquement) : bilans de tous les clients (onglets À facturer, Facturés,
+   Tous), PDF, lien, Facturer avec le choix de la TVA.
+
+Nouvelles collections : `portfolio_billing` (réglages), `portfolio_reports`
+(bilans).
+
+## Éditeur de formulaires à la manière d'ALBARKA
+
+Formulaires → Éditer. Le format des formulaires ne change pas : le
+remplissage, le lien public, les réponses et les statistiques restent identiques.
+- Palette des 15 types de champs : un clic ajoute le champ après celui qui
+  est sélectionné ; on peut aussi le glisser-déposer à l'endroit voulu.
+- Les champs se réordonnent par glisser-déposer (ou flèches) ; on peut les
+  dupliquer, les supprimer ou les déplacer vers une autre page.
+- Les pages se nomment, s'ajoutent et se suppriment (avec confirmation).
+- Panneau de propriétés :
+  - question, type, obligatoire ;
+  - **largeur** (pleine, 3/4, 2/3, moitié, 1/3, 1/4) ;
+  - texte indicatif, valeur par défaut ;
+  - options, colonnes de tableau, types de fichiers.
+- **Aperçu en direct**, avec le même rendu que le vrai formulaire (Échap
+  pour fermer).
+- Alerte si l'on quitte la page sans enregistrer.
+
+## Production (clients Fabricant) : « Recette » devient « Formulation »
+
+Dans le module Production (réservé aux clients Fabricant), le mot
+« Recette » devient « Formulation » partout : onglet, boutons, messages,
+analyses, PDF et messages d'erreur du serveur. Les données ne changent pas.
 
 ## Fichiers touchés
 
 **Nouveaux fichiers**
 - `frontend/src/components/EmojiPicker.jsx`
 - `frontend/src/components/ImageAnnotator.jsx`
-- `backend/routes/wa_surveys.py` (sondages WhatsApp : routes, envoi, résultats)
+- `backend/routes/wa_surveys.py` (sondages WhatsApp : routes, envoi, résultats, contributeurs)
+- `backend/routes/portfolio_billing.py` (tarifs, bilans, PDF, facture)
+- `backend/tests/test_portfolio_billing_lot27.py` (test autonome — tu ne le lances pas)
+- `frontend/src/components/SurveyContributors.jsx`, `InvoiceTvaDialog.jsx`
+- `frontend/src/pages/admin/sections/PortfolioBillingSection.jsx`
+- `frontend/src/pages/portal/PortfolioInvoices.jsx`
 - `backend/tests/test_wa_surveys_lot27.py` (test autonome — tu ne le lances pas)
 - `frontend/src/pages/portal/Surveys.jsx`, `SurveyEditor.jsx`, `SurveyResults.jsx`
 - `frontend/src/components/SurveySendModal.jsx`, `FormsSurveysTabs.jsx`
@@ -189,7 +268,11 @@ Nouvelles collections Mongo : `wa_surveys`, `wa_survey_invites`,
     « whatsapp.flow_completed » ;
   - branchement des sondages WhatsApp (quelques lignes, après les groupes
     de contacts).
-- `frontend/src/App.js` : routes `/portal|admin/surveys…` et `/s/:token`
+- `backend/routes/cashier.py` : création d'une facture par le serveur (même logique que la Caisse)
+- `backend/routes/production.py`, `frontend/src/pages/portal/Production.jsx` : « Formulation »
+- `frontend/src/pages/portal/FormEditor.jsx` : nouvel éditeur ; `FormRunner.jsx` : rendu d'un champ partagé avec l'aperçu
+- `frontend/src/pages/admin/AdminClientFeatures.jsx` : section Facturation
+- `frontend/src/App.js` : routes `/portal|admin/surveys…`, `portfolio-invoices` et `/s/:token`
 - `frontend/src/components/PortalLayout.jsx` : lien « Sondages WhatsApp »
 - `frontend/src/pages/portal/FormsList.jsx` : onglets Formulaires / Sondages
 - `backend/routes/whatsapp_helpers.py` : bouton « Flux » ajouté à l'envoi,
@@ -249,7 +332,21 @@ production uniquement, puis dis-le-moi.
    - Envoyer : tu reçois le lien sur WhatsApp. Ouvre-le sur ton téléphone,
      réponds et envoie ;
    - dans les Résultats : 1 envoyé, 1 ouvert, 1 réponse, et les graphiques
-     sont remplis. Le compteur passe en orange et indique
+     sont remplis.
+9. **Facturation** : Clients → PHL → page SMART Communications.
+   - Règle un forfait de 25 000 et 50 par message, puis enregistre.
+   - « Ce mois-ci » → Générer le bilan : l'analyse IA et les lignes
+     apparaissent. Le PDF s'ouvre.
+   - « Créer la facture » → choisis « Non, sans TVA » : la facture
+     F-2026-… est dans Caisse/Facturation, sans TVA.
+10. **Bilans à facturer** (menu) : le bilan est dans « Facturés », avec la
+    mention « sans TVA ».
+11. **Sondages → Meilleurs contributeurs** : le podium s'affiche.
+12. **Formulaires → Éditer** :
+    - glisse « Date » en haut, ajoute une « Liste déroulante » en moitié de
+      largeur, puis Aperçu ;
+    - enregistre, puis remplis : le formulaire s'affiche comme dans l'aperçu.
+13. Avec un compte **Fabricant** → Production : l'onglet s'appelle « Formulations ». Le compteur passe en orange et indique
    « envoi en Unicode (70 caractères par SMS) ».
 
 Si quelque chose ne marche pas, renvoie-moi le message d'erreur exact (écran
