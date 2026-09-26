@@ -179,8 +179,8 @@ concerné.
   https://claude.ai/artifact/TX7v7c7WR7LA7S8K6p3meZ (291 points), Albarka
   https://claude.ai/artifact/CmYGd3A1QPm8guDCstdYzC (139 points, v2026.5).
 - **Albarka lot 6 — statistiques graphiques des formulaires (forms-core 1.2.0)**
-  — **déployé en production le 2026-09-26 (v2026.6, bundle main.5376055f),
-  PAS encore enregistré sur GitHub** (conflict_030926_0658 toujours à 37de42f) (base `37de42f` = lot 5 publié ;
+  — **publié le 2026-09-26** (GitHub 0cd9b25, code identique hors `.emergent` ;
+  production v2026.6) (base `37de42f` = lot 5 publié ;
   `albarka-portal-livraisons/albarka-portal-corrections_6_6d9a105.patch` +
   `albarka-portal-prompt_6.md` ; dev `claude/albarka-lot6` 6d9a105). Onglet
   Stats refait (raccourcis de période, export CSV, 6 indicateurs animés, barres
@@ -192,9 +192,8 @@ concerné.
   autonomes Albarka + 12 tests forms-core OK, build OK, navigateur (bureau et
   téléphone) OK.
 - **Albarka lot 7 — factures au format du cabinet, documents & modèles, tableau de paie**
-  — **déployé en production le 2026-09-26 (v2026.7, bundle main.e0917c3c,
-  routes /letters, /hr/payroll, /admin/letterheads, /public/verify actives),
-  PAS encore enregistré sur GitHub** (base : lot 6 ; `albarka-portal-livraisons/albarka-portal-corrections_7_f8aa0cf.patch`
+  — **publié le 2026-09-26** (GitHub 4313f2e→7b86f23, code identique hors
+  `.emergent`/`.gitignore` ; production v2026.7, bundle main.e0917c3c) (base : lot 6 ; `albarka-portal-livraisons/albarka-portal-corrections_7_f8aa0cf.patch`
   + `albarka-portal-prompt_7.md` ; dev `claude/albarka-lot7` f8aa0cf).
   Factures/proformas : lignes de titre + détail multi-lignes, TVA unique 18 %,
   retenue sur HT, net à payer (encaissement et espace client sur le net), PDF
