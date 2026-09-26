@@ -1,10 +1,10 @@
-# Sawali — Lot 27 : tâches planifiées réactivées (avec garde-fous), modèles WhatsApp à formulaire (Flow), emojis, annotation d'images
+# Sawali — Lot 27 : tâches planifiées réactivées (avec garde-fous), modèles WhatsApp à formulaire (Flow), emojis, annotation d'images, sondages WhatsApp
 
 **Interdiction explicite** : je ne veux AUCUNE commande de test, de build ou
 de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 évaluateur ou analyseur automatique**. Tu appliques et tu déploies directement.
 
-Applique `sawali-portal-corrections_27_6eb9527.patch` sur la branche
+Applique `sawali-portal-corrections_27_c83fc89.patch` sur la branche
 `conflict_230926_1008`. Base attendue : ton commit `d091c30` (« Auto-generated
 changes », juste après `55e46f2`, le lot 26 que tu as publié). Le patch ne
 touche pas au dossier `.emergent`. C'est un `git format-patch` d'un seul
@@ -112,11 +112,69 @@ le Suivi » ouvre un formulaire WhatsApp (bouton de type « Flux terminé »).
   bouton Envoyer). Elle reste en JPEG, ou en PNG pour une capture PNG.
 - Aucune dépendance nouvelle : le dessin se fait dans le navigateur.
 
+## Sondages WhatsApp (nouvelle page, à côté des Formulaires)
+
+Menu « Sondages WhatsApp ». Des onglets « Formulaires | Sondages WhatsApp »
+en tête des deux pages permettent de passer de l'une à l'autre.
+
+1. **Concevoir** (Nouveau sondage) :
+   - titre, introduction, message de remerciement, date limite facultative ;
+   - questions : choix unique, choix multiples, oui/non, note de 1 à 5,
+     recommandation de 0 à 10 (score NPS), réponse libre ;
+   - chaque question peut être obligatoire, déplacée, dupliquée, supprimée ;
+   - « Résultats anonymes » pour ne pas afficher les noms des répondants ;
+   - l'aperçu « téléphone » montre ce que verra le destinataire ;
+   - Enregistrer, Enregistrer et ouvrir, Clôturer, Dupliquer.
+2. **Envoyer** à plusieurs destinataires :
+   - tous les contacts d'un ou plusieurs clients (ex. PHL), des groupes, une
+     entreprise ou des contacts choisis un à un ;
+   - « exclure les contacts déjà invités » et **échantillon aléatoire**
+     (ex. 100 contacts tirés au hasard parmi 800) ;
+   - la liste se vérifie et se décoche avant l'envoi ; un numéro n'est
+     jamais invité deux fois ;
+   - chaque destinataire reçoit un **lien personnel**
+     (`https://sawalismartsystems.com/s/<jeton>`) : on sait qui a ouvert et
+     qui a répondu, sans compte ni mot de passe ;
+   - mode **Auto** : message libre pour les contacts qui ont écrit dans les
+     24 h, **modèle Meta** approuvé pour les autres (règle de WhatsApp). Le
+     lien va dans une variable du modèle (`{{lien}}`), ou dans la partie
+     variable d'un bouton lien (`{{jeton}}`). Sans lien, l'envoi est refusé
+     avec un message clair ;
+   - l'envoi tourne en arrière-plan (une pause entre deux messages) ; la
+     page des résultats montre la progression. Après un redémarrage du
+     serveur, un envoi interrompu reprend (jamais dans la preview) ;
+   - chaque message apparaît aussi dans la conversation du contact.
+3. **Page de réponse** (`/s/<jeton>`), pensée pour le téléphone :
+   - « Bonjour Awa », gros boutons, étoiles, échelle de 0 à 10 ;
+   - les questions obligatoires sont contrôlées ;
+   - la réponse peut être corrigée tant que le sondage est ouvert ;
+   - sondage clôturé ou date passée : un message l'indique.
+4. **Résultats** :
+   - envoyés, ouverts, réponses, taux d'ouverture et de réponse, entonnoir ;
+   - graphiques par question (barres, note moyenne, score NPS avec
+     promoteurs / passifs / détracteurs, réponses libres) ;
+   - taux de réponse par entreprise, réponses par jour ;
+   - filtre par envoi et par **période** (du … au …) : c'est la base des
+     bilans de période par client ;
+   - liste des destinataires et de leur état ;
+   - **Relancer** les non-répondants (même lien), export **Excel** (CSV).
+
+Les sondages sont rangés par client (tenant) : chaque client ne voit que les
+siens ; l'admin et le Superviseur voient tout.
+
+Nouvelles collections Mongo : `wa_surveys`, `wa_survey_invites`,
+`wa_survey_responses`, `wa_survey_campaigns`. Les index sont créés au démarrage.
+
 ## Fichiers touchés
 
 **Nouveaux fichiers**
 - `frontend/src/components/EmojiPicker.jsx`
 - `frontend/src/components/ImageAnnotator.jsx`
+- `backend/routes/wa_surveys.py` (sondages WhatsApp : routes, envoi, résultats)
+- `backend/tests/test_wa_surveys_lot27.py` (test autonome — tu ne le lances pas)
+- `frontend/src/pages/portal/Surveys.jsx`, `SurveyEditor.jsx`, `SurveyResults.jsx`
+- `frontend/src/components/SurveySendModal.jsx`, `FormsSurveysTabs.jsx`
+- `frontend/src/pages/public/PublicSurvey.jsx`
 - `backend/tests/test_scheduler_lot27.py`, `backend/tests/test_wa_flow_lot27.py`
   (tests autonomes — tu ne les lances pas)
 
@@ -128,7 +186,12 @@ le Suivi » ouvre un formulaire WhatsApp (bouton de type « Flux terminé »).
   - page d'état ;
   - sauvegarde dans un thread ;
   - réponse des formulaires WhatsApp dans le webhook, événement
-    « whatsapp.flow_completed ».
+    « whatsapp.flow_completed » ;
+  - branchement des sondages WhatsApp (quelques lignes, après les groupes
+    de contacts).
+- `frontend/src/App.js` : routes `/portal|admin/surveys…` et `/s/:token`
+- `frontend/src/components/PortalLayout.jsx` : lien « Sondages WhatsApp »
+- `frontend/src/pages/portal/FormsList.jsx` : onglets Formulaires / Sondages
 - `backend/routes/whatsapp_helpers.py` : bouton « Flux » ajouté à l'envoi,
   lecture de la réponse du formulaire
 - `backend/routes/cashier.py` : garde-fous des relances automatiques
@@ -175,7 +238,18 @@ production uniquement, puis dis-le-moi.
    **Annoter**, trace une flèche, entoure une zone, floute un numéro et ajoute
    un texte, puis **Terminer**. L'aperçu montre l'image annotée ; envoie-la :
    le client la reçoit avec les annotations.
-7. Envoi de SMS : ajoute un emoji. Le compteur passe en orange et indique
+7. Envoi de SMS : ajoute un emoji.
+8. **Sondages WhatsApp → Nouveau sondage** :
+   - crée « Test satisfaction » avec une question à choix, une note et une
+     recommandation ;
+   - clique sur « Enregistrer et ouvrir », puis Envoyer ;
+   - choisis ton propre client (ou un groupe qui contient ton numéro), puis
+     « Voir les destinataires » et Suivant ;
+   - choisis un modèle Meta approuvé et mets `{{lien}}` dans une variable ;
+   - Envoyer : tu reçois le lien sur WhatsApp. Ouvre-le sur ton téléphone,
+     réponds et envoie ;
+   - dans les Résultats : 1 envoyé, 1 ouvert, 1 réponse, et les graphiques
+     sont remplis. Le compteur passe en orange et indique
    « envoi en Unicode (70 caractères par SMS) ».
 
 Si quelque chose ne marche pas, renvoie-moi le message d'erreur exact (écran

@@ -170,10 +170,10 @@ concerné.
   modèles WA (#132018/#131008) dans _wa_send_template. 74 tests autonomes
   (7 nouveaux), build OK. Signalé, non corrigé : bloc APScheduler jamais exécuté
   (server.py ~22426-22865, après un return) → tâches planifiées inactives.
-- **Sawali lot 27 — tâches planifiées réactivées (garde-fous) + modèles WA à Flow + emojis + annotation d'images**
+- **Sawali lot 27 — tâches planifiées réactivées (garde-fous) + modèles WA à Flow + emojis + annotation d'images + sondages WhatsApp**
   — **livré, en attente de publication** (base `d091c30` = lot 26 publié ;
-  `sawali-portal-livraisons/sawali-portal-corrections_27_6eb9527.patch` +
-  `sawali-portal-prompt_27.md`, remplace 8e70384 et 4ca6874 non publiés ; dev `claude/lot27` 6eb9527). Bloc APScheduler
+  `sawali-portal-livraisons/sawali-portal-corrections_27_c83fc89.patch` +
+  `sawali-portal-prompt_27.md`, remplace 8e70384, 4ca6874, 6eb9527 non publiés ; dev `claude/lot27` c83fc89). Bloc APScheduler
   (26 tâches) sorti du code mort vers `_start_scheduler` (add_job protégés,
   start garanti, jamais en preview, DISABLE_SCHEDULER, page d'état
   /api/admin/scheduler/status). Garde-fous : envois WA/SMS programmés > 3 h de
@@ -188,7 +188,14 @@ concerné.
   autonomes (13 nouveaux), build OK. ImageAnnotator.jsx (canvas : flèche,
   cercle, rectangle, crayon, surligneur, texte, numéros, flou ; annuler/rétablir)
   branché sur la pièce jointe image de la conversation (Contacts.jsx), testé
-  navigateur (bureau + mobile). Ensuite : découpage de server.py par lots. Lot 26 : 395/395 sondes OK sur 15 min.
+  navigateur (bureau + mobile). Sondages WhatsApp : routes/wa_surveys.py
+  (collections wa_surveys, wa_survey_invites à jeton, wa_survey_responses,
+  wa_survey_campaigns ; envoi en tâche de fond auto modèle/texte selon 24 h,
+  reprise au démarrage hors preview ; résultats avec filtre période, NPS,
+  par entreprise ; relance ; CSV) + pages Surveys/SurveyEditor/SurveyResults,
+  SurveySendModal, PublicSurvey /s/:token ; 97 tests autonomes, E2E navigateur OK.
+  Objectif annoncé par l'utilisateur : facturer par client la gestion des
+  formulaires/sondages + bilan de période avec analyse IA (lot suivant). Ensuite : découpage de server.py par lots. Lot 26 : 395/395 sondes OK sur 15 min.
 - **Albarka lot 5 — design SAWALI sur tout le portail + corrections de droits**
   — **publié le 2026-09-26** (GitHub d30e280→37de42f, code identique hors
   `.emergent`/`.gitignore` ; production v2026.5) (base `36d9fc1` = lot 4 publié ;
