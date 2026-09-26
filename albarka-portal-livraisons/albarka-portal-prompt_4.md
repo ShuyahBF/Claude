@@ -1,13 +1,13 @@
-# Albarka — Lot 4 : Superviseur réservé, comptes, présence, déconnexion automatique, liste blanche du personnel, comptes de test, Paramètres
+# Albarka — Lot 4 : Superviseur réservé, comptes, présence, déconnexion automatique, liste blanche, notifications push, journal avec IP, comptes de test, Paramètres
 
-Applique `albarka-portal-corrections_4_439dc65.patch` sur la branche
+Applique `albarka-portal-corrections_4_af5114c.patch` sur la branche
 `conflict_030926_0658`. Base attendue : le commit `3d6b60a` (« Auto-generated
 changes », juste après `2e0a021`, le lot 3 que tu as publié). C'est un
 `git format-patch` d'un seul commit : applique-le en UN SEUL `git am`, puis
 redéploie (backend et frontend) et enregistre sur GitHub. Ce patch remplace
 entièrement les versions précédentes du lot 4 (`…_4_56d4b58.patch`,
-`…_4_37ad3ec.patch`, `…_4_90834f0.patch` et `…_4_8fd0653.patch`) que je
-t'avais envoyées : n'applique que celui-ci.
+`…_4_37ad3ec.patch`, `…_4_90834f0.patch`, `…_4_8fd0653.patch` et
+`…_4_439dc65.patch`) que je t'avais envoyées : n'applique que celui-ci.
 
 Vocabulaire : quand je dis « admin », je parle du compte
 `admin@sawalismartsystems.com`, le super-utilisateur de la plateforme, pas du
@@ -33,6 +33,12 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 - `frontend/src/components/TemporaryAccessButton.jsx` : bouton « Accès temporaire » (Personnels)
 - `frontend/src/components/RecentClientsCard.jsx` : tableau de bord, derniers clients connectés
 - `frontend/src/pages/public/Error404.jsx` : page « ERREUR 404 » neutre
+- `backend/albarka_push.py` : notifications push (Web Push, chiffrement RFC 8291 et VAPID avec `cryptography`)
+- `backend/albarka_request_ctx.py` : IP et navigateur de la requête en cours (pour le Journal)
+- `backend/tests/test_push_lot4.py` : tests. Tu ne les lances pas.
+- `frontend/public/sw.js` : service worker qui affiche les notifications
+- `frontend/public/manifest.json` : portail installable sur l'écran d'accueil (nécessaire au push sur iPhone)
+- `frontend/src/components/PushOptIn.jsx` : « Notifications sur cet appareil » (espace client)
 
 **Fichiers modifiés**
 - `backend/albarka_models.py` : suppression de `effective_roles()` (lot 3), ajout de `is_test_account()`, `hide_test_accounts_filter()`, `NOT_TEST_ACCOUNT` et `SETTINGS_ROLES`
@@ -53,6 +59,12 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 - `frontend/src/contexts/AuthContext.jsx`, `frontend/src/pages/auth/Login.jsx` : appareil et code d'accès temporaire envoyés à la vérification du code, lien `/login?acces=…`, redirection vers « ERREUR 404 »
 - `frontend/src/App.js` : route `/erreur-404`
 - `frontend/src/pages/admin/AdminShared.jsx` : carte « Derniers clients connectés » sur le tableau de bord
+- `backend/albarka_phase_c.py` (en plus) : `_log_platform_event` enregistre `ip` et `user_agent`
+- `backend/server.py` (en plus) : middleware qui retient l'IP réelle (`X-Forwarded-For`) de chaque requête, routeur Push
+- `backend/albarka_client_space.py` (en plus) : push envoyé en plus de WhatsApp pour les documents mis à disposition
+- `frontend/public/index.html` : lien vers le manifeste et balises « application » pour iPhone
+- `frontend/src/pages/admin/AdminPhaseC.jsx` : colonne « Adresse IP » dans le Journal plateforme
+- `frontend/src/pages/portal/CabinetDocuments.jsx`, `frontend/src/pages/admin/ClientDocsNotifPanel.jsx` : activation du push côté client, interrupteur dans les Paramètres
 - `frontend/src/pages/admin/AdminSettings.jsx` : réglage RGPD modifiable par le superviseur ; champ « Déconnexion automatique après inactivité »
 
 Aucune nouvelle dépendance, aucune migration. Nouvelle collection
@@ -63,13 +75,20 @@ suppression. Les comptes portent désormais `updated_at`, `updated_by` et
 Nouvelle collection `presence` (un document par compte, index sur
 `last_seen`), créée au premier battement. Nouvelles collections
 `trusted_devices`, `device_requests` et `access_tokens` (codes stockés
-hachés, jamais en clair).
+hachés, jamais en clair), `push_subscriptions` (un document par appareil
+abonné). Les entrées du Journal portent désormais `ip` et `user_agent` (les
+anciennes n'en ont pas).
 Les jetons de connexion déjà émis restent valables : seule une
 réinitialisation du mot de passe ferme les sessions du compte concerné.
 
 ## Variables d'environnement
 
-- **Nouvelles** : aucune.
+- **Nouvelles, facultatives** : `VAPID_PUBLIC_KEY` et `VAPID_PRIVATE_KEY`
+  (clés des notifications push, en base64url). Si elles sont absentes, une
+  paire est générée au premier besoin et gardée en base (document
+  `settings`, `_id: "push_vapid"`, jamais renvoyé par l'API). **Rien à
+  configurer.** Ne change pas ces clés ensuite, sinon les appareils déjà
+  abonnés ne recevraient plus rien.
 - **Déjà présentes, réutilisées telles quelles** : `EMERGENT_EMAIL_KEY` (codes
   de connexion des comptes de test), `JWT_SECRET_KEY`, `MONGO_URL`, `DB_NAME`.
 - **Paramètres stockés en base (AdminSettings)** : `auto_logout_minutes`
@@ -77,7 +96,8 @@ réinitialisation du mot de passe ferme les sessions du compte concerné.
   `staff_whitelist_enabled` (défaut **désactivé** : rien ne change au
   déploiement), `staff_ip_whitelist` (adresses ou plages CIDR),
   `access_token_issuer_emails` (modifiable par admin seul), dans Paramètres →
-  Accès du personnel.
+  Accès du personnel ; `client_docs_push_enabled` (défaut activé), dans
+  Paramètres → Notifications.
 
 ## Ce que ça apporte, dans l'ordre
 
@@ -295,6 +315,40 @@ réinitialisation du mot de passe ferme les sessions du compte concerné.
       dernière activité. Une nouvelle session commence après une
       déconnexion ou 70 s sans battement.
 
+13. **Notifications push pour les documents mis à disposition d'un client.**
+    - **Côté client.** En haut de « Factures & documents », le client voit
+      **« Notifications sur cet appareil »** : Activer, Tester, Désactiver.
+      Le navigateur demande l'autorisation, puis l'appareil est enregistré
+      (`POST /push/subscribe`).
+    - **Envoi.** À chaque dépôt visible ou mise à disposition, le client
+      reçoit une notification sur ses appareils abonnés (« Facture
+      disponible — Cabinet ALBARKA » + la liste), **en plus** de WhatsApp,
+      même portail fermé. Le clic ouvre sa page.
+    - **Compatibilité.**
+      - Android et ordinateur : Chrome, Edge, Firefox.
+      - iPhone et iPad : iOS 16.4 ou plus, **seulement si le portail est
+        ajouté à l'écran d'accueil** (manifeste ajouté). L'écran l'explique
+        au client.
+    - **Technique.**
+      - Chiffrement Web Push (RFC 8291) et identification VAPID (RFC 8292)
+        codés avec `cryptography`, déjà présent : **aucune nouvelle
+        dépendance**.
+      - `frontend/public/sw.js` affiche les notifications.
+      - Les abonnements expirés (réponse 404/410 du service de push) sont
+        supprimés automatiquement.
+    - **Réglages.**
+      - Interrupteur « Notification push » dans Paramètres → Notifications.
+      - Le suivi du document indique le canal « push » quand seul le push a
+        abouti.
+
+14. **Adresse IP dans le Journal plateforme.**
+    - Un middleware retient l'IP réelle de chaque requête (premier
+      `X-Forwarded-For`, derrière le proxy) et le navigateur.
+    - `_log_platform_event` enregistre `ip` et `user_agent` pour **toutes**
+      les actions tracées.
+    - Le Journal plateforme a une nouvelle colonne « Adresse IP » ; le
+      navigateur s'affiche au survol.
+
 ## Volontairement pas dans ce lot
 
 - **Envoi automatique du nouveau mot de passe** par e-mail ou WhatsApp : je
@@ -383,6 +437,15 @@ réinitialisation du mot de passe ferme les sessions du compte concerné.
     affiche « Derniers clients connectés », avec la durée d'activité de
     chacun.
 26. Pour revenir à l'état d'avant : **désactive** la liste blanche.
+27. Sur un téléphone **Android** (Chrome), connecte-toi comme client, ouvre
+    **Factures & documents** → **Activer**, accepte, puis **Tester** : la
+    notification d'essai arrive. Ferme le portail. Côté cabinet, dépose un
+    document pour ce client : la notification arrive, en plus du WhatsApp.
+    Toucher la notification ouvre « Factures & documents ».
+28. Sur **iPhone** : dans Safari, Partager → « Sur l'écran d'accueil »,
+    ouvre le portail depuis l'icône ALBARKA, puis refais l'étape 27.
+29. **Journal plateforme** : chaque nouvelle action (connexion refusée,
+    suppression, réinitialisation…) affiche l'adresse IP de son auteur.
 
 Si quelque chose ne marche pas, renvoie-moi le message d'erreur exact (écran
 ou logs backend). Rappel : **aucun test, build, lint, Testing Agent ou

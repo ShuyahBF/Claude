@@ -1,6 +1,6 @@
-From 439dc652e49290bf8224ff69a2f9a0a8e43fc7a9 Mon Sep 17 00:00:00 2001
+From af5114c41b70509ba860e504444fb96e3075ca8f Mon Sep 17 00:00:00 2001
 From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
-Date: Sat, 26 Sep 2026 02:42:44 +0000
+Date: Sat, 26 Sep 2026 02:59:06 +0000
 Subject: [PATCH] =?UTF-8?q?Superviseur=20r=C3=A9serv=C3=A9,=20comptes,=20p?=
  =?UTF-8?q?r=C3=A9sence,=20liste=20blanche,=20comptes=20de=20test,=20Param?=
  =?UTF-8?q?=C3=A8tres?=
@@ -28,6 +28,8 @@ Content-Transfer-Encoding: 8bit
   temporaires créés par admin ou une adresse désignée (e-mail + WhatsApp).
 - Tableau de bord : 10 derniers clients connectés et durée d'activité
   (Direction, Secrétariat, admin).
+- Notifications push (Web Push, sans nouvelle dépendance) pour les documents
+  mis à disposition d'un client ; adresse IP et navigateur dans le Journal.
 - Bouton « Créer comptes de test » : comptes de la recette avec adresses
   +alias, invisibles de tous sauf du superviseur, exclus des envois de masse ;
   suppression groupée.
@@ -35,30 +37,38 @@ Content-Transfer-Encoding: 8bit
   marque, certificats, tests de configuration) ; RGPD modifiable par lui.
 ---
  backend/albarka_access.py                     | 344 ++++++++++++++++++
- backend/albarka_admin_settings.py             |  44 ++-
+ backend/albarka_admin_settings.py             |  47 ++-
  backend/albarka_auth.py                       |  34 +-
  backend/albarka_branding.py                   |   4 +-
+ backend/albarka_client_space.py               |  25 ++
  backend/albarka_clients.py                    | 248 +++++++++++--
  backend/albarka_dashboard.py                  |   9 +-
  backend/albarka_forms.py                      |   5 +-
  backend/albarka_models.py                     |  47 ++-
  backend/albarka_myaccount.py                  |  18 +-
  backend/albarka_notifications.py              |   1 +
- backend/albarka_phase_c.py                    |  13 +-
+ backend/albarka_phase_c.py                    |  17 +-
  backend/albarka_presence.py                   | 169 +++++++++
+ backend/albarka_push.py                       | 193 ++++++++++
  backend/albarka_reports_mgmt.py               |   3 +-
+ backend/albarka_request_ctx.py                |  18 +
  backend/albarka_settings_tests.py             |   4 +-
  backend/albarka_signing.py                    |   5 +-
- backend/server.py                             |  12 +
+ backend/server.py                             |  29 ++
  backend/tests/test_access_lot4.py             | 177 +++++++++
  backend/tests/test_accounts_lot4.py           | 249 +++++++++++++
  backend/tests/test_client_space_lot3.py       |  29 +-
+ backend/tests/test_push_lot4.py               | 165 +++++++++
+ frontend/public/index.html                    |   4 +
+ frontend/public/manifest.json                 |  14 +
+ frontend/public/sw.js                         |  35 ++
  frontend/src/App.js                           |   3 +
  frontend/src/components/AccountActions.jsx    | 142 ++++++++
  frontend/src/components/AutoLogoutGate.jsx    |  77 ++++
  frontend/src/components/ChatBubble.jsx        |  23 +-
  frontend/src/components/PortalLayout.jsx      |  13 +-
  frontend/src/components/Presence.jsx          | 105 ++++++
+ frontend/src/components/PushOptIn.jsx         | 103 ++++++
  frontend/src/components/RecentClientsCard.jsx |  72 ++++
  .../src/components/TemporaryAccessButton.jsx  |  75 ++++
  frontend/src/contexts/AuthContext.jsx         |   9 +-
@@ -66,21 +76,30 @@ Content-Transfer-Encoding: 8bit
  frontend/src/lib/device.js                    |  23 ++
  frontend/src/lib/useIdleTimer.js              |  83 +++++
  frontend/src/pages/admin/AdminClients.jsx     |  20 +-
+ frontend/src/pages/admin/AdminPhaseC.jsx      |   6 +-
  frontend/src/pages/admin/AdminSettings.jsx    |  28 +-
  frontend/src/pages/admin/AdminShared.jsx      |   9 +-
  frontend/src/pages/admin/AdminStaff.jsx       | 134 ++++++-
  .../admin/AdminWhatsAppConversations.jsx      |  22 +-
+ .../src/pages/admin/ClientDocsNotifPanel.jsx  |   9 +
  frontend/src/pages/admin/StaffAccessPanel.jsx | 175 +++++++++
  frontend/src/pages/auth/Login.jsx             |  24 +-
+ .../src/pages/portal/CabinetDocuments.jsx     |   3 +
  frontend/src/pages/public/Error404.jsx        |  20 +
- 39 files changed, 2384 insertions(+), 127 deletions(-)
+ 50 files changed, 2981 insertions(+), 129 deletions(-)
  create mode 100644 backend/albarka_access.py
  create mode 100644 backend/albarka_presence.py
+ create mode 100644 backend/albarka_push.py
+ create mode 100644 backend/albarka_request_ctx.py
  create mode 100644 backend/tests/test_access_lot4.py
  create mode 100644 backend/tests/test_accounts_lot4.py
+ create mode 100644 backend/tests/test_push_lot4.py
+ create mode 100644 frontend/public/manifest.json
+ create mode 100644 frontend/public/sw.js
  create mode 100644 frontend/src/components/AccountActions.jsx
  create mode 100644 frontend/src/components/AutoLogoutGate.jsx
  create mode 100644 frontend/src/components/Presence.jsx
+ create mode 100644 frontend/src/components/PushOptIn.jsx
  create mode 100644 frontend/src/components/RecentClientsCard.jsx
  create mode 100644 frontend/src/components/TemporaryAccessButton.jsx
  create mode 100644 frontend/src/lib/busyTasks.js
@@ -440,7 +459,7 @@ index 0000000..617adc0
 +    await db.device_requests.create_index([("status", 1), ("last_attempt_at", -1)])
 +    await db.access_tokens.create_index("code_hash")
 diff --git a/backend/albarka_admin_settings.py b/backend/albarka_admin_settings.py
-index 0c020ca..bce5b19 100644
+index 0c020ca..a7ff308 100644
 --- a/backend/albarka_admin_settings.py
 +++ b/backend/albarka_admin_settings.py
 @@ -1,8 +1,8 @@
@@ -472,10 +491,12 @@ index 0c020ca..bce5b19 100644
  
  # Champs sensibles : masqués sur lecture (******** = présent).
  SENSITIVE_FIELDS = {"wa_access_token", "recaptcha_secret_key", "pawapay_api_token_sandbox", "pawapay_api_token_production"}
-@@ -103,6 +105,17 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
+@@ -103,6 +105,19 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
      "client_docs_wa_template_lang": "fr",
      "client_docs_wa_template_params": "client,nombre,lien",
      "client_docs_email_fallback": True,
++    # Notification push (navigateur / téléphone du client, voir albarka_push.py)
++    "client_docs_push_enabled": True,
 +    # Déconnexion automatique après N minutes sans activité (clavier, souris,
 +    # défilement, toucher) — clients et collaborateurs. 0 = désactivée.
 +    # Jamais pendant une tâche en cours (envoi, enregistrement…). Repris de Sawali.
@@ -490,10 +511,11 @@ index 0c020ca..bce5b19 100644
  }
  
  
-@@ -198,6 +211,12 @@ class SettingsUpdate(BaseModel):
+@@ -198,6 +213,13 @@ class SettingsUpdate(BaseModel):
      client_docs_wa_template_lang: Optional[str] = Field(None, max_length=10)
      client_docs_wa_template_params: Optional[str] = Field(None, max_length=200)
      client_docs_email_fallback: Optional[bool] = None
++    client_docs_push_enabled: Optional[bool] = None
 +    # Déconnexion automatique (minutes d'inactivité, 0 = désactivée, 120 max)
 +    auto_logout_minutes: Optional[int] = Field(None, ge=0, le=120)
 +    # Accès du personnel
@@ -503,7 +525,7 @@ index 0c020ca..bce5b19 100644
  
  
  @router.get("/settings")
-@@ -208,10 +227,8 @@ async def get_settings(user: dict = Depends(require_roles(_ADMIN_ROLES))):
+@@ -208,10 +230,8 @@ async def get_settings(user: dict = Depends(require_roles(_ADMIN_ROLES))):
  @router.put("/settings")
  async def update_settings(payload: SettingsUpdate, user: dict = Depends(require_roles(_ADMIN_ROLES))):
      changes = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
@@ -516,7 +538,7 @@ index 0c020ca..bce5b19 100644
      # Never persist the masked sentinel back.
      for k in SENSITIVE_FIELDS:
          if changes.get(k) == "********":
-@@ -239,6 +256,19 @@ async def update_settings(payload: SettingsUpdate, user: dict = Depends(require_
+@@ -239,6 +259,19 @@ async def update_settings(payload: SettingsUpdate, user: dict = Depends(require_
          if bad:
              raise HTTPException(status_code=400, detail=f"Variable inconnue pour le modèle Meta : {', '.join(bad)}")
          changes["client_docs_wa_template_params"] = ",".join(params)
@@ -644,6 +666,42 @@ index e94a50d..e0671b9 100644
  BRANDING_KINDS = {"logo", "letterhead", "dg_signature", "watermark"}
  ALLOWED_MIMES = {"image/png", "image/jpeg", "image/webp"}
  MAX_SIZE = 5 * 1024 * 1024  # 5 MB
+diff --git a/backend/albarka_client_space.py b/backend/albarka_client_space.py
+index 928efe3..148ce15 100644
+--- a/backend/albarka_client_space.py
++++ b/backend/albarka_client_space.py
+@@ -181,6 +181,31 @@ def _notif_email_html(*, cabinet: str, client_name: str, lines: List[str], link:
+ 
+ 
+ async def notify_client(client: Dict[str, Any], items: List[Dict[str, Any]], *, link: str) -> Dict[str, Any]:
++    """Prévient le client : notification push sur ses appareils abonnés (si
++    activée), PUIS WhatsApp / e-mail comme avant. Le résultat indique en plus
++    `push` = nombre d'appareils atteints ; ok si au moins un canal a abouti."""
++    settings = await get_settings_doc()
++    push = {"sent": 0, "failed": 0, "devices": 0}
++    allowed = (settings.get("client_docs_notify_enabled", True) and client.get("can_receive_notifications") is not False
++               and client.get("is_active", True))
++    if allowed and settings.get("client_docs_push_enabled", True):
++        try:
++            from albarka_push import send_push_to_user
++            cabinet = settings.get("cabinet_name") or "Cabinet ALBARKA"
++            values = template_values(client=client, items=items, cabinet=cabinet, link=link)
++            title = (f"{values['categorie']} disponible" if len(items) == 1 else f"{len(items)} nouveaux documents")
++            push = await send_push_to_user(client["id"], title=f"{title} — {cabinet}",
++                                           body=values["liste"].replace("• ", ""), url=CLIENT_PAGE_PATH, tag="client-docs")
++        except Exception:  # noqa: BLE001 — le push ne doit jamais empêcher WhatsApp / e-mail
++            logger.exception("[push] échec de la notification push")
++    result = await _notify_whatsapp_or_email(client, items, link=link)
++    result["push"] = push["sent"]
++    if not result["ok"] and push["sent"]:
++        result.update(ok=True, channel="push")
++    return result
++
++
++async def _notify_whatsapp_or_email(client: Dict[str, Any], items: List[Dict[str, Any]], *, link: str) -> Dict[str, Any]:
+     """Prévient le client des documents qu'il vient de recevoir.
+     1. WhatsApp : message libre (texte réglé) si la fenêtre de 24 h est
+        ouverte ; sinon le modèle Meta réglé, s'il y en a un ;
 diff --git a/backend/albarka_clients.py b/backend/albarka_clients.py
 index ee8c97d..ee2087f 100644
 --- a/backend/albarka_clients.py
@@ -1182,7 +1240,7 @@ index dae4d38..7d16127 100644
                  {"can_receive_notifications": {"$exists": False}},
                  {"can_receive_notifications": True},
 diff --git a/backend/albarka_phase_c.py b/backend/albarka_phase_c.py
-index 345a7ee..d3a808d 100644
+index 345a7ee..0cd6df3 100644
 --- a/backend/albarka_phase_c.py
 +++ b/backend/albarka_phase_c.py
 @@ -24,7 +24,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -1211,7 +1269,20 @@ index 345a7ee..d3a808d 100644
              "last_at": last["last_at"] if last else t["created_at"],
              "last_author": last["last_author"] if last else None,
              "last_body": (last["last_body"][:120] if last else ""),
-@@ -1024,15 +1025,15 @@ async def send_broadcast(
+@@ -848,8 +849,12 @@ async def _log_platform_event(
+ ):
+     """Interne — enregistre un événement d'audit (best-effort)."""
+     try:
++        from albarka_request_ctx import request_info  # IP + navigateur de la requête en cours
++        info = request_info()
+         await db.platform_logs.insert_one({
+             "id": secrets.token_urlsafe(12),
++            "ip": info.get("ip") or (meta or {}).get("ip"),
++            "user_agent": info.get("user_agent"),
+             "action": action,
+             "entity_type": entity_type,
+             "entity_id": entity_id,
+@@ -1024,15 +1029,15 @@ async def send_broadcast(
      """
      if payload.scope == "clients":
          recipients = await db.users.find(
@@ -1406,6 +1477,205 @@ index 0000000..3686071
 +async def ensure_presence_indexes() -> None:
 +    await db.presence.create_index("last_seen")
 +    await db.presence.create_index([("kind", 1), ("session_started_at", -1)])
+diff --git a/backend/albarka_push.py b/backend/albarka_push.py
+new file mode 100644
+index 0000000..97cd1f3
+--- /dev/null
++++ b/backend/albarka_push.py
+@@ -0,0 +1,193 @@
++"""Notifications push (Web Push) — navigateur du client, même portail fermé.
++
++Standards : chiffrement du message RFC 8291 (aes128gcm) et identification du
++serveur RFC 8292 (VAPID). Implémenté avec `cryptography` (déjà dans
++requirements.txt) : aucune nouvelle dépendance.
++
++Clés VAPID : variables d'environnement VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY
++(base64url) si elles existent ; sinon une paire est générée au premier besoin
++et gardée en base (document settings `_id="push_vapid"`, jamais renvoyé par
++l'API des paramètres).
++
++Routes (préfixe /api) :
++  GET    /push/public-key   clé publique pour s'abonner (navigateur)
++  POST   /push/subscribe    enregistrer l'abonnement de cet appareil
++  POST   /push/unsubscribe  le retirer
++  POST   /push/test         envoyer une notification d'essai à soi-même
++Collection : push_subscriptions (un document par appareil abonné).
++"""
++from __future__ import annotations
++
++import base64
++import json
++import logging
++import os
++import secrets
++import struct
++import time
++from datetime import datetime, timezone
++from typing import Any, Dict, List, Optional
++from urllib.parse import urlparse
++
++import httpx
++from cryptography.hazmat.primitives import hashes, serialization
++from cryptography.hazmat.primitives.asymmetric import ec
++from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
++from cryptography.hazmat.primitives.ciphers.aead import AESGCM
++from cryptography.hazmat.primitives.kdf.hkdf import HKDF
++from fastapi import APIRouter, Body, Depends, HTTPException
++
++from albarka_auth import get_current_user
++from db import db
++
++logger = logging.getLogger("albarka.push")
++
++router = APIRouter(prefix="/push", tags=["Notifications push"])
++
++RECORD_SIZE = 4096
++
++
++def b64u(data: bytes) -> str:
++    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
++
++
++def b64u_dec(text: str) -> bytes:
++    return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
++
++
++def _raw_public(key: ec.EllipticCurvePrivateKey) -> bytes:
++    """Clé publique P-256 au format « non compressé » (65 octets)."""
++    return key.public_key().public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
++
++
++# ---------------------------------------------------------------- clés VAPID
++async def vapid_keys() -> ec.EllipticCurvePrivateKey:
++    """Clé privée VAPID (environnement, sinon générée une fois et gardée en base)."""
++    env_priv = os.environ.get("VAPID_PRIVATE_KEY")
++    if env_priv:
++        d = int.from_bytes(b64u_dec(env_priv), "big")
++        return ec.derive_private_key(d, ec.SECP256R1())
++    doc = await db.settings.find_one({"_id": "push_vapid"})
++    if not doc:
++        key = ec.generate_private_key(ec.SECP256R1())
++        d = key.private_numbers().private_value.to_bytes(32, "big")
++        doc = {"_id": "push_vapid", "private_key": b64u(d), "public_key": b64u(_raw_public(key)),
++               "created_at": datetime.now(timezone.utc).isoformat()}
++        try:
++            await db.settings.insert_one(doc)
++        except Exception:  # noqa: BLE001 — créée entre-temps par un autre processus
++            doc = await db.settings.find_one({"_id": "push_vapid"})
++    return ec.derive_private_key(int.from_bytes(b64u_dec(doc["private_key"]), "big"), ec.SECP256R1())
++
++
++def vapid_authorization(key: ec.EllipticCurvePrivateKey, endpoint: str, subject: str) -> str:
++    """En-tête Authorization VAPID (RFC 8292) : jeton ES256 + clé publique."""
++    u = urlparse(endpoint)
++    header = b64u(json.dumps({"typ": "JWT", "alg": "ES256"}, separators=(",", ":")).encode())
++    claims = b64u(json.dumps({"aud": f"{u.scheme}://{u.netloc}", "exp": int(time.time()) + 12 * 3600,
++                              "sub": subject}, separators=(",", ":")).encode())
++    signing_input = f"{header}.{claims}".encode()
++    r, s = decode_dss_signature(key.sign(signing_input, ec.ECDSA(hashes.SHA256())))
++    sig = r.to_bytes(32, "big") + s.to_bytes(32, "big")
++    return f"vapid t={header}.{claims}.{b64u(sig)}, k={b64u(_raw_public(key))}"
++
++
++# ---------------------------------------------------------------- chiffrement (RFC 8291)
++def encrypt_payload(payload: bytes, p256dh: str, auth: str, *, salt: Optional[bytes] = None,
++                    server_key: Optional[ec.EllipticCurvePrivateKey] = None) -> bytes:
++    """Chiffre le message pour UN abonnement (clés p256dh + auth du navigateur)."""
++    ua_public = b64u_dec(p256dh)
++    auth_secret = b64u_dec(auth)
++    as_key = server_key or ec.generate_private_key(ec.SECP256R1())
++    as_public = _raw_public(as_key)
++    ua_key = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), ua_public)
++    ecdh_secret = as_key.exchange(ec.ECDH(), ua_key)
++    ikm = HKDF(algorithm=hashes.SHA256(), length=32, salt=auth_secret,
++               info=b"WebPush: info\x00" + ua_public + as_public).derive(ecdh_secret)
++    salt = salt or os.urandom(16)
++    cek = HKDF(algorithm=hashes.SHA256(), length=16, salt=salt, info=b"Content-Encoding: aes128gcm\x00").derive(ikm)
++    nonce = HKDF(algorithm=hashes.SHA256(), length=12, salt=salt, info=b"Content-Encoding: nonce\x00").derive(ikm)
++    ciphertext = AESGCM(cek).encrypt(nonce, payload + b"\x02", None)  # \x02 = dernier (et seul) bloc
++    header = salt + struct.pack("!L", RECORD_SIZE) + bytes([len(as_public)]) + as_public
++    return header + ciphertext
++
++
++async def _send_one(sub: Dict[str, Any], body: bytes, key: ec.EllipticCurvePrivateKey, subject: str) -> Dict[str, Any]:
++    data = encrypt_payload(body, sub["keys"]["p256dh"], sub["keys"]["auth"])
++    headers = {"Authorization": vapid_authorization(key, sub["endpoint"], subject), "Content-Encoding": "aes128gcm",
++               "Content-Type": "application/octet-stream", "TTL": str(3 * 24 * 3600), "Urgency": "normal"}
++    try:
++        async with httpx.AsyncClient(timeout=15) as client:
++            r = await client.post(sub["endpoint"], content=data, headers=headers)
++        return {"ok": r.status_code < 300, "status": r.status_code, "error": None if r.status_code < 300 else r.text[:200]}
++    except httpx.HTTPError as exc:
++        return {"ok": False, "status": None, "error": str(exc)[:200]}
++
++
++async def send_push_to_user(user_id: str, *, title: str, body: str, url: str = "/", tag: str = "albarka") -> Dict[str, Any]:
++    """Envoie une notification à tous les appareils abonnés du compte.
++    Les abonnements expirés (404/410) sont supprimés. Renvoie {sent, failed}."""
++    subs = await db.push_subscriptions.find({"user_id": user_id}, {"_id": 0}).to_list(20)
++    if not subs:
++        return {"sent": 0, "failed": 0, "devices": 0}
++    key = await vapid_keys()
++    from albarka_admin_settings import get_settings_doc
++    settings = await get_settings_doc()
++    subject = f"mailto:{settings.get('cabinet_email') or 'contact@albarka-bf.com'}"
++    payload = json.dumps({"title": title[:120], "body": body[:400], "url": url, "tag": tag}, ensure_ascii=False).encode()
++    sent = failed = 0
++    for sub in subs:
++        r = await _send_one(sub, payload, key, subject)
++        if r["ok"]:
++            sent += 1
++            await db.push_subscriptions.update_one({"id": sub["id"]}, {"$set": {"last_success_at": datetime.now(timezone.utc).isoformat()}})
++        else:
++            failed += 1
++            if r["status"] in (404, 410):  # appareil désabonné ou abonnement expiré
++                await db.push_subscriptions.delete_one({"id": sub["id"]})
++            logger.warning("[push] échec %s pour %s : %s", r["status"], user_id, r["error"])
++    return {"sent": sent, "failed": failed, "devices": len(subs)}
++
++
++# ---------------------------------------------------------------- routes
++@router.get("/public-key")
++async def public_key(user: dict = Depends(get_current_user)):
++    return {"public_key": b64u(_raw_public(await vapid_keys()))}
++
++
++@router.post("/subscribe")
++async def subscribe(payload: Dict[str, Any] = Body(...), user: dict = Depends(get_current_user)):
++    """Enregistre l'abonnement push de cet appareil (fourni par le navigateur)."""
++    sub = payload.get("subscription") or {}
++    endpoint = str(sub.get("endpoint") or "")
++    keys = sub.get("keys") or {}
++    if not endpoint.startswith("https://") or not keys.get("p256dh") or not keys.get("auth"):
++        raise HTTPException(status_code=400, detail="Abonnement invalide")
++    now = datetime.now(timezone.utc).isoformat()
++    await db.push_subscriptions.update_one({"endpoint": endpoint}, {"$set": {
++        "user_id": user["id"], "endpoint": endpoint, "keys": {"p256dh": keys["p256dh"], "auth": keys["auth"]},
++        "user_agent": str(payload.get("user_agent") or "")[:250], "updated_at": now},
++        "$setOnInsert": {"id": secrets.token_urlsafe(10), "created_at": now}}, upsert=True)
++    return {"ok": True}
++
++
++@router.post("/unsubscribe")
++async def unsubscribe(payload: Dict[str, Any] = Body(...), user: dict = Depends(get_current_user)):
++    await db.push_subscriptions.delete_one({"endpoint": str(payload.get("endpoint") or ""), "user_id": user["id"]})
++    return {"ok": True}
++
++
++@router.post("/test")
++async def test_push(user: dict = Depends(get_current_user)):
++    """Notification d'essai sur les appareils abonnés du compte connecté."""
++    r = await send_push_to_user(user["id"], title="Notifications activées",
++                                body="Vous recevrez ici les documents que le cabinet met à votre disposition.",
++                                url="/portal/documents-cabinet" if "client" in (user.get("roles") or []) else "/admin")
++    if not r["devices"]:
++        raise HTTPException(status_code=404, detail="Aucun appareil abonné pour ce compte")
++    return r
++
++
++async def ensure_push_indexes() -> None:
++    await db.push_subscriptions.create_index("endpoint", unique=True)
++    await db.push_subscriptions.create_index("user_id")
 diff --git a/backend/albarka_reports_mgmt.py b/backend/albarka_reports_mgmt.py
 index 6632c1c..7d31620 100644
 --- a/backend/albarka_reports_mgmt.py
@@ -1420,6 +1690,30 @@ index 6632c1c..7d31620 100644
              {"_id": 0, "id": 1, "full_name": 1},
          ).to_list(500)
      generated: list[dict] = []
+diff --git a/backend/albarka_request_ctx.py b/backend/albarka_request_ctx.py
+new file mode 100644
+index 0000000..2c4548f
+--- /dev/null
++++ b/backend/albarka_request_ctx.py
+@@ -0,0 +1,18 @@
++"""Contexte de la requête en cours (adresse IP, navigateur) — pour que le
++Journal plateforme enregistre l'IP de chaque action sans passer la requête
++à toutes les fonctions. Rempli par un middleware (server.py)."""
++from __future__ import annotations
++
++from contextvars import ContextVar
++from typing import Dict
++
++_request_info: ContextVar[Dict[str, str]] = ContextVar("albarka_request_info", default={})
++
++
++def set_request_info(ip: str, user_agent: str) -> None:
++    _request_info.set({"ip": ip or "", "user_agent": (user_agent or "")[:250]})
++
++
++def request_info() -> Dict[str, str]:
++    """{ip, user_agent} de la requête en cours ({} hors requête : tâches planifiées)."""
++    return _request_info.get()
 diff --git a/backend/albarka_settings_tests.py b/backend/albarka_settings_tests.py
 index 0f7a3c6..7c34358 100644
 --- a/backend/albarka_settings_tests.py
@@ -1468,32 +1762,54 @@ index 619199f..5e74c99 100644
          return None
 -
 diff --git a/backend/server.py b/backend/server.py
-index e4a2c9c..9c9c556 100644
+index e4a2c9c..033da0f 100644
 --- a/backend/server.py
 +++ b/backend/server.py
-@@ -42,6 +42,10 @@ from albarka_phase_c import (  # noqa: E402
+@@ -42,6 +42,12 @@ from albarka_phase_c import (  # noqa: E402
      messaging_router,
  )
  from albarka_public import router as public_router  # noqa: E402
 +# Accès du personnel : liste blanche (appareils + IP) et jetons temporaires
 +from albarka_access import ensure_access_indexes, router as access_router  # noqa: E402
++# Notifications push (Web Push, navigateur / téléphone)
++from albarka_push import ensure_push_indexes, router as push_router  # noqa: E402
 +# Présence en temps réel (keep-alive : connectés / déconnectés)
 +from albarka_presence import ensure_presence_indexes, router as presence_router  # noqa: E402
  # Espace client : documents déposés / mis à disposition par le cabinet
  from albarka_client_space import (  # noqa: E402
      ensure_client_space_indexes,
-@@ -112,6 +116,10 @@ api_router.include_router(wa_inbox_router)
+@@ -70,6 +76,17 @@ logger = logging.getLogger("albarka.app")
+ 
+ app = FastAPI(title="Portail ALBARKA — API", version="1.0.0")
+ 
++
++@app.middleware("http")
++async def _remember_client_ip(request, call_next):
++    """Retient l'IP réelle (derrière le proxy : X-Forwarded-For) et le
++    navigateur de chaque requête, pour le Journal plateforme."""
++    from albarka_request_ctx import set_request_info
++    fwd = request.headers.get("x-forwarded-for") or ""
++    ip = fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "")
++    set_request_info(ip, request.headers.get("user-agent") or "")
++    return await call_next(request)
++
+ api_router = APIRouter(prefix="/api")
+ api_router.include_router(auth_router)
+ api_router.include_router(admin_settings_router)
+@@ -112,6 +129,12 @@ api_router.include_router(wa_inbox_router)
  api_router.include_router(wa_extras_router)
  # Endpoints publics (bouton wa.me — Partie 0)
  api_router.include_router(public_router)
 +# Accès du personnel (liste blanche, jetons d'accès temporaires)
 +api_router.include_router(access_router)
++# Notifications push : abonnement des appareils, clé publique, essai
++api_router.include_router(push_router)
 +# Présence : battements des pages ouvertes + état lu par le cabinet
 +api_router.include_router(presence_router)
  # Espace client : dépôts du cabinet (factures, rapports… faits ailleurs) + page client
  api_router.include_router(client_space_router)
  api_router.include_router(client_space_me_router)
-@@ -189,6 +197,10 @@ async def _ensure_indexes():
+@@ -189,6 +212,12 @@ async def _ensure_indexes():
          await ensure_forms_indexes()
          # Espace client (documents du cabinet par client)
          await ensure_client_space_indexes()
@@ -1501,6 +1817,8 @@ index e4a2c9c..9c9c556 100644
 +        await ensure_presence_indexes()
 +        # Accès du personnel
 +        await ensure_access_indexes()
++        # Notifications push
++        await ensure_push_indexes()
      except Exception:
          logger.exception("Échec création index Mongo (non bloquant)")
  
@@ -2008,6 +2326,253 @@ index c1c4f6c..68a4c23 100644
  # ------------------------------------------------------------------ Espace client
  def test_upload_external_documents_notifies_client_once(env):
      files = [("files", ("facture-sage-042.pdf", b"%PDF-1", "application/pdf")),
+diff --git a/backend/tests/test_push_lot4.py b/backend/tests/test_push_lot4.py
+new file mode 100644
+index 0000000..db1352a
+--- /dev/null
++++ b/backend/tests/test_push_lot4.py
+@@ -0,0 +1,165 @@
++"""Lot 4 — notifications push (Web Push) et adresse IP dans le Journal.
++
++- chiffrement RFC 8291 vérifié par déchiffrement (bibliothèque de référence
++  http_ece si disponible, sinon structure de l'en-tête) ;
++- abonnement / désabonnement, envoi, abonnements expirés supprimés ;
++- documents mis à disposition : push en plus de WhatsApp ;
++- Journal plateforme : IP et navigateur de la requête enregistrés.
++Tests autonomes : MongoDB simulé, service de push simulé (aucun réseau).
++"""
++from __future__ import annotations
++
++import asyncio
++import json
++import os
++import struct
++import sys
++from pathlib import Path
++
++os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
++os.environ.setdefault("DB_NAME", "albarka_test")
++os.environ.setdefault("JWT_SECRET_KEY", "test-secret")
++
++import pytest
++from cryptography.hazmat.primitives import serialization
++from cryptography.hazmat.primitives.asymmetric import ec
++from fastapi import APIRouter, FastAPI, Header, HTTPException
++from fastapi.testclient import TestClient
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++mongomock_motor = pytest.importorskip("mongomock_motor")
++
++import db as db_module  # noqa: E402
++import albarka_client_space as cs  # noqa: E402
++import albarka_phase_c  # noqa: E402
++import albarka_push as ap  # noqa: E402
++from albarka_auth import get_current_user  # noqa: E402
++
++USERS = {
++    "c1": {"id": "c1", "email": "client@exemple.bf", "full_name": "SARL Kaboré", "roles": ["client"], "is_active": True},
++    "compta": {"id": "u-compta", "email": "c@albarka.bf", "full_name": "Comptable", "roles": ["comptable"], "is_active": True},
++    "sup": {"id": "u-sup", "email": "sup@albarka.bf", "full_name": "Superviseur", "roles": ["superviseur"], "is_active": True},
++}
++
++
++def _browser_keys():
++    """Clés d'abonnement comme les fournit un navigateur (p256dh + auth)."""
++    ua = ec.generate_private_key(ec.SECP256R1())
++    pub = ua.public_key().public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
++    auth = os.urandom(16)
++    return ua, auth, {"p256dh": ap.b64u(pub), "auth": ap.b64u(auth)}
++
++
++def test_encryption_rfc8291():
++    ua, auth, keys = _browser_keys()
++    msg = json.dumps({"title": "Facture disponible", "body": "Honoraires — 118 000 FCFA"}, ensure_ascii=False).encode()
++    body = ap.encrypt_payload(msg, keys["p256dh"], keys["auth"])
++    # En-tête aes128gcm : sel (16) + taille de bloc (4) + longueur de clé (1) + clé serveur (65)
++    assert struct.unpack("!L", body[16:20])[0] == 4096 and body[20] == 65 and body[21] == 4
++    try:
++        sys.path.insert(0, "/tmp/hece/http_ece-1.2.1")
++        import http_ece  # bibliothèque de référence (implémentation indépendante)
++    except ImportError:
++        pytest.skip("http_ece absent : seule la structure est vérifiée")
++    assert http_ece.decrypt(body, private_key=ua, auth_secret=auth, version="aes128gcm") == msg
++
++
++@pytest.fixture()
++def env(monkeypatch):
++    mock_db = mongomock_motor.AsyncMongoMockClient()["albarka_push_test"]
++    real_db = db_module.db
++    for mod in list(sys.modules.values()):
++        if getattr(mod, "db", None) is real_db and getattr(mod, "__name__", "").startswith(("albarka_", "db")):
++            monkeypatch.setattr(mod, "db", mock_db)
++    asyncio.run(mock_db.users.insert_many([dict(u) for u in USERS.values()]))
++    pushed, state = [], {"status": 201}
++
++    async def fake_send(sub, body, key, subject):
++        pushed.append({"endpoint": sub["endpoint"], "size": len(body), "subject": subject,
++                       "auth": ap.vapid_authorization(key, sub["endpoint"], subject)})
++        return {"ok": state["status"] < 300, "status": state["status"], "error": None}
++    monkeypatch.setattr(ap, "_send_one", fake_send)
++
++    async def fake_wa(*, to_phone, message):
++        return {"ok": True}
++
++    async def open_window(phone):
++        return True
++    monkeypatch.setattr(cs, "send_whatsapp", fake_wa)
++    monkeypatch.setattr(cs, "wa_window_state", open_window)
++
++    app = FastAPI()
++    api = APIRouter(prefix="/api")
++    for r in (ap.router, albarka_phase_c.logs_router):
++        api.include_router(r)
++    app.include_router(api)
++
++    @app.middleware("http")
++    async def ip_mw(request, call_next):  # même principe que server.py
++        from albarka_request_ctx import set_request_info
++        fwd = request.headers.get("x-forwarded-for") or ""
++        set_request_info(fwd.split(",")[0].strip(), request.headers.get("user-agent") or "")
++        return await call_next(request)
++
++    async def fake_user(x_user: str = Header(default="")):
++        if x_user not in USERS:
++            raise HTTPException(status_code=401, detail="Non connecté")
++        return USERS[x_user]
++    app.dependency_overrides[get_current_user] = fake_user
++    with TestClient(app) as client:
++        yield type("Env", (), {"c": client, "db": mock_db, "pushed": pushed, "state": state})
++
++
++def _h(u, **extra):
++    return {"X-User": u, **extra}
++
++
++def test_subscribe_send_and_expired(env):
++    pk = env.c.get("/api/push/public-key", headers=_h("c1")).json()["public_key"]
++    assert len(ap.b64u_dec(pk)) == 65  # clé P-256 non compressée, stable ensuite
++    assert env.c.get("/api/push/public-key", headers=_h("compta")).json()["public_key"] == pk
++    _, _, keys = _browser_keys()
++    sub = {"endpoint": "https://fcm.googleapis.com/fcm/send/abc", "keys": keys}
++    assert env.c.post("/api/push/subscribe", headers=_h("c1"), json={"subscription": {"endpoint": "http://x", "keys": keys}}).status_code == 400
++    assert env.c.post("/api/push/subscribe", headers=_h("c1"), json={"subscription": sub}).json() == {"ok": True}
++    env.c.post("/api/push/subscribe", headers=_h("c1"), json={"subscription": sub})  # même appareil : pas de doublon
++    assert asyncio.run(env.db.push_subscriptions.count_documents({})) == 1
++    r = env.c.post("/api/push/test", headers=_h("c1")).json()
++    assert r == {"sent": 1, "failed": 0, "devices": 1}
++    assert env.pushed[0]["auth"].startswith("vapid t=") and f"k={pk}" in env.pushed[0]["auth"]
++    assert env.c.post("/api/push/test", headers=_h("compta")).status_code == 404  # aucun appareil abonné
++    # Abonnement expiré côté service de push (410) : supprimé
++    env.state["status"] = 410
++    env.c.post("/api/push/test", headers=_h("c1"))
++    assert asyncio.run(env.db.push_subscriptions.count_documents({})) == 0
++
++
++def test_client_documents_trigger_push(env):
++    _, _, keys = _browser_keys()
++    env.c.post("/api/push/subscribe", headers=_h("c1"), json={"subscription": {"endpoint": "https://push.example/1", "keys": keys}})
++    items = [{"category": "facture", "title": "Honoraires", "reference": "FAC-1", "amount": 118000}]
++    client = dict(USERS["c1"], phone="+22670000001")
++    res = asyncio.run(cs.notify_client(client, items, link="https://albarka-bf.com/portal/documents-cabinet"))
++    assert res["ok"] and res["channel"] == "whatsapp" and res["push"] == 1 and len(env.pushed) == 1
++    # Push désactivé dans les paramètres : WhatsApp seul
++    asyncio.run(env.db.settings.update_one({"_id": "global"}, {"$set": {"client_docs_push_enabled": False}}))
++    res = asyncio.run(cs.notify_client(client, items, link="https://albarka-bf.com/portal/documents-cabinet"))
++    assert res["push"] == 0 and len(env.pushed) == 1
++
++
++def test_platform_log_records_ip(env):
++    _, _, keys = _browser_keys()
++    # Une action tracée pendant une requête : l'IP de la requête est enregistrée
++    import albarka_push as ap2
++
++    async def log_during_request():
++        from albarka_request_ctx import set_request_info
++        set_request_info("197.239.10.42", "Mozilla/5.0 Test")
++        await albarka_phase_c._log_platform_event(user=USERS["compta"], action="test.action", entity_type="x")
++    asyncio.run(log_during_request())
++    data = env.c.get("/api/platform-logs", headers=_h("sup")).json()
++    logs = data if isinstance(data, list) else data.get("items", [])
++    entry = next(l for l in logs if l["action"] == "test.action")
++    assert entry["ip"] == "197.239.10.42" and entry["user_agent"] == "Mozilla/5.0 Test"
++    assert ap2  # module chargé
+diff --git a/frontend/public/index.html b/frontend/public/index.html
+index b21912c..74b114c 100644
+--- a/frontend/public/index.html
++++ b/frontend/public/index.html
+@@ -7,6 +7,10 @@
+         <meta name="description" content="ALBARKA Consulting BF — portail du cabinet comptable et fiscal" />
+         <link rel="icon" type="image/svg+xml" href="%PUBLIC_URL%/favicon.svg" />
+         <link rel="apple-touch-icon" href="%PUBLIC_URL%/favicon.svg" />
++        <!-- Application installable (écran d'accueil) : nécessaire aux notifications push sur iPhone -->
++        <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
++        <meta name="apple-mobile-web-app-capable" content="yes" />
++        <meta name="apple-mobile-web-app-title" content="ALBARKA" />
+         <link rel="preconnect" href="https://fonts.googleapis.com" />
+         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600&display=swap" rel="stylesheet" />
+diff --git a/frontend/public/manifest.json b/frontend/public/manifest.json
+new file mode 100644
+index 0000000..6ad783b
+--- /dev/null
++++ b/frontend/public/manifest.json
+@@ -0,0 +1,14 @@
++{
++  "name": "ALBARKA — Portail client",
++  "short_name": "ALBARKA",
++  "description": "Portail du cabinet ALBARKA : documents, factures, échéances.",
++  "start_url": "/portal",
++  "scope": "/",
++  "display": "standalone",
++  "background_color": "#FBFAF4",
++  "theme_color": "#0F6B4A",
++  "lang": "fr",
++  "icons": [
++    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
++  ]
++}
+diff --git a/frontend/public/sw.js b/frontend/public/sw.js
+new file mode 100644
+index 0000000..254f502
+--- /dev/null
++++ b/frontend/public/sw.js
+@@ -0,0 +1,35 @@
++/*
++  Service worker ALBARKA — notifications push (Web Push).
++  Reçoit les notifications envoyées par le portail (albarka_push.py), même
++  quand le portail est fermé, et ouvre la bonne page au clic.
++*/
++self.addEventListener("install", () => self.skipWaiting());
++self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
++
++// Notification reçue : { title, body, url, tag }
++self.addEventListener("push", (event) => {
++  let data = {};
++  try { data = event.data ? event.data.json() : {}; } catch (e) { data = { body: event.data && event.data.text() }; }
++  const title = data.title || "ALBARKA";
++  event.waitUntil(self.registration.showNotification(title, {
++    body: data.body || "",
++    icon: "/favicon.svg",
++    badge: "/favicon.svg",
++    tag: data.tag || "albarka",
++    renotify: true,
++    data: { url: data.url || "/" },
++  }));
++});
++
++// Clic : ouvre (ou ramène au premier plan) la page du portail concernée
++self.addEventListener("notificationclick", (event) => {
++  event.notification.close();
++  const url = new URL((event.notification.data && event.notification.data.url) || "/", self.location.origin).href;
++  event.waitUntil((async () => {
++    const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
++    for (const c of all) {
++      if (c.url.startsWith(self.location.origin)) { await c.focus(); if ("navigate" in c) await c.navigate(url); return; }
++    }
++    await self.clients.openWindow(url);
++  })());
++});
 diff --git a/frontend/src/App.js b/frontend/src/App.js
 index 2397bc9..0b56f24 100644
 --- a/frontend/src/App.js
@@ -2502,6 +3067,115 @@ index 0000000..fd89724
 +    </span>
 +  );
 +}
+diff --git a/frontend/src/components/PushOptIn.jsx b/frontend/src/components/PushOptIn.jsx
+new file mode 100644
+index 0000000..9022fd2
+--- /dev/null
++++ b/frontend/src/components/PushOptIn.jsx
+@@ -0,0 +1,103 @@
++/*
++  « Notifications sur cet appareil » (espace client) — active les
++  notifications push du navigateur : le client est prévenu des documents que
++  le cabinet met à sa disposition, même portail fermé.
++  - Android / ordinateur : Chrome, Edge, Firefox ;
++  - iPhone / iPad : seulement si le portail a été AJOUTÉ À L'ÉCRAN D'ACCUEIL
++    (iOS 16.4+) — un message l'explique sinon.
++  API : /push/public-key, /push/subscribe, /push/unsubscribe, /push/test
++*/
++import React, { useEffect, useState } from "react";
++import { toast } from "sonner";
++import { Bell, BellOff, BellRing } from "lucide-react";
++import { apiClient, extractError } from "@/lib/api";
++import { Button } from "@/components/ui/button";
++
++const b64ToBytes = (b64) => {
++  const s = atob((b64 + "=".repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
++  return Uint8Array.from(s, (c) => c.charCodeAt(0));
++};
++const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
++const isStandalone = () => window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true;
++
++export default function PushOptIn() {
++  const supported = typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
++  const [state, setState] = useState("loading"); // loading | on | off | denied | unsupported | ios-install
++  const [busy, setBusy] = useState(false);
++
++  useEffect(() => {
++    if (!supported) { setState(isIOS() && !isStandalone() ? "ios-install" : "unsupported"); return; }
++    if (Notification.permission === "denied") { setState("denied"); return; }
++    navigator.serviceWorker.register("/sw.js")
++      .then((reg) => reg.pushManager.getSubscription())
++      .then((sub) => setState(sub ? "on" : "off"))
++      .catch(() => setState("off"));
++  }, [supported]);
++
++  // Activer : autorisation du navigateur, abonnement, enregistrement côté portail
++  const enable = async () => {
++    setBusy(true);
++    try {
++      const perm = await Notification.requestPermission();
++      if (perm !== "granted") { setState(perm === "denied" ? "denied" : "off"); return; }
++      const reg = await navigator.serviceWorker.register("/sw.js");
++      await navigator.serviceWorker.ready;
++      const { data } = await apiClient.get("/push/public-key");
++      // Abonnement auprès du service de push du navigateur (Google, Mozilla, Apple) ;
++      // abandon au bout de 20 s s'il ne répond pas, avec un message clair
++      const sub = await Promise.race([
++        reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(data.public_key) }),
++        new Promise((_, reject) => setTimeout(() => reject(new Error("Le service de notifications du navigateur ne répond pas. Réessayez plus tard.")), 20000)),
++      ]);
++      await apiClient.post("/push/subscribe", { subscription: sub.toJSON(), user_agent: navigator.userAgent });
++      setState("on");
++      toast.success("Notifications activées sur cet appareil");
++    } catch (err) {
++      // Erreurs du navigateur (en anglais) remplacées par un message clair
++      const msg = err?.response ? extractError(err)
++        : (err?.message || "").startsWith("Le service") ? err.message
++        : "L'inscription aux notifications a échoué sur ce navigateur. Vérifiez que les notifications sont autorisées pour ce site, puis réessayez.";
++      toast.error(msg);
++    } finally { setBusy(false); }
++  };
++  const disable = async () => {
++    setBusy(true);
++    try {
++      const reg = await navigator.serviceWorker.getRegistration("/sw.js");
++      const sub = await reg?.pushManager.getSubscription();
++      if (sub) { await apiClient.post("/push/unsubscribe", { endpoint: sub.endpoint }); await sub.unsubscribe(); }
++      setState("off");
++      toast.success("Notifications désactivées sur cet appareil");
++    } catch (err) { toast.error(extractError(err)); } finally { setBusy(false); }
++  };
++  const test = async () => {
++    try { const { data } = await apiClient.post("/push/test"); toast.success(`Notification d'essai envoyée (${data.sent} appareil(s))`); }
++    catch (err) { toast.error(extractError(err)); }
++  };
++
++  const text = {
++    loading: "Vérification…",
++    on: "Activées : vous êtes prévenu(e) sur cet appareil dès que le cabinet met un document à votre disposition.",
++    off: "Soyez prévenu(e) sur cet appareil, même portail fermé, dès qu'un document est disponible.",
++    denied: "Les notifications sont bloquées pour ce site dans les réglages du navigateur. Autorisez-les puis rechargez la page.",
++    unsupported: "Ce navigateur ne prend pas en charge les notifications. WhatsApp et e-mail restent actifs.",
++    "ios-install": "Sur iPhone : touchez Partager puis « Sur l'écran d'accueil », ouvrez le portail depuis l'icône ALBARKA, puis revenez ici.",
++  }[state];
++
++  return (
++    <div className="albarka-card p-4 flex flex-wrap items-center gap-3" data-testid="push-optin" data-state={state}>
++      {state === "on" ? <BellRing className="w-5 h-5 text-[#0F6B4A]" /> : state === "off" ? <Bell className="w-5 h-5 text-slate-500" /> : <BellOff className="w-5 h-5 text-slate-400" />}
++      <div className="flex-1 min-w-[220px]">
++        <div className="font-medium text-sm">Notifications sur cet appareil</div>
++        <div className="text-xs text-muted-foreground">{text}</div>
++      </div>
++      {state === "off" && <Button size="sm" className="bg-[#0F6B4A] hover:bg-[#0A4E36] text-white" onClick={enable} disabled={busy} data-testid="push-enable">Activer</Button>}
++      {state === "on" && (
++        <>
++          <Button size="sm" variant="outline" onClick={test} data-testid="push-test">Tester</Button>
++          <Button size="sm" variant="ghost" onClick={disable} disabled={busy} data-testid="push-disable">Désactiver</Button>
++        </>
++      )}
++    </div>
++  );
++}
 diff --git a/frontend/src/components/RecentClientsCard.jsx b/frontend/src/components/RecentClientsCard.jsx
 new file mode 100644
 index 0000000..468c15e
@@ -2921,6 +3595,31 @@ index e6584f2..e25038b 100644
                    <Link to={`/admin/clients/${c.id}`}>
                      <Button variant="outline" size="sm" data-testid={`view-client-${c.id}`}>Ouvrir</Button>
                    </Link>
+diff --git a/frontend/src/pages/admin/AdminPhaseC.jsx b/frontend/src/pages/admin/AdminPhaseC.jsx
+index 4dbce84..707d651 100644
+--- a/frontend/src/pages/admin/AdminPhaseC.jsx
++++ b/frontend/src/pages/admin/AdminPhaseC.jsx
+@@ -309,9 +309,9 @@ export function AdminPlatformLogs() {
+       </div>
+       <div className="albarka-card overflow-hidden">
+         <Table>
+-          <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Action</TableHead><TableHead>Entité</TableHead><TableHead>Auteur</TableHead><TableHead>Rôle</TableHead><TableHead>Métadonnées</TableHead></TableRow></TableHeader>
++          <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Action</TableHead><TableHead>Entité</TableHead><TableHead>Auteur</TableHead><TableHead>Rôle</TableHead><TableHead>Adresse IP</TableHead><TableHead>Métadonnées</TableHead></TableRow></TableHeader>
+           <TableBody>
+-            {items.length === 0 && <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Aucun événement.</TableCell></TableRow>}
++            {items.length === 0 && <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Aucun événement.</TableCell></TableRow>}
+             {items.map((l) => (
+               <TableRow key={l.id}>
+                 <TableCell className="text-xs">{l.created_at?.slice(0, 19).replace("T", " ")}</TableCell>
+@@ -326,6 +326,8 @@ export function AdminPlatformLogs() {
+                     {(!l.actor_roles || l.actor_roles.length === 0) && <span className="text-muted-foreground">—</span>}
+                   </div>
+                 </TableCell>
++                {/* Adresse IP de l'auteur au moment de l'action (navigateur au survol) */}
++                <TableCell className="text-xs font-mono whitespace-nowrap" title={l.user_agent || ""} data-testid={`log-ip-${l.id}`}>{l.ip || "—"}</TableCell>
+                 <TableCell className="text-xs font-mono truncate max-w-xs">{JSON.stringify(l.meta || {}).slice(0, 120)}</TableCell>
+               </TableRow>
+             ))}
 diff --git a/frontend/src/pages/admin/AdminSettings.jsx b/frontend/src/pages/admin/AdminSettings.jsx
 index 61461a0..9a4395e 100644
 --- a/frontend/src/pages/admin/AdminSettings.jsx
@@ -3308,6 +4007,33 @@ index 8b1bb34..398fb84 100644
                  </div>
                  {/* Étiquette */}
                  <DropdownMenu>
+diff --git a/frontend/src/pages/admin/ClientDocsNotifPanel.jsx b/frontend/src/pages/admin/ClientDocsNotifPanel.jsx
+index c80d480..40bdc24 100644
+--- a/frontend/src/pages/admin/ClientDocsNotifPanel.jsx
++++ b/frontend/src/pages/admin/ClientDocsNotifPanel.jsx
+@@ -94,6 +94,14 @@ export default function ClientDocsNotifPanel({ settings, setSettings, save, savi
+         </div>
+       </div>
+ 
++      <div className="flex items-center justify-between">
++        <div>
++          <div className="font-medium">Notification push sur les appareils du client</div>
++          <div className="text-sm text-muted-foreground">En plus de WhatsApp, si le client a activé les notifications (page « Factures & documents »). iPhone : portail ajouté à l'écran d'accueil.</div>
++        </div>
++        <Switch checked={settings.client_docs_push_enabled !== false} onCheckedChange={(v) => setSettings({ ...settings, client_docs_push_enabled: v })} data-testid="cd-push-switch" />
++      </div>
++
+       <div className="flex items-center justify-between">
+         <div>
+           <div className="font-medium">Prévenir par e-mail si WhatsApp est impossible</div>
+@@ -109,6 +117,7 @@ export default function ClientDocsNotifPanel({ settings, setSettings, save, savi
+         client_docs_wa_template_lang: settings.client_docs_wa_template_lang || "fr",
+         client_docs_wa_template_params: settings.client_docs_wa_template_params || "",
+         client_docs_email_fallback: settings.client_docs_email_fallback !== false,
++        client_docs_push_enabled: settings.client_docs_push_enabled !== false,
+       })} disabled={saving} className="bg-[#0F6B4A] hover:bg-[#0A4E36] text-white" data-testid="save-client-docs-notif">
+         <Save className="w-4 h-4 mr-2" /> Enregistrer
+       </Button>
 diff --git a/frontend/src/pages/admin/StaffAccessPanel.jsx b/frontend/src/pages/admin/StaffAccessPanel.jsx
 new file mode 100644
 index 0000000..bfa7899
@@ -3549,6 +4275,27 @@ index 2b2ab60..5b21d94 100644
                <Button
                  type="submit"
                  disabled={loading || code.length !== 6}
+diff --git a/frontend/src/pages/portal/CabinetDocuments.jsx b/frontend/src/pages/portal/CabinetDocuments.jsx
+index d4905fa..424cff1 100644
+--- a/frontend/src/pages/portal/CabinetDocuments.jsx
++++ b/frontend/src/pages/portal/CabinetDocuments.jsx
+@@ -10,6 +10,7 @@ import { toast } from "sonner";
+ import { FolderOpen, Download, Eye, Loader2 } from "lucide-react";
+ import { apiClient, extractError } from "@/lib/api";
+ import { Button } from "@/components/ui/button";
++import PushOptIn from "@/components/PushOptIn";
+ 
+ const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString("fr-FR") : "");
+ const fmtAmount = (n) => `${Math.round(Number(n || 0)).toLocaleString("fr-FR")} FCFA`;
+@@ -58,6 +59,8 @@ export default function CabinetDocuments() {
+           {data === null ? "" : newCount ? `${newCount} nouveau(x) document(s) du cabinet.` : "Les documents que le cabinet a mis à votre disposition."}
+         </p>
+       </div>
++      {/* Notifications push sur cet appareil (téléphone, ordinateur) */}
++      <PushOptIn />
+       {tabs.length > 1 && (
+         <div className="flex flex-wrap gap-2">
+           {tabs.map((t) => (
 diff --git a/frontend/src/pages/public/Error404.jsx b/frontend/src/pages/public/Error404.jsx
 new file mode 100644
 index 0000000..654a8b5
