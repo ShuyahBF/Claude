@@ -88,3 +88,18 @@ sauf --driver qui représente désormais le fournisseur OLE-DB
 (HFSQLOLEDB par défaut) plutôt que le pilote ODBC — nom de l'option
 conservé pour compatibilité avec d'éventuels scripts existants, seul
 son SENS change.
+
+## 2026-09-24 — Correctif : le vrai fournisseur OLE-DB est "PCSoft.HFSQL", pas "HFSQLOLEDB"
+
+"le driver n'est-il pas PCSOFT.HFSQL ?" — erreur repérée à raison :
+"HFSQLOLEDB" était le repli PAR DÉFAUT du CODE de Loois
+(ParametresApp.NomProviderOleDb, utilisé seulement si absent du
+fichier de config), jamais vérifié contre la valeur RÉELLEMENT
+configurée. Loois/App.config précise explicitement
+`NomProviderOleDb = "PCSoft.HFSQL"` — la valeur confirmée fonctionnelle
+tout au long de cette session (toutes les requêtes HFSQL réussies
+aujourd'hui sont passées par cette valeur, pas par le repli par
+défaut).
+
+appsettings.json et le code par défaut de HFSQL_SchemaExplorer
+corrigés en conséquence ("PCSoft.HFSQL" au lieu de "HFSQLOLEDB").

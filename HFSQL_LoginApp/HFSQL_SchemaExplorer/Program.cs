@@ -11,8 +11,9 @@ namespace HFSQL_SchemaExplorer
 {
     /// <summary>
     /// Petit outil console qui se connecte à un serveur HFSQL via OLE-DB (MÊME fournisseur
-    /// "HFSQLOLEDB" et MÊME format de chaîne de connexion que Loois — voir
-    /// ParametresApp.ChaineConnexionHFSQLPour dans le dépôt ShuyahBF/Loois) et permet
+    /// "PCSoft.HFSQL" et MÊME format de chaîne de connexion que Loois — voir
+    /// ParametresApp.ChaineConnexionHFSQLPour / Loois/App.config dans le dépôt
+    /// ShuyahBF/Loois) et permet
     /// d'explorer le catalogue : lister les tables, lister les colonnes d'une table, et
     /// prévisualiser quelques lignes.
     ///
@@ -222,7 +223,7 @@ namespace HFSQL_SchemaExplorer
                   --server <serveur>      Nom ou IP du serveur HFSQL
                   --port <port>           Port du serveur HFSQL (ex: 4900)
                   --database <nom>        Nom de la base HFSQL
-                  --driver <nom>          Nom du fournisseur OLE-DB (ex: HFSQLOLEDB — le même que Loois)
+                  --driver <nom>          Nom du fournisseur OLE-DB (ex: PCSoft.HFSQL — le même que Loois)
                   --user <utilisateur>    Utilisateur de connexion
                   --password <mot de passe>
                   --file-password <mot de passe>
@@ -249,11 +250,15 @@ namespace HFSQL_SchemaExplorer
         public string Base { get; set; } = "MaBase";
 
         // § demande utilisateur (24/09) : "connexion OLEDB" — ce champ représentait le nom
-        // du PILOTE ODBC ; il représente désormais le nom du FOURNISSEUR OLE-DB, MÊME
-        // valeur par défaut que Loois (voir ParametresApp.NomProviderOleDb, "HFSQLOLEDB").
-        // Le nom de propriété et le nom de l'option "--driver" sont conservés tels quels
-        // (compatibilité avec des scripts existants), seul leur SENS change.
-        public string ProviderOleDb { get; set; } = "HFSQLOLEDB";
+        // du PILOTE ODBC ; il représente désormais le nom du FOURNISSEUR OLE-DB.
+        // § CORRECTIF (24/09) : "le driver n'est-il pas PCSOFT.HFSQL ?" — la valeur
+        // "HFSQLOLEDB" était le repli PAR DÉFAUT du CODE de Loois (ParametresApp.NomProviderOleDb,
+        // utilisé SEULEMENT si absent du fichier de config) — la valeur RÉELLEMENT
+        // configurée et confirmée fonctionnelle toute la journée (Loois/App.config) est
+        // "PCSoft.HFSQL", pas "HFSQLOLEDB". Le nom de propriété et le nom de l'option
+        // "--driver" sont conservés tels quels (compatibilité avec des scripts existants),
+        // seul leur SENS change.
+        public string ProviderOleDb { get; set; } = "PCSoft.HFSQL";
         public string Utilisateur { get; set; } = "admin";
         public string MotDePasse { get; set; } = "";
 
