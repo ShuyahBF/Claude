@@ -137,6 +137,15 @@ Fixé par l'utilisateur le 2026-09-26 :
   de `require_roles`), attribuable par admin seulement.
 - **Administrateur** = rôle métier ordinaire, règle d'origine.
 
+## 9. Informations promises par l'utilisateur : RAPPEL RÉGULIER
+
+L'utilisateur a demandé (2026-09-26) qu'on lui **rappelle régulièrement**
+les informations qu'il doit fournir. Liste tenue à jour dans
+`EN_ATTENTE_UTILISATEUR.md`. Tant qu'un point y est ouvert, **chaque message
+de fin de tâche** (livraison, vérification de publication) se termine par un
+court encadré « À me fournir quand tu peux » listant les points ouverts. On
+retire un point de la liste dès que l'information est reçue et utilisée.
+
 ## Origine de ces règles
 
 Établies le 2026-09 sur `Site-SawaliSmartSystems` (sawali-emergent),

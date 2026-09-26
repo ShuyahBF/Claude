@@ -192,8 +192,9 @@ concerné.
   autonomes Albarka + 12 tests forms-core OK, build OK, navigateur (bureau et
   téléphone) OK.
 - **Albarka lot 7 — factures au format du cabinet, documents & modèles, tableau de paie**
-  — **livré, en attente de publication** (base : lot 6 publié, pas encore sur
-  GitHub ; `albarka-portal-livraisons/albarka-portal-corrections_7_f8aa0cf.patch`
+  — **déployé en production le 2026-09-26 (v2026.7, bundle main.e0917c3c,
+  routes /letters, /hr/payroll, /admin/letterheads, /public/verify actives),
+  PAS encore enregistré sur GitHub** (base : lot 6 ; `albarka-portal-livraisons/albarka-portal-corrections_7_f8aa0cf.patch`
   + `albarka-portal-prompt_7.md` ; dev `claude/albarka-lot7` f8aa0cf).
   Factures/proformas : lignes de titre + détail multi-lignes, TVA unique 18 %,
   retenue sur HT, net à payer (encaissement et espace client sur le net), PDF
