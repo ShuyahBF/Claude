@@ -1,9 +1,9 @@
-From 8fd0653223a3dcca08b7ae3fd2f3f86995f7e7a2 Mon Sep 17 00:00:00 2001
+From 439dc652e49290bf8224ff69a2f9a0a8e43fc7a9 Mon Sep 17 00:00:00 2001
 From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
-Date: Sat, 26 Sep 2026 02:21:42 +0000
-Subject: [PATCH] =?UTF-8?q?Superviseur=20r=C3=A9serv=C3=A9,=20actions=20su?=
- =?UTF-8?q?r=20les=20comptes,=20pr=C3=A9sence,=20comptes=20de=20test,=20Pa?=
- =?UTF-8?q?ram=C3=A8tres?=
+Date: Sat, 26 Sep 2026 02:42:44 +0000
+Subject: [PATCH] =?UTF-8?q?Superviseur=20r=C3=A9serv=C3=A9,=20comptes,=20p?=
+ =?UTF-8?q?r=C3=A9sence,=20liste=20blanche,=20comptes=20de=20test,=20Param?=
+ =?UTF-8?q?=C3=A8tres?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -23,51 +23,424 @@ Content-Transfer-Encoding: 8bit
   et la messagerie WhatsApp.
 - Déconnexion automatique après inactivité (délai réglable, avertissement
   30 s avant), jamais pendant une tâche en cours (envoi, enregistrement).
+- Liste blanche du personnel (appareils autorisés + adresses IP, fausse
+  ERREUR 404 sinon, demandes d'appareils à approuver) et jetons d'accès
+  temporaires créés par admin ou une adresse désignée (e-mail + WhatsApp).
+- Tableau de bord : 10 derniers clients connectés et durée d'activité
+  (Direction, Secrétariat, admin).
 - Bouton « Créer comptes de test » : comptes de la recette avec adresses
   +alias, invisibles de tous sauf du superviseur, exclus des envois de masse ;
   suppression groupée.
 - Paramètres réservés au superviseur (menu et routes : réglages, image de
   marque, certificats, tests de configuration) ; RGPD modifiable par lui.
 ---
- backend/albarka_admin_settings.py             |  20 +-
- backend/albarka_auth.py                       |  18 +-
+ backend/albarka_access.py                     | 344 ++++++++++++++++++
+ backend/albarka_admin_settings.py             |  44 ++-
+ backend/albarka_auth.py                       |  34 +-
  backend/albarka_branding.py                   |   4 +-
- backend/albarka_clients.py                    | 248 +++++++++++++++--
+ backend/albarka_clients.py                    | 248 +++++++++++--
  backend/albarka_dashboard.py                  |   9 +-
  backend/albarka_forms.py                      |   5 +-
- backend/albarka_models.py                     |  43 ++-
+ backend/albarka_models.py                     |  47 ++-
  backend/albarka_myaccount.py                  |  18 +-
  backend/albarka_notifications.py              |   1 +
  backend/albarka_phase_c.py                    |  13 +-
- backend/albarka_presence.py                   | 113 ++++++++
+ backend/albarka_presence.py                   | 169 +++++++++
  backend/albarka_reports_mgmt.py               |   3 +-
  backend/albarka_settings_tests.py             |   4 +-
  backend/albarka_signing.py                    |   5 +-
- backend/server.py                             |   6 +
- backend/tests/test_accounts_lot4.py           | 249 ++++++++++++++++++
+ backend/server.py                             |  12 +
+ backend/tests/test_access_lot4.py             | 177 +++++++++
+ backend/tests/test_accounts_lot4.py           | 249 +++++++++++++
  backend/tests/test_client_space_lot3.py       |  29 +-
- frontend/src/components/AccountActions.jsx    | 142 ++++++++++
- frontend/src/components/AutoLogoutGate.jsx    |  77 ++++++
+ frontend/src/App.js                           |   3 +
+ frontend/src/components/AccountActions.jsx    | 142 ++++++++
+ frontend/src/components/AutoLogoutGate.jsx    |  77 ++++
  frontend/src/components/ChatBubble.jsx        |  23 +-
  frontend/src/components/PortalLayout.jsx      |  13 +-
- frontend/src/components/Presence.jsx          |  97 +++++++
- frontend/src/lib/busyTasks.js                 |  39 +++
- frontend/src/lib/useIdleTimer.js              |  83 ++++++
+ frontend/src/components/Presence.jsx          | 105 ++++++
+ frontend/src/components/RecentClientsCard.jsx |  72 ++++
+ .../src/components/TemporaryAccessButton.jsx  |  75 ++++
+ frontend/src/contexts/AuthContext.jsx         |   9 +-
+ frontend/src/lib/busyTasks.js                 |  39 ++
+ frontend/src/lib/device.js                    |  23 ++
+ frontend/src/lib/useIdleTimer.js              |  83 +++++
  frontend/src/pages/admin/AdminClients.jsx     |  20 +-
- frontend/src/pages/admin/AdminSettings.jsx    |  20 +-
- frontend/src/pages/admin/AdminStaff.jsx       | 128 ++++++++-
+ frontend/src/pages/admin/AdminSettings.jsx    |  28 +-
+ frontend/src/pages/admin/AdminShared.jsx      |   9 +-
+ frontend/src/pages/admin/AdminStaff.jsx       | 134 ++++++-
  .../admin/AdminWhatsAppConversations.jsx      |  22 +-
- 28 files changed, 1333 insertions(+), 119 deletions(-)
+ frontend/src/pages/admin/StaffAccessPanel.jsx | 175 +++++++++
+ frontend/src/pages/auth/Login.jsx             |  24 +-
+ frontend/src/pages/public/Error404.jsx        |  20 +
+ 39 files changed, 2384 insertions(+), 127 deletions(-)
+ create mode 100644 backend/albarka_access.py
  create mode 100644 backend/albarka_presence.py
+ create mode 100644 backend/tests/test_access_lot4.py
  create mode 100644 backend/tests/test_accounts_lot4.py
  create mode 100644 frontend/src/components/AccountActions.jsx
  create mode 100644 frontend/src/components/AutoLogoutGate.jsx
  create mode 100644 frontend/src/components/Presence.jsx
+ create mode 100644 frontend/src/components/RecentClientsCard.jsx
+ create mode 100644 frontend/src/components/TemporaryAccessButton.jsx
  create mode 100644 frontend/src/lib/busyTasks.js
+ create mode 100644 frontend/src/lib/device.js
  create mode 100644 frontend/src/lib/useIdleTimer.js
+ create mode 100644 frontend/src/pages/admin/StaffAccessPanel.jsx
+ create mode 100644 frontend/src/pages/public/Error404.jsx
 
+diff --git a/backend/albarka_access.py b/backend/albarka_access.py
+new file mode 100644
+index 0000000..617adc0
+--- /dev/null
++++ b/backend/albarka_access.py
+@@ -0,0 +1,344 @@
++"""Accès du personnel — liste blanche (appareils + adresses IP) et jetons
++d'accès temporaires.
++
++Principe :
++  - quand la liste blanche est activée (Paramètres → Accès du personnel), un
++    collaborateur ne peut se connecter QUE depuis un appareil autorisé ou une
++    adresse IP autorisée. Sinon, après mot de passe ET code OTP, il reçoit une
++    fausse « ERREUR 404 » : un intrus ne sait même pas si ses identifiants
++    étaient bons. Chaque tentative refusée est tracée et crée une demande
++    d'appareil que le superviseur peut approuver ;
++  - exemptés : admin (admin@sawalismartsystems.com), le rôle Superviseur (pour
++    ne jamais bloquer tout le monde) et les clients ;
++  - jeton d'accès temporaire : admin, ou une adresse e-mail désignée par admin,
++    l'envoie à un collaborateur (e-mail + WhatsApp). Pendant sa durée, il
++    ouvre l'accès depuis n'importe quel appareil ; mot de passe et OTP restent
++    demandés, et la session ne dure pas plus longtemps que le jeton.
++
++Collections : trusted_devices, device_requests, access_tokens.
++"""
++from __future__ import annotations
++
++import hashlib
++import ipaddress
++import logging
++import secrets
++from datetime import datetime, timedelta, timezone
++from html import escape
++from typing import Any, Dict, List, Optional
++
++from fastapi import APIRouter, Body, Depends, HTTPException, Request
++
++from albarka_admin_settings import get_settings_doc
++from albarka_auth import get_current_user, require_roles
++from albarka_models import is_admin_account, is_client, whatsapp_number_of
++from db import db
++
++logger = logging.getLogger("albarka.access")
++
++router = APIRouter(prefix="/access", tags=["Accès du personnel"])
++
++NOT_FOUND_DETAIL = "ERREUR 404"   # message volontairement neutre
++MAX_TOKEN_HOURS = 24 * 7
++DEFAULT_BASE_URL = "https://albarka-bf.com"
++
++
++def _now() -> datetime:
++    return datetime.now(timezone.utc)
++
++
++def client_ip(request: Optional[Request]) -> str:
++    """Adresse IP réelle du navigateur (derrière le proxy : X-Forwarded-For)."""
++    if request is None:
++        return ""
++    fwd = request.headers.get("x-forwarded-for") or ""
++    if fwd:
++        return fwd.split(",")[0].strip()
++    return request.client.host if request.client else ""
++
++
++def ip_allowed(ip: str, whitelist: List[str]) -> bool:
++    """IP dans la liste (adresses simples ou plages CIDR, ex. 41.207.0.0/16)."""
++    try:
++        addr = ipaddress.ip_address(ip)
++    except ValueError:
++        return False
++    for entry in whitelist or []:
++        try:
++            if addr in ipaddress.ip_network(entry.strip(), strict=False):
++                return True
++        except ValueError:
++            continue
++    return False
++
++
++def normalize_ip_list(values: List[str]) -> List[str]:
++    """Valide et normalise la liste d'IP / plages saisie dans les Paramètres."""
++    out = []
++    for v in values or []:
++        v = (v or "").strip()
++        if not v:
++            continue
++        try:
++            out.append(str(ipaddress.ip_network(v, strict=False)))
++        except ValueError:
++            raise HTTPException(status_code=400, detail=f"Adresse IP ou plage invalide : {v}")
++    return list(dict.fromkeys(out))
++
++
++def _hash(code: str) -> str:
++    return hashlib.sha256(code.strip().upper().encode()).hexdigest()
++
++
++def is_exempt(user: Dict[str, Any]) -> bool:
++    roles = set(user.get("roles") or [])
++    return is_admin_account(user) or "superviseur" in roles or ("client" in roles and len(roles) == 1)
++
++
++async def check_staff_access(user: Dict[str, Any], *, request: Optional[Request], device_id: Optional[str],
++                             access_code: Optional[str]) -> Optional[datetime]:
++    """Contrôle d'accès d'un collaborateur, APRÈS mot de passe et OTP.
++    Renvoie la date de fin si l'accès passe par un jeton temporaire (la
++    session ne doit pas durer plus longtemps), None sinon. Lève une 404
++    neutre si l'accès est refusé."""
++    settings = await get_settings_doc()
++    if not settings.get("staff_whitelist_enabled") or is_exempt(user):
++        return None
++    ip = client_ip(request)
++    device_id = (device_id or "").strip()[:80] or None
++    # 1. Adresse IP autorisée (réseau du bureau)
++    if ip_allowed(ip, settings.get("staff_ip_whitelist") or []):
++        return None
++    # 2. Appareil autorisé (partagé par tout le cabinet, ou propre à ce collaborateur)
++    if device_id:
++        dev = await db.trusted_devices.find_one({"device_id": device_id, "revoked": {"$ne": True},
++                                                 "$or": [{"user_id": None}, {"user_id": user["id"]}]}, {"_id": 0})
++        if dev:
++            await db.trusted_devices.update_one({"id": dev["id"]}, {"$set": {"last_used_at": _now().isoformat(),
++                                                                              "last_ip": ip}})
++            return None
++    # 3. Jeton d'accès temporaire valable pour ce collaborateur
++    if access_code:
++        tok = await db.access_tokens.find_one({"code_hash": _hash(access_code), "user_id": user["id"],
++                                               "revoked": {"$ne": True}}, {"_id": 0})
++        if tok and datetime.fromisoformat(tok["expires_at"]) > _now():
++            await db.access_tokens.update_one({"id": tok["id"]}, {"$push": {"uses": {
++                "at": _now().isoformat(), "ip": ip, "device_id": device_id}}})
++            return datetime.fromisoformat(tok["expires_at"])
++    # Refus : demande d'appareil (pour approbation) + journal, puis fausse 404
++    ua = (request.headers.get("user-agent") if request else "") or ""
++    if device_id:
++        await db.device_requests.update_one(
++            {"device_id": device_id, "user_id": user["id"], "status": "pending"},
++            {"$set": {"ip": ip, "user_agent": ua[:250], "last_attempt_at": _now().isoformat(),
++                      "user_name": user.get("full_name"), "user_email": user.get("email")},
++             "$setOnInsert": {"id": secrets.token_urlsafe(10), "created_at": _now().isoformat()},
++             "$inc": {"attempts": 1}}, upsert=True)
++    from albarka_phase_c import _log_platform_event  # import local : évite un cycle
++    await _log_platform_event(user=user, action="login.blocked_whitelist", entity_type="user", entity_id=user["id"],
++                              meta={"ip": ip, "device_id": device_id, "user_agent": ua[:250],
++                                    "with_code": bool(access_code)})
++    raise HTTPException(status_code=404, detail=NOT_FOUND_DETAIL)
++
++
++# ---------------------------------------------------------------- qui peut créer des jetons
++async def can_issue_tokens(user: Dict[str, Any]) -> bool:
++    """admin, ou une adresse e-mail désignée par admin dans les Paramètres."""
++    if is_admin_account(user):
++        return True
++    settings = await get_settings_doc()
++    issuers = [e.strip().lower() for e in settings.get("access_token_issuer_emails") or []]
++    return (user.get("email") or "").strip().lower() in issuers
++
++
++@router.get("/me")
++async def my_access_rights(user: dict = Depends(get_current_user)):
++    return {"can_issue_tokens": await can_issue_tokens(user), "is_admin_account": is_admin_account(user)}
++
++
++@router.get("/my-ip")
++async def my_ip(request: Request, user: dict = Depends(require_roles(["superviseur"]))):
++    """Adresse IP vue par le serveur (pour ajouter celle du bureau à la liste)."""
++    return {"ip": client_ip(request)}
++
++
++# ---------------------------------------------------------------- appareils (superviseur)
++@router.get("/devices")
++async def list_devices(user: dict = Depends(require_roles(["superviseur"]))):
++    devices = await db.trusted_devices.find({"revoked": {"$ne": True}}, {"_id": 0}).sort("created_at", -1).to_list(500)
++    users = {u["id"]: u for u in await db.users.find(
++        {"id": {"$in": [d["user_id"] for d in devices if d.get("user_id")]}}, {"_id": 0, "id": 1, "full_name": 1}).to_list(500)}
++    for d in devices:
++        d["user_name"] = users.get(d.get("user_id"), {}).get("full_name") if d.get("user_id") else None
++    requests = await db.device_requests.find({"status": "pending"}, {"_id": 0}).sort("last_attempt_at", -1).to_list(200)
++    return {"devices": devices, "requests": requests}
++
++
++@router.post("/devices")
++async def add_device(request: Request, payload: Dict[str, Any] = Body(...), user: dict = Depends(require_roles(["superviseur"]))):
++    """Autorise un appareil : « cet appareil » (identifiant envoyé par le
++    navigateur) comme poste partagé du cabinet, ou pour un collaborateur."""
++    device_id = str(payload.get("device_id") or "").strip()[:80]
++    if not device_id:
++        raise HTTPException(status_code=400, detail="Identifiant d'appareil manquant")
++    uid = payload.get("user_id") or None
++    doc = {"id": secrets.token_urlsafe(10), "device_id": device_id, "user_id": uid,
++           "label": str(payload.get("label") or "Appareil")[:80], "created_by": user["id"],
++           "created_at": _now().isoformat(), "last_used_at": None, "revoked": False,
++           "user_agent": (request.headers.get("user-agent") or "")[:250] if payload.get("current") else payload.get("user_agent")}
++    await db.trusted_devices.insert_one(dict(doc))
++    await db.device_requests.update_many({"device_id": device_id, "status": "pending",
++                                          **({"user_id": uid} if uid else {})}, {"$set": {"status": "approved"}})
++    from albarka_phase_c import _log_platform_event
++    await _log_platform_event(user=user, action="device.approve", entity_type="device", entity_id=doc["id"],
++                              meta={"label": doc["label"], "user_id": uid})
++    doc.pop("_id", None)
++    return doc
++
++
++@router.post("/requests/{req_id}/approve")
++async def approve_request(req_id: str, payload: Dict[str, Any] = Body(default={}), user: dict = Depends(require_roles(["superviseur"]))):
++    """Approuve une demande : appareil réservé à ce collaborateur, ou poste partagé."""
++    req = await db.device_requests.find_one({"id": req_id, "status": "pending"}, {"_id": 0})
++    if not req:
++        raise HTTPException(status_code=404, detail="Demande introuvable")
++    doc = {"id": secrets.token_urlsafe(10), "device_id": req["device_id"],
++           "user_id": None if payload.get("shared") else req["user_id"],
++           "label": str(payload.get("label") or f"Appareil de {req.get('user_name') or 'collaborateur'}")[:80],
++           "created_by": user["id"], "created_at": _now().isoformat(), "last_used_at": None, "revoked": False,
++           "user_agent": req.get("user_agent")}
++    await db.trusted_devices.insert_one(dict(doc))
++    await db.device_requests.update_one({"id": req_id}, {"$set": {"status": "approved", "decided_by": user["id"]}})
++    from albarka_phase_c import _log_platform_event
++    await _log_platform_event(user=user, action="device.approve", entity_type="device", entity_id=doc["id"],
++                              meta={"label": doc["label"], "user_id": doc["user_id"]})
++    return {"ok": True}
++
++
++@router.post("/requests/{req_id}/reject")
++async def reject_request(req_id: str, user: dict = Depends(require_roles(["superviseur"]))):
++    res = await db.device_requests.update_one({"id": req_id, "status": "pending"},
++                                              {"$set": {"status": "rejected", "decided_by": user["id"]}})
++    if not res.matched_count:
++        raise HTTPException(status_code=404, detail="Demande introuvable")
++    return {"ok": True}
++
++
++@router.delete("/devices/{dev_id}")
++async def revoke_device(dev_id: str, user: dict = Depends(require_roles(["superviseur"]))):
++    res = await db.trusted_devices.update_one({"id": dev_id}, {"$set": {"revoked": True, "revoked_by": user["id"],
++                                                                        "revoked_at": _now().isoformat()}})
++    if not res.matched_count:
++        raise HTTPException(status_code=404, detail="Appareil introuvable")
++    from albarka_phase_c import _log_platform_event
++    await _log_platform_event(user=user, action="device.revoke", entity_type="device", entity_id=dev_id, meta={})
++    return {"ok": True}
++
++
++# ---------------------------------------------------------------- jetons d'accès temporaires
++def _token_code() -> str:
++    """Code lisible de 10 caractères (sans 0/O ni 1/I/L)."""
++    alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
++    return "".join(secrets.choice(alphabet) for _ in range(10))
++
++
++def _token_email_html(*, cabinet: str, name: str, issuer: str, link: str, code: str, until: str, note: str) -> str:
++    extra = f'<p style="margin:0 0 12px 0;white-space:pre-line;">{escape(note)}</p>' if note else ""
++    return f"""
++<div style="font-family:Arial,sans-serif;color:#0F172A;max-width:560px;">
++  <div style="background:#0B1912;color:#fff;padding:18px 24px;border-radius:10px 10px 0 0;">
++    <div style="font-size:12px;letter-spacing:2px;color:#E5A24B;text-transform:uppercase;">{escape(cabinet)}</div>
++    <div style="font-size:20px;margin-top:4px;">Accès temporaire au portail</div>
++  </div>
++  <div style="border:1px solid #E2E8F0;border-top:0;padding:24px;border-radius:0 0 10px 10px;">
++    <p style="margin:0 0 12px 0;">Bonjour {escape(name)},</p>
++    <p style="margin:0 0 12px 0;">{escape(issuer)} vous ouvre un accès temporaire au portail du cabinet, valable jusqu'au <b>{escape(until)}</b>.</p>
++    {extra}
++    <p style="margin:20px 0;text-align:center;"><a href="{escape(link)}" style="background:#0F6B4A;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;display:inline-block;">Se connecter avec l'accès temporaire</a></p>
++    <p style="margin:0 0 8px 0;font-size:13px;">Code d'accès (à saisir si besoin sur la page de connexion) : <b style="font-family:monospace;font-size:16px;">{escape(code)}</b></p>
++    <p style="margin:12px 0 0 0;font-size:12px;color:#64748B;">Votre mot de passe et le code de vérification restent demandés. Ne transférez pas ce message.</p>
++  </div>
++</div>"""
++
++
++@router.post("/tokens")
++async def create_token(request: Request, payload: Dict[str, Any] = Body(...), user: dict = Depends(get_current_user)):
++    """Crée un jeton temporaire pour un collaborateur et le lui envoie (e-mail + WhatsApp)."""
++    if not await can_issue_tokens(user):
++        raise HTTPException(status_code=403, detail="Seul admin, ou une adresse désignée par admin, peut créer un accès temporaire")
++    target = await db.users.find_one({"id": payload.get("user_id")}, {"_id": 0, "password_hash": 0})
++    if not target or is_client(target):
++        raise HTTPException(status_code=404, detail="Collaborateur introuvable")
++    try:
++        hours = int(payload.get("hours") or 24)
++    except (TypeError, ValueError):
++        raise HTTPException(status_code=400, detail="Durée invalide")
++    if not 1 <= hours <= MAX_TOKEN_HOURS:
++        raise HTTPException(status_code=400, detail=f"Durée entre 1 h et {MAX_TOKEN_HOURS} h (7 jours)")
++    note = str(payload.get("note") or "").strip()[:300]
++    code = _token_code()
++    expires = _now() + timedelta(hours=hours)
++    doc = {"id": secrets.token_urlsafe(10), "code_hash": _hash(code), "user_id": target["id"],
++           "user_name": target.get("full_name"), "expires_at": expires.isoformat(), "hours": hours, "note": note,
++           "created_by": user["id"], "created_by_name": user.get("full_name") or user.get("email"),
++           "created_at": _now().isoformat(), "revoked": False, "uses": []}
++    await db.access_tokens.insert_one(dict(doc))
++    # Envoi : lien de connexion (le code y est joint) par e-mail et WhatsApp
++    origin = (request.headers.get("origin") or "").rstrip("/")
++    base = origin if origin.startswith("https://") else DEFAULT_BASE_URL
++    link = f"{base}/login?acces={code}"
++    settings = await get_settings_doc()
++    cabinet = settings.get("cabinet_name") or "Cabinet ALBARKA"
++    until = expires.astimezone(timezone(timedelta(hours=0))).strftime("%d/%m/%Y %H:%M (GMT)")
++    issuer = user.get("full_name") or "La direction"
++    from albarka_notifications import send_email, send_whatsapp
++    delivery: Dict[str, Any] = {}
++    try:
++        sent = await send_email(to=target["email"], subject=f"Accès temporaire au portail — {cabinet}",
++                                html=_token_email_html(cabinet=cabinet, name=target.get("full_name") or "", issuer=issuer,
++                                                       link=link, code=code, until=until, note=note))
++        delivery["email"] = {"ok": bool(sent)}
++    except ValueError as exc:
++        delivery["email"] = {"ok": False, "error": str(exc)[:150]}
++    phone = whatsapp_number_of(target) or ""
++    if phone.startswith("+"):
++        r = await send_whatsapp(to_phone=phone, message=(
++            f"*{cabinet}*\nAccès temporaire au portail, ouvert par {issuer}, valable jusqu'au {until}.\n\n"
++            f"Se connecter : {link}\nCode d'accès : {code}\n\nMot de passe et code de vérification restent demandés."))
++        delivery["whatsapp"] = {"ok": bool(r.get("ok")), "error": None if r.get("ok") else r.get("error")}
++    else:
++        delivery["whatsapp"] = {"ok": False, "error": "Pas de numéro WhatsApp"}
++    await db.access_tokens.update_one({"id": doc["id"]}, {"$set": {"delivery": delivery}})
++    from albarka_phase_c import _log_platform_event
++    await _log_platform_event(user=user, action="access_token.create", entity_type="user", entity_id=target["id"],
++                              meta={"hours": hours, "expires_at": doc["expires_at"]})  # jamais le code
++    return {"id": doc["id"], "code": code, "link": link, "expires_at": doc["expires_at"], "delivery": delivery}
++
++
++@router.get("/tokens")
++async def list_tokens(user: dict = Depends(get_current_user)):
++    if not (await can_issue_tokens(user) or "superviseur" in (user.get("roles") or [])):
++        raise HTTPException(status_code=403, detail="Accès refusé")
++    items = await db.access_tokens.find({}, {"_id": 0, "code_hash": 0}).sort("created_at", -1).to_list(200)
++    now = _now()
++    for t in items:
++        t["active"] = not t.get("revoked") and datetime.fromisoformat(t["expires_at"]) > now
++    return {"items": items}
++
++
++@router.delete("/tokens/{token_id}")
++async def revoke_token(token_id: str, user: dict = Depends(get_current_user)):
++    if not (await can_issue_tokens(user) or "superviseur" in (user.get("roles") or [])):
++        raise HTTPException(status_code=403, detail="Accès refusé")
++    res = await db.access_tokens.update_one({"id": token_id}, {"$set": {"revoked": True, "revoked_by": user["id"]}})
++    if not res.matched_count:
++        raise HTTPException(status_code=404, detail="Jeton introuvable")
++    from albarka_phase_c import _log_platform_event
++    await _log_platform_event(user=user, action="access_token.revoke", entity_type="access_token", entity_id=token_id, meta={})
++    return {"ok": True}
++
++
++async def ensure_access_indexes() -> None:
++    await db.trusted_devices.create_index("device_id")
++    await db.device_requests.create_index([("status", 1), ("last_attempt_at", -1)])
++    await db.access_tokens.create_index("code_hash")
 diff --git a/backend/albarka_admin_settings.py b/backend/albarka_admin_settings.py
-index 0c020ca..9b17e72 100644
+index 0c020ca..bce5b19 100644
 --- a/backend/albarka_admin_settings.py
 +++ b/backend/albarka_admin_settings.py
 @@ -1,8 +1,8 @@
@@ -99,7 +472,7 @@ index 0c020ca..9b17e72 100644
  
  # Champs sensibles : masqués sur lecture (******** = présent).
  SENSITIVE_FIELDS = {"wa_access_token", "recaptcha_secret_key", "pawapay_api_token_sandbox", "pawapay_api_token_production"}
-@@ -103,6 +105,10 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
+@@ -103,6 +105,17 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
      "client_docs_wa_template_lang": "fr",
      "client_docs_wa_template_params": "client,nombre,lien",
      "client_docs_email_fallback": True,
@@ -107,19 +480,30 @@ index 0c020ca..9b17e72 100644
 +    # défilement, toucher) — clients et collaborateurs. 0 = désactivée.
 +    # Jamais pendant une tâche en cours (envoi, enregistrement…). Repris de Sawali.
 +    "auto_logout_minutes": 30,
++    # Accès du personnel (albarka_access.py). Désactivée par défaut : le
++    # superviseur enregistre d'abord les appareils / IP du cabinet, puis active.
++    "staff_whitelist_enabled": False,
++    "staff_ip_whitelist": [],            # adresses ou plages CIDR (ex. 41.207.12.0/24)
++    # Adresses e-mail autorisées, en plus d'admin, à créer des jetons d'accès
++    # temporaires. Modifiable par admin (admin@sawalismartsystems.com) seulement.
++    "access_token_issuer_emails": [],
  }
  
  
-@@ -198,6 +204,8 @@ class SettingsUpdate(BaseModel):
+@@ -198,6 +211,12 @@ class SettingsUpdate(BaseModel):
      client_docs_wa_template_lang: Optional[str] = Field(None, max_length=10)
      client_docs_wa_template_params: Optional[str] = Field(None, max_length=200)
      client_docs_email_fallback: Optional[bool] = None
 +    # Déconnexion automatique (minutes d'inactivité, 0 = désactivée, 120 max)
 +    auto_logout_minutes: Optional[int] = Field(None, ge=0, le=120)
++    # Accès du personnel
++    staff_whitelist_enabled: Optional[bool] = None
++    staff_ip_whitelist: Optional[list[str]] = None
++    access_token_issuer_emails: Optional[list[str]] = None
  
  
  @router.get("/settings")
-@@ -208,10 +216,8 @@ async def get_settings(user: dict = Depends(require_roles(_ADMIN_ROLES))):
+@@ -208,10 +227,8 @@ async def get_settings(user: dict = Depends(require_roles(_ADMIN_ROLES))):
  @router.put("/settings")
  async def update_settings(payload: SettingsUpdate, user: dict = Depends(require_roles(_ADMIN_ROLES))):
      changes = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
@@ -132,11 +516,38 @@ index 0c020ca..9b17e72 100644
      # Never persist the masked sentinel back.
      for k in SENSITIVE_FIELDS:
          if changes.get(k) == "********":
+@@ -239,6 +256,19 @@ async def update_settings(payload: SettingsUpdate, user: dict = Depends(require_
+         if bad:
+             raise HTTPException(status_code=400, detail=f"Variable inconnue pour le modèle Meta : {', '.join(bad)}")
+         changes["client_docs_wa_template_params"] = ",".join(params)
++    # Accès du personnel : IP validées ; émetteurs de jetons = admin seul
++    if "staff_ip_whitelist" in changes:
++        from albarka_access import normalize_ip_list
++        changes["staff_ip_whitelist"] = normalize_ip_list(changes["staff_ip_whitelist"])
++    if "access_token_issuer_emails" in changes:
++        from albarka_models import is_admin_account
++        if not is_admin_account(user):
++            raise HTTPException(status_code=403, detail="Seul admin peut désigner qui crée les accès temporaires")
++        emails = [e.strip().lower() for e in changes["access_token_issuer_emails"] if (e or "").strip()]
++        bad = [e for e in emails if not _EMAIL_RE.match(e)]
++        if bad:
++            raise HTTPException(status_code=400, detail=f"Adresse e-mail invalide : {bad[0]}")
++        changes["access_token_issuer_emails"] = list(dict.fromkeys(emails))
+     if not changes:
+         return _mask(await _load_settings())
+     await _load_settings()
 diff --git a/backend/albarka_auth.py b/backend/albarka_auth.py
-index c18c5f1..9436580 100644
+index c18c5f1..f44cb42 100644
 --- a/backend/albarka_auth.py
 +++ b/backend/albarka_auth.py
-@@ -15,7 +15,6 @@ from jose import JWTError, jwt
+@@ -9,13 +9,12 @@ from datetime import datetime, timedelta, timezone
+ from typing import List
+ 
+ import bcrypt
+-from fastapi import APIRouter, Depends, HTTPException
++from fastapi import APIRouter, Depends, HTTPException, Request
+ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+ from jose import JWTError, jwt
  
  from albarka_models import (
      AuthTokenResponse,
@@ -144,18 +555,24 @@ index c18c5f1..9436580 100644
      LoginRequest,
      LoginResponse,
      OtpVerifyRequest,
-@@ -54,7 +53,9 @@ def generate_session_token() -> str:
+@@ -52,9 +51,14 @@ def generate_session_token() -> str:
+     return secrets.token_urlsafe(32)
  
- def create_access_token(user_id: str) -> str:
+ 
+-def create_access_token(user_id: str) -> str:
++def create_access_token(user_id: str, not_after: datetime = None) -> str:
      expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 -    payload = {"sub": user_id, "exp": expire}
++    # Accès temporaire : la session ne dure pas plus longtemps que le jeton
++    if not_after is not None and not_after < expire:
++        expire = not_after
 +    # iat (émis le) : permet d'invalider les sessions ouvertes avant une
 +    # réinitialisation du mot de passe (voir password_changed_at ci-dessous).
 +    payload = {"sub": user_id, "exp": expire, "iat": int(datetime.now(timezone.utc).timestamp())}
      return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
  
  
-@@ -102,8 +103,16 @@ async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(_securi
+@@ -102,8 +106,16 @@ async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(_securi
          raise HTTPException(status_code=401, detail="Utilisateur introuvable")
      if not user.get("is_active", True):
          raise HTTPException(status_code=403, detail="Compte désactivé")
@@ -174,11 +591,34 @@ index c18c5f1..9436580 100644
      return user
  
  
-@@ -191,7 +200,6 @@ async def verify_otp(payload: OtpVerifyRequest):
+@@ -161,7 +173,7 @@ async def login(payload: LoginRequest):
+ 
+ 
+ @router.post("/verify-otp", response_model=AuthTokenResponse)
+-async def verify_otp(payload: OtpVerifyRequest):
++async def verify_otp(payload: OtpVerifyRequest, request: Request):
+     otp = await db.otps.find_one({"session_token": payload.session_token, "used": False})
+     if not otp:
+         raise HTTPException(status_code=400, detail="Session invalide ou expirée")
+@@ -174,6 +186,11 @@ async def verify_otp(payload: OtpVerifyRequest):
+     user = await db.users.find_one({"id": otp["user_id"]}, {"_id": 0, "password_hash": 0})
+     if not user:
+         raise HTTPException(status_code=401, detail="Utilisateur introuvable")
++    # Liste blanche du personnel (appareils / IP / jeton temporaire) — après
++    # mot de passe ET OTP ; refus = fausse « ERREUR 404 » (albarka_access.py).
++    from albarka_access import check_staff_access
++    access_until = await check_staff_access(user, request=request, device_id=payload.device_id,
++                                            access_code=payload.access_code)
+     # Feature 14 — clients cannot log in without an active contract.
+     roles = set(user.get("roles") or [])
+     if "client" in roles and len(roles) == 1:
+@@ -190,8 +207,7 @@ async def verify_otp(payload: OtpVerifyRequest):
+         {"id": user["id"]},
          {"$set": {"last_login": datetime.now(timezone.utc).isoformat()}},
      )
-     token = create_access_token(user["id"])
+-    token = create_access_token(user["id"])
 -    user["roles"] = effective_roles(user)  # mêmes rôles effectifs que get_current_user
++    token = create_access_token(user["id"], not_after=access_until)
      return AuthTokenResponse(access_token=token, user=User(**user))
  
  
@@ -608,7 +1048,7 @@ index 251ca87..36bb8f6 100644
          return [self._as_recipient(u) for u in await cur.to_list(5000)]
  
 diff --git a/backend/albarka_models.py b/backend/albarka_models.py
-index b98204b..38d1a97 100644
+index b98204b..75e2477 100644
 --- a/backend/albarka_models.py
 +++ b/backend/albarka_models.py
 @@ -198,10 +198,9 @@ def whatsapp_number_of(user_doc: dict) -> Optional[str]:
@@ -668,6 +1108,17 @@ index b98204b..38d1a97 100644
  
  
  def is_superviseur(user: dict) -> bool:
+@@ -255,6 +276,10 @@ class LoginResponse(BaseModel):
+ class OtpVerifyRequest(BaseModel):
+     session_token: str
+     code: str
++    # Liste blanche du personnel (albarka_access.py) : identifiant de
++    # l'appareil (généré par le navigateur) et code d'accès temporaire éventuel.
++    device_id: Optional[str] = None
++    access_code: Optional[str] = None
+ 
+ 
+ class AuthTokenResponse(BaseModel):
 diff --git a/backend/albarka_myaccount.py b/backend/albarka_myaccount.py
 index 629a01f..5d19ef0 100644
 --- a/backend/albarka_myaccount.py
@@ -782,10 +1233,10 @@ index 345a7ee..d3a808d 100644
      bid = secrets.token_urlsafe(12)
 diff --git a/backend/albarka_presence.py b/backend/albarka_presence.py
 new file mode 100644
-index 0000000..92fcb6d
+index 0000000..3686071
 --- /dev/null
 +++ b/backend/albarka_presence.py
-@@ -0,0 +1,113 @@
+@@ -0,0 +1,169 @@
 +"""Présence en temps réel (keep-alive) — qui est connecté au portail.
 +
 +Chaque page ouverte du portail (espace client comme cabinet) envoie un
@@ -840,12 +1291,31 @@ index 0000000..92fcb6d
 +
 +@router.post("/heartbeat")
 +async def heartbeat(payload: Dict = Body(default={}), user: dict = Depends(get_current_user)):
-+    """Battement : « je suis là » (+ onglet visible ou non, page ouverte)."""
++    """Battement : « je suis là » (+ onglet visible ou non, page ouverte,
++    heure de la dernière activité réelle : clavier, souris, défilement)."""
++    now = _now()
++    doc = await db.presence.find_one({"_id": user["id"]}) or {}
++    # Nouvelle session si jamais vu, sorti explicitement, ou silencieux depuis 70 s
++    new_session = (not doc.get("last_seen") or doc.get("offline")
++                   or now - datetime.fromisoformat(doc["last_seen"]) > timedelta(seconds=ONLINE_WINDOW))
++    started = now if new_session else datetime.fromisoformat(doc.get("session_started_at") or doc["last_seen"])
++    # Dernière activité réelle signalée par le navigateur (bornée à la session)
++    last_act = doc.get("last_activity_at") if not new_session else None
++    try:
++        ms = float(payload.get("last_activity")) if payload.get("last_activity") is not None else None
++    except (TypeError, ValueError):
++        ms = None
++    if ms:
++        act = datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
++        act = min(max(act, started), now)
++        last_act = act.isoformat()
 +    await db.presence.update_one({"_id": user["id"]}, {"$set": {
-+        "user_id": user["id"], "last_seen": _now().isoformat(), "offline": False,
++        "user_id": user["id"], "last_seen": now.isoformat(), "offline": False,
 +        "visible": bool(payload.get("visible", True)),
 +        "page": str(payload.get("page") or "")[:120] or None,
 +        "kind": "client" if is_client(user) else "staff",
++        "session_started_at": started.isoformat(),
++        "last_activity_at": last_act or started.isoformat(),
 +    }}, upsert=True)
 +    return {"ok": True, "interval": HEARTBEAT_SECONDS}
 +
@@ -897,8 +1367,45 @@ index 0000000..92fcb6d
 +    return {"items": out}
 +
 +
++# Tableau de bord : Direction, Secrétariat, Superviseur et admin
++_RECENT_CLIENTS_ROLES = {"direction", "secretariat", "superviseur"}
++
++
++@router.get("/recent-clients")
++async def recent_clients(limit: int = 10, user: dict = Depends(require_staff())):
++    """Les derniers clients connectés : début de session, dernière activité
++    réelle et durée jusqu'à la fin de toute activité détectée."""
++    from albarka_models import is_admin_account
++    from fastapi import HTTPException
++    if not (set(user.get("roles") or []) & _RECENT_CLIENTS_ROLES or is_admin_account(user)):
++        raise HTTPException(status_code=403, detail="Réservé à la Direction, au Secrétariat et à admin")
++    limit = max(1, min(int(limit or 10), 50))
++    hide = hide_test_accounts_filter(user)
++    docs = await db.presence.find({"kind": "client", "session_started_at": {"$exists": True}}).sort(
++        "session_started_at", -1).to_list(200)
++    users = {u["id"]: u for u in await db.users.find(
++        {"id": {"$in": [d["_id"] for d in docs]}, "roles": "client", **hide},
++        {"_id": 0, "id": 1, "full_name": 1, "company": 1}).to_list(200)}
++    now = _now()
++    items = []
++    for d in docs:
++        u = users.get(d["_id"])
++        if not u:
++            continue
++        start = datetime.fromisoformat(d["session_started_at"])
++        last = datetime.fromisoformat(d.get("last_activity_at") or d["session_started_at"])
++        items.append({"user_id": u["id"], "name": u.get("full_name"), "company": u.get("company"),
++                      "session_started_at": d["session_started_at"], "last_activity_at": last.isoformat(),
++                      "duration_seconds": max(0, int((last - start).total_seconds())),
++                      **{k: v for k, v in status_of(d, now).items() if k in ("status", "last_seen")}})
++        if len(items) >= limit:
++            break
++    return {"items": items}
++
++
 +async def ensure_presence_indexes() -> None:
 +    await db.presence.create_index("last_seen")
++    await db.presence.create_index([("kind", 1), ("session_started_at", -1)])
 diff --git a/backend/albarka_reports_mgmt.py b/backend/albarka_reports_mgmt.py
 index 6632c1c..7d31620 100644
 --- a/backend/albarka_reports_mgmt.py
@@ -961,36 +1468,225 @@ index 619199f..5e74c99 100644
          return None
 -
 diff --git a/backend/server.py b/backend/server.py
-index e4a2c9c..c66a8ca 100644
+index e4a2c9c..9c9c556 100644
 --- a/backend/server.py
 +++ b/backend/server.py
-@@ -42,6 +42,8 @@ from albarka_phase_c import (  # noqa: E402
+@@ -42,6 +42,10 @@ from albarka_phase_c import (  # noqa: E402
      messaging_router,
  )
  from albarka_public import router as public_router  # noqa: E402
++# Accès du personnel : liste blanche (appareils + IP) et jetons temporaires
++from albarka_access import ensure_access_indexes, router as access_router  # noqa: E402
 +# Présence en temps réel (keep-alive : connectés / déconnectés)
 +from albarka_presence import ensure_presence_indexes, router as presence_router  # noqa: E402
  # Espace client : documents déposés / mis à disposition par le cabinet
  from albarka_client_space import (  # noqa: E402
      ensure_client_space_indexes,
-@@ -112,6 +114,8 @@ api_router.include_router(wa_inbox_router)
+@@ -112,6 +116,10 @@ api_router.include_router(wa_inbox_router)
  api_router.include_router(wa_extras_router)
  # Endpoints publics (bouton wa.me — Partie 0)
  api_router.include_router(public_router)
++# Accès du personnel (liste blanche, jetons d'accès temporaires)
++api_router.include_router(access_router)
 +# Présence : battements des pages ouvertes + état lu par le cabinet
 +api_router.include_router(presence_router)
  # Espace client : dépôts du cabinet (factures, rapports… faits ailleurs) + page client
  api_router.include_router(client_space_router)
  api_router.include_router(client_space_me_router)
-@@ -189,6 +193,8 @@ async def _ensure_indexes():
+@@ -189,6 +197,10 @@ async def _ensure_indexes():
          await ensure_forms_indexes()
          # Espace client (documents du cabinet par client)
          await ensure_client_space_indexes()
 +        # Présence (keep-alive)
 +        await ensure_presence_indexes()
++        # Accès du personnel
++        await ensure_access_indexes()
      except Exception:
          logger.exception("Échec création index Mongo (non bloquant)")
  
+diff --git a/backend/tests/test_access_lot4.py b/backend/tests/test_access_lot4.py
+new file mode 100644
+index 0000000..74413c4
+--- /dev/null
++++ b/backend/tests/test_access_lot4.py
+@@ -0,0 +1,177 @@
++"""Lot 4 — liste blanche du personnel (appareils + IP), jetons d'accès
++temporaires, derniers clients connectés.
++
++Tests autonomes : MongoDB simulé (mongomock-motor), envois simulés.
++"""
++from __future__ import annotations
++
++import asyncio
++import os
++import sys
++from datetime import datetime, timedelta, timezone
++from pathlib import Path
++
++os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
++os.environ.setdefault("DB_NAME", "albarka_test")
++os.environ.setdefault("JWT_SECRET_KEY", "test-secret")
++
++import pytest
++from fastapi import APIRouter, FastAPI, Header, HTTPException
++from fastapi.testclient import TestClient
++from jose import jwt
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++mongomock_motor = pytest.importorskip("mongomock_motor")
++
++import db as db_module  # noqa: E402
++import albarka_access  # noqa: E402
++import albarka_admin_settings  # noqa: E402
++import albarka_auth  # noqa: E402
++import albarka_notifications  # noqa: E402
++import albarka_phase_c  # noqa: E402
++import albarka_presence  # noqa: E402
++
++USERS = {
++    "admin": {"id": "u-admin", "email": "admin@sawalismartsystems.com", "full_name": "Admin", "roles": ["superviseur", "direction"]},
++    "sup": {"id": "u-sup", "email": "sup@albarka.bf", "full_name": "Superviseur", "roles": ["superviseur"]},
++    "dg": {"id": "u-dg", "email": "dg@albarka.bf", "full_name": "DG", "roles": ["dg", "direction"]},
++    "secr": {"id": "u-secr", "email": "secr@albarka.bf", "full_name": "Secrétaire", "roles": ["secretariat"]},
++    "compta": {"id": "u-compta", "email": "c@albarka.bf", "full_name": "Comptable", "roles": ["comptable"], "phone": "+22670000009"},
++    "c1": {"id": "c1", "email": "client@exemple.bf", "full_name": "SARL Kaboré", "company": "Kaboré", "roles": ["client"]},
++}
++
++
++@pytest.fixture()
++def env(monkeypatch):
++    mock_db = mongomock_motor.AsyncMongoMockClient()["albarka_access_test"]
++    real_db = db_module.db
++    for mod in list(sys.modules.values()):
++        if getattr(mod, "db", None) is real_db and getattr(mod, "__name__", "").startswith(("albarka_", "db")):
++            monkeypatch.setattr(mod, "db", mock_db)
++    asyncio.run(mock_db.users.insert_many([{**u, "is_active": True} for u in USERS.values()]))
++    sent, logs = {"email": [], "wa": []}, []
++
++    async def fake_email(*, to, subject, html, **kw):
++        albarka_notifications._assert_safe_email(subject, html)  # vrais garde-fous
++        sent["email"].append({"to": to, "html": html})
++        return "m1"
++
++    async def fake_wa(*, to_phone, message):
++        sent["wa"].append({"to": to_phone, "text": message})
++        return {"ok": True}
++
++    async def fake_log(**kw):
++        logs.append(kw["action"])
++    monkeypatch.setattr(albarka_notifications, "send_email", fake_email)
++    monkeypatch.setattr(albarka_notifications, "send_whatsapp", fake_wa)
++    monkeypatch.setattr(albarka_phase_c, "_log_platform_event", fake_log)
++
++    app = FastAPI()
++    api = APIRouter(prefix="/api")
++    for r in (albarka_auth.router, albarka_access.router, albarka_admin_settings.router, albarka_presence.router):
++        api.include_router(r)
++    app.include_router(api)
++
++    async def fake_user(x_user: str = Header(default="")):
++        if x_user not in USERS:
++            raise HTTPException(status_code=401, detail="Non connecté")
++        return await mock_db.users.find_one({"id": USERS[x_user]["id"]}, {"_id": 0})
++    app.dependency_overrides[albarka_auth.get_current_user] = fake_user
++    with TestClient(app, headers={"Origin": "https://albarka-bf.com"}) as client:
++        yield type("Env", (), {"c": client, "db": mock_db, "sent": sent, "logs": logs})
++
++
++def _h(u):
++    return {"X-User": u}
++
++
++def _login(env, who, device_id=None, access_code=None, ip="197.239.10.10"):
++    """Simule mot de passe OK puis envoi du code OTP (étape verify-otp)."""
++    tok = f"s-{who}-{len(env.logs)}-{device_id}-{access_code}"
++    asyncio.run(env.db.otps.insert_one({"id": tok, "user_id": USERS[who]["id"], "session_token": tok, "code": "123456",
++                                        "used": False, "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()}))
++    return env.c.post("/api/auth/verify-otp", headers={"X-Forwarded-For": ip},
++                      json={"session_token": tok, "code": "123456", "device_id": device_id, "access_code": access_code})
++
++
++def _enable(env, **extra):
++    r = env.c.put("/api/admin/settings", headers=_h("sup"), json={"staff_whitelist_enabled": True, **extra})
++    assert r.status_code == 200, r.text
++    return r.json()
++
++
++def test_whitelist_off_by_default_then_fake_404(env):
++    assert _login(env, "compta", device_id="dev-inconnu").status_code == 200  # désactivée : rien ne change
++    _enable(env)
++    r = _login(env, "compta", device_id="dev-inconnu")
++    assert r.status_code == 404 and r.json()["detail"] == "ERREUR 404"
++    assert "login.blocked_whitelist" in env.logs
++    # Demande d'appareil créée pour le superviseur
++    reqs = env.c.get("/api/access/devices", headers=_h("sup")).json()["requests"]
++    assert reqs[0]["user_email"] == "c@albarka.bf" and reqs[0]["device_id"] == "dev-inconnu"
++    # Exemptés : admin, superviseur, clients (contrat non requis pour ce test côté staff)
++    assert _login(env, "admin", device_id="x").status_code == 200
++    assert _login(env, "sup", device_id="x").status_code == 200
++
++
++def test_ip_and_device_whitelist(env):
++    s = _enable(env, staff_ip_whitelist=["41.207.12.0/24", " 102.180.5.7 "])
++    assert s["staff_ip_whitelist"] == ["41.207.12.0/24", "102.180.5.7/32"]
++    assert env.c.put("/api/admin/settings", headers=_h("sup"), json={"staff_ip_whitelist": ["pas-une-ip"]}).status_code == 400
++    assert _login(env, "compta", ip="41.207.12.55").status_code == 200    # réseau du bureau
++    assert _login(env, "compta", ip="41.207.13.1").status_code == 404
++    # Approbation de la demande → l'appareil passe
++    _login(env, "compta", device_id="pc-compta")
++    req = env.c.get("/api/access/devices", headers=_h("sup")).json()["requests"][0]
++    assert env.c.post(f"/api/access/requests/{req['id']}/approve", headers=_h("dg"), json={}).status_code == 403
++    env.c.post(f"/api/access/requests/{req['id']}/approve", headers=_h("sup"), json={})
++    assert _login(env, "compta", device_id="pc-compta").status_code == 200
++    assert _login(env, "secr", device_id="pc-compta").status_code == 404       # appareil propre au comptable
++    # Poste partagé du cabinet (« cet appareil ») : tout collaborateur
++    env.c.post("/api/access/devices", headers=_h("sup"), json={"device_id": "poste-accueil", "label": "Accueil", "current": True})
++    assert _login(env, "secr", device_id="poste-accueil").status_code == 200
++    dev = next(d for d in env.c.get("/api/access/devices", headers=_h("sup")).json()["devices"] if d["device_id"] == "poste-accueil")
++    env.c.delete(f"/api/access/devices/{dev['id']}", headers=_h("sup"))
++    assert _login(env, "secr", device_id="poste-accueil").status_code == 404
++
++
++def test_temporary_access_token(env):
++    _enable(env)
++    # Seul admin, ou une adresse désignée par admin, crée des jetons
++    assert env.c.post("/api/access/tokens", headers=_h("dg"), json={"user_id": "u-compta", "hours": 4}).status_code == 403
++    assert env.c.put("/api/admin/settings", headers=_h("sup"), json={"access_token_issuer_emails": ["dg@albarka.bf"]}).status_code == 403
++    assert env.c.put("/api/admin/settings", headers=_h("admin"), json={"access_token_issuer_emails": ["DG@albarka.bf"]}).json()["access_token_issuer_emails"] == ["dg@albarka.bf"]
++    assert env.c.get("/api/access/me", headers=_h("dg")).json()["can_issue_tokens"] is True
++    r = env.c.post("/api/access/tokens", headers=_h("dg"), json={"user_id": "u-compta", "hours": 4, "note": "Clôture annuelle"}).json()
++    assert len(r["code"]) == 10 and r["link"] == f"https://albarka-bf.com/login?acces={r['code']}"
++    assert r["delivery"] == {"email": {"ok": True}, "whatsapp": {"ok": True, "error": None}}
++    assert r["code"] in env.sent["wa"][0]["text"] and env.sent["email"][0]["to"] == "c@albarka.bf"
++    assert env.c.post("/api/access/tokens", headers=_h("dg"), json={"user_id": "c1"}).status_code == 404   # pas un client
++    assert env.c.post("/api/access/tokens", headers=_h("dg"), json={"user_id": "u-compta", "hours": 500}).status_code == 400
++    # Connexion depuis n'importe où avec le code ; session bornée à la fin du jeton
++    ok = _login(env, "compta", device_id="tel-perso", access_code=r["code"].lower())
++    assert ok.status_code == 200
++    exp = jwt.get_unverified_claims(ok.json()["access_token"])["exp"]
++    assert exp <= datetime.fromisoformat(r["expires_at"]).timestamp() + 1
++    assert _login(env, "secr", device_id="tel-perso", access_code=r["code"]).status_code == 404   # lié au comptable
++    # Révocation
++    env.c.delete(f"/api/access/tokens/{r['id']}", headers=_h("dg"))
++    assert _login(env, "compta", device_id="tel-perso", access_code=r["code"]).status_code == 404
++    items = env.c.get("/api/access/tokens", headers=_h("sup")).json()["items"]
++    assert items[0]["active"] is False and "code_hash" not in items[0] and len(items[0]["uses"]) == 1
++
++
++def test_recent_clients_with_activity_duration(env):
++    now_ms = datetime.now(timezone.utc).timestamp() * 1000
++    env.c.post("/api/presence/heartbeat", headers=_h("c1"), json={"visible": True, "last_activity": now_ms})
++    doc = asyncio.run(env.db.presence.find_one({"_id": "c1"}))
++    # Session commencée il y a 20 min, dernière activité il y a 5 min
++    start = datetime.now(timezone.utc) - timedelta(minutes=20)
++    asyncio.run(env.db.presence.update_one({"_id": "c1"}, {"$set": {"session_started_at": start.isoformat()}}))
++    env.c.post("/api/presence/heartbeat", headers=_h("c1"), json={"visible": True, "last_activity": now_ms - 5 * 60000})
++    assert doc["session_started_at"]
++    for who in ("dg", "secr", "admin"):
++        items = env.c.get("/api/presence/recent-clients", headers=_h(who)).json()["items"]
++        assert items[0]["name"] == "SARL Kaboré" and 14 * 60 <= items[0]["duration_seconds"] <= 16 * 60
++    assert env.c.get("/api/presence/recent-clients", headers=_h("compta")).status_code == 403
 diff --git a/backend/tests/test_accounts_lot4.py b/backend/tests/test_accounts_lot4.py
 new file mode 100644
 index 0000000..3a91af6
@@ -1312,6 +2008,27 @@ index c1c4f6c..68a4c23 100644
  # ------------------------------------------------------------------ Espace client
  def test_upload_external_documents_notifies_client_once(env):
      files = [("files", ("facture-sage-042.pdf", b"%PDF-1", "application/pdf")),
+diff --git a/frontend/src/App.js b/frontend/src/App.js
+index 2397bc9..0b56f24 100644
+--- a/frontend/src/App.js
++++ b/frontend/src/App.js
+@@ -13,6 +13,8 @@ import Missions from "@/pages/public/Missions";
+ import Contact from "@/pages/public/Contact";
+ // Remplissage d'un formulaire par lien (sans connexion)
+ import FillForm from "@/pages/public/FillForm";
++// Page d'erreur neutre (connexion refusée par la liste blanche du personnel)
++import Error404 from "@/pages/public/Error404";
+ 
+ // Auth
+ import Login from "@/pages/auth/Login";
+@@ -79,6 +81,7 @@ function App() {
+           <Route path="/login" element={<Login />} />
+           {/* Formulaire à remplir via un lien reçu ou partagé — public, sans connexion */}
+           <Route path="/f/:token" element={<FillForm />} />
++          <Route path="/erreur-404" element={<Error404 />} />
+ 
+           {/* Client portal */}
+           <Route path="/portal" element={<ProtectedRoute><PortalLayout admin={false} /></ProtectedRoute>}>
 diff --git a/frontend/src/components/AccountActions.jsx b/frontend/src/components/AccountActions.jsx
 new file mode 100644
 index 0000000..f2ce59d
@@ -1676,10 +2393,10 @@ index 54dc204..46c9283 100644
      </div>
 diff --git a/frontend/src/components/Presence.jsx b/frontend/src/components/Presence.jsx
 new file mode 100644
-index 0000000..4f77efe
+index 0000000..fd89724
 --- /dev/null
 +++ b/frontend/src/components/Presence.jsx
-@@ -0,0 +1,97 @@
+@@ -0,0 +1,105 @@
 +/*
 +  Présence en temps réel (keep-alive) — voir albarka_presence.py.
 +    - usePresenceHeartbeat() : à monter une fois par page connectée
@@ -1710,9 +2427,16 @@ index 0000000..4f77efe
 +export function usePresenceHeartbeat(enabled = true) {
 +  useEffect(() => {
 +    if (!enabled) return undefined;
++    // Dernière activité réelle (clavier, souris, défilement, toucher) : sert au
++    // tableau de bord « durée jusqu'à la fin de toute activité détectée »
++    let lastActivity = Date.now();
++    const onActivity = () => { lastActivity = Date.now(); };
++    const ACTIVITY = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "click"];
++    ACTIVITY.forEach((ev) => window.addEventListener(ev, onActivity, { passive: true }));
 +    const beat = () => apiClient.post("/presence/heartbeat", {
 +      visible: document.visibilityState === "visible",
 +      page: window.location.pathname,
++      last_activity: lastActivity,
 +    }).catch(() => {});
 +    beat();
 +    const t = setInterval(() => { if (!closing) beat(); }, HEARTBEAT_MS);
@@ -1729,6 +2453,7 @@ index 0000000..4f77efe
 +    window.addEventListener("pagehide", onHide);
 +    return () => {
 +      clearInterval(t);
++      ACTIVITY.forEach((ev) => window.removeEventListener(ev, onActivity));
 +      document.removeEventListener("visibilitychange", onVisibility);
 +      window.removeEventListener("pagehide", onHide);
 +    };
@@ -1777,6 +2502,191 @@ index 0000000..4f77efe
 +    </span>
 +  );
 +}
+diff --git a/frontend/src/components/RecentClientsCard.jsx b/frontend/src/components/RecentClientsCard.jsx
+new file mode 100644
+index 0000000..468c15e
+--- /dev/null
++++ b/frontend/src/components/RecentClientsCard.jsx
+@@ -0,0 +1,72 @@
++/*
++  Tableau de bord (cabinet) — les 10 derniers clients connectés, avec le début
++  de la session, la dernière activité réelle (clavier, souris…) et la durée
++  jusqu'à la fin de toute activité détectée. Visible de la Direction, du
++  Secrétariat, du Superviseur et d'admin (API /presence/recent-clients).
++*/
++import React, { useEffect, useState } from "react";
++import { Link } from "react-router-dom";
++import { Activity } from "lucide-react";
++import { apiClient } from "@/lib/api";
++import { useAuth } from "@/contexts/AuthContext";
++import { PresenceDot } from "@/components/Presence";
++
++const ROLES = ["direction", "secretariat", "superviseur"];
++const fmt = (iso) => (iso ? new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");
++// Durée lisible : « 45 s », « 12 min », « 1 h 05 »
++const fmtDuration = (s) => (s < 60 ? `${s} s` : s < 3600 ? `${Math.round(s / 60)} min` : `${Math.floor(s / 3600)} h ${String(Math.round((s % 3600) / 60)).padStart(2, "0")}`);
++
++export default function RecentClientsCard() {
++  const { user } = useAuth();
++  const roles = user?.roles || [];
++  const allowed = roles.some((r) => ROLES.includes(r)) || (user?.email || "").toLowerCase() === "admin@sawalismartsystems.com";
++  const [items, setItems] = useState(null);
++
++  useEffect(() => {
++    if (!allowed) return undefined;
++    let alive = true;
++    const load = () => apiClient.get("/presence/recent-clients", { params: { limit: 10 } })
++      .then(({ data }) => { if (alive) setItems(data.items || []); }).catch(() => { if (alive) setItems([]); });
++    load();
++    const t = setInterval(load, 30000); // rafraîchi toutes les 30 s
++    return () => { alive = false; clearInterval(t); };
++  }, [allowed]);
++
++  if (!allowed) return null;
++  return (
++    <div className="albarka-card p-5" data-testid="recent-clients-card">
++      <div className="flex items-center gap-2 mb-3">
++        <Activity className="w-4 h-4 text-[#0F6B4A]" />
++        <h2 className="font-display text-lg">Derniers clients connectés</h2>
++      </div>
++      {items === null ? <p className="text-sm text-muted-foreground">Chargement…</p> : items.length === 0 ? (
++        <p className="text-sm text-muted-foreground">Aucune connexion client enregistrée pour l'instant.</p>
++      ) : (
++        <div className="overflow-x-auto">
++          <table className="w-full text-sm">
++            <thead><tr className="text-left text-xs text-muted-foreground border-b">
++              <th className="py-2 pr-3">Client</th><th className="py-2 pr-3">Connecté le</th>
++              <th className="py-2 pr-3">Dernière activité</th><th className="py-2 pr-3">Durée d'activité</th>
++            </tr></thead>
++            <tbody>
++              {items.map((c) => (
++                <tr key={c.user_id} className="border-b last:border-0" data-testid={`recent-client-${c.user_id}`}>
++                  <td className="py-2 pr-3">
++                    <Link to={`/admin/clients/${c.user_id}`} className="inline-flex items-center gap-2 hover:text-[#0F6B4A]">
++                      <PresenceDot presence={{ status: c.status, last_seen: c.last_seen }} />
++                      <span className="font-medium">{c.name}</span>
++                      {c.company && <span className="text-xs text-muted-foreground">· {c.company}</span>}
++                    </Link>
++                  </td>
++                  <td className="py-2 pr-3 tabular-nums">{fmt(c.session_started_at)}</td>
++                  <td className="py-2 pr-3 tabular-nums">{fmt(c.last_activity_at)}</td>
++                  <td className="py-2 pr-3 tabular-nums font-medium">{fmtDuration(c.duration_seconds)}</td>
++                </tr>
++              ))}
++            </tbody>
++          </table>
++        </div>
++      )}
++    </div>
++  );
++}
+diff --git a/frontend/src/components/TemporaryAccessButton.jsx b/frontend/src/components/TemporaryAccessButton.jsx
+new file mode 100644
+index 0000000..3d92fce
+--- /dev/null
++++ b/frontend/src/components/TemporaryAccessButton.jsx
+@@ -0,0 +1,75 @@
++/*
++  Bouton « Accès temporaire » (ligne d'un collaborateur, Personnels) — visible
++  d'admin et des adresses e-mail désignées par admin. Crée un jeton d'accès
++  valable N heures, envoyé au collaborateur par e-mail et WhatsApp : il peut
++  alors se connecter hors liste blanche (mot de passe + code toujours demandés).
++  API : POST /access/tokens (albarka_access.py)
++*/
++import React, { useState } from "react";
++import { toast } from "sonner";
++import { TimerReset, Copy } from "lucide-react";
++import { apiClient, extractError } from "@/lib/api";
++import { Button } from "@/components/ui/button";
++import { Label } from "@/components/ui/label";
++import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
++
++const DURATIONS = [[4, "4 heures"], [8, "8 heures"], [24, "24 heures"], [72, "3 jours"], [168, "7 jours"]];
++
++export default function TemporaryAccessButton({ account }) {
++  const [open, setOpen] = useState(false);
++  const [hours, setHours] = useState(24);
++  const [note, setNote] = useState("");
++  const [result, setResult] = useState(null);
++  const [busy, setBusy] = useState(false);
++
++  const create = async () => {
++    setBusy(true);
++    try {
++      const { data } = await apiClient.post("/access/tokens", { user_id: account.id, hours, note });
++      setResult(data);
++    } catch (err) { toast.error(extractError(err)); } finally { setBusy(false); }
++  };
++  const close = () => { setOpen(false); setResult(null); setNote(""); };
++  const copy = async (text) => { try { await navigator.clipboard.writeText(text); toast.success("Copié"); } catch { toast.error("Copie impossible"); } };
++
++  return (
++    <>
++      <Button variant="ghost" size="sm" title="Accès temporaire" onClick={() => setOpen(true)} data-testid={`temp-access-${account.id}`}>
++        <TimerReset className="w-4 h-4" />
++      </Button>
++      <Dialog open={open} onOpenChange={(v) => { if (!v) close(); }}>
++        <DialogContent data-testid="temp-access-dialog">
++          <DialogHeader><DialogTitle>Accès temporaire pour {account.full_name}</DialogTitle></DialogHeader>
++          {!result ? (
++            <div className="space-y-3 text-left">
++              <p className="text-sm text-muted-foreground">Le collaborateur pourra se connecter depuis n'importe quel appareil pendant la durée choisie. Il reçoit le lien et le code par e-mail et WhatsApp ; mot de passe et code de vérification restent demandés.</p>
++              <div>
++                <Label>Durée</Label>
++                <select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="mt-1 w-full h-10 rounded-md border px-2 text-sm bg-white" data-testid="temp-access-hours">
++                  {DURATIONS.map(([h, l]) => <option key={h} value={h}>{l}</option>)}
++                </select>
++              </div>
++              <div>
++                <Label>Message (facultatif)</Label>
++                <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} className="mt-1 w-full rounded-md border p-2 text-sm" placeholder="ex. Pour finaliser la clôture annuelle ce week-end" />
++              </div>
++            </div>
++          ) : (
++            <div className="space-y-2 text-left text-sm" data-testid="temp-access-result">
++              <p>Accès valable jusqu'au <b>{new Date(result.expires_at).toLocaleString("fr-FR")}</b>.</p>
++              <p>Envoi : e-mail {result.delivery?.email?.ok ? "✓" : "✗"} · WhatsApp {result.delivery?.whatsapp?.ok ? "✓" : `✗ ${result.delivery?.whatsapp?.error || ""}`}</p>
++              <div className="flex items-center gap-2"><code className="flex-1 rounded border bg-slate-50 px-2 py-1 font-mono text-base select-all" data-testid="temp-access-code">{result.code}</code>
++                <Button size="sm" variant="outline" onClick={() => copy(result.code)}><Copy className="w-4 h-4" /></Button></div>
++              <div className="flex items-center gap-2"><code className="flex-1 rounded border bg-slate-50 px-2 py-1 text-xs break-all select-all">{result.link}</code>
++                <Button size="sm" variant="outline" onClick={() => copy(result.link)}><Copy className="w-4 h-4" /></Button></div>
++            </div>
++          )}
++          <DialogFooter>
++            <Button variant="outline" onClick={close}>{result ? "Fermer" : "Annuler"}</Button>
++            {!result && <Button className="bg-[#0F6B4A] hover:bg-[#0A4E36] text-white" onClick={create} disabled={busy} data-testid="temp-access-create">Créer et envoyer</Button>}
++          </DialogFooter>
++        </DialogContent>
++      </Dialog>
++    </>
++  );
++}
+diff --git a/frontend/src/contexts/AuthContext.jsx b/frontend/src/contexts/AuthContext.jsx
+index 28241c8..53a8c18 100644
+--- a/frontend/src/contexts/AuthContext.jsx
++++ b/frontend/src/contexts/AuthContext.jsx
+@@ -1,5 +1,6 @@
+ import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+ import { apiClient } from "@/lib/api";
++import { getDeviceId, getAccessCode, clearAccessCode } from "@/lib/device";
+ 
+ const AuthContext = createContext(null);
+ 
+@@ -38,8 +39,12 @@ export function AuthProvider({ children }) {
+     return data; // { session_token, dev_otp, message }
+   };
+ 
+-  const loginVerify = async (session_token, code) => {
+-    const { data } = await apiClient.post("/auth/verify-otp", { session_token, code });
++  const loginVerify = async (session_token, code, access_code = null) => {
++    // Liste blanche du personnel : appareil + code d'accès temporaire éventuel
++    const { data } = await apiClient.post("/auth/verify-otp", {
++      session_token, code, device_id: getDeviceId(), access_code: access_code || getAccessCode(),
++    });
++    clearAccessCode();
+     localStorage.setItem("albarka_token", data.access_token);
+     setUser(data.user);
+     return data.user;
 diff --git a/frontend/src/lib/busyTasks.js b/frontend/src/lib/busyTasks.js
 new file mode 100644
 index 0000000..41e317d
@@ -1822,6 +2732,35 @@ index 0000000..41e317d
 +    (err) => { err?.config?.__endTask?.(); return Promise.reject(err); },
 +  );
 +}
+diff --git a/frontend/src/lib/device.js b/frontend/src/lib/device.js
+new file mode 100644
+index 0000000..4d95c82
+--- /dev/null
++++ b/frontend/src/lib/device.js
+@@ -0,0 +1,23 @@
++// Identifiant de cet appareil (navigateur) pour la liste blanche du personnel.
++// Généré une fois et gardé dans le navigateur ; effacer les données du site
++// oblige à refaire autoriser l'appareil par le superviseur.
++const KEY = "albarka_device_id";
++
++export function getDeviceId() {
++  try {
++    let id = localStorage.getItem(KEY);
++    if (!id) {
++      id = (window.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`);
++      localStorage.setItem(KEY, id);
++    }
++    return id;
++  } catch {
++    return null; // stockage bloqué : l'appareil ne peut pas être reconnu
++  }
++}
++
++// Code d'accès temporaire reçu par e-mail / WhatsApp (lien /login?acces=CODE)
++const CODE_KEY = "albarka_access_code";
++export function saveAccessCode(code) { try { sessionStorage.setItem(CODE_KEY, code); } catch { /* ignoré */ } }
++export function getAccessCode() { try { return sessionStorage.getItem(CODE_KEY) || null; } catch { return null; } }
++export function clearAccessCode() { try { sessionStorage.removeItem(CODE_KEY); } catch { /* ignoré */ } }
 diff --git a/frontend/src/lib/useIdleTimer.js b/frontend/src/lib/useIdleTimer.js
 new file mode 100644
 index 0000000..400c2f7
@@ -1983,10 +2922,18 @@ index e6584f2..e25038b 100644
                      <Button variant="outline" size="sm" data-testid={`view-client-${c.id}`}>Ouvrir</Button>
                    </Link>
 diff --git a/frontend/src/pages/admin/AdminSettings.jsx b/frontend/src/pages/admin/AdminSettings.jsx
-index 61461a0..7464c07 100644
+index 61461a0..9a4395e 100644
 --- a/frontend/src/pages/admin/AdminSettings.jsx
 +++ b/frontend/src/pages/admin/AdminSettings.jsx
-@@ -20,7 +20,8 @@ const FIELDS_TABS = ["cabinet", "whatsapp", "notifications", "rapports"];
+@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
+ import { Switch } from "@/components/ui/switch";
+ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+ import ClientDocsNotifPanel from "@/pages/admin/ClientDocsNotifPanel";
++import StaffAccessPanel from "@/pages/admin/StaffAccessPanel";
+ import CertificatesPanel from "@/pages/admin/CertificatesPanel";
+ import BrandingPanel from "@/pages/admin/BrandingPanel";
+ import { useAuth } from "@/contexts/AuthContext";
+@@ -20,7 +21,8 @@ const FIELDS_TABS = ["cabinet", "whatsapp", "notifications", "rapports"];
  
  export default function AdminSettings() {
    const { user } = useAuth();
@@ -1996,7 +2943,16 @@ index 61461a0..7464c07 100644
    const [settings, setSettings] = useState(null);
    const [loading, setLoading] = useState(true);
    const [saving, setSaving] = useState(false);
-@@ -238,8 +239,21 @@ export default function AdminSettings() {
+@@ -183,6 +185,8 @@ export default function AdminSettings() {
+           <TabsTrigger value="paiements" data-testid="tab-paiements">
+             <CreditCard className="w-4 h-4 mr-1.5" /> Paiements
+           </TabsTrigger>
++          {/* Liste blanche du personnel (appareils, IP) et accès temporaires */}
++          <TabsTrigger value="acces" data-testid="tab-acces">Accès du personnel</TabsTrigger>
+         </TabsList>
+ 
+         {/* --- CABINET --- */}
+@@ -238,8 +242,21 @@ export default function AdminSettings() {
                </div>
              </div>
  
@@ -2018,7 +2974,7 @@ index 61461a0..7464c07 100644
                  cabinet_name: settings.cabinet_name,
                  cabinet_email: settings.cabinet_email,
                  cabinet_phone: settings.cabinet_phone,
-@@ -262,7 +276,7 @@ export default function AdminSettings() {
+@@ -262,7 +279,7 @@ export default function AdminSettings() {
                    <div className="text-sm text-muted-foreground max-w-md">
                      Une fois activé, seuls Administrateur/Superviseur/DG/Direction/Secrétariat
                      voient les numéros de téléphone et WhatsApp des clients en clair — les autres
@@ -2027,7 +2983,7 @@ index 61461a0..7464c07 100644
                    </div>
                  </div>
                  <Switch
-@@ -274,7 +288,7 @@ export default function AdminSettings() {
+@@ -274,7 +291,7 @@ export default function AdminSettings() {
                </div>
                {!isAdministrateur && (
                  <div className="text-xs text-amber-700 mt-2">
@@ -2036,21 +2992,56 @@ index 61461a0..7464c07 100644
                  </div>
                )}
                {isAdministrateur && (
+@@ -585,6 +602,11 @@ export default function AdminSettings() {
+           <ClientDocsNotifPanel settings={settings} setSettings={setSettings} save={save} saving={saving} />
+         </TabsContent>
+ 
++        {/* --- ACCÈS DU PERSONNEL --- */}
++        <TabsContent value="acces" className="pt-6">
++          <StaffAccessPanel settings={settings} setSettings={setSettings} save={save} saving={saving} />
++        </TabsContent>
++
+         {/* --- RAPPORTS --- */}
+         <TabsContent value="rapports" className="pt-6">
+           <div className="albarka-card p-6 space-y-4 max-w-2xl">
+diff --git a/frontend/src/pages/admin/AdminShared.jsx b/frontend/src/pages/admin/AdminShared.jsx
+index b7d1fa0..6998830 100644
+--- a/frontend/src/pages/admin/AdminShared.jsx
++++ b/frontend/src/pages/admin/AdminShared.jsx
+@@ -3,9 +3,16 @@ import { DashboardShared } from "@/pages/portal/Dashboard";
+ import Documents from "@/pages/portal/Documents";
+ import Missions from "@/pages/portal/Missions";
+ import Echeances from "@/pages/portal/Echeances";
++import RecentClientsCard from "@/components/RecentClientsCard";
+ 
+ // Simple wrappers that reuse portal pages in staff mode (backend enforces scope).
+-export const AdminDashboard = () => <DashboardShared admin />;
++// Tableau de bord cabinet + « Derniers clients connectés » (Direction, Secrétariat, admin)
++export const AdminDashboard = () => (
++  <div className="space-y-6">
++    <DashboardShared admin />
++    <RecentClientsCard />
++  </div>
++);
+ export const AdminDocuments = () => <Documents />;
+ export const AdminMissions = () => <Missions staffMode />;
+ export const AdminEcheances = () => <Echeances staffMode />;
 diff --git a/frontend/src/pages/admin/AdminStaff.jsx b/frontend/src/pages/admin/AdminStaff.jsx
-index 7b48751..ab07a09 100644
+index 7b48751..271f6d0 100644
 --- a/frontend/src/pages/admin/AdminStaff.jsx
 +++ b/frontend/src/pages/admin/AdminStaff.jsx
-@@ -1,6 +1,8 @@
+@@ -1,6 +1,9 @@
  import React, { useEffect, useState, useMemo } from "react";
  import { toast } from "sonner";
 -import { Plus, Pencil } from "lucide-react";
 +import { Plus, Pencil, FlaskConical } from "lucide-react";
 +import AccountActions, { AccountDates } from "@/components/AccountActions";
 +import { usePresence, PresenceLabel } from "@/components/Presence";
++import TemporaryAccessButton from "@/components/TemporaryAccessButton";
  import { apiClient, extractError } from "@/lib/api";
  import { Button } from "@/components/ui/button";
  import {
-@@ -47,6 +49,16 @@ export default function AdminStaff() {
+@@ -47,6 +50,19 @@ export default function AdminStaff() {
    // Point 10 — filtrage selon le rôle du visiteur.
    const isAdmin = myRoles.includes("administrateur");
    const canEdit = isAdmin || myRoles.includes("superviseur") || myRoles.includes("direction");
@@ -2064,10 +3055,13 @@ index 7b48751..ab07a09 100644
 +  const isSupRow = (s) => (s.roles || []).includes("superviseur");
 +  // Présence en temps réel (rafraîchie toutes les 15 s)
 +  const presence = usePresence();
++  // Accès temporaires : admin ou adresse désignée par admin (GET /access/me)
++  const [canIssueTokens, setCanIssueTokens] = useState(false);
++  useEffect(() => { apiClient.get("/access/me").then(({ data }) => setCanIssueTokens(!!data.can_issue_tokens)).catch(() => {}); }, []);
  
    const [items, setItems] = useState([]);
    const [loading, setLoading] = useState(true);
-@@ -54,13 +66,17 @@ export default function AdminStaff() {
+@@ -54,13 +70,17 @@ export default function AdminStaff() {
    const [editing, setEditing] = useState(null); // null = create mode
    const [form, setForm] = useState(emptyForm());
  
@@ -2090,7 +3084,7 @@ index 7b48751..ab07a09 100644
    // Table filtrée : masque les comptes administrateurs pour les non-admins.
    const visibleItems = useMemo(
      () => (isAdmin ? items : items.filter((s) => !(s.roles || []).includes("administrateur"))),
-@@ -144,14 +160,46 @@ export default function AdminStaff() {
+@@ -144,14 +164,46 @@ export default function AdminStaff() {
      }
    };
  
@@ -2138,7 +3132,7 @@ index 7b48751..ab07a09 100644
          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setEditing(null); }}>
            {canEdit && (
              <DialogTrigger asChild>
-@@ -188,14 +236,16 @@ export default function AdminStaff() {
+@@ -188,14 +240,16 @@ export default function AdminStaff() {
                        <Checkbox
                          checked={form.roles.includes(r.value)}
                          onCheckedChange={() => toggleRole(r.value)}
@@ -2157,7 +3151,7 @@ index 7b48751..ab07a09 100644
                </div>
                <label className="flex items-center gap-2 text-sm cursor-pointer pt-1">
                  <Checkbox
-@@ -224,6 +274,7 @@ export default function AdminStaff() {
+@@ -224,6 +278,7 @@ export default function AdminStaff() {
              </DialogFooter>
            </DialogContent>
          </Dialog>
@@ -2165,7 +3159,7 @@ index 7b48751..ab07a09 100644
        </div>
  
        <div className="albarka-card overflow-hidden">
-@@ -235,15 +286,20 @@ export default function AdminStaff() {
+@@ -235,15 +290,20 @@ export default function AdminStaff() {
                <TableHead>Rôles</TableHead>
                <TableHead>Téléphone</TableHead>
                <TableHead>Statut</TableHead>
@@ -2188,7 +3182,7 @@ index 7b48751..ab07a09 100644
                  <TableCell className="text-sm">{s.email}</TableCell>
                  <TableCell className="text-xs">
                    <div className="flex flex-wrap gap-1">
-@@ -258,7 +314,11 @@ export default function AdminStaff() {
+@@ -258,7 +318,11 @@ export default function AdminStaff() {
                      ? <span className="albarka-chip bg-slate-100 text-slate-500">Inactif</span>
                      : <span className="albarka-chip bg-emerald-100 text-emerald-800">Actif</span>}
                  </TableCell>
@@ -2201,12 +3195,14 @@ index 7b48751..ab07a09 100644
                    {canEdit && (
                      <Button
                        variant="ghost"
-@@ -270,12 +330,56 @@ export default function AdminStaff() {
+@@ -270,12 +334,58 @@ export default function AdminStaff() {
                        <Pencil className="w-4 h-4" />
                      </Button>
                    )}
 +                  {/* Désactiver / réinitialiser le mot de passe (jamais sur soi ; compte admin :
 +                      lui seul ; superviseur : superviseur ou admin) + Supprimer (superviseur) */}
++                  {/* Accès temporaire (hors liste blanche) — pas utile pour superviseur/admin, jamais bloqués */}
++                  {canIssueTokens && s.id !== me?.id && !isSupRow(s) && !isAdminAccountRow(s) && <TemporaryAccessButton account={s} />}
 +                  {s.id !== me?.id && (!isAdminAccountRow(s) || isAdminAccount) && (!isSupRow(s) || isSuperviseur || isAdminAccount) && (
 +                    <AccountActions account={s} onChanged={load} canManage={canEdit} deleteLabel="ce compte du personnel"
 +                      canDelete={isSuperviseur && !isAdminAccountRow(s) && (!isSupRow(s) || isAdminAccount)} />
@@ -2312,6 +3308,273 @@ index 8b1bb34..398fb84 100644
                  </div>
                  {/* Étiquette */}
                  <DropdownMenu>
+diff --git a/frontend/src/pages/admin/StaffAccessPanel.jsx b/frontend/src/pages/admin/StaffAccessPanel.jsx
+new file mode 100644
+index 0000000..bfa7899
+--- /dev/null
++++ b/frontend/src/pages/admin/StaffAccessPanel.jsx
+@@ -0,0 +1,175 @@
++/*
++  Paramètres → « Accès du personnel » (superviseur) — liste blanche :
++    - activer / désactiver la liste blanche (désactivée par défaut) ;
++    - adresses IP ou plages autorisées (réseau du bureau) ;
++    - appareils autorisés (poste partagé du cabinet ou appareil d'un
++      collaborateur), demandes d'appareils à approuver ou refuser ;
++    - qui peut créer des jetons d'accès temporaires (admin seul le règle) ;
++    - jetons d'accès temporaires en cours (révocation).
++  Props : settings, setSettings, save(partial), saving (état de AdminSettings)
++  API : /access/* (albarka_access.py)
++*/
++import React, { useEffect, useState } from "react";
++import { toast } from "sonner";
++import { Save, ShieldCheck, Monitor, Check, X, Trash2, Globe } from "lucide-react";
++import { apiClient, extractError } from "@/lib/api";
++import { getDeviceId } from "@/lib/device";
++import { useAuth } from "@/contexts/AuthContext";
++import { Button } from "@/components/ui/button";
++import { Input } from "@/components/ui/input";
++import { Label } from "@/components/ui/label";
++import { Switch } from "@/components/ui/switch";
++
++const fmt = (iso) => (iso ? new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");
++
++export default function StaffAccessPanel({ settings, setSettings, save, saving }) {
++  const { user } = useAuth();
++  const isAdminAccount = (user?.email || "").toLowerCase() === "admin@sawalismartsystems.com";
++  const [data, setData] = useState({ devices: [], requests: [] });
++  const [tokens, setTokens] = useState([]);
++  const [myIp, setMyIp] = useState("");
++  const [ipText, setIpText] = useState((settings.staff_ip_whitelist || []).join("\n"));
++  const [issuersText, setIssuersText] = useState((settings.access_token_issuer_emails || []).join("\n"));
++  const [label, setLabel] = useState("Poste du cabinet");
++  const myDevice = getDeviceId();
++
++  const load = () => {
++    apiClient.get("/access/devices").then(({ data: d }) => setData(d)).catch(() => {});
++    apiClient.get("/access/tokens").then(({ data: d }) => setTokens(d.items || [])).catch(() => {});
++  };
++  useEffect(() => {
++    load();
++    apiClient.get("/access/my-ip").then(({ data: d }) => setMyIp(d.ip)).catch(() => {});
++  }, []);
++
++  const lines = (t) => t.split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean);
++  const saveAccess = () => save({
++    staff_whitelist_enabled: !!settings.staff_whitelist_enabled,
++    staff_ip_whitelist: lines(ipText),
++    ...(isAdminAccount ? { access_token_issuer_emails: lines(issuersText) } : {}),
++  });
++
++  // Autoriser l'appareil sur lequel je suis (poste partagé du cabinet)
++  const allowThisDevice = async () => {
++    try { await apiClient.post("/access/devices", { device_id: myDevice, label, current: true }); toast.success("Cet appareil est autorisé"); load(); }
++    catch (err) { toast.error(extractError(err)); }
++  };
++  const approve = async (r, shared) => {
++    try { await apiClient.post(`/access/requests/${r.id}/approve`, { shared }); toast.success(shared ? "Poste partagé autorisé" : `Appareil autorisé pour ${r.user_name}`); load(); }
++    catch (err) { toast.error(extractError(err)); }
++  };
++  const reject = async (r) => { try { await apiClient.post(`/access/requests/${r.id}/reject`); load(); } catch (err) { toast.error(extractError(err)); } };
++  const revoke = async (d) => { try { await apiClient.delete(`/access/devices/${d.id}`); toast.success("Appareil retiré"); load(); } catch (err) { toast.error(extractError(err)); } };
++  const revokeToken = async (t) => { try { await apiClient.delete(`/access/tokens/${t.id}`); toast.success("Accès temporaire révoqué"); load(); } catch (err) { toast.error(extractError(err)); } };
++
++  const thisDeviceAllowed = data.devices.some((d) => d.device_id === myDevice);
++
++  return (
++    <div className="space-y-6 max-w-4xl" data-testid="staff-access-panel">
++      {/* Liste blanche : activation + IP */}
++      <div className="albarka-card p-6 space-y-4">
++        <div className="flex items-start justify-between gap-4">
++          <div>
++            <div className="font-semibold flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-[#0F6B4A]" /> Liste blanche du personnel</div>
++            <div className="text-sm text-muted-foreground max-w-xl">
++              Activée, un collaborateur ne peut se connecter que depuis une adresse IP ou un appareil autorisé ; sinon il voit « ERREUR 404 »
++              après son mot de passe et son code. Admin et le Superviseur ne sont jamais bloqués ; les clients ne sont pas concernés.
++              Autorisez d'abord les appareils et le réseau du cabinet, puis activez.
++            </div>
++          </div>
++          <Switch checked={!!settings.staff_whitelist_enabled} onCheckedChange={(v) => setSettings({ ...settings, staff_whitelist_enabled: v })} data-testid="whitelist-switch" />
++        </div>
++        <div>
++          <Label className="flex items-center gap-2"><Globe className="w-4 h-4" /> Adresses IP ou plages autorisées (une par ligne)</Label>
++          <textarea rows={3} value={ipText} onChange={(e) => setIpText(e.target.value)} className="mt-1 w-full rounded-md border p-2 text-sm font-mono" placeholder="41.207.12.0/24" data-testid="ip-whitelist" />
++          <div className="text-xs text-muted-foreground">
++            Votre adresse actuelle : <span className="font-mono">{myIp || "…"}</span>
++            {myIp && <button type="button" className="ml-2 text-[#0F6B4A] underline" onClick={() => setIpText((t) => (t ? `${t}\n${myIp}` : myIp))}>ajouter</button>}
++            {" "}— utile seulement si le bureau a une adresse fixe (les connexions mobiles changent souvent d'adresse).
++          </div>
++        </div>
++        {/* Qui peut créer des jetons d'accès temporaires (admin seul) */}
++        <div>
++          <Label>Adresses e-mail autorisées à créer des accès temporaires (en plus d'admin)</Label>
++          <textarea rows={2} value={issuersText} onChange={(e) => setIssuersText(e.target.value)} disabled={!isAdminAccount} className="mt-1 w-full rounded-md border p-2 text-sm disabled:bg-slate-50" placeholder="dg@albarka-bf.com" data-testid="issuers-emails" />
++          {!isAdminAccount && <div className="text-xs text-amber-700">Seul admin peut modifier cette liste.</div>}
++        </div>
++        <Button onClick={saveAccess} disabled={saving} className="bg-[#0F6B4A] hover:bg-[#0A4E36] text-white" data-testid="save-access-btn">
++          <Save className="w-4 h-4 mr-2" /> Enregistrer
++        </Button>
++      </div>
++
++      {/* Appareils autorisés + demandes */}
++      <div className="albarka-card p-6 space-y-4">
++        <div className="font-semibold flex items-center gap-2"><Monitor className="w-4 h-4 text-[#0F6B4A]" /> Appareils autorisés</div>
++        <div className="flex flex-wrap items-end gap-2">
++          <div><Label className="text-xs">Nom de cet appareil</Label><Input value={label} onChange={(e) => setLabel(e.target.value)} className="w-56" /></div>
++          <Button variant="outline" onClick={allowThisDevice} disabled={thisDeviceAllowed} data-testid="allow-this-device">
++            {thisDeviceAllowed ? "Cet appareil est déjà autorisé" : "Autoriser cet appareil (poste partagé)"}
++          </Button>
++        </div>
++
++        {data.requests.length > 0 && (
++          <div>
++            <div className="text-sm font-medium mb-1">Demandes en attente ({data.requests.length})</div>
++            <div className="space-y-2" data-testid="device-requests">
++              {data.requests.map((r) => (
++                <div key={r.id} className="border rounded-md p-3 text-sm flex flex-wrap items-center gap-3 bg-amber-50/40">
++                  <div className="flex-1 min-w-[220px]">
++                    <div className="font-medium">{r.user_name} <span className="text-xs text-muted-foreground">{r.user_email}</span></div>
++                    <div className="text-xs text-muted-foreground">{fmt(r.last_attempt_at)} · IP {r.ip || "?"} · {r.attempts || 1} tentative(s)</div>
++                    <div className="text-[11px] text-muted-foreground truncate max-w-md">{r.user_agent}</div>
++                  </div>
++                  <Button size="sm" className="bg-[#0F6B4A] hover:bg-[#0A4E36] text-white" onClick={() => approve(r, false)} data-testid={`approve-${r.id}`}><Check className="w-3.5 h-3.5 mr-1" />Pour ce collaborateur</Button>
++                  <Button size="sm" variant="outline" onClick={() => approve(r, true)}>Poste partagé</Button>
++                  <Button size="sm" variant="ghost" className="text-red-600" onClick={() => reject(r)}><X className="w-3.5 h-3.5 mr-1" />Refuser</Button>
++                </div>
++              ))}
++            </div>
++          </div>
++        )}
++
++        <div className="overflow-x-auto">
++          <table className="w-full text-sm" data-testid="trusted-devices">
++            <thead><tr className="text-left text-xs text-muted-foreground border-b"><th className="py-2 pr-3">Appareil</th><th className="py-2 pr-3">Pour</th><th className="py-2 pr-3">Dernière utilisation</th><th /></tr></thead>
++            <tbody>
++              {data.devices.length === 0 && <tr><td colSpan={4} className="py-4 text-center text-muted-foreground">Aucun appareil autorisé.</td></tr>}
++              {data.devices.map((d) => (
++                <tr key={d.id} className="border-b last:border-0">
++                  <td className="py-2 pr-3"><div className="font-medium">{d.label}{d.device_id === myDevice && <span className="ml-2 text-xs text-[#0F6B4A]">(cet appareil)</span>}</div>
++                    <div className="text-[11px] text-muted-foreground truncate max-w-xs">{d.user_agent}</div></td>
++                  <td className="py-2 pr-3">{d.user_name || "Tout le personnel (poste partagé)"}</td>
++                  <td className="py-2 pr-3 tabular-nums">{fmt(d.last_used_at)}</td>
++                  <td className="py-2 text-right"><Button size="sm" variant="ghost" className="text-red-600" onClick={() => revoke(d)} title="Retirer"><Trash2 className="w-4 h-4" /></Button></td>
++                </tr>
++              ))}
++            </tbody>
++          </table>
++        </div>
++      </div>
++
++      {/* Jetons d'accès temporaires */}
++      <div className="albarka-card p-6 space-y-3">
++        <div className="font-semibold">Accès temporaires</div>
++        <div className="text-xs text-muted-foreground">Créés depuis Personnels (bouton « Accès temporaire » sur la ligne du collaborateur) par admin ou une adresse désignée.</div>
++        <div className="overflow-x-auto">
++          <table className="w-full text-sm" data-testid="access-tokens">
++            <thead><tr className="text-left text-xs text-muted-foreground border-b"><th className="py-2 pr-3">Collaborateur</th><th className="py-2 pr-3">Créé par</th><th className="py-2 pr-3">Valable jusqu'au</th><th className="py-2 pr-3">Utilisations</th><th /></tr></thead>
++            <tbody>
++              {tokens.length === 0 && <tr><td colSpan={5} className="py-4 text-center text-muted-foreground">Aucun accès temporaire.</td></tr>}
++              {tokens.map((t) => (
++                <tr key={t.id} className="border-b last:border-0">
++                  <td className="py-2 pr-3">{t.user_name}{t.note && <div className="text-[11px] text-muted-foreground">{t.note}</div>}</td>
++                  <td className="py-2 pr-3">{t.created_by_name}</td>
++                  <td className="py-2 pr-3 tabular-nums">{fmt(t.expires_at)} {t.active ? <span className="albarka-chip text-[10px] bg-emerald-100 text-emerald-800 ml-1">actif</span> : <span className="albarka-chip text-[10px] bg-slate-100 text-slate-500 ml-1">{t.revoked ? "révoqué" : "expiré"}</span>}</td>
++                  <td className="py-2 pr-3">{(t.uses || []).length}</td>
++                  <td className="py-2 text-right">{t.active && <Button size="sm" variant="ghost" className="text-red-600" onClick={() => revokeToken(t)}>Révoquer</Button>}</td>
++                </tr>
++              ))}
++            </tbody>
++          </table>
++        </div>
++      </div>
++    </div>
++  );
++}
+diff --git a/frontend/src/pages/auth/Login.jsx b/frontend/src/pages/auth/Login.jsx
+index 2b2ab60..5b21d94 100644
+--- a/frontend/src/pages/auth/Login.jsx
++++ b/frontend/src/pages/auth/Login.jsx
+@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
+ import { Label } from "@/components/ui/label";
+ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
+ import { apiClient, extractError } from "@/lib/api";
++import { saveAccessCode, getAccessCode } from "@/lib/device";
+ 
+ export default function Login() {
+   const [step, setStep] = useState("credentials"); // credentials | otp
+@@ -23,6 +24,13 @@ export default function Login() {
+   const captchaRef = useRef(null);
+   const { loginStart, loginVerify, isStaff } = useAuth();
+   const navigate = useNavigate();
++  // Accès temporaire : lien reçu /login?acces=CODE (gardé pour l'étape du code OTP)
++  const [accessCode, setAccessCode] = useState(() => {
++    const fromUrl = new URLSearchParams(window.location.search).get("acces");
++    if (fromUrl) saveAccessCode(fromUrl.trim());
++    return fromUrl || getAccessCode() || "";
++  });
++  const [showAccessField, setShowAccessField] = useState(!!accessCode);
+ 
+   useEffect(() => {
+     apiClient.get("/auth/captcha-config").then(({ data }) => setCaptchaCfg(data)).catch(() => {});
+@@ -76,11 +84,13 @@ export default function Login() {
+     }
+     setLoading(true);
+     try {
+-      const user = await loginVerify(session.session_token, code);
++      const user = await loginVerify(session.session_token, code, accessCode.trim() || null);
+       toast.success(`Bienvenue, ${user.full_name}`);
+       const staff = !(user.roles?.length === 1 && user.roles[0] === "client");
+       navigate(staff ? "/admin" : "/portal", { replace: true });
+     } catch (err) {
++      // Collaborateur hors liste blanche : page d'erreur neutre
++      if (err?.response?.status === 404) { navigate("/erreur-404", { replace: true }); return; }
+       toast.error(extractError(err, "Code invalide"));
+     } finally {
+       setLoading(false);
+@@ -247,6 +257,18 @@ export default function Login() {
+                 </div>
+               </div>
+ 
++              {/* Code d'accès temporaire (reçu par e-mail / WhatsApp) — facultatif */}
++              {showAccessField ? (
++                <div>
++                  <Label>Code d'accès temporaire</Label>
++                  <Input value={accessCode} onChange={(e) => setAccessCode(e.target.value.toUpperCase())} className="mt-2 font-mono tracking-widest" placeholder="Facultatif" data-testid="access-code-input" />
++                </div>
++              ) : (
++                <button type="button" onClick={() => setShowAccessField(true)} className="text-xs text-muted-foreground hover:text-[#0F6B4A]" data-testid="show-access-code">
++                  J'ai un code d'accès temporaire
++                </button>
++              )}
++
+               <Button
+                 type="submit"
+                 disabled={loading || code.length !== 6}
+diff --git a/frontend/src/pages/public/Error404.jsx b/frontend/src/pages/public/Error404.jsx
+new file mode 100644
+index 0000000..654a8b5
+--- /dev/null
++++ b/frontend/src/pages/public/Error404.jsx
+@@ -0,0 +1,20 @@
++/*
++  Page « ERREUR 404 » neutre — affichée à un collaborateur qui tente de se
++  connecter hors de la liste blanche (appareil / réseau non autorisé), sans
++  révéler que ses identifiants étaient bons (albarka_access.py).
++*/
++import React from "react";
++import { Link } from "react-router-dom";
++
++export default function Error404() {
++  return (
++    <div className="min-h-screen flex items-center justify-center bg-white px-4" data-testid="error-404-page">
++      <div className="text-center">
++        <div className="font-mono text-7xl font-bold text-slate-800">404</div>
++        <div className="mt-2 text-lg font-semibold tracking-widest text-slate-600">ERREUR</div>
++        <p className="mt-3 text-sm text-slate-500">La page demandée est introuvable.</p>
++        <Link to="/" className="inline-block mt-6 text-sm text-[#0F6B4A] underline">Retour à l'accueil</Link>
++      </div>
++    </div>
++  );
++}
 -- 
 2.43.0
 

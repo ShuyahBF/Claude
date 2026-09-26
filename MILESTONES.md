@@ -124,9 +124,12 @@ concerné.
   navigateur OK.
 - **Albarka lot 4 — Superviseur réservé, suppression du personnel, comptes
   de test, Paramètres** — **livré, en attente de publication** (base
-  `3d6b60a` ; `albarka-portal-livraisons/albarka-portal-corrections_4_8fd0653.patch`
-  + `albarka-portal-prompt_4.md`, remplace 56d4b58, 37ad3ec et 90834f0 non
-  publiés ; dev `claude/albarka-lot4` 6fd9276). + Déconnexion automatique
+  `3d6b60a` ; `albarka-portal-livraisons/albarka-portal-corrections_4_439dc65.patch`
+  + `albarka-portal-prompt_4.md`, remplace 56d4b58, 37ad3ec, 90834f0 et
+  8fd0653 non publiés ; dev `claude/albarka-lot4` 84ce4b6). + Liste blanche
+  du personnel (appareils + IP, fausse 404, demandes d'appareils), jetons
+  d'accès temporaires (admin ou e-mails désignés, e-mail + WhatsApp),
+  tableau de bord « Derniers clients connectés » (Direction, Secrétariat, admin). + Déconnexion automatique
   (repris de Sawali, défaut 30 min, jamais pendant une tâche en cours). + Présence en temps réel (keep-alive 25 s,
   en ligne/absent/hors ligne, Clients, Personnels, chat, WhatsApp). + Actions sur les comptes (désactiver,
   réinitialiser le mot de passe avec fermeture des sessions via iat,
@@ -136,7 +139,7 @@ concerné.
   admin@sawalismartsystems.com seul ; suppression d'un compte du personnel
   par le superviseur (trace deleted_users) ; « Créer comptes de test » (+alias
   e-mail, invisibles sauf superviseur, exclus des envois de masse) ;
-  Paramètres superviseur seul (RGPD compris). 84 tests + navigateur OK.
+  Paramètres superviseur seul (RGPD compris). 88 tests + navigateur OK.
 - **À refaire pour** : `Site-Albarka` — **lot 1 publié et déployé en production le
   2026-09-23** (commit Emergent `ccab0b2`, identique au patch ; routes et
   frontend vérifiés sur albarka-bf.com ; premier retour réel de l'utilisateur

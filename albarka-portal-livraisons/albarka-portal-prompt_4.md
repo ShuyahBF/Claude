@@ -1,13 +1,13 @@
-# Albarka — Lot 4 : Superviseur réservé, actions sur les comptes, présence en temps réel, déconnexion automatique, comptes de test, Paramètres
+# Albarka — Lot 4 : Superviseur réservé, comptes, présence, déconnexion automatique, liste blanche du personnel, comptes de test, Paramètres
 
-Applique `albarka-portal-corrections_4_8fd0653.patch` sur la branche
+Applique `albarka-portal-corrections_4_439dc65.patch` sur la branche
 `conflict_030926_0658`. Base attendue : le commit `3d6b60a` (« Auto-generated
 changes », juste après `2e0a021`, le lot 3 que tu as publié). C'est un
 `git format-patch` d'un seul commit : applique-le en UN SEUL `git am`, puis
 redéploie (backend et frontend) et enregistre sur GitHub. Ce patch remplace
 entièrement les versions précédentes du lot 4 (`…_4_56d4b58.patch`,
-`…_4_37ad3ec.patch` et `…_4_90834f0.patch`) que je t'avais envoyées :
-n'applique que celui-ci.
+`…_4_37ad3ec.patch`, `…_4_90834f0.patch` et `…_4_8fd0653.patch`) que je
+t'avais envoyées : n'applique que celui-ci.
 
 Vocabulaire : quand je dis « admin », je parle du compte
 `admin@sawalismartsystems.com`, le super-utilisateur de la plateforme, pas du
@@ -26,10 +26,19 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 - `frontend/src/components/Presence.jsx` : battements depuis chaque page, pastilles et libellés de présence
 - `frontend/src/components/AutoLogoutGate.jsx`, `frontend/src/lib/useIdleTimer.js` : déconnexion automatique pour inactivité (repris de Sawali)
 - `frontend/src/lib/busyTasks.js` : suivi des tâches en cours, qui empêchent la déconnexion automatique
+- `backend/albarka_access.py` : liste blanche du personnel (appareils + IP) et jetons d'accès temporaires
+- `backend/tests/test_access_lot4.py` : tests. Tu ne les lances pas.
+- `frontend/src/lib/device.js` : identifiant de l'appareil et code d'accès temporaire
+- `frontend/src/pages/admin/StaffAccessPanel.jsx` : Paramètres → Accès du personnel
+- `frontend/src/components/TemporaryAccessButton.jsx` : bouton « Accès temporaire » (Personnels)
+- `frontend/src/components/RecentClientsCard.jsx` : tableau de bord, derniers clients connectés
+- `frontend/src/pages/public/Error404.jsx` : page « ERREUR 404 » neutre
 
 **Fichiers modifiés**
 - `backend/albarka_models.py` : suppression de `effective_roles()` (lot 3), ajout de `is_test_account()`, `hide_test_accounts_filter()`, `NOT_TEST_ACCOUNT` et `SETTINGS_ROLES`
-- `backend/albarka_auth.py` : retour à la version d'avant le lot 3 (plus de rôles « effectifs »), plus la date d'émission (`iat`) dans le jeton et la fermeture des sessions ouvertes avant une réinitialisation du mot de passe
+- `backend/albarka_auth.py` : retour à la version d'avant le lot 3 (plus de rôles « effectifs »), plus la date d'émission (`iat`) dans le jeton, la fermeture des sessions ouvertes avant une réinitialisation du mot de passe, le contrôle de la liste blanche dans `verify-otp` et une session bornée à la fin d'un accès temporaire
+- `backend/albarka_models.py` (en plus) : `OtpVerifyRequest` accepte `device_id` et `access_code`
+- `backend/albarka_presence.py` (en plus) : début de session, dernière activité réelle, `GET /presence/recent-clients`
 - `backend/albarka_myaccount.py` : date de dernière modification notée quand la personne modifie son propre compte ; `GET /me/idle-config` (délai de déconnexion automatique)
 - `backend/albarka_clients.py` : règle Superviseur, retour de la règle Administrateur d'origine, suppression d'un compte (personnel : superviseur ; client : admin), `POST /clients/{id}/active`, `POST /clients/{id}/reset-password`, date et auteur de la dernière modification, comptes de test (`POST` et `DELETE /clients/test-accounts`), masquage des comptes de test
 - `backend/albarka_admin_settings.py`, `albarka_settings_tests.py`, `albarka_branding.py`, `albarka_signing.py` : routes des Paramètres réservées au superviseur ; nouveau réglage `auto_logout_minutes`
@@ -41,6 +50,9 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 - `frontend/src/pages/admin/AdminStaff.jsx` : case Superviseur verrouillée, case Administrateur rétablie, actions sur les comptes, bouton « Créer comptes de test », badge TEST
 - `frontend/src/pages/admin/AdminClients.jsx` : actions sur les comptes, colonne « Connexion / modification », suppression pour admin
 - `frontend/src/components/PortalLayout.jsx` : menu Paramètres réservé au superviseur, battements de présence, « hors ligne » envoyé à la déconnexion
+- `frontend/src/contexts/AuthContext.jsx`, `frontend/src/pages/auth/Login.jsx` : appareil et code d'accès temporaire envoyés à la vérification du code, lien `/login?acces=…`, redirection vers « ERREUR 404 »
+- `frontend/src/App.js` : route `/erreur-404`
+- `frontend/src/pages/admin/AdminShared.jsx` : carte « Derniers clients connectés » sur le tableau de bord
 - `frontend/src/pages/admin/AdminSettings.jsx` : réglage RGPD modifiable par le superviseur ; champ « Déconnexion automatique après inactivité »
 
 Aucune nouvelle dépendance, aucune migration. Nouvelle collection
@@ -49,7 +61,9 @@ suppression. Les comptes portent désormais `updated_at`, `updated_by` et
 `updated_by_name` (dernière modification) et, après une réinitialisation,
 `password_changed_at`. Les comptes de test portent `is_test_account: true`.
 Nouvelle collection `presence` (un document par compte, index sur
-`last_seen`), créée au premier battement.
+`last_seen`), créée au premier battement. Nouvelles collections
+`trusted_devices`, `device_requests` et `access_tokens` (codes stockés
+hachés, jamais en clair).
 Les jetons de connexion déjà émis restent valables : seule une
 réinitialisation du mot de passe ferme les sessions du compte concerné.
 
@@ -59,7 +73,11 @@ réinitialisation du mot de passe ferme les sessions du compte concerné.
 - **Déjà présentes, réutilisées telles quelles** : `EMERGENT_EMAIL_KEY` (codes
   de connexion des comptes de test), `JWT_SECRET_KEY`, `MONGO_URL`, `DB_NAME`.
 - **Paramètres stockés en base (AdminSettings)** : `auto_logout_minutes`
-  (défaut 30, 0 = désactivé, 120 max), réglable dans Paramètres → Cabinet.
+  (défaut 30, 0 = désactivé, 120 max), réglable dans Paramètres → Cabinet ;
+  `staff_whitelist_enabled` (défaut **désactivé** : rien ne change au
+  déploiement), `staff_ip_whitelist` (adresses ou plages CIDR),
+  `access_token_issuer_emails` (modifiable par admin seul), dans Paramètres →
+  Accès du personnel.
 
 ## Ce que ça apporte, dans l'ordre
 
@@ -216,6 +234,67 @@ réinitialisation du mot de passe ferme les sessions du compte concerné.
      - la période d'inactivité ne recommence qu'une fois toutes les tâches
        terminées.
 
+10. **Liste blanche du personnel : appareils et adresses IP.**
+    - **Activation.** Désactivée par défaut. Le superviseur la règle dans
+      **Paramètres → Accès du personnel**. Une fois activée, un collaborateur
+      ne peut se connecter que depuis :
+      - une **adresse IP ou plage autorisée** (réseau du bureau, notation CIDR
+        acceptée ; l'écran affiche l'IP actuelle avec un bouton « ajouter ») ;
+      - ou un **appareil autorisé** : chaque navigateur a un identifiant
+        (`albarka_device_id`), envoyé à la vérification du code. L'appareil
+        peut être partagé par tout le cabinet (« Autoriser cet appareil ») ou
+        réservé à un collaborateur.
+    - **Refus.** Le contrôle se fait **après** mot de passe **et** code OTP,
+      dans `verify-otp` (`check_staff_access`). Hors liste, la réponse est
+      une **404 « ERREUR 404 »** et l'écran affiche une page d'erreur neutre
+      (`/erreur-404`) : un intrus ne sait même pas si ses identifiants
+      étaient bons.
+    - **Traces.** Chaque refus est tracé dans le Journal plateforme
+      (`login.blocked_whitelist`, avec IP, appareil et navigateur). Il crée
+      une **demande d'appareil**, que le superviseur approuve (pour ce
+      collaborateur, ou comme poste partagé) ou refuse. Un appareil autorisé
+      peut être retiré à tout moment.
+    - **Exemptions.** Admin et le rôle Superviseur ne sont **jamais**
+      bloqués (pour ne pas enfermer tout le monde dehors). Les clients ne
+      sont pas concernés.
+    - **Sessions déjà ouvertes.** Le contrôle a lieu à la connexion : les
+      sessions en cours au moment de l'activation restent valables jusqu'à
+      leur expiration ou à la déconnexion automatique.
+
+11. **Jetons d'accès temporaires.**
+    - **Qui les crée.** Admin, ou une adresse e-mail qu'admin désigne dans
+      Paramètres → Accès du personnel (liste modifiable par admin seul), via
+      le bouton **« Accès temporaire »** sur la ligne d'un collaborateur
+      dans **Personnels**.
+    - **Durée.** 4 h, 8 h, 24 h, 3 jours ou 7 jours, avec un message
+      facultatif.
+    - **Envoi.** Le collaborateur reçoit par **e-mail et WhatsApp** :
+      - un lien `/login?acces=CODE` ;
+      - le code, qu'il peut aussi saisir sous le code OTP (« J'ai un code
+        d'accès temporaire »).
+    - **Utilisation.**
+      - Le jeton ouvre l'accès depuis n'importe quel appareil pendant sa
+        durée ; mot de passe et OTP restent demandés.
+      - La session ne dure pas plus longtemps que le jeton.
+      - Il est lié à ce seul collaborateur.
+    - **Suivi.**
+      - Chaque utilisation est notée (date, IP, appareil).
+      - Le jeton est révocable (Paramètres → Accès du personnel).
+      - Le code n'est jamais stocké en clair ni écrit dans le Journal.
+
+12. **Tableau de bord : les 10 derniers clients connectés.**
+    - Pour la **Direction**, le **Secrétariat**, le Superviseur et **admin**,
+      une carte « Derniers clients connectés » (`GET /presence/recent-clients`)
+      montre, pour chacun :
+      - l'état actuel (pastille) ;
+      - l'heure de connexion ;
+      - l'heure de la **dernière activité réelle** (clavier, souris,
+        défilement) ;
+      - la **durée jusqu'à la fin de toute activité détectée**.
+    - Les battements de présence transportent maintenant l'heure de la
+      dernière activité. Une nouvelle session commence après une
+      déconnexion ou 70 s sans battement.
+
 ## Volontairement pas dans ce lot
 
 - **Envoi automatique du nouveau mot de passe** par e-mail ou WhatsApp : je
@@ -284,6 +363,26 @@ réinitialisation du mot de passe ferme les sessions du compte concerné.
 19. Recommence en téléversant une grosse pièce (connexion lente) sans toucher
     à rien. Tant que l'envoi n'est pas fini, il n'y a ni avertissement ni
     déconnexion. **Remets ensuite le délai à 30 minutes.**
+20. Superviseur → **Paramètres → Accès du personnel** : clique « Autoriser
+    cet appareil » sur le poste du bureau et ajoute l'IP du bureau si elle
+    est fixe. **Active** la liste blanche et enregistre.
+21. Avec un comptable sur un **autre appareil** (téléphone en 4G) :
+    identifiants et code corrects, puis page « 404 ERREUR ». La demande
+    apparaît dans « Demandes en attente », et le Journal plateforme montre
+    la tentative refusée.
+22. Clique **« Pour ce collaborateur »** : le comptable se reconnecte depuis
+    ce téléphone et entre.
+23. Avec **admin** : dans « Adresses e-mail autorisées à créer des accès
+    temporaires », mets l'adresse de la DG et enregistre.
+24. La DG → **Personnels** → icône « Accès temporaire » sur une secrétaire →
+    24 heures → **Créer et envoyer**. La secrétaire reçoit l'e-mail et le
+    WhatsApp. Depuis son téléphone non autorisé, elle clique sur le lien,
+    saisit mot de passe et code, et entre. **Révoque** l'accès : elle ne
+    peut plus entrer depuis ce téléphone.
+25. Avec la **Direction** ou le **Secrétariat** : le **Tableau de bord**
+    affiche « Derniers clients connectés », avec la durée d'activité de
+    chacun.
+26. Pour revenir à l'état d'avant : **désactive** la liste blanche.
 
 Si quelque chose ne marche pas, renvoie-moi le message d'erreur exact (écran
 ou logs backend). Rappel : **aucun test, build, lint, Testing Agent ou
