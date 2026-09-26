@@ -126,6 +126,17 @@ du patch + prompt), toujours donner :
    « si quelque chose ne marche pas ». Proposer ensuite la checklist à cocher
    partagée (Artifact avec `db`), comme pour le lot 3 Albarka.
 
+## 8. Vocabulaire des rôles (Albarka)
+
+Fixé par l'utilisateur le 2026-09-26 :
+- **« admin »** = le compte `admin@sawalismartsystems.com`, super-utilisateur
+  de la plateforme. Quand l'utilisateur dit « admin », c'est ce compte, pas
+  le rôle `administrateur`. Réservé à admin : donner/retirer le rôle
+  Superviseur, supprimer un client, supprimer un superviseur.
+- **Superviseur** = rôle qui a tous les droits dans le portail (passe-droit
+  de `require_roles`), attribuable par admin seulement.
+- **Administrateur** = rôle métier ordinaire, règle d'origine.
+
 ## Origine de ces règles
 
 Établies le 2026-09 sur `Site-SawaliSmartSystems` (sawali-emergent),

@@ -1,10 +1,16 @@
-# Albarka — Lot 4 : rôle Superviseur réservé, suppression du personnel, comptes de test, Paramètres
+# Albarka — Lot 4 : Superviseur réservé, actions sur les comptes, comptes de test, Paramètres
 
-Applique `albarka-portal-corrections_4_56d4b58.patch` sur la branche
+Applique `albarka-portal-corrections_4_37ad3ec.patch` sur la branche
 `conflict_030926_0658`. Base attendue : le commit `3d6b60a` (« Auto-generated
 changes », juste après `2e0a021`, le lot 3 que tu as publié). C'est un
 `git format-patch` d'un seul commit : applique-le en UN SEUL `git am`, puis
-redéploie (backend et frontend) et enregistre sur GitHub.
+redéploie (backend et frontend) et enregistre sur GitHub. Ce patch remplace
+entièrement la version précédente du lot 4 (`…_4_56d4b58.patch`) que je
+t'avais envoyée : n'applique que celui-ci.
+
+Vocabulaire : quand je dis « admin », je parle du compte
+`admin@sawalismartsystems.com`, le super-utilisateur de la plateforme, pas du
+rôle Administrateur.
 
 **Interdiction explicite** : je ne veux AUCUNE commande de test, de build ou
 de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
@@ -12,23 +18,30 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 
 ## Fichiers touchés
 
-**Nouveau fichier backend**
+**Nouveaux fichiers**
 - `backend/tests/test_accounts_lot4.py` : tests du lot. Tu ne les lances pas.
+- `frontend/src/components/AccountActions.jsx` : actions sur un compte (désactiver, réinitialiser le mot de passe, supprimer) et colonne « Connexion / modification »
 
 **Fichiers modifiés**
 - `backend/albarka_models.py` : suppression de `effective_roles()` (lot 3), ajout de `is_test_account()`, `hide_test_accounts_filter()`, `NOT_TEST_ACCOUNT` et `SETTINGS_ROLES`
-- `backend/albarka_auth.py` : retour à la version d'avant le lot 3 (plus de rôles « effectifs »)
-- `backend/albarka_clients.py` : règle Superviseur, retour de la règle Administrateur d'origine, suppression d'un compte du personnel, comptes de test (`POST` et `DELETE /clients/test-accounts`), masquage des comptes de test
+- `backend/albarka_auth.py` : retour à la version d'avant le lot 3 (plus de rôles « effectifs »), plus la date d'émission (`iat`) dans le jeton et la fermeture des sessions ouvertes avant une réinitialisation du mot de passe
+- `backend/albarka_myaccount.py` : date de dernière modification notée quand la personne modifie son propre compte
+- `backend/albarka_clients.py` : règle Superviseur, retour de la règle Administrateur d'origine, suppression d'un compte (personnel : superviseur ; client : admin), `POST /clients/{id}/active`, `POST /clients/{id}/reset-password`, date et auteur de la dernière modification, comptes de test (`POST` et `DELETE /clients/test-accounts`), masquage des comptes de test
 - `backend/albarka_admin_settings.py`, `albarka_settings_tests.py`, `albarka_branding.py`, `albarka_signing.py` : routes des Paramètres réservées au superviseur
 - `backend/albarka_dashboard.py`, `albarka_forms.py`, `albarka_phase_c.py`, `albarka_notifications.py`, `albarka_reports_mgmt.py` : comptes de test masqués ou exclus des envois de masse
 - `backend/tests/test_client_space_lot3.py` : tests de la règle Administrateur du lot 3 retirés
-- `frontend/src/pages/admin/AdminStaff.jsx` : case Superviseur verrouillée, case Administrateur rétablie, bouton Supprimer, bouton « Créer comptes de test », badge TEST
+- `frontend/src/pages/admin/AdminStaff.jsx` : case Superviseur verrouillée, case Administrateur rétablie, actions sur les comptes, bouton « Créer comptes de test », badge TEST
+- `frontend/src/pages/admin/AdminClients.jsx` : actions sur les comptes, colonne « Connexion / modification », suppression pour admin
 - `frontend/src/components/PortalLayout.jsx` : menu Paramètres réservé au superviseur
 - `frontend/src/pages/admin/AdminSettings.jsx` : réglage RGPD modifiable par le superviseur
 
 Aucune nouvelle dépendance, aucune migration. Nouvelle collection
-`deleted_users` (trace des comptes du personnel supprimés), créée à la
-première suppression. Les comptes de test portent `is_test_account: true`.
+`deleted_users` (trace des comptes supprimés), créée à la première
+suppression. Les comptes portent désormais `updated_at`, `updated_by` et
+`updated_by_name` (dernière modification) et, après une réinitialisation,
+`password_changed_at`. Les comptes de test portent `is_test_account: true`.
+Les jetons de connexion déjà émis restent valables : seule une
+réinitialisation du mot de passe ferme les sessions du compte concerné.
 
 ## Variables d'environnement
 
@@ -71,7 +84,9 @@ première suppression. Les comptes de test portent `is_test_account: true`.
    - Le compte est effacé, mais une copie est gardée dans `deleted_users`
      (avec qui a supprimé et quand), et l'action est tracée dans le Journal
      plateforme (`staff.delete`).
-   - La suppression d'un compte **client** ne change pas.
+   - Supprimer un compte **client** est réservé à **admin** : le bouton
+     corbeille de la liste Clients n'apparaît que pour lui. Sinon, 403. Même
+     trace dans `deleted_users` et le Journal (`client.delete`).
 
 4. **Bouton « Créer comptes de test » (Personnels, superviseur).**
    - Il crée, ou remet à neuf s'ils existent déjà, les comptes de ma recette :
@@ -115,10 +130,36 @@ première suppression. Les comptes de test portent `is_test_account: true`.
      littéral, est maintenant modifiable par le Superviseur, puisque lui seul
      accède aux Paramètres.
 
+7. **Actions sur les comptes clients et du personnel.**
+   - Dans les listes **Clients** et **Personnels**, chaque ligne a deux
+     nouveaux boutons.
+   - **Désactiver / Réactiver** (`POST /clients/{id}/active`) : la personne
+     ne peut plus se connecter, avec effet immédiat.
+   - **Réinitialiser le mot de passe** (`POST /clients/{id}/reset-password`) :
+     - je saisis un mot de passe, ou je laisse vide pour en générer un de
+       10 caractères, sans caractères ambigus ;
+     - il s'affiche une seule fois, avec un bouton Copier, pour que je le
+       transmette à la personne ;
+     - les sessions ouvertes de ce compte sont fermées : le jeton contient
+       maintenant sa date d'émission (`iat`), et `get_current_user` refuse un
+       jeton émis avant `password_changed_at` ;
+     - le mot de passe n'est jamais écrit dans le Journal.
+   - **Qui peut faire ces actions :**
+     - sur un client : rôles de gestion des clients ;
+     - sur un collaborateur : superviseur, direction ou administrateur ;
+     - un compte Superviseur : seulement un superviseur ou admin ;
+     - le compte admin : lui seul ;
+     - jamais sur son propre compte.
+   - Nouvelle colonne **« Connexion / modification »** : dernière connexion
+     (`last_login`, déjà enregistrée à chaque connexion), et dernière
+     modification avec date, heure et auteur. Toute modification d'un compte
+     met à jour cette date : fiche, rôles, numéros vérifiés, activation, mot
+     de passe, et la personne elle-même dans « Mon compte ».
+
 ## Volontairement pas dans ce lot
 
-- **Suppression des comptes clients** : elle reste possible pour tout
-  collaborateur, comme aujourd'hui. Je la restreindrai si besoin.
+- **Envoi automatique du nouveau mot de passe** par e-mail ou WhatsApp : je
+  le transmets moi-même. Un mot de passe ne doit pas circuler par e-mail.
 - **Suppression « douce »** d'un compte du personnel (désactivation) : la case
   « Compte actif » existe déjà pour ça. Supprimer efface le compte, avec une
   trace dans `deleted_users`.
@@ -154,6 +195,18 @@ première suppression. Les comptes de test portent `is_test_account: true`.
    comptes TEST disparaissent, les vrais comptes restent.
 10. Un administrateur (rôle Administrateur) voit à nouveau la case
     Administrateur dans la fiche du personnel et peut la donner.
+11. En **Direction**, ouvre **Clients** : pas de corbeille. Clique
+    **Désactiver** (icône marche/arrêt) sur un client : il passe « Inactif ».
+    Il ne peut plus se connecter, et la colonne affiche « Modifié : … ·
+    Direction… ».
+12. **Réinitialiser le mot de passe** (icône clé) en laissant le champ vide :
+    un mot de passe de 10 caractères s'affiche, avec Copier. Le client se
+    connecte avec celui-ci. S'il était déjà connecté ailleurs, sa session est
+    fermée.
+13. Connecte-toi avec **admin** : la corbeille apparaît dans **Clients**.
+    Supprime un client de test : il disparaît, et l'action figure au Journal.
+14. Après une connexion d'un compte, la colonne affiche « Connexion : » avec
+    la date et l'heure.
 
 Si quelque chose ne marche pas, renvoie-moi le message d'erreur exact (écran
 ou logs backend). Rappel : **aucun test, build, lint, Testing Agent ou

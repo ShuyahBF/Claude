@@ -1,9 +1,8 @@
-From 56d4b589dbdd74f21cb16bec294829f5571af61f Mon Sep 17 00:00:00 2001
+From 37ad3ec9441db49b441f2ebdf442fa529747bcea Mon Sep 17 00:00:00 2001
 From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
-Date: Sat, 26 Sep 2026 01:47:10 +0000
-Subject: [PATCH] =?UTF-8?q?R=C3=B4le=20Superviseur=20r=C3=A9serv=C3=A9,=20?=
- =?UTF-8?q?suppression=20du=20personnel,=20comptes=20de=20test,=20Param?=
- =?UTF-8?q?=C3=A8tres?=
+Date: Sat, 26 Sep 2026 01:58:54 +0000
+Subject: [PATCH] =?UTF-8?q?Superviseur=20r=C3=A9serv=C3=A9,=20actions=20su?=
+ =?UTF-8?q?r=20les=20comptes,=20comptes=20de=20test,=20Param=C3=A8tres?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -13,7 +12,11 @@ Content-Transfer-Encoding: 8bit
 - Administrateur : je reviens à la règle d'avant le lot 3 (un administrateur
   peut attribuer ce rôle) ; plus de réservation au compte admin.
 - Suppression d'un compte du personnel réservée au superviseur (compte admin
-  intouchable, un superviseur seulement par le compte admin), tracée.
+  intouchable, un superviseur seulement par le compte admin), tracée ;
+  suppression d'un compte client réservée à admin.
+- Actions sur les comptes clients et du personnel : désactiver / réactiver,
+  réinitialiser le mot de passe (sessions ouvertes fermées), dernière
+  connexion et dernière modification (date, heure, auteur).
 - Bouton « Créer comptes de test » : comptes de la recette avec adresses
   +alias, invisibles de tous sauf du superviseur, exclus des envois de masse ;
   suppression groupée.
@@ -21,24 +24,28 @@ Content-Transfer-Encoding: 8bit
   marque, certificats, tests de configuration) ; RGPD modifiable par lui.
 ---
  backend/albarka_admin_settings.py          |  14 +-
- backend/albarka_auth.py                    |   4 -
+ backend/albarka_auth.py                    |  18 +-
  backend/albarka_branding.py                |   4 +-
- backend/albarka_clients.py                 | 165 ++++++++++++++++++---
+ backend/albarka_clients.py                 | 248 ++++++++++++++++++---
  backend/albarka_dashboard.py               |   9 +-
  backend/albarka_forms.py                   |   5 +-
- backend/albarka_models.py                  |  35 +++--
+ backend/albarka_models.py                  |  43 +++-
+ backend/albarka_myaccount.py               |   6 +-
  backend/albarka_notifications.py           |   1 +
  backend/albarka_phase_c.py                 |  10 +-
  backend/albarka_reports_mgmt.py            |   3 +-
  backend/albarka_settings_tests.py          |   4 +-
  backend/albarka_signing.py                 |   5 +-
- backend/tests/test_accounts_lot4.py        | 165 +++++++++++++++++++++
- backend/tests/test_client_space_lot3.py    |  29 +---
+ backend/tests/test_accounts_lot4.py        | 209 +++++++++++++++++
+ backend/tests/test_client_space_lot3.py    |  29 +--
+ frontend/src/components/AccountActions.jsx | 142 ++++++++++++
  frontend/src/components/PortalLayout.jsx   |   4 +-
+ frontend/src/pages/admin/AdminClients.jsx  |  11 +-
  frontend/src/pages/admin/AdminSettings.jsx |   7 +-
- frontend/src/pages/admin/AdminStaff.jsx    | 133 +++++++++++++++--
- 17 files changed, 495 insertions(+), 102 deletions(-)
+ frontend/src/pages/admin/AdminStaff.jsx    | 119 +++++++++-
+ 20 files changed, 779 insertions(+), 112 deletions(-)
  create mode 100644 backend/tests/test_accounts_lot4.py
+ create mode 100644 frontend/src/components/AccountActions.jsx
 
 diff --git a/backend/albarka_admin_settings.py b/backend/albarka_admin_settings.py
 index 0c020ca..dbbd2e7 100644
@@ -87,7 +94,7 @@ index 0c020ca..dbbd2e7 100644
      for k in SENSITIVE_FIELDS:
          if changes.get(k) == "********":
 diff --git a/backend/albarka_auth.py b/backend/albarka_auth.py
-index c18c5f1..a4a2477 100644
+index c18c5f1..9436580 100644
 --- a/backend/albarka_auth.py
 +++ b/backend/albarka_auth.py
 @@ -15,7 +15,6 @@ from jose import JWTError, jwt
@@ -98,16 +105,37 @@ index c18c5f1..a4a2477 100644
      LoginRequest,
      LoginResponse,
      OtpVerifyRequest,
-@@ -102,8 +101,6 @@ async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(_securi
+@@ -54,7 +53,9 @@ def generate_session_token() -> str:
+ 
+ def create_access_token(user_id: str) -> str:
+     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+-    payload = {"sub": user_id, "exp": expire}
++    # iat (émis le) : permet d'invalider les sessions ouvertes avant une
++    # réinitialisation du mot de passe (voir password_changed_at ci-dessous).
++    payload = {"sub": user_id, "exp": expire, "iat": int(datetime.now(timezone.utc).timestamp())}
+     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+ 
+ 
+@@ -102,8 +103,16 @@ async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(_securi
          raise HTTPException(status_code=401, detail="Utilisateur introuvable")
      if not user.get("is_active", True):
          raise HTTPException(status_code=403, detail="Compte désactivé")
 -    # Rôles effectifs : "administrateur" réservé au compte admin (albarka_models).
 -    user["roles"] = effective_roles(user)
++    # Mot de passe réinitialisé par le cabinet : les sessions ouvertes avant
++    # (jeton émis plus tôt, ou ancien jeton sans date) ne sont plus valables.
++    changed = user.get("password_changed_at")
++    if changed:
++        try:
++            changed_ts = datetime.fromisoformat(changed).timestamp()
++        except ValueError:
++            changed_ts = None
++        if changed_ts and (payload.get("iat") or 0) < int(changed_ts):
++            raise HTTPException(status_code=401, detail="Session expirée : mot de passe réinitialisé, reconnectez-vous")
      return user
  
  
-@@ -191,7 +188,6 @@ async def verify_otp(payload: OtpVerifyRequest):
+@@ -191,7 +200,6 @@ async def verify_otp(payload: OtpVerifyRequest):
          {"$set": {"last_login": datetime.now(timezone.utc).isoformat()}},
      )
      token = create_access_token(user["id"])
@@ -138,7 +166,7 @@ index e94a50d..e0671b9 100644
  ALLOWED_MIMES = {"image/png", "image/jpeg", "image/webp"}
  MAX_SIZE = 5 * 1024 * 1024  # 5 MB
 diff --git a/backend/albarka_clients.py b/backend/albarka_clients.py
-index ee8c97d..731200c 100644
+index ee8c97d..ee2087f 100644
 --- a/backend/albarka_clients.py
 +++ b/backend/albarka_clients.py
 @@ -11,7 +11,8 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -147,7 +175,7 @@ index ee8c97d..731200c 100644
  from albarka_models import (
 -    ALBARKA_ROLES, CLIENT_MANAGE_ROLES, VERIFY_PHONE_ROLES, User, effective_roles, is_admin_account, is_client,
 +    ALBARKA_ROLES, CLIENT_MANAGE_ROLES, VERIFY_PHONE_ROLES, User, hide_test_accounts_filter,
-+    is_admin_account, is_client, is_test_account,
++    is_admin_account, is_client, is_test_account, modification_stamp,
  )
  from db import db, serialize, serialize_many
  
@@ -176,7 +204,15 @@ index ee8c97d..731200c 100644
      return serialize_many(docs)
  
  
-@@ -145,20 +145,24 @@ async def create_client(payload: ClientCreate, user: dict = Depends(require_role
+@@ -138,6 +138,7 @@ async def create_client(payload: ClientCreate, user: dict = Depends(require_role
+         "is_active": True,
+         "can_receive_notifications": payload.can_receive_notifications,
+         "created_at": datetime.now(timezone.utc).isoformat(),
++        **modification_stamp(user),
+         "last_login": None,
+     }
+     await db.users.insert_one(user_doc.copy())
+@@ -145,20 +146,24 @@ async def create_client(payload: ClientCreate, user: dict = Depends(require_role
  
  
  def _is_admin(u: dict) -> bool:
@@ -209,7 +245,14 @@ index ee8c97d..731200c 100644
      existing = await db.users.find_one({"email": payload.email.lower()})
      if existing:
          raise HTTPException(status_code=409, detail="Un compte avec cet email existe déjà")
-@@ -179,11 +183,98 @@ async def create_staff(payload: StaffCreate, user: dict = Depends(require_staff(
+@@ -173,17 +178,105 @@ async def create_staff(payload: StaffCreate, user: dict = Depends(require_staff(
+         "is_active": True,
+         "can_receive_notifications": payload.can_receive_notifications,
+         "created_at": datetime.now(timezone.utc).isoformat(),
++        **modification_stamp(user),
+         "last_login": None,
+     }
+     await db.users.insert_one(user_doc.copy())
      return _public(user_doc)
  
  
@@ -308,7 +351,7 @@ index ee8c97d..731200c 100644
      if is_client(doc):
          (await _apply_rgpd_masking([doc], user))
      return serialize(doc)
-@@ -194,22 +285,32 @@ async def update_client(user_id: str, payload: UserUpdate, user: dict = Depends(
+@@ -194,22 +287,33 @@ async def update_client(user_id: str, payload: UserUpdate, user: dict = Depends(
      update = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
      if not update:
          raise HTTPException(status_code=400, detail="Aucun champ à mettre à jour")
@@ -347,19 +390,47 @@ index ee8c97d..731200c 100644
 +                status_code=403,
 +                detail="Seul un compte Administrateur peut attribuer ou retirer le rôle Administrateur",
 +            )
++    update.update(modification_stamp(user))  # dernière modification : quand et par qui
      res = await db.users.update_one({"id": user_id}, {"$set": update})
      if not res.matched_count:
          raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-@@ -252,6 +353,24 @@ async def verify_client_whatsapp(
+@@ -228,7 +332,7 @@ async def verify_client_phone(
+     """Atteste (ou révoque) qu'un numéro client est de confiance — condition
+     d'accès à l'action "Envoyer par WhatsApp" pour le rôle Communication
+     seul (voir _can_send_whatsapp dans albarka_documents.py)."""
+-    res = await db.users.update_one({"id": user_id}, {"$set": {"phone_verified": payload.verified}})
++    res = await db.users.update_one({"id": user_id}, {"$set": {"phone_verified": payload.verified, **modification_stamp(user)}})
+     if not res.matched_count:
+         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+     doc = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+@@ -241,7 +345,7 @@ async def verify_client_whatsapp(
+ ):
+     """Pendant de verify_client_phone pour le numéro WhatsApp dédié (voir
+     is_whatsapp_verified() dans albarka_models.py)."""
+-    res = await db.users.update_one({"id": user_id}, {"$set": {"whatsapp_verified": payload.verified}})
++    res = await db.users.update_one({"id": user_id}, {"$set": {"whatsapp_verified": payload.verified, **modification_stamp(user)}})
+     if not res.matched_count:
+         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+     doc = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+@@ -252,7 +356,101 @@ async def verify_client_whatsapp(
  async def delete_client(user_id: str, user: dict = Depends(require_staff())):
      if user_id == user["id"]:
          raise HTTPException(status_code=400, detail="Impossible de supprimer votre propre compte")
 +    target = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
 +    if not target or (is_test_account(target) and hide_test_accounts_filter(user)):
 +        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
++    # Compte client : suppression réservée à admin (super-utilisateur du portail).
++    if is_client(target) and not is_admin_account(user):
++        raise HTTPException(status_code=403, detail="Seul admin peut supprimer un compte client")
 +    # Compte du personnel : suppression réservée au superviseur ; le compte admin
 +    # du portail n'est jamais supprimable, un superviseur seulement par lui.
-+    if not is_client(target):
++    if is_client(target):
++        await db.deleted_users.insert_one({**target, "deleted_at": datetime.now(timezone.utc).isoformat(),
++                                           "deleted_by": user["id"]})
++        from albarka_phase_c import _log_platform_event  # import local : évite un cycle
++        await _log_platform_event(user=user, action="client.delete", entity_type="user", entity_id=user_id,
++                                  meta={"email": target.get("email"), "company": target.get("company")})
++    else:
 +        if "superviseur" not in (user.get("roles") or []):
 +            raise HTTPException(status_code=403, detail="Seul le superviseur peut supprimer un compte du personnel")
 +        if is_admin_account(target):
@@ -375,6 +446,74 @@ index ee8c97d..731200c 100644
      res = await db.users.delete_one({"id": user_id})
      if not res.deleted_count:
          raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+     return {"ok": True, "id": user_id}
++
++
++
++# ---------------------------------------------------------------- actions sur un compte
++# Désactiver / réactiver et réinitialiser le mot de passe, pour les clients
++# (rôles de gestion des clients) et le personnel (superviseur, direction,
++# administrateur). Un compte Superviseur : superviseur ou admin seulement ;
++# le compte admin : lui seul.
++_STAFF_ACCOUNT_ROLES = ["superviseur", "direction", "administrateur"]
++
++
++async def _account_for_action(user_id: str, actor: dict) -> dict:
++    target = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
++    if not target or (is_test_account(target) and hide_test_accounts_filter(actor)):
++        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
++    roles = set(actor.get("roles") or [])
++    allowed = CLIENT_MANAGE_ROLES if is_client(target) else _STAFF_ACCOUNT_ROLES
++    if not ("superviseur" in roles or roles & set(allowed) or is_admin_account(actor)):
++        raise HTTPException(status_code=403, detail="Action réservée aux rôles autorisés")
++    if is_admin_account(target) and not is_admin_account(actor):
++        raise HTTPException(status_code=403, detail="Seul admin peut agir sur le compte admin")
++    if "superviseur" in (target.get("roles") or []) and not ("superviseur" in roles or is_admin_account(actor)):
++        raise HTTPException(status_code=403, detail="Seul un superviseur peut agir sur un compte Superviseur")
++    return target
++
++
++class ActivePayload(BaseModel):
++    active: bool
++
++
++@router.post("/{user_id}/active")
++async def set_account_active(user_id: str, payload: ActivePayload, user: dict = Depends(require_staff())):
++    """Désactive (plus aucune connexion possible, effet immédiat) ou réactive un compte."""
++    if user_id == user["id"]:
++        raise HTTPException(status_code=400, detail="Impossible de désactiver votre propre compte")
++    target = await _account_for_action(user_id, user)
++    await db.users.update_one({"id": user_id}, {"$set": {"is_active": payload.active, **modification_stamp(user)}})
++    from albarka_phase_c import _log_platform_event  # import local : évite un cycle
++    await _log_platform_event(user=user, action="account.activate" if payload.active else "account.deactivate",
++                              entity_type="user", entity_id=user_id, meta={"email": target.get("email")})
++    return serialize(await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0}))
++
++
++class ResetPasswordPayload(BaseModel):
++    # Vide : un mot de passe temporaire est généré et affiché une seule fois.
++    password: Optional[str] = Field(None, min_length=8, max_length=128)
++
++
++def _temporary_password() -> str:
++    """Mot de passe temporaire lisible (sans caractères ambigus 0/O, 1/l/I)."""
++    alphabet = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
++    return "".join(secrets.choice(alphabet) for _ in range(10))
++
++
++@router.post("/{user_id}/reset-password")
++async def reset_password(user_id: str, payload: ResetPasswordPayload, user: dict = Depends(require_staff())):
++    """Réinitialise le mot de passe d'un client ou d'un collaborateur. Les
++    sessions ouvertes de ce compte sont fermées (reconnexion obligatoire)."""
++    target = await _account_for_action(user_id, user)
++    password = payload.password or _temporary_password()
++    now = datetime.now(timezone.utc).isoformat()
++    await db.users.update_one({"id": user_id}, {"$set": {
++        "password_hash": hash_password(password), "password_changed_at": now, **modification_stamp(user)}})
++    from albarka_phase_c import _log_platform_event  # import local : évite un cycle
++    await _log_platform_event(user=user, action="account.reset_password", entity_type="user", entity_id=user_id,
++                              meta={"email": target.get("email")})  # jamais le mot de passe dans le journal
++    return {"ok": True, "password": password, "generated": payload.password is None}
 diff --git a/backend/albarka_dashboard.py b/backend/albarka_dashboard.py
 index e8eec39..1e2a338 100644
 --- a/backend/albarka_dashboard.py
@@ -430,7 +569,7 @@ index 251ca87..36bb8f6 100644
          return [self._as_recipient(u) for u in await cur.to_list(5000)]
  
 diff --git a/backend/albarka_models.py b/backend/albarka_models.py
-index b98204b..3b7f537 100644
+index b98204b..38d1a97 100644
 --- a/backend/albarka_models.py
 +++ b/backend/albarka_models.py
 @@ -198,10 +198,9 @@ def whatsapp_number_of(user_doc: dict) -> Optional[str]:
@@ -447,7 +586,7 @@ index b98204b..3b7f537 100644
  ADMIN_ACCOUNT_EMAIL = "admin@sawalismartsystems.com"
  
  
-@@ -209,13 +208,27 @@ def is_admin_account(user: dict) -> bool:
+@@ -209,13 +208,35 @@ def is_admin_account(user: dict) -> bool:
      return (user.get("email") or "").strip().lower() == ADMIN_ACCOUNT_EMAIL
  
  
@@ -458,6 +597,14 @@ index b98204b..3b7f537 100644
 -    if is_admin_account(user):
 -        roles.append("administrateur")
 -    return roles
++def modification_stamp(actor: dict) -> dict:
++    """Champs « dernière modification » d'un compte (affichés dans Clients et
++    Personnels) : quand et par qui."""
++    from datetime import datetime as _dt, timezone as _tz
++    return {"updated_at": _dt.now(_tz.utc).isoformat(), "updated_by": actor.get("id"),
++            "updated_by_name": actor.get("full_name") or actor.get("email")}
++
++
 +def is_test_account(user: dict) -> bool:
 +    """Compte créé par le bouton « Créer comptes de test » (Personnels)."""
 +    return bool(user.get("is_test_account"))
@@ -482,6 +629,37 @@ index b98204b..3b7f537 100644
  
  
  def is_superviseur(user: dict) -> bool:
+diff --git a/backend/albarka_myaccount.py b/backend/albarka_myaccount.py
+index 629a01f..6fb8c60 100644
+--- a/backend/albarka_myaccount.py
++++ b/backend/albarka_myaccount.py
+@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field
+ 
+ from albarka_ai import analyze_document
+ from albarka_auth import get_current_user, hash_password, verify_password
+-from albarka_models import is_client
++from albarka_models import modification_stamp, is_client
+ from albarka_storage import guess_content_type, presigned_url, save_and_log
+ from db import db, serialize
+ 
+@@ -68,7 +68,7 @@ async def update_my_account(payload: AccountUpdate, user: dict = Depends(get_cur
+     changes = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
+     if not changes:
+         raise HTTPException(status_code=400, detail="Aucun champ à mettre à jour")
+-    await db.users.update_one({"id": user["id"]}, {"$set": changes})
++    await db.users.update_one({"id": user["id"]}, {"$set": {**changes, **modification_stamp(user)}})
+     doc = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
+     return serialize(doc)
+ 
+@@ -79,7 +79,7 @@ async def change_my_password(payload: PasswordChange, user: dict = Depends(get_c
+     if not full or not verify_password(payload.current_password, full["password_hash"]):
+         raise HTTPException(status_code=400, detail="Mot de passe actuel incorrect")
+     await db.users.update_one(
+-        {"id": user["id"]}, {"$set": {"password_hash": hash_password(payload.new_password)}},
++        {"id": user["id"]}, {"$set": {"password_hash": hash_password(payload.new_password), **modification_stamp(user)}},
+     )
+     return {"ok": True}
+ 
 diff --git a/backend/albarka_notifications.py b/backend/albarka_notifications.py
 index dae4d38..7d16127 100644
 --- a/backend/albarka_notifications.py
@@ -590,10 +768,10 @@ index 619199f..5e74c99 100644
 -
 diff --git a/backend/tests/test_accounts_lot4.py b/backend/tests/test_accounts_lot4.py
 new file mode 100644
-index 0000000..8caf9e4
+index 0000000..cb856ee
 --- /dev/null
 +++ b/backend/tests/test_accounts_lot4.py
-@@ -0,0 +1,165 @@
+@@ -0,0 +1,209 @@
 +"""Lot 4 — rôles Superviseur/Administrateur, suppression du personnel,
 +comptes de test, Paramètres réservés au Superviseur.
 +
@@ -759,6 +937,50 @@ index 0000000..8caf9e4
 +    assert '{ to: "/admin/settings", label: "Paramètres", icon: Settings, roles: ["superviseur"] }' in layout
 +    staff = (front / "pages" / "admin" / "AdminStaff.jsx").read_text(encoding="utf-8")
 +    assert 'disabled={r.value === "superviseur" && !isAdminAccount}' in staff and "Créer comptes de test" in staff
++
++
++def test_client_deletion_reserved_to_admin(env):
++    assert env.c.delete("/api/clients/c1", headers=_h("sup")).status_code == 403
++    assert env.c.delete("/api/clients/c1", headers=_h("dir")).status_code == 403
++    assert env.c.delete("/api/clients/c1", headers=_h("admin")).status_code == 200
++    assert "client.delete" in env.logs and asyncio.run(env.db.deleted_users.find_one({"id": "c1"}))
++
++
++def test_deactivate_and_reset_password_with_modification_stamp(env):
++    # Désactiver un client (rôle de gestion des clients) : date et auteur notés
++    r = env.c.post("/api/clients/c1/active", headers=_h("dir"), json={"active": False})
++    assert r.status_code == 200 and r.json()["is_active"] is False
++    assert r.json()["updated_by_name"] == "Direction" and r.json()["updated_at"]
++    assert env.c.post("/api/clients/c1/active", headers=_h("compta"), json={"active": True}).status_code == 403
++    assert env.c.post("/api/clients/u-dir/active", headers=_h("dir"), json={"active": False}).status_code == 400  # pas soi-même
++    # Compte Superviseur / compte admin protégés
++    assert env.c.post("/api/clients/u-sup/active", headers=_h("dir"), json={"active": False}).status_code == 403
++    assert env.c.post("/api/clients/u-admin/reset-password", headers=_h("sup"), json={}).status_code == 403
++    # Réinitialisation : mot de passe temporaire généré, utilisable, jamais dans le journal
++    r = env.c.post("/api/clients/u-compta/reset-password", headers=_h("dir"), json={}).json()
++    doc = asyncio.run(env.db.users.find_one({"id": "u-compta"}))
++    assert r["generated"] and len(r["password"]) == 10 and albarka_auth.verify_password(r["password"], doc["password_hash"])
++    assert doc["password_changed_at"] and doc["updated_by"] == "u-dir"
++    # Mot de passe choisi
++    r = env.c.post("/api/clients/c1/reset-password", headers=_h("dir"), json={"password": "nouveau2026"}).json()
++    assert r["generated"] is False and r["password"] == "nouveau2026"
++    # Modification ordinaire : date de dernière modification mise à jour
++    u = env.c.patch("/api/clients/c1", headers=_h("dir"), json={"company": "SARL"}).json()
++    assert u["updated_by"] == "u-dir"
++
++
++def test_old_sessions_closed_after_password_reset(env):
++    from fastapi.security import HTTPAuthorizationCredentials
++    from jose import jwt
++    old = jwt.encode({"sub": "u-compta", "exp": 9999999999}, albarka_auth.SECRET_KEY, algorithm="HS256")  # ancien jeton sans iat
++    fresh_before = albarka_auth.create_access_token("u-compta")
++    creds = lambda t: HTTPAuthorizationCredentials(scheme="Bearer", credentials=t)  # noqa: E731
++    assert asyncio.run(albarka_auth.get_current_user(creds(old)))["id"] == "u-compta"  # rien de changé tant qu'aucune réinitialisation
++    asyncio.run(env.db.users.update_one({"id": "u-compta"}, {"$set": {"password_changed_at": "2999-01-01T00:00:00+00:00"}}))
++    for t in (old, fresh_before):
++        with pytest.raises(HTTPException) as e:
++            asyncio.run(albarka_auth.get_current_user(creds(t)))
++        assert e.value.status_code == 401
 diff --git a/backend/tests/test_client_space_lot3.py b/backend/tests/test_client_space_lot3.py
 index c1c4f6c..68a4c23 100644
 --- a/backend/tests/test_client_space_lot3.py
@@ -825,6 +1047,154 @@ index c1c4f6c..68a4c23 100644
  # ------------------------------------------------------------------ Espace client
  def test_upload_external_documents_notifies_client_once(env):
      files = [("files", ("facture-sage-042.pdf", b"%PDF-1", "application/pdf")),
+diff --git a/frontend/src/components/AccountActions.jsx b/frontend/src/components/AccountActions.jsx
+new file mode 100644
+index 0000000..f2ce59d
+--- /dev/null
++++ b/frontend/src/components/AccountActions.jsx
+@@ -0,0 +1,142 @@
++/*
++  AccountActions — actions sur un compte (client ou collaborateur), dans les
++  listes Clients et Personnels :
++    - Désactiver / Réactiver (effet immédiat : plus aucune connexion) ;
++    - Réinitialiser le mot de passe (généré ou saisi, affiché UNE fois, à
++      transmettre à la personne ; ses sessions ouvertes sont fermées) ;
++    - Supprimer (bouton optionnel, selon `canDelete`).
++  Et AccountDates : « Dernière connexion » et « Modifié le … par … ».
++  API : POST /clients/{id}/active, POST /clients/{id}/reset-password, DELETE /clients/{id}
++*/
++import React, { useState } from "react";
++import { toast } from "sonner";
++import { Power, KeyRound, Trash2, Copy } from "lucide-react";
++import { apiClient, extractError } from "@/lib/api";
++import { Button } from "@/components/ui/button";
++import { Input } from "@/components/ui/input";
++import { Label } from "@/components/ui/label";
++import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
++
++// Date et heure lisibles (« 26/09/2026 14:05 »), ou « Jamais »
++export const fmtDateTime = (iso, empty = "Jamais") => {
++  if (!iso) return empty;
++  try { return new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); }
++  catch { return iso; }
++};
++
++// Colonne « Connexion / modification » des listes
++export function AccountDates({ account }) {
++  return (
++    <div className="text-xs leading-tight" data-testid={`account-dates-${account.id}`}>
++      <div><span className="text-muted-foreground">Connexion : </span>{fmtDateTime(account.last_login)}</div>
++      <div title={account.updated_by_name ? `par ${account.updated_by_name}` : undefined}>
++        <span className="text-muted-foreground">Modifié : </span>{fmtDateTime(account.updated_at || account.created_at, "—")}
++        {account.updated_by_name && <span className="text-muted-foreground"> · {account.updated_by_name}</span>}
++      </div>
++    </div>
++  );
++}
++
++export default function AccountActions({ account, onChanged, canManage = true, canDelete = false, deleteLabel = "ce compte" }) {
++  const [openReset, setOpenReset] = useState(false);
++  const [openDelete, setOpenDelete] = useState(false);
++  const [customPwd, setCustomPwd] = useState("");
++  const [newPwd, setNewPwd] = useState(null); // mot de passe à transmettre (affiché une fois)
++  const [busy, setBusy] = useState(false);
++  const active = account.is_active !== false;
++
++  // Désactiver / réactiver le compte
++  const toggleActive = async () => {
++    try {
++      await apiClient.post(`/clients/${account.id}/active`, { active: !active });
++      toast.success(active ? `Compte de ${account.full_name} désactivé` : `Compte de ${account.full_name} réactivé`);
++      onChanged?.();
++    } catch (err) { toast.error(extractError(err)); }
++  };
++
++  // Réinitialiser le mot de passe (saisi, ou généré si le champ est vide)
++  const resetPassword = async () => {
++    if (customPwd && customPwd.length < 8) { toast.error("8 caractères minimum"); return; }
++    setBusy(true);
++    try {
++      const { data } = await apiClient.post(`/clients/${account.id}/reset-password`, customPwd ? { password: customPwd } : {});
++      setNewPwd(data.password);
++      onChanged?.();
++    } catch (err) { toast.error(extractError(err)); } finally { setBusy(false); }
++  };
++  const closeReset = () => { setOpenReset(false); setNewPwd(null); setCustomPwd(""); };
++  const copyPwd = async () => {
++    try { await navigator.clipboard.writeText(newPwd); toast.success("Mot de passe copié"); } catch { toast.error("Copie impossible : sélectionnez-le à la main"); }
++  };
++
++  // Supprimer définitivement (confirmation)
++  const remove = async () => {
++    try {
++      await apiClient.delete(`/clients/${account.id}`);
++      toast.success(`Compte de ${account.full_name} supprimé`);
++      setOpenDelete(false);
++      onChanged?.();
++    } catch (err) { toast.error(extractError(err)); }
++  };
++
++  return (
++    <>
++      {canManage && (
++        <>
++          <Button variant="ghost" size="sm" title={active ? "Désactiver le compte" : "Réactiver le compte"} onClick={toggleActive}
++            className={active ? "text-amber-700" : "text-emerald-700"} data-testid={`toggle-active-${account.id}`}>
++            <Power className="w-4 h-4" />
++          </Button>
++          <Button variant="ghost" size="sm" title="Réinitialiser le mot de passe" onClick={() => setOpenReset(true)} data-testid={`reset-pwd-${account.id}`}>
++            <KeyRound className="w-4 h-4" />
++          </Button>
++        </>
++      )}
++      {canDelete && (
++        <Button variant="ghost" size="sm" className="text-red-600" title="Supprimer" onClick={() => setOpenDelete(true)} data-testid={`delete-account-${account.id}`}>
++          <Trash2 className="w-4 h-4" />
++        </Button>
++      )}
++
++      {/* Réinitialisation du mot de passe */}
++      <Dialog open={openReset} onOpenChange={(v) => { if (!v) closeReset(); }}>
++        <DialogContent data-testid="reset-pwd-dialog">
++          <DialogHeader><DialogTitle>Réinitialiser le mot de passe</DialogTitle></DialogHeader>
++          {!newPwd ? (
++            <div className="space-y-3 text-left">
++              <p className="text-sm">Compte : <b>{account.full_name}</b> ({account.email}). Ses sessions ouvertes seront fermées.</p>
++              <div>
++                <Label>Nouveau mot de passe (laisser vide pour en générer un)</Label>
++                <Input type="text" value={customPwd} onChange={(e) => setCustomPwd(e.target.value)} placeholder="Généré automatiquement" data-testid="reset-pwd-input" />
++              </div>
++            </div>
++          ) : (
++            <div className="space-y-3 text-left" data-testid="reset-pwd-result">
++              <p className="text-sm">Nouveau mot de passe de <b>{account.full_name}</b>, à lui transmettre. Il ne sera plus affiché ensuite.</p>
++              <div className="flex items-center gap-2">
++                <code className="flex-1 rounded-md border bg-slate-50 px-3 py-2 text-base select-all" data-testid="reset-pwd-value">{newPwd}</code>
++                <Button variant="outline" size="sm" onClick={copyPwd}><Copy className="w-4 h-4 mr-1" />Copier</Button>
++              </div>
++            </div>
++          )}
++          <DialogFooter>
++            <Button variant="outline" onClick={closeReset}>{newPwd ? "Fermer" : "Annuler"}</Button>
++            {!newPwd && <Button className="bg-[#0F6B4A] hover:bg-[#0A4E36] text-white" onClick={resetPassword} disabled={busy} data-testid="reset-pwd-confirm">Réinitialiser</Button>}
++          </DialogFooter>
++        </DialogContent>
++      </Dialog>
++
++      {/* Confirmation de suppression */}
++      <Dialog open={openDelete} onOpenChange={setOpenDelete}>
++        <DialogContent data-testid="delete-account-dialog">
++          <DialogHeader><DialogTitle>Supprimer {deleteLabel} ?</DialogTitle></DialogHeader>
++          <p className="text-sm text-left">Le compte <b>{account.full_name}</b> ({account.email}) sera supprimé définitivement : la personne ne pourra plus se connecter. La suppression est tracée dans le Journal plateforme.</p>
++          <DialogFooter>
++            <Button variant="outline" onClick={() => setOpenDelete(false)}>Annuler</Button>
++            <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={remove} data-testid="delete-account-confirm">Supprimer</Button>
++          </DialogFooter>
++        </DialogContent>
++      </Dialog>
++    </>
++  );
++}
 diff --git a/frontend/src/components/PortalLayout.jsx b/frontend/src/components/PortalLayout.jsx
 index 54dc204..b5e7a01 100644
 --- a/frontend/src/components/PortalLayout.jsx
@@ -840,6 +1210,61 @@ index 54dc204..b5e7a01 100644
    // Accessible à TOUT collaborateur, quel que soit son rôle (alwaysAllowed) —
    // voir allowedFor() ci-dessous.
    { to: "/admin/mon-compte", label: "Mon compte", icon: UserCog, alwaysAllowed: true },
+diff --git a/frontend/src/pages/admin/AdminClients.jsx b/frontend/src/pages/admin/AdminClients.jsx
+index e6584f2..1e8383e 100644
+--- a/frontend/src/pages/admin/AdminClients.jsx
++++ b/frontend/src/pages/admin/AdminClients.jsx
+@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
+ import { Checkbox } from "@/components/ui/checkbox";
+ import { Link } from "react-router-dom";
+ import { useAuth } from "@/contexts/AuthContext";
++import AccountActions, { AccountDates } from "@/components/AccountActions";
+ 
+ // Doivent rester identiques aux listes équivalentes côté backend (albarka_models.py).
+ const CLIENT_MANAGE_ROLES = ["administrateur", "superviseur", "dg", "direction", "secretariat"];
+@@ -28,6 +29,8 @@ export default function AdminClients() {
+   const { user } = useAuth();
+   const myRoles = user?.roles || [];
+   const canManage = myRoles.some((r) => CLIENT_MANAGE_ROLES.includes(r));
++  // Supprimer un client : admin uniquement (super-utilisateur du portail)
++  const isAdminAccount = (user?.email || "").toLowerCase() === "admin@sawalismartsystems.com";
+   const canVerifyPhone = myRoles.some((r) => VERIFY_PHONE_ROLES.includes(r));
+   const [items, setItems] = useState([]);
+   const [loading, setLoading] = useState(true);
+@@ -204,13 +207,14 @@ export default function AdminClients() {
+               <TableHead>Téléphone</TableHead>
+               <TableHead>WhatsApp</TableHead>
+               <TableHead>Statut</TableHead>
++              <TableHead>Connexion / modification</TableHead>
+               <TableHead>ID (tenant)</TableHead>
+               <TableHead className="text-right">Actions</TableHead>
+             </TableRow>
+           </TableHeader>
+           <TableBody>
+-            {loading && <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Chargement…</TableCell></TableRow>}
+-            {!loading && items.length === 0 && <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">Aucun client.</TableCell></TableRow>}
++            {loading && <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Chargement…</TableCell></TableRow>}
++            {!loading && items.length === 0 && <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">Aucun client.</TableCell></TableRow>}
+             {items.map((c) => (
+               <TableRow key={c.id} className="hover:bg-[#0F6B4A]/5">
+                 <TableCell className="font-medium">{c.full_name}</TableCell>
+@@ -249,6 +253,7 @@ export default function AdminClients() {
+                     ? <span className="albarka-chip bg-slate-100 text-slate-500">Inactif</span>
+                     : <span className="albarka-chip bg-emerald-100 text-emerald-800">Actif</span>}
+                 </TableCell>
++                <TableCell><AccountDates account={c} /></TableCell>
+                 <TableCell>
+                   <button onClick={() => copyId(c.id)} className="text-xs font-mono flex items-center gap-1 hover:text-[#0F6B4A]" data-testid={`copy-tenant-${c.id}`}>
+                     {c.id.slice(0, 10)}… <Copy className="w-3 h-3" />
+@@ -260,6 +265,8 @@ export default function AdminClients() {
+                       <Pencil className="w-4 h-4" />
+                     </Button>
+                   )}
++                  {/* Désactiver / réinitialiser le mot de passe ; Supprimer : admin uniquement */}
++                  <AccountActions account={c} onChanged={load} canManage={canManage} canDelete={isAdminAccount} deleteLabel="ce client" />
+                   <Link to={`/admin/clients/${c.id}`}>
+                     <Button variant="outline" size="sm" data-testid={`view-client-${c.id}`}>Ouvrir</Button>
+                   </Link>
 diff --git a/frontend/src/pages/admin/AdminSettings.jsx b/frontend/src/pages/admin/AdminSettings.jsx
 index 61461a0..8a64e22 100644
 --- a/frontend/src/pages/admin/AdminSettings.jsx
@@ -873,18 +1298,19 @@ index 61461a0..8a64e22 100644
                )}
                {isAdministrateur && (
 diff --git a/frontend/src/pages/admin/AdminStaff.jsx b/frontend/src/pages/admin/AdminStaff.jsx
-index 7b48751..f07f7be 100644
+index 7b48751..ed15f0a 100644
 --- a/frontend/src/pages/admin/AdminStaff.jsx
 +++ b/frontend/src/pages/admin/AdminStaff.jsx
-@@ -1,6 +1,6 @@
+@@ -1,6 +1,7 @@
  import React, { useEffect, useState, useMemo } from "react";
  import { toast } from "sonner";
 -import { Plus, Pencil } from "lucide-react";
-+import { Plus, Pencil, Trash2, FlaskConical } from "lucide-react";
++import { Plus, Pencil, FlaskConical } from "lucide-react";
++import AccountActions, { AccountDates } from "@/components/AccountActions";
  import { apiClient, extractError } from "@/lib/api";
  import { Button } from "@/components/ui/button";
  import {
-@@ -47,6 +47,11 @@ export default function AdminStaff() {
+@@ -47,6 +48,14 @@ export default function AdminStaff() {
    // Point 10 — filtrage selon le rôle du visiteur.
    const isAdmin = myRoles.includes("administrateur");
    const canEdit = isAdmin || myRoles.includes("superviseur") || myRoles.includes("direction");
@@ -893,10 +1319,13 @@ index 7b48751..f07f7be 100644
 +  // Compte admin du portail : SEUL habilité à cocher / décocher « Superviseur »
 +  // (doit rester identique à ADMIN_ACCOUNT_EMAIL côté backend).
 +  const isAdminAccount = (me?.email || "").toLowerCase() === "admin@sawalismartsystems.com";
++  // Ligne du tableau : compte admin / compte Superviseur (protégés)
++  const isAdminAccountRow = (s) => (s.email || "").toLowerCase() === "admin@sawalismartsystems.com";
++  const isSupRow = (s) => (s.roles || []).includes("superviseur");
  
    const [items, setItems] = useState([]);
    const [loading, setLoading] = useState(true);
-@@ -54,13 +59,17 @@ export default function AdminStaff() {
+@@ -54,13 +63,17 @@ export default function AdminStaff() {
    const [editing, setEditing] = useState(null); // null = create mode
    const [form, setForm] = useState(emptyForm());
  
@@ -915,24 +1344,14 @@ index 7b48751..f07f7be 100644
 +  const [testForm, setTestForm] = useState({ email: me?.email || "", password: "", client1_whatsapp: "", client2_whatsapp: "" });
 +  const [testResult, setTestResult] = useState(null);
 +  const [testBusy, setTestBusy] = useState(false);
-+  const [toDelete, setToDelete] = useState(null); // compte à supprimer (confirmation)
++
    // Table filtrée : masque les comptes administrateurs pour les non-admins.
    const visibleItems = useMemo(
      () => (isAdmin ? items : items.filter((s) => !(s.roles || []).includes("administrateur"))),
-@@ -144,6 +153,40 @@ export default function AdminStaff() {
+@@ -144,6 +157,30 @@ export default function AdminStaff() {
      }
    };
  
-+  // --- Supprimer un compte du personnel (superviseur) ------------------------
-+  const confirmDelete = async () => {
-+    try {
-+      await apiClient.delete(`/clients/${toDelete.id}`);
-+      toast.success(`Compte ${toDelete.full_name} supprimé`);
-+      setToDelete(null);
-+      await load();
-+    } catch (err) { toast.error(extractError(err)); }
-+  };
-+
 +  // --- Comptes de test (superviseur) --------------------------------------------
 +  const createTestAccounts = async () => {
 +    if (!testForm.email || testForm.password.length < 8) { toast.error("E-mail et mot de passe (8 caractères min.) requis"); return; }
@@ -960,7 +1379,7 @@ index 7b48751..f07f7be 100644
    return (
      <div className="space-y-6" data-testid="admin-staff-page">
        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-@@ -152,6 +195,13 @@ export default function AdminStaff() {
+@@ -152,6 +189,13 @@ export default function AdminStaff() {
            <h1 className="font-display text-3xl md:text-4xl text-foreground">Personnels</h1>
            <p className="text-muted-foreground mt-1">Équipe du cabinet et leurs rôles.</p>
          </div>
@@ -974,7 +1393,7 @@ index 7b48751..f07f7be 100644
          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setEditing(null); }}>
            {canEdit && (
              <DialogTrigger asChild>
-@@ -188,14 +238,16 @@ export default function AdminStaff() {
+@@ -188,14 +232,16 @@ export default function AdminStaff() {
                        <Checkbox
                          checked={form.roles.includes(r.value)}
                          onCheckedChange={() => toggleRole(r.value)}
@@ -993,7 +1412,7 @@ index 7b48751..f07f7be 100644
                </div>
                <label className="flex items-center gap-2 text-sm cursor-pointer pt-1">
                  <Checkbox
-@@ -224,6 +276,7 @@ export default function AdminStaff() {
+@@ -224,6 +270,7 @@ export default function AdminStaff() {
              </DialogFooter>
            </DialogContent>
          </Dialog>
@@ -1001,8 +1420,18 @@ index 7b48751..f07f7be 100644
        </div>
  
        <div className="albarka-card overflow-hidden">
-@@ -243,7 +296,11 @@ export default function AdminStaff() {
-             {!loading && visibleItems.length === 0 && <TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">Aucun personnel.</TableCell></TableRow>}
+@@ -235,15 +282,20 @@ export default function AdminStaff() {
+               <TableHead>Rôles</TableHead>
+               <TableHead>Téléphone</TableHead>
+               <TableHead>Statut</TableHead>
++              <TableHead>Connexion / modification</TableHead>
+               <TableHead className="text-right">Actions</TableHead>
+             </TableRow>
+           </TableHeader>
+           <TableBody>
+             {loading && <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Chargement…</TableCell></TableRow>}
+-            {!loading && visibleItems.length === 0 && <TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">Aucun personnel.</TableCell></TableRow>}
++            {!loading && visibleItems.length === 0 && <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">Aucun personnel.</TableCell></TableRow>}
              {visibleItems.map((s) => (
                <TableRow key={s.id} className="hover:bg-[#0F6B4A]/5">
 -                <TableCell className="font-medium">{s.full_name}</TableCell>
@@ -1014,17 +1443,25 @@ index 7b48751..f07f7be 100644
                  <TableCell className="text-sm">{s.email}</TableCell>
                  <TableCell className="text-xs">
                    <div className="flex flex-wrap gap-1">
-@@ -270,12 +327,70 @@ export default function AdminStaff() {
+@@ -258,7 +310,8 @@ export default function AdminStaff() {
+                     ? <span className="albarka-chip bg-slate-100 text-slate-500">Inactif</span>
+                     : <span className="albarka-chip bg-emerald-100 text-emerald-800">Actif</span>}
+                 </TableCell>
+-                <TableCell className="text-right">
++                <TableCell><AccountDates account={s} /></TableCell>
++                <TableCell className="text-right whitespace-nowrap">
+                   {canEdit && (
+                     <Button
+                       variant="ghost"
+@@ -270,12 +323,56 @@ export default function AdminStaff() {
                        <Pencil className="w-4 h-4" />
                      </Button>
                    )}
-+                  {/* Supprimer : superviseur uniquement (jamais soi-même ni le compte admin ;
-+                      un superviseur seulement par le compte admin) */}
-+                  {isSuperviseur && s.id !== me?.id && (s.email || "").toLowerCase() !== "admin@sawalismartsystems.com"
-+                    && (!(s.roles || []).includes("superviseur") || isAdminAccount) && (
-+                    <Button variant="ghost" size="sm" className="text-red-600" onClick={() => setToDelete(s)} title="Supprimer" data-testid={`delete-staff-${s.id}`}>
-+                      <Trash2 className="w-4 h-4" />
-+                    </Button>
++                  {/* Désactiver / réinitialiser le mot de passe (jamais sur soi ; compte admin :
++                      lui seul ; superviseur : superviseur ou admin) + Supprimer (superviseur) */}
++                  {s.id !== me?.id && (!isAdminAccountRow(s) || isAdminAccount) && (!isSupRow(s) || isSuperviseur || isAdminAccount) && (
++                    <AccountActions account={s} onChanged={load} canManage={canEdit} deleteLabel="ce compte du personnel"
++                      canDelete={isSuperviseur && !isAdminAccountRow(s) && (!isSupRow(s) || isAdminAccount)} />
 +                  )}
                  </TableCell>
                </TableRow>
@@ -1032,18 +1469,6 @@ index 7b48751..f07f7be 100644
            </TableBody>
          </Table>
        </div>
-+
-+      {/* Confirmation de suppression d'un compte du personnel */}
-+      <Dialog open={!!toDelete} onOpenChange={(v) => { if (!v) setToDelete(null); }}>
-+        <DialogContent data-testid="delete-staff-dialog">
-+          <DialogHeader><DialogTitle>Supprimer ce compte ?</DialogTitle></DialogHeader>
-+          <p className="text-sm">Le compte <b>{toDelete?.full_name}</b> ({toDelete?.email}) sera supprimé définitivement : cette personne ne pourra plus se connecter. La suppression est tracée dans le Journal plateforme.</p>
-+          <DialogFooter>
-+            <Button variant="outline" onClick={() => setToDelete(null)}>Annuler</Button>
-+            <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={confirmDelete} data-testid="confirm-delete-staff">Supprimer</Button>
-+          </DialogFooter>
-+        </DialogContent>
-+      </Dialog>
 +
 +      {/* Création des comptes de test */}
 +      <Dialog open={openTest} onOpenChange={setOpenTest}>
