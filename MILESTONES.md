@@ -146,9 +146,8 @@ concerné.
   par le superviseur (trace deleted_users) ; « Créer comptes de test » (+alias
   e-mail, invisibles sauf superviseur, exclus des envois de masse) ;
   Paramètres superviseur seul (RGPD compris). 57 tests autonomes + navigateur OK.
-- **Sawali lot 25 — droits d'accès alignés** — **déployé en production le
-  2026-09-26 (bundle main.3c611dee), PAS encore enregistré sur GitHub**
-  (conflict_230926_1008 toujours à 399c63f) (base `399c63f` = lot 24 publié ;
+- **Sawali lot 25 — droits d'accès alignés** — **publié le 2026-09-26** (GitHub bcb1032→793ef31, code identique hors
+  `.emergent` ; production bundle main.3c611dee) (base `399c63f` = lot 24 publié ;
   `sawali-portal-livraisons/sawali-portal-corrections_25_0f62076.patch` +
   `sawali-portal-prompt_25.md` ; dev `claude/lot25` 5bb5aac). Traducteur →
   /portal/i18n, moderateur/moderator acceptés partout, Registre des erreurs
@@ -180,7 +179,8 @@ concerné.
   https://claude.ai/artifact/TX7v7c7WR7LA7S8K6p3meZ (291 points), Albarka
   https://claude.ai/artifact/CmYGd3A1QPm8guDCstdYzC (139 points, v2026.5).
 - **Albarka lot 6 — statistiques graphiques des formulaires (forms-core 1.2.0)**
-  — **livré, en attente de publication** (base `37de42f` = lot 5 publié ;
+  — **déployé en production le 2026-09-26 (v2026.6, bundle main.5376055f),
+  PAS encore enregistré sur GitHub** (conflict_030926_0658 toujours à 37de42f) (base `37de42f` = lot 5 publié ;
   `albarka-portal-livraisons/albarka-portal-corrections_6_6d9a105.patch` +
   `albarka-portal-prompt_6.md` ; dev `claude/albarka-lot6` 6d9a105). Onglet
   Stats refait (raccourcis de période, export CSV, 6 indicateurs animés, barres
