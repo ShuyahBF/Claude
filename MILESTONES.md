@@ -191,6 +191,22 @@ concerné.
   remplis » cliquable. Backend : champs ajoutés seulement. v2026.6. 63 tests
   autonomes Albarka + 12 tests forms-core OK, build OK, navigateur (bureau et
   téléphone) OK.
+- **Albarka lot 7 — factures au format du cabinet, documents & modèles, tableau de paie**
+  — **livré, en attente de publication** (base : lot 6 publié, pas encore sur
+  GitHub ; `albarka-portal-livraisons/albarka-portal-corrections_7_f8aa0cf.patch`
+  + `albarka-portal-prompt_7.md` ; dev `claude/albarka-lot7` f8aa0cf).
+  Factures/proformas : lignes de titre + détail multi-lignes, TVA unique 18 %,
+  retenue sur HT, net à payer (encaissement et espace client sur le net), PDF
+  ReportLab au format du modèle Word, somme en lettres, signataire, QR code →
+  page publique /verifier. Papiers à en-tête multiples (images en-tête/pied ou
+  préimprimé) + réglages documents. Éditeur « comme Word » sans dépendance
+  (contentEditable, HTML nettoyé côté serveur) pour les missions et les
+  modèles. Documents & modèles : variables automatiques/communes/par
+  destinataire, modèle « Avis de mission » fourni, génération N documents
+  (PDF PyMuPDF Story + QR, Word .doc, impression groupée, dépôt espace client),
+  duplication, verrouillage. Tableau de paie mensuel (grille, reprise du mois
+  précédent, PDF paysage + questionnaire RH, CSV). v2026.7. 73 tests autonomes
+  (10 nouveaux), build OK, navigateur OK.
 - **À refaire pour** : `Site-Albarka` — **lot 1 publié et déployé en production le
   2026-09-23** (commit Emergent `ccab0b2`, identique au patch ; routes et
   frontend vérifiés sur albarka-bf.com ; premier retour réel de l'utilisateur

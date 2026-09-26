@@ -95,7 +95,7 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Albarka · albarka-bf.com · version v2026.6</div>
+    <div class="eyebrow">Albarka · albarka-bf.com · version v2026.7</div>
     <h1>Recette complète Albarka</h1>
     <p class="lead">Tous les modules du portail, côté cabinet et côté client, plus la connexion et les éléments communs. Pour chaque point : faites l'action, puis cochez <b>OK</b> ou <b>Problème</b> (avec le compte utilisé et le message exact). Toute l'équipe voit les coches en direct. Cette liste sert de référence avant chaque mise en production.</p>
   </header>
@@ -457,6 +457,117 @@ const SECTIONS = [
 "do": "Ouvrir les mêmes statistiques sur téléphone.",
 "expect": [
 "Les cartes passent l'une sous l'autre, pas de défilement horizontal."
+]
+}
+],
+"part": "Connexion & commun"
+},
+{
+"id": "g-docs7",
+"title": "Factures modèle, documents & modèles, tableau de paie (lot 7)",
+"who": "Caisse, Documents & modèles, Missions, Paie & RH, Paramètres → Documents — visible par : rôles de chaque module",
+"prep": "Les deux images du papier à en-tête (en-tête et pied de page) ; un client de recette avec fiche KYC (raison sociale, IFU) ; un téléphone pour scanner le QR code.",
+"items": [
+{
+"id": "g-docs7-1",
+"do": "Regarder la barre jaune du menu.",
+"expect": [
+"Elle affiche v2026.7."
+]
+},
+{
+"id": "g-docs7-2",
+"do": "Paramètres → Documents : ajouter un papier avec image d'en-tête et de pied de page ; saisir le signataire.",
+"expect": [
+"Les aperçus s'affichent, le papier est « Par défaut ».",
+"Le signataire est enregistré."
+]
+},
+{
+"id": "g-docs7-3",
+"do": "Caisse → Nouvelle facture : une ligne de titre, une ligne à 52 632 avec détail sur 2 lignes, retenue 5 %.",
+"expect": [
+"Totaux affichés : 52 632 / 9 474 / 62 106 / 2 632 / 59 474.",
+"Les lignes se déplacent avec ▲ ▼."
+]
+},
+{
+"id": "g-docs7-4",
+"do": "Ouvrir le PDF de cette facture.",
+"expect": [
+"Format du modèle : bandeau FACTURE N°, Facturer à, tableau, totaux, remerciement.",
+"Somme en toutes lettres + « FRANCS CFA », signataire, papier à en-tête, QR code."
+]
+},
+{
+"id": "g-docs7-5",
+"do": "Créer une facture PROFORMA sans retenue.",
+"expect": [
+"Titre « FACTURE PROFORMA », pas de ligne NET A PAYER."
+]
+},
+{
+"id": "g-docs7-6",
+"do": "Scanner le QR code d'une facture avec un téléphone.",
+"expect": [
+"Page « Document authentique » : numéro, client, montant, situation."
+]
+},
+{
+"id": "g-docs7-7",
+"do": "Documents & modèles → Éditer « Avis de mission » : tableau, image, retrait, menu Variable ; prochain numéro 126 ; enregistrer.",
+"expect": [
+"La barre de mise en forme fonctionne, les variables s'insèrent en pastilles bleues.",
+"Le modèle est enregistré."
+]
+},
+{
+"id": "g-docs7-8",
+"do": "Générer l'avis pour 2 clients (modifier une formule d'appel, cocher Déposer dans l'espace du client).",
+"expect": [
+"2 documents numérotés 126 et 127/GESP/DG/2026, valeurs de chaque client remplies.",
+"« Tout imprimer » = un seul PDF ; « Word » télécharge un .doc.",
+"Les clients voient le courrier dans Factures & documents."
+]
+},
+{
+"id": "g-docs7-9",
+"do": "Verrouiller le modèle, essayer de le modifier / supprimer, puis déverrouiller avec la Direction.",
+"expect": [
+"Verrouillé : lecture seule, suppression impossible.",
+"Un autre collaborateur ne peut pas déverrouiller ; la Direction le peut."
+]
+},
+{
+"id": "g-docs7-10",
+"do": "Dupliquer un modèle, créer un nouveau modèle avec une variable commune et une par destinataire.",
+"expect": [
+"La copie s'appelle « … (copie) », non verrouillée.",
+"Les deux variables apparaissent à la génération (valeur commune + tableau)."
+]
+},
+{
+"id": "g-docs7-11",
+"do": "Missions : nouvelle mission avec description en gras + liste ; déplier la description ; Modifier ; bouton Document.",
+"expect": [
+"La mise en forme est conservée.",
+"« Document » ouvre la génération pour ce client, variables Mission remplies."
+]
+},
+{
+"id": "g-docs7-12",
+"do": "Paie & RH → Tableau de paie : client + mois, saisir indemnités et net, Enregistrer.",
+"expect": [
+"Le brut se calcule seul, la ligne TOTAL aussi.",
+"Le mois suivant repart des valeurs saisies."
+]
+},
+{
+"id": "g-docs7-13",
+"do": "Tableau de paie → PDF (questionnaire coché) puis Excel.",
+"expect": [
+"PDF : tableau en paysage au papier à en-tête + QR code, puis questionnaire RH en portrait.",
+"Le fichier Excel s'ouvre avec les colonnes et le TOTAL."
 ]
 }
 ],
