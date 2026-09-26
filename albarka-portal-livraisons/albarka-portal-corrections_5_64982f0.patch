@@ -1,9 +1,8 @@
-From 17d196ac68cbb55dd884df66f98e728f9e58b65a Mon Sep 17 00:00:00 2001
+From 64982f0164badb9501a93463efaf9f99c5c5817d Mon Sep 17 00:00:00 2001
 From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
-Date: Sat, 26 Sep 2026 04:47:03 +0000
-Subject: [PATCH] =?UTF-8?q?Design=20SAWALI=20sur=20tout=20le=20portail=20:?=
- =?UTF-8?q?=20champs,=20listes,=20cases,=20tableaux,=20fen=C3=AAtres,=20ac?=
- =?UTF-8?q?tions=20color=C3=A9es?=
+Date: Sat, 26 Sep 2026 05:03:45 +0000
+Subject: [PATCH] Design SAWALI sur tout le portail + corrections de droits
+ (personnel, Caisse, comptes de test, menus)
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -24,11 +23,31 @@ Content-Transfer-Encoding: 8bit
 - Listes Clients, Personnels et Dépôt espace client : actions en boutons
   pleins colorés (modifier, désactiver, mot de passe, accès temporaire,
   supprimer, ouvrir, masquer, prévenir).
+- Sécurité : créer ou modifier un compte du personnel (rôles compris),
+  le désactiver ou réinitialiser son mot de passe est réservé à la
+  Direction, la DG, un Administrateur ou le Superviseur, même par l'API.
+- Rôle Administrateur : attribuable aussi par le Superviseur et admin.
+- Caisse : routes réservées aux rôles du lien « Caisse » (+ DG).
+- Comptes de test : contrat « En cours » créé pour les clients de test
+  (ils peuvent se connecter), comptes de test visibles entre eux.
+- Menus : la DG a les liens de la Direction ; l'Administrateur retrouve
+  Tableau de bord, Clients, Personnels, Paie & RH ; une adresse désignée
+  pour les accès temporaires voit Personnels ; un rôle sans tableau de
+  bord arrive sur son premier lien ; « Rapports client » n'est plus
+  surligné sur « Rapports en masse ».
+- Espace client : tableau de bord et historique n'affichent plus les
+  modules fermés par le cabinet.
 - Version affichée : v2026.5.
 ---
+ backend/albarka_clients.py                    |  41 +++-
+ backend/albarka_dashboard.py                  |  36 +++-
+ backend/albarka_forms.py                      |   2 +-
+ backend/albarka_models.py                     |  13 ++
+ backend/albarka_phase_c.py                    |  16 +-
+ backend/tests/test_security_lot5.py           | 159 ++++++++++++++
  frontend/src/components/AccountActions.jsx    |  22 +-
  frontend/src/components/ClientSpacePanel.jsx  |  14 +-
- frontend/src/components/PortalLayout.jsx      |   9 +-
+ frontend/src/components/PortalLayout.jsx      |  43 +++-
  .../src/components/TemporaryAccessButton.jsx  |   8 +-
  .../src/components/forms-core/FormBuilder.jsx | 105 ++++-----
  .../src/components/forms-core/FormDetail.jsx  |  27 ++-
@@ -54,11 +73,480 @@ Content-Transfer-Encoding: 8bit
  frontend/src/components/ui/textarea.jsx       |   3 +-
  frontend/src/index.css                        |  81 +++++++
  frontend/src/pages/admin/AdminClients.jsx     |  10 +-
- frontend/src/pages/admin/AdminStaff.jsx       |  14 +-
+ frontend/src/pages/admin/AdminStaff.jsx       |  28 ++-
  frontend/src/version.js                       |   4 +-
- 30 files changed, 630 insertions(+), 336 deletions(-)
+ 36 files changed, 904 insertions(+), 377 deletions(-)
+ create mode 100644 backend/tests/test_security_lot5.py
  create mode 100644 frontend/src/components/forms-core/ui.js
 
+diff --git a/backend/albarka_clients.py b/backend/albarka_clients.py
+index ee2087f..929923f 100644
+--- a/backend/albarka_clients.py
++++ b/backend/albarka_clients.py
+@@ -11,7 +11,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
+ from albarka_auth import get_current_user, hash_password, require_roles, require_staff
+ from albarka_admin_settings import get_settings_doc
+ from albarka_models import (
+-    ALBARKA_ROLES, CLIENT_MANAGE_ROLES, VERIFY_PHONE_ROLES, User, hide_test_accounts_filter,
++    ALBARKA_ROLES, CLIENT_MANAGE_ROLES, STAFF_MANAGE_ROLES, VERIFY_PHONE_ROLES, User, hide_test_accounts_filter,
+     is_admin_account, is_client, is_test_account, modification_stamp,
+ )
+ from db import db, serialize, serialize_many
+@@ -146,15 +146,18 @@ async def create_client(payload: ClientCreate, user: dict = Depends(require_role
+ 
+ 
+ def _is_admin(u: dict) -> bool:
+-    """Retourne True si l'utilisateur porte le rôle privilégié `administrateur`."""
+-    return "administrateur" in (u.get("roles") or [])
++    """Peut attribuer / retirer le rôle `administrateur` : un Administrateur
++    (règle d'origine), le Superviseur (tous les droits) ou le compte admin."""
++    roles = u.get("roles") or []
++    return "administrateur" in roles or "superviseur" in roles or is_admin_account(u)
+ 
+ 
+ _SUPERVISEUR_RESERVED = "Le rôle Superviseur ne peut être attribué ou retiré que par le compte admin du portail"
+ 
+ 
+ @router.post("/staff")
+-async def create_staff(payload: StaffCreate, user: dict = Depends(require_staff())):
++async def create_staff(payload: StaffCreate, user: dict = Depends(require_roles(STAFF_MANAGE_ROLES))):
++    # Créer un compte du personnel : Direction, DG, Administrateur ou Superviseur uniquement.
+     # Rôle Superviseur (tous les droits) : seul le compte admin du portail le donne.
+     if "superviseur" in payload.roles and not is_admin_account(user):
+         raise HTTPException(status_code=403, detail=_SUPERVISEUR_RESERVED)
+@@ -162,7 +165,7 @@ async def create_staff(payload: StaffCreate, user: dict = Depends(require_staff(
+     if "administrateur" in payload.roles and not _is_admin(user):
+         raise HTTPException(
+             status_code=403,
+-            detail="Seul un compte Administrateur peut créer un autre Administrateur",
++            detail="Seul un Administrateur ou le Superviseur peut créer un Administrateur",
+         )
+     existing = await db.users.find_one({"email": payload.email.lower()})
+     if existing:
+@@ -248,11 +251,24 @@ async def create_test_accounts(payload: TestAccountsPayload, user: dict = Depend
+             continue
+         if existing:
+             await db.users.update_one({"id": existing["id"]}, {"$set": fields})
++            account_id = existing["id"]
+             status = "mis à jour"
+         else:
+-            await db.users.insert_one({"id": secrets.token_urlsafe(12), "email": email, "created_at": now,
++            account_id = secrets.token_urlsafe(12)
++            await db.users.insert_one({"id": account_id, "email": email, "created_at": now,
+                                        "last_login": None, **fields})
+             status = "créé"
++        # Client de test : un contrat « En cours » est indispensable pour se
++        # connecter (règle du portail) — créé une seule fois, marqué « test ».
++        if roles == ["client"]:
++            await db.client_contracts.update_one(
++                {"tenant_id": account_id, "is_test_contract": True},
++                {"$setOnInsert": {
++                    "id": secrets.token_urlsafe(12), "tenant_id": account_id, "is_test_contract": True,
++                    "numero_contrat": f"CTR-TEST-{alias[-1]}", "title": "Contrat de test (recette)",
++                    "start_date": now[:10], "end_date": None, "amount": None, "currency": "XOF",
++                    "status": "en_cours", "created_at": now, "created_by": user["id"]}},
++                upsert=True)
+         results.append({"email": email, "name": name, "roles": roles, "status": status})
+     from albarka_phase_c import _log_platform_event  # import local : évite un cycle
+     await _log_platform_event(user=user, action="test_accounts.create", entity_type="user",
+@@ -263,6 +279,8 @@ async def create_test_accounts(payload: TestAccountsPayload, user: dict = Depend
+ @router.delete("/test-accounts")
+ async def delete_test_accounts(user: dict = Depends(require_roles(["superviseur"]))):
+     """Supprime tous les comptes de test (un vrai compte n'est jamais touché)."""
++    # Contrats de test des clients de test supprimés avec eux
++    await db.client_contracts.delete_many({"is_test_contract": True})
+     res = await db.users.delete_many({"is_test_account": True})
+     from albarka_phase_c import _log_platform_event  # import local : évite un cycle
+     await _log_platform_event(user=user, action="test_accounts.delete", entity_type="user",
+@@ -303,6 +321,12 @@ async def update_client(user_id: str, payload: UserUpdate, user: dict = Depends(
+     # (voir AdminStaff.jsx, qui limite déjà sa propre UI à admin/superviseur/direction).
+     if is_client(target) and not set(user.get("roles") or []) & set(CLIENT_MANAGE_ROLES):
+         raise HTTPException(status_code=403, detail="Action réservée aux rôles autorisés")
++    # Compte du personnel : modification (et donc changement de rôles) réservée
++    # à Direction, DG, Administrateur, Superviseur ou au compte admin — même par l'API.
++    actor_roles = set(user.get("roles") or [])
++    if not is_client(target) and not (
++            "superviseur" in actor_roles or actor_roles & set(STAFF_MANAGE_ROLES) or is_admin_account(user)):
++        raise HTTPException(status_code=403, detail="Seuls la Direction, la DG, un Administrateur ou le Superviseur peuvent modifier un compte du personnel")
+     # Point 10 — seul un `administrateur` peut attribuer/retirer le rôle `administrateur`.
+     if "roles" in update:
+         current_roles = set(target.get("roles") or [])
+@@ -311,7 +335,7 @@ async def update_client(user_id: str, payload: UserUpdate, user: dict = Depends(
+         if touches_admin and not _is_admin(user):
+             raise HTTPException(
+                 status_code=403,
+-                detail="Seul un compte Administrateur peut attribuer ou retirer le rôle Administrateur",
++                detail="Seul un Administrateur ou le Superviseur peut attribuer ou retirer le rôle Administrateur",
+             )
+     update.update(modification_stamp(user))  # dernière modification : quand et par qui
+     res = await db.users.update_one({"id": user_id}, {"$set": update})
+@@ -395,7 +419,8 @@ async def delete_client(user_id: str, user: dict = Depends(require_staff())):
+ # (rôles de gestion des clients) et le personnel (superviseur, direction,
+ # administrateur). Un compte Superviseur : superviseur ou admin seulement ;
+ # le compte admin : lui seul.
+-_STAFF_ACCOUNT_ROLES = ["superviseur", "direction", "administrateur"]
++# Désactiver / réinitialiser le mot de passe d'un collaborateur : mêmes rôles que sa gestion
++_STAFF_ACCOUNT_ROLES = ["superviseur", *STAFF_MANAGE_ROLES]
+ 
+ 
+ async def _account_for_action(user_id: str, actor: dict) -> dict:
+diff --git a/backend/albarka_dashboard.py b/backend/albarka_dashboard.py
+index 1e2a338..671b999 100644
+--- a/backend/albarka_dashboard.py
++++ b/backend/albarka_dashboard.py
+@@ -6,24 +6,38 @@ from typing import Optional
+ from fastapi import APIRouter, Depends
+ 
+ from albarka_auth import get_current_user
+-from albarka_models import hide_test_accounts_filter, is_client, tenant_id_of
++from albarka_models import client_modules, hide_test_accounts_filter, is_client, tenant_id_of
+ from db import db, serialize_many
+ 
+ router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+ 
+ 
++def _open_modules(user: dict) -> set:
++    """Modules visibles : pour un client, seulement ceux que le cabinet lui a
++    ouverts ; pour le cabinet, tout."""
++    if is_client(user):
++        return set(client_modules(user))
++    return {"documents", "missions", "echeances", "historique"}
++
++
++async def _count(collection, query: dict, allowed: bool) -> int:
++    # Module fermé pour ce client : compteur à zéro (aucune donnée divulguée)
++    return await collection.count_documents(query) if allowed else 0
++
++
+ @router.get("/summary")
+ async def dashboard_summary(user: dict = Depends(get_current_user)):
+     scope = {}
+     if is_client(user):
+         scope["tenant_id"] = tenant_id_of(user)
++    mods = _open_modules(user)
+ 
+-    documents_total = await db.documents.count_documents(scope)
+-    documents_pending = await db.documents.count_documents({**scope, "status": "en_analyse"})
+-    missions_active = await db.missions.count_documents({**scope, "status": {"$in": ["en_attente", "en_cours"]}})
+-    missions_done = await db.missions.count_documents({**scope, "status": "terminee"})
+-    echeances_upcoming = await db.echeances.count_documents({**scope, "status": {"$in": ["a_venir", "en_cours"]}})
+-    echeances_late = await db.echeances.count_documents({**scope, "status": "en_retard"})
++    documents_total = await _count(db.documents, scope, "documents" in mods)
++    documents_pending = await _count(db.documents, {**scope, "status": "en_analyse"}, "documents" in mods)
++    missions_active = await _count(db.missions, {**scope, "status": {"$in": ["en_attente", "en_cours"]}}, "missions" in mods)
++    missions_done = await _count(db.missions, {**scope, "status": "terminee"}, "missions" in mods)
++    echeances_upcoming = await _count(db.echeances, {**scope, "status": {"$in": ["a_venir", "en_cours"]}}, "echeances" in mods)
++    echeances_late = await _count(db.echeances, {**scope, "status": "en_retard"}, "echeances" in mods)
+ 
+     # Additional staff-only stats
+     clients_total = None
+@@ -53,9 +67,11 @@ async def dashboard_activity(limit: int = 15, user: dict = Depends(get_current_u
+     if is_client(user):
+         scope["tenant_id"] = tenant_id_of(user)
+ 
+-    docs = await db.documents.find(scope, {"_id": 0}).sort("created_at", -1).to_list(limit)
+-    missions = await db.missions.find(scope, {"_id": 0}).sort("created_at", -1).to_list(limit)
+-    echeances = await db.echeances.find(scope, {"_id": 0}).sort("due_date", 1).to_list(limit)
++    mods = _open_modules(user)
++    # Chaque liste n'est renvoyée que si son module est ouvert pour ce client
++    docs = await db.documents.find(scope, {"_id": 0}).sort("created_at", -1).to_list(limit) if "documents" in mods else []
++    missions = await db.missions.find(scope, {"_id": 0}).sort("created_at", -1).to_list(limit) if "missions" in mods else []
++    echeances = await db.echeances.find(scope, {"_id": 0}).sort("due_date", 1).to_list(limit) if "echeances" in mods else []
+ 
+     return {
+         "documents": serialize_many(docs),
+diff --git a/backend/albarka_forms.py b/backend/albarka_forms.py
+index 36bb8f6..5c3431d 100644
+--- a/backend/albarka_forms.py
++++ b/backend/albarka_forms.py
+@@ -143,7 +143,7 @@ class AlbarkaFormsAdapter(FormsAdapter):
+ 
+     async def list_recipients(self, user: Dict[str, Any]) -> List[Dict[str, Any]]:
+         """Clients actifs proposés dans la liste d'envoi (triés par nom)."""
+-        # Comptes de test proposés au superviseur uniquement
++        # Comptes de test : proposés au superviseur et aux comptes de test uniquement
+         cur = self.db.users.find({"roles": "client", "is_active": {"$ne": False}, **hide_test_accounts_filter(user)},
+                                  {"_id": 0, "password_hash": 0}).sort("full_name", 1)
+         return [self._as_recipient(u) for u in await cur.to_list(5000)]
+diff --git a/backend/albarka_models.py b/backend/albarka_models.py
+index 75e2477..a321cb8 100644
+--- a/backend/albarka_models.py
++++ b/backend/albarka_models.py
+@@ -47,6 +47,11 @@ CAISSE_DATE_RANGE_ROLES = ["administrateur", "dg", "superviseur"]
+ # rôle cumulable "telechargement" (mêmes conventions que DOWNLOAD_ROLES).
+ CAISSE_PDF_ACTION_ROLES = ["administrateur", "superviseur", "direction", "dg", "caissier", "secretariat"]
+ CLIENT_MANAGE_ROLES = DOCS_PRIVILEGED_ROLES
++# Gestion des comptes du PERSONNEL (créer, modifier, rôles, désactiver,
++# mot de passe) : Direction, DG, Administrateur — et le Superviseur (qui a
++# tous les droits). Tout autre collaborateur ne peut rien changer, même en
++# appelant l'API directement.
++STAFF_MANAGE_ROLES = ["administrateur", "dg", "direction"]
+ CHAT_THREAD_CREATE_ROLES = DOCS_PRIVILEGED_ROLES
+ # Module Paiements (liens PawaPay) — réservé au rôle "caissier" uniquement,
+ # à la demande explicite du client ("accessible seulement au nouveau rôle
+@@ -74,6 +79,10 @@ def can_encaisser(user: dict) -> bool:
+ # une facture de la Caisse. Un reçu déposé reste réservé au Caissier.
+ CLIENT_SPACE_ROLES = ["administrateur", "direction", "dg", "secretariat", "comptable",
+                       "fiscaliste", "aide_comptable", "caissier"]
++# Caisse (factures, encaissements, relevés) : mêmes rôles que le lien
++# « Caisse » du menu (+ DG) ; le Superviseur passe toujours. Encaisser reste
++# réservé au Caissier (ENCAISSEMENT_ROLES / can_encaisser).
++BILLING_ROLES = ["direction", "dg", "administrateur", "comptable", "secretariat", "caissier"]
+ # Modules de l'espace client que le cabinet peut ouvrir ou fermer, client par
+ # client (fiche client → « Espace client »). Tableau de bord et Mon compte
+ # restent toujours visibles. Aucun réglage enregistré = tous les modules.
+@@ -226,6 +235,10 @@ def hide_test_accounts_filter(viewer: dict) -> dict:
+     visibles que du superviseur ; pour tout autre viewer ils sont exclus."""
+     if "superviseur" in (viewer.get("roles") or []):
+         return {}
++    # Un compte de test voit les autres comptes de test (ex. la secrétaire de
++    # test peut facturer le client de test) en plus des vrais comptes.
++    if viewer.get("is_test_account"):
++        return {}
+     return {"is_test_account": {"$ne": True}}
+ 
+ 
+diff --git a/backend/albarka_phase_c.py b/backend/albarka_phase_c.py
+index 0cd6df3..14c67c4 100644
+--- a/backend/albarka_phase_c.py
++++ b/backend/albarka_phase_c.py
+@@ -24,7 +24,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
+ from albarka_admin_settings import get_settings_doc
+ from albarka_auth import get_current_user, require_roles, require_staff
+ from albarka_models import (
+-    CAISSE_DATE_RANGE_ROLES, CHAT_THREAD_CREATE_ROLES, NOT_TEST_ACCOUNT, can_encaisser, is_client,
++    BILLING_ROLES, CAISSE_DATE_RANGE_ROLES, CHAT_THREAD_CREATE_ROLES, NOT_TEST_ACCOUNT, can_encaisser, is_client,
+ )
+ from db import db, serialize, serialize_many
+ 
+@@ -259,7 +259,7 @@ async def list_invoices(
+     tenant_id: Optional[str] = None,
+     status: Optional[str] = None,
+     document_type: Optional[str] = None,
+-    user: dict = Depends(require_staff()),
++    user: dict = Depends(require_roles(BILLING_ROLES)),
+ ):
+     q = {}
+     if tenant_id: q["tenant_id"] = tenant_id
+@@ -344,7 +344,7 @@ async def _new_billing_document(
+ 
+ 
+ @billing_router.post("/invoices")
+-async def create_invoice(payload: InvoiceCreate, user: dict = Depends(require_staff())):
++async def create_invoice(payload: InvoiceCreate, user: dict = Depends(require_roles(BILLING_ROLES))):
+     # Délivrer un reçu = encaisser : rôle "caissier" obligatoire, même pour un superviseur.
+     if payload.document_type == "recu" and not can_encaisser(user):
+         raise HTTPException(status_code=403, detail="Seul un collaborateur Caissier peut délivrer un reçu")
+@@ -362,7 +362,7 @@ async def create_invoice(payload: InvoiceCreate, user: dict = Depends(require_st
+ 
+ 
+ @billing_router.post("/payments")
+-async def create_payment(payload: PaymentCreate, user: dict = Depends(require_staff())):
++async def create_payment(payload: PaymentCreate, user: dict = Depends(require_roles(BILLING_ROLES))):
+     """Encaissement sur une facture — réservé au Caissier (sans passe-droit
+     superviseur). Délivre automatiquement un reçu (REC-…) du montant encaissé,
+     avec son PDF."""
+@@ -456,7 +456,7 @@ async def list_payments(
+     date_from: Optional[str] = None,
+     date_to: Optional[str] = None,
+     all_time: bool = False,
+-    user: dict = Depends(require_staff()),
++    user: dict = Depends(require_roles(BILLING_ROLES)),
+ ):
+     low, high = _payments_date_bounds(user, date_from, date_to, all_time)
+     q: dict = {}
+@@ -474,7 +474,7 @@ async def billing_summary(
+     date_from: Optional[str] = None,
+     date_to: Optional[str] = None,
+     all_time: bool = False,
+-    user: dict = Depends(require_staff()),
++    user: dict = Depends(require_roles(BILLING_ROLES)),
+ ):
+     """Agrégat rapide : total facturé / impayé (toutes dates confondues —
+     les factures restent visibles sans restriction de période pour tous les
+@@ -566,7 +566,7 @@ async def billing_statement_pdf(
+     date_from: Optional[str] = None,
+     date_to: Optional[str] = None,
+     all_time: bool = False,
+-    user: dict = Depends(require_staff()),
++    user: dict = Depends(require_roles(BILLING_ROLES)),
+ ):
+     """Export PDF de la Caisse ("situation de compte") — mêmes filtres que
+     l'écran, sans colonne Actions (voir build_billing_statement_pdf)."""
+@@ -589,7 +589,7 @@ class SendStatementPayload(BaseModel):
+ 
+ 
+ @billing_router.post("/statement/send")
+-async def send_billing_statement(payload: SendStatementPayload, user: dict = Depends(require_staff())):
++async def send_billing_statement(payload: SendStatementPayload, user: dict = Depends(require_roles(BILLING_ROLES))):
+     """Envoie la situation de compte du client sélectionné par WhatsApp ou
+     email — même restriction que l'envoi de pièces (_can_send_whatsapp) pour
+     le canal WhatsApp : rôle Communication limité aux clients au numéro
+diff --git a/backend/tests/test_security_lot5.py b/backend/tests/test_security_lot5.py
+new file mode 100644
+index 0000000..4e13bed
+--- /dev/null
++++ b/backend/tests/test_security_lot5.py
+@@ -0,0 +1,159 @@
++"""Lot 5 — corrections de droits relevées par la recette complète.
++
++- créer / modifier un compte du personnel : Direction, DG, Administrateur ou
++  Superviseur seulement (plus possible pour un Comptable, même par l'API) ;
++- rôle Administrateur : aussi attribuable par le Superviseur et le compte admin ;
++- comptes de test : le client de test reçoit un contrat « En cours » (il peut
++  se connecter) et les comptes de test se voient entre eux ;
++- Caisse : réservée aux rôles du lien « Caisse » ;
++- tableau de bord client : rien des modules fermés par le cabinet.
++Tests autonomes : MongoDB simulé (mongomock-motor), aucun réseau.
++"""
++from __future__ import annotations
++
++import asyncio
++import os
++import sys
++from pathlib import Path
++
++os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
++os.environ.setdefault("DB_NAME", "albarka_test")
++os.environ.setdefault("JWT_SECRET_KEY", "test-secret")
++
++import pytest
++from fastapi import APIRouter, FastAPI, Header, HTTPException
++from fastapi.testclient import TestClient
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++mongomock_motor = pytest.importorskip("mongomock_motor")
++
++import db as db_module  # noqa: E402
++import albarka_admin_settings  # noqa: E402
++import albarka_auth  # noqa: E402
++import albarka_clients  # noqa: E402
++import albarka_dashboard  # noqa: E402
++import albarka_phase_c  # noqa: E402
++from albarka_auth import get_current_user  # noqa: E402
++
++USERS = {
++    "admin": {"id": "u-admin", "email": "admin@sawalismartsystems.com", "full_name": "Admin", "roles": ["superviseur", "direction"], "is_active": True},
++    "sup": {"id": "u-sup", "email": "sup@albarka.bf", "full_name": "Superviseur", "roles": ["superviseur"], "is_active": True},
++    "dir": {"id": "u-dir", "email": "dg@albarka.bf", "full_name": "Direction", "roles": ["direction", "secretariat"], "is_active": True},
++    "adm": {"id": "u-adm", "email": "adm@albarka.bf", "full_name": "Administrateur", "roles": ["administrateur"], "is_active": True},
++    "rh": {"id": "u-rh", "email": "rh@albarka.bf", "full_name": "RH", "roles": ["rh"], "is_active": True},
++    "dgonly": {"id": "u-dg", "email": "dgonly@albarka.bf", "full_name": "DG", "roles": ["dg"], "is_active": True},
++    "compta": {"id": "u-compta", "email": "c@albarka.bf", "full_name": "Comptable", "roles": ["comptable"], "is_active": True},
++    "c1": {"id": "c1", "email": "client@exemple.bf", "full_name": "Vrai client", "roles": ["client"], "is_active": True},
++}
++
++
++@pytest.fixture()
++def env(monkeypatch):
++    mock_db = mongomock_motor.AsyncMongoMockClient()["albarka_lot5_test"]
++    real_db = db_module.db
++    for mod in list(sys.modules.values()):
++        if getattr(mod, "db", None) is real_db and getattr(mod, "__name__", "").startswith(("albarka_", "db")):
++            monkeypatch.setattr(mod, "db", mock_db)
++    asyncio.run(mock_db.users.insert_many([dict(u) for u in USERS.values()]))
++    logs = []
++
++    async def fake_log(**kw):
++        logs.append(kw["action"])
++    monkeypatch.setattr(albarka_phase_c, "_log_platform_event", fake_log)
++
++    app = FastAPI()
++    api = APIRouter(prefix="/api")
++    for r in (albarka_clients.router, albarka_admin_settings.router, albarka_dashboard.router, albarka_phase_c.billing_router):
++        api.include_router(r)
++    app.include_router(api)
++
++    async def fake_user(x_user: str = Header(default="")):
++        if x_user not in USERS:
++            raise HTTPException(status_code=401, detail="Non connecté")
++        return await mock_db.users.find_one({"id": USERS[x_user]["id"]}, {"_id": 0})
++    app.dependency_overrides[get_current_user] = fake_user
++    with TestClient(app) as client:
++        yield type("Env", (), {"c": client, "db": mock_db, "logs": logs})
++
++
++def _h(u):
++    return {"X-User": u}
++
++
++def _staff(**kw):
++    base = {"email": "nouveau@albarka.bf", "full_name": "Nouveau", "password": "motdepasse1", "roles": ["comptable"]}
++    base.update(kw)
++    return base
++
++
++def test_staff_management_restricted(env):
++    # Un comptable ne peut ni créer un collaborateur ni se donner le rôle Direction
++    assert env.c.post("/api/clients/staff", headers=_h("compta"), json=_staff(roles=["direction"])).status_code == 403
++    assert env.c.patch("/api/clients/u-compta", headers=_h("compta"), json={"roles": ["comptable", "direction"]}).status_code == 403
++    assert env.c.patch("/api/clients/u-rh", headers=_h("compta"), json={"full_name": "Pirate"}).status_code == 403
++    # Direction, DG et Administrateur le peuvent
++    assert env.c.post("/api/clients/staff", headers=_h("dir"), json=_staff()).status_code == 200
++    assert env.c.patch("/api/clients/u-rh", headers=_h("dgonly"), json={"roles": ["rh", "communication"]}).status_code == 200
++    assert env.c.post("/api/clients/staff", headers=_h("adm"), json=_staff(email="b@albarka.bf")).status_code == 200
++    # Désactiver un collaborateur : même règle
++    assert env.c.post("/api/clients/u-rh/active", headers=_h("compta"), json={"active": False}).status_code == 403
++    assert env.c.post("/api/clients/u-rh/active", headers=_h("dgonly"), json={"active": False}).status_code == 200
++
++
++def test_administrateur_role_by_superviseur_and_admin(env):
++    assert env.c.post("/api/clients/staff", headers=_h("sup"), json=_staff(roles=["administrateur"])).status_code == 200
++    assert env.c.patch("/api/clients/u-compta", headers=_h("admin"), json={"roles": ["comptable", "administrateur"]}).status_code == 200
++    # La Direction seule ne le peut toujours pas
++    assert env.c.patch("/api/clients/u-rh", headers=_h("dir"), json={"roles": ["rh", "administrateur"]}).status_code == 403
++
++
++def test_test_accounts_contract_and_mutual_visibility(env):
++    r = env.c.post("/api/clients/test-accounts", headers=_h("sup"), json={"email": "moi@gmail.com", "password": "motdepasse1"})
++    assert r.status_code == 200
++    import albarka_contracts
++    clients = asyncio.run(env.db.users.find({"is_test_account": True, "roles": "client"}, {"_id": 0}).to_list(10))
++    assert len(clients) == 2
++    for c in clients:  # contrat « En cours » : connexion possible
++        assert asyncio.run(albarka_contracts.has_active_contract(c["id"]))
++    # Remise à neuf : pas de contrat en double
++    env.c.post("/api/clients/test-accounts", headers=_h("sup"), json={"email": "moi@gmail.com", "password": "motdepasse1"})
++    assert asyncio.run(env.db.client_contracts.count_documents({"is_test_contract": True})) == 2
++    # La secrétaire de test voit les clients de test ; un vrai compte non
++    secr = asyncio.run(env.db.users.find_one({"email": "moi+test-secretaire@gmail.com"}, {"_id": 0}))
++    USERS["tsecr"] = secr
++    try:
++        names = {u["full_name"] for u in env.c.get("/api/clients", headers=_h("tsecr")).json()}
++        assert {"TEST Client 1", "TEST Client 2", "Vrai client"} <= names
++        names = {u["full_name"] for u in env.c.get("/api/clients", headers=_h("dir")).json()}
++        assert "TEST Client 1" not in names
++    finally:
++        USERS.pop("tsecr")
++    # Suppression des comptes de test : leurs contrats partent avec eux
++    env.c.delete("/api/clients/test-accounts", headers=_h("sup"))
++    assert asyncio.run(env.db.client_contracts.count_documents({"is_test_contract": True})) == 0
++
++
++def test_billing_reserved_to_caisse_roles(env):
++    assert env.c.get("/api/billing/invoices", headers=_h("rh")).status_code == 403
++    assert env.c.get("/api/billing/invoices", headers=_h("compta")).status_code == 200
++    assert env.c.get("/api/billing/invoices", headers=_h("dgonly")).status_code == 200
++
++
++def test_client_dashboard_hides_closed_modules(env):
++    asyncio.run(env.db.missions.insert_one({"id": "m1", "tenant_id": "c1", "status": "en_cours", "created_at": "2026-09-01"}))
++    asyncio.run(env.db.documents.insert_one({"id": "d1", "tenant_id": "c1", "status": "en_analyse", "created_at": "2026-09-01"}))
++    assert env.c.get("/api/dashboard/summary", headers=_h("c1")).json()["missions_active"] == 1
++    asyncio.run(env.db.users.update_one({"id": "c1"}, {"$set": {"portal_modules": ["documents"]}}))
++    s = env.c.get("/api/dashboard/summary", headers=_h("c1")).json()
++    assert s["missions_active"] == 0 and s["documents_total"] == 1
++    act = env.c.get("/api/dashboard/activity", headers=_h("c1")).json()
++    assert act["missions"] == [] and len(act["documents"]) == 1
++
++
++def test_frontend_menu_fixes():
++    front = Path(__file__).resolve().parents[2] / "frontend" / "src"
++    layout = (front / "components" / "PortalLayout.jsx").read_text(encoding="utf-8")
++    assert 'roles.includes("dg") ? [...roles, "direction"]' in layout          # DG = liens de la Direction
++    assert 'label: "Rapports client", icon: ClipboardList, end: true' in layout  # un seul lien surligné
++    assert 'canIssueTokens && l.to === "/admin/staff"' in layout                # adresse désignée → Personnels
 diff --git a/frontend/src/components/AccountActions.jsx b/frontend/src/components/AccountActions.jsx
 index f2ce59d..5102ab6 100644
 --- a/frontend/src/components/AccountActions.jsx
@@ -135,10 +623,85 @@ index 508b03e..8f1ed7e 100644
                  </td>
                </tr>
 diff --git a/frontend/src/components/PortalLayout.jsx b/frontend/src/components/PortalLayout.jsx
-index 904c0f3..a3ba4fe 100644
+index 904c0f3..19de1c8 100644
 --- a/frontend/src/components/PortalLayout.jsx
 +++ b/frontend/src/components/PortalLayout.jsx
-@@ -158,6 +158,13 @@ export default function PortalLayout({ admin = false }) {
+@@ -1,5 +1,5 @@
+ import React, { useEffect, useState } from "react";
+-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
++import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+ import {
+   LayoutDashboard,
+   FileText,
+@@ -70,13 +70,13 @@ const CLIENT_SPACE_ROLES = ["administrateur", "direction", "dg", "secretariat",
+ // Staff menu items with the roles that grant access. `superviseur` = full access.
+ const STAFF_MENU = [
+   { to: "/admin", label: "Tableau de bord", icon: LayoutDashboard, end: true,
+-    roles: ["superviseur", "direction", "secretariat", "fiscaliste", "comptable", "aide_comptable", "rh"] },
++    roles: ["superviseur", "direction", "administrateur", "secretariat", "fiscaliste", "comptable", "aide_comptable", "rh"] },
+   { to: "/admin/clients", label: "Clients", icon: Users,
+-    roles: ["superviseur", "direction", "secretariat"] },
++    roles: ["superviseur", "direction", "administrateur", "secretariat"] },
+   { to: "/admin/contacts", label: "Contacts", icon: Contact,
+     roles: ["superviseur", "direction", "secretariat", "comptable", "fiscaliste"] },
+   { to: "/admin/staff", label: "Personnels", icon: UserCog,
+-    roles: ["superviseur", "direction"] },
++    roles: ["superviseur", "direction", "administrateur"] },
+   { to: "/admin/documents", label: "Pièces", icon: FileText,
+     roles: ["superviseur", "direction", "secretariat", "fiscaliste", "comptable", "aide_comptable", "rh"] },
+   { to: "/admin/missions", label: "Missions", icon: Briefcase,
+@@ -84,8 +84,8 @@ const STAFF_MENU = [
+   { to: "/admin/echeances", label: "Échéances fiscales", icon: Scale,
+     roles: ["superviseur", "direction", "secretariat", "fiscaliste", "comptable"] },
+   { to: "/admin/paie", label: "Paie & RH", icon: Wallet,
+-    roles: ["superviseur", "direction", "rh"] },
+-  { to: "/admin/rapports", label: "Rapports client", icon: ClipboardList,
++    roles: ["superviseur", "direction", "administrateur", "rh"] },
++  { to: "/admin/rapports", label: "Rapports client", icon: ClipboardList, end: true, // end : pas surligné sur « Rapports en masse »
+     roles: ["superviseur", "direction", "secretariat", "comptable", "fiscaliste"] },
+   { to: "/admin/rapports/bulk", label: "Rapports en masse", icon: Zap,
+     roles: ["superviseur", "direction", "comptable", "fiscaliste"] },
+@@ -123,7 +123,9 @@ const STAFF_MENU = [
+ function allowedFor(link, roles) {
+   if (link.alwaysAllowed) return true;
+   if (roles.includes("superviseur")) return true;
+-  return (link.roles || []).some((r) => roles.includes(r));
++  // La DG a les mêmes liens que la Direction (droits identiques côté serveur)
++  const effective = roles.includes("dg") ? [...roles, "direction"] : roles;
++  return (link.roles || []).some((r) => effective.includes(r));
+ }
+ 
+ export default function PortalLayout({ admin = false }) {
+@@ -132,11 +134,27 @@ export default function PortalLayout({ admin = false }) {
+   usePresenceHeartbeat(!!user);
+   const [openSidebar, setOpenSidebar] = useState(false);
+   const navigate = useNavigate();
++  const location = useLocation();
+   const roles = user?.roles || [];
++  // Adresse désignée par admin pour créer des accès temporaires : elle voit
++  // « Personnels » (où se trouve le bouton), même sans le rôle Direction.
++  const [canIssueTokens, setCanIssueTokens] = useState(false);
++  useEffect(() => {
++    if (!admin) return;
++    apiClient.get("/access/me").then(({ data }) => setCanIssueTokens(!!data.can_issue_tokens)).catch(() => {});
++  }, [admin]);
+   const links = admin
+-    ? STAFF_MENU.filter((l) => allowedFor(l, roles))
++    ? STAFF_MENU.filter((l) => allowedFor(l, roles) || (canIssueTokens && l.to === "/admin/staff"))
+     // Espace client : seuls les modules ouverts par le cabinet (aucun réglage = tous)
+     : CLIENT_LINKS.filter((l) => !l.module || !Array.isArray(user?.portal_modules) || user.portal_modules.includes(l.module));
++  // Rôle sans « Tableau de bord » dans son menu (ex. Caissier, Communication,
++  // Formulaires) : à l'arrivée sur /admin, on ouvre son premier lien autorisé.
++  useEffect(() => {
++    if (admin && location.pathname === "/admin" && links.length && !links.some((l) => l.to === "/admin")) {
++      navigate(links[0].to, { replace: true });
++    }
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [admin, location.pathname, links.length]);
+   const canUsePayments = roles.includes("superviseur") || roles.some((r) => PAYMENTS_ROLES.includes(r));
+ 
+   // Badges non-lus (WhatsApp/Diffusion) affichés à côté du lien correspondant
+@@ -158,6 +176,13 @@ export default function PortalLayout({ admin = false }) {
      setBadges((b) => ({ ...b, [`${page === "diffusion" ? "diffusion_new" : page}`]: 0 }));
    };
  
@@ -152,7 +715,7 @@ index 904c0f3..a3ba4fe 100644
    const handleLogout = async () => {
      await sendOffline(); // hors ligne tout de suite, avant de perdre le jeton
      logout();
-@@ -165,7 +172,7 @@ export default function PortalLayout({ admin = false }) {
+@@ -165,7 +190,7 @@ export default function PortalLayout({ admin = false }) {
    };
  
    return (
@@ -1946,7 +2509,7 @@ index e25038b..592f60a 100644
                  </TableCell>
                </TableRow>
 diff --git a/frontend/src/pages/admin/AdminStaff.jsx b/frontend/src/pages/admin/AdminStaff.jsx
-index 271f6d0..eaf0f39 100644
+index 271f6d0..d675573 100644
 --- a/frontend/src/pages/admin/AdminStaff.jsx
 +++ b/frontend/src/pages/admin/AdminStaff.jsx
 @@ -4,6 +4,7 @@ import { Plus, Pencil, FlaskConical } from "lucide-react";
@@ -1957,7 +2520,30 @@ index 271f6d0..eaf0f39 100644
  import { apiClient, extractError } from "@/lib/api";
  import { Button } from "@/components/ui/button";
  import {
-@@ -324,15 +325,10 @@ export default function AdminStaff() {
+@@ -47,14 +48,16 @@ const emptyForm = () => ({
+ export default function AdminStaff() {
+   const { user: me } = useAuth();
+   const myRoles = me?.roles || [];
+-  // Point 10 — filtrage selon le rôle du visiteur.
+-  const isAdmin = myRoles.includes("administrateur");
+-  const canEdit = isAdmin || myRoles.includes("superviseur") || myRoles.includes("direction");
++  // Compte admin du portail (doit rester identique à ADMIN_ACCOUNT_EMAIL côté backend)
++  const isAdminAccount = (me?.email || "").toLowerCase() === "admin@sawalismartsystems.com";
++  // Rôle Administrateur : visible et attribuable par un Administrateur (règle
++  // d'origine), le Superviseur (tous les droits) ou le compte admin.
++  const isAdmin = myRoles.includes("administrateur") || myRoles.includes("superviseur") || isAdminAccount;
++  // Gestion du personnel : Direction, DG, Administrateur, Superviseur (même règle que le serveur)
++  const canEdit = isAdmin || myRoles.includes("direction") || myRoles.includes("dg");
+   // Superviseur : supprime un compte du personnel, gère les comptes de test.
+   const isSuperviseur = myRoles.includes("superviseur");
+-  // Compte admin du portail : SEUL habilité à cocher / décocher « Superviseur »
+-  // (doit rester identique à ADMIN_ACCOUNT_EMAIL côté backend).
+-  const isAdminAccount = (me?.email || "").toLowerCase() === "admin@sawalismartsystems.com";
++  // Compte admin du portail : SEUL habilité à cocher / décocher « Superviseur ».
+   // Ligne du tableau : compte admin / compte Superviseur (protégés)
+   const isAdminAccountRow = (s) => (s.email || "").toLowerCase() === "admin@sawalismartsystems.com";
+   const isSupRow = (s) => (s.roles || []).includes("superviseur");
+@@ -324,15 +327,10 @@ export default function AdminStaff() {
                  </TableCell>
                  <TableCell className="text-right whitespace-nowrap">
                    {canEdit && (

@@ -192,6 +192,59 @@
   ]
  },
  {
+  "id": "g-droits5",
+  "title": "Corrections de droits (lot 5)",
+  "who": "Personnels, Caisse, comptes de test, menus — visible par : selon le rôle",
+  "prep": "Comptes : Comptable, Direction, DG (rôle dg seul), Caissier seul, Superviseur, admin ; comptes de test créés par admin.",
+  "items": [
+   {
+    "id": "g-droits5-1",
+    "do": "Se connecter en Comptable, puis en Direction : ouvrir Personnels → Nouveau personnel.",
+    "expect": [
+     "Comptable : pas de lien « Personnels » (et le serveur refuse toute création).",
+     "Direction : le collaborateur est créé."
+    ]
+   },
+   {
+    "id": "g-droits5-2",
+    "do": "En Superviseur : Personnels → Nouveau personnel.",
+    "expect": [
+     "La case « Administrateur » est visible et attribuable."
+    ]
+   },
+   {
+    "id": "g-droits5-3",
+    "do": "admin : « Créer comptes de test » ; se connecter avec TEST Client 1, puis avec TEST Secrétaire A → Clients.",
+    "expect": [
+     "TEST Client 1 se connecte (contrat de test en cours).",
+     "TEST Secrétaire A voit TEST Client 1 et 2 dans Clients."
+    ]
+   },
+   {
+    "id": "g-droits5-4",
+    "do": "Se connecter avec un compte DG (rôle dg seul), puis avec un Caissier seul.",
+    "expect": [
+     "DG : même menu que la Direction.",
+     "Caissier seul : arrivée directe sur « Caisse »."
+    ]
+   },
+   {
+    "id": "g-droits5-5",
+    "do": "Ouvrir « Rapports en masse ».",
+    "expect": [
+     "Un seul lien surligné dans le menu."
+    ]
+   },
+   {
+    "id": "g-droits5-6",
+    "do": "Dépôt espace client → fermer « Mes missions » pour un client ; se connecter avec ce client.",
+    "expect": [
+     "Son tableau de bord et son historique n'affichent plus de missions."
+    ]
+   }
+  ]
+ },
+ {
   "id": "g-deconnexion-auto",
   "title": "Déconnexion automatique après inactivité",
   "who": "Tous les comptes connectés ; délai réglé dans Paramètres → Cabinet (Superviseur)",
