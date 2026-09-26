@@ -1,12 +1,13 @@
-# Albarka — Lot 4 : Superviseur réservé, actions sur les comptes, présence en temps réel, comptes de test, Paramètres
+# Albarka — Lot 4 : Superviseur réservé, actions sur les comptes, présence en temps réel, déconnexion automatique, comptes de test, Paramètres
 
-Applique `albarka-portal-corrections_4_90834f0.patch` sur la branche
+Applique `albarka-portal-corrections_4_8fd0653.patch` sur la branche
 `conflict_030926_0658`. Base attendue : le commit `3d6b60a` (« Auto-generated
 changes », juste après `2e0a021`, le lot 3 que tu as publié). C'est un
 `git format-patch` d'un seul commit : applique-le en UN SEUL `git am`, puis
 redéploie (backend et frontend) et enregistre sur GitHub. Ce patch remplace
-entièrement les versions précédentes du lot 4 (`…_4_56d4b58.patch` et
-`…_4_37ad3ec.patch`) que je t'avais envoyées : n'applique que celui-ci.
+entièrement les versions précédentes du lot 4 (`…_4_56d4b58.patch`,
+`…_4_37ad3ec.patch` et `…_4_90834f0.patch`) que je t'avais envoyées :
+n'applique que celui-ci.
 
 Vocabulaire : quand je dis « admin », je parle du compte
 `admin@sawalismartsystems.com`, le super-utilisateur de la plateforme, pas du
@@ -23,22 +24,24 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 - `frontend/src/components/AccountActions.jsx` : actions sur un compte (désactiver, réinitialiser le mot de passe, supprimer) et colonne « Connexion / modification »
 - `backend/albarka_presence.py` : présence en temps réel (keep-alive)
 - `frontend/src/components/Presence.jsx` : battements depuis chaque page, pastilles et libellés de présence
+- `frontend/src/components/AutoLogoutGate.jsx`, `frontend/src/lib/useIdleTimer.js` : déconnexion automatique pour inactivité (repris de Sawali)
+- `frontend/src/lib/busyTasks.js` : suivi des tâches en cours, qui empêchent la déconnexion automatique
 
 **Fichiers modifiés**
 - `backend/albarka_models.py` : suppression de `effective_roles()` (lot 3), ajout de `is_test_account()`, `hide_test_accounts_filter()`, `NOT_TEST_ACCOUNT` et `SETTINGS_ROLES`
 - `backend/albarka_auth.py` : retour à la version d'avant le lot 3 (plus de rôles « effectifs »), plus la date d'émission (`iat`) dans le jeton et la fermeture des sessions ouvertes avant une réinitialisation du mot de passe
-- `backend/albarka_myaccount.py` : date de dernière modification notée quand la personne modifie son propre compte
+- `backend/albarka_myaccount.py` : date de dernière modification notée quand la personne modifie son propre compte ; `GET /me/idle-config` (délai de déconnexion automatique)
 - `backend/albarka_clients.py` : règle Superviseur, retour de la règle Administrateur d'origine, suppression d'un compte (personnel : superviseur ; client : admin), `POST /clients/{id}/active`, `POST /clients/{id}/reset-password`, date et auteur de la dernière modification, comptes de test (`POST` et `DELETE /clients/test-accounts`), masquage des comptes de test
-- `backend/albarka_admin_settings.py`, `albarka_settings_tests.py`, `albarka_branding.py`, `albarka_signing.py` : routes des Paramètres réservées au superviseur
+- `backend/albarka_admin_settings.py`, `albarka_settings_tests.py`, `albarka_branding.py`, `albarka_signing.py` : routes des Paramètres réservées au superviseur ; nouveau réglage `auto_logout_minutes`
 - `backend/albarka_dashboard.py`, `albarka_forms.py`, `albarka_phase_c.py`, `albarka_notifications.py`, `albarka_reports_mgmt.py` : comptes de test masqués ou exclus des envois de masse ; `albarka_phase_c.py` renvoie aussi `peer_id` pour les discussions directes du chat
 - `backend/server.py` : routeur Présence inclus sous `/api`, index créé au démarrage
-- `frontend/src/components/ChatBubble.jsx` : présence des collègues et de l'interlocuteur
+- `frontend/src/components/ChatBubble.jsx` : présence des collègues et de l'interlocuteur ; l'enregistrement d'une note vocale compte comme tâche en cours
 - `frontend/src/pages/admin/AdminWhatsAppConversations.jsx` : présence sur le portail des contacts clients
 - `backend/tests/test_client_space_lot3.py` : tests de la règle Administrateur du lot 3 retirés
 - `frontend/src/pages/admin/AdminStaff.jsx` : case Superviseur verrouillée, case Administrateur rétablie, actions sur les comptes, bouton « Créer comptes de test », badge TEST
 - `frontend/src/pages/admin/AdminClients.jsx` : actions sur les comptes, colonne « Connexion / modification », suppression pour admin
 - `frontend/src/components/PortalLayout.jsx` : menu Paramètres réservé au superviseur, battements de présence, « hors ligne » envoyé à la déconnexion
-- `frontend/src/pages/admin/AdminSettings.jsx` : réglage RGPD modifiable par le superviseur
+- `frontend/src/pages/admin/AdminSettings.jsx` : réglage RGPD modifiable par le superviseur ; champ « Déconnexion automatique après inactivité »
 
 Aucune nouvelle dépendance, aucune migration. Nouvelle collection
 `deleted_users` (trace des comptes supprimés), créée à la première
@@ -55,7 +58,8 @@ réinitialisation du mot de passe ferme les sessions du compte concerné.
 - **Nouvelles** : aucune.
 - **Déjà présentes, réutilisées telles quelles** : `EMERGENT_EMAIL_KEY` (codes
   de connexion des comptes de test), `JWT_SECRET_KEY`, `MONGO_URL`, `DB_NAME`.
-- **Paramètres stockés en base (AdminSettings)** : aucun nouveau.
+- **Paramètres stockés en base (AdminSettings)** : `auto_logout_minutes`
+  (défaut 30, 0 = désactivé, 120 max), réglable dans Paramètres → Cabinet.
 
 ## Ce que ça apporte, dans l'ordre
 
@@ -192,6 +196,26 @@ réinitialisation du mot de passe ferme les sessions du compte concerné.
        conversation. `GET /presence/by-phone` ne renvoie que l'état pour des
        numéros que le cabinet connaît déjà.
 
+9. **Déconnexion automatique après inactivité, sauf tâche en cours** (repris
+   de ma plateforme Sawali).
+   - Sans clavier, souris, défilement ni toucher pendant le délai réglé (par
+     défaut **30 minutes**), la session se ferme, côté client comme côté
+     cabinet.
+   - 30 s avant, une fenêtre « Session bientôt fermée » affiche un compte à
+     rebours, avec « Rester connecté(e) » et « Se déconnecter maintenant ».
+   - À la déconnexion, la présence passe « hors ligne » tout de suite, puis
+     retour à la page de connexion avec un message.
+   - Le délai se règle dans **Paramètres → Cabinet** (superviseur) :
+     `auto_logout_minutes`, de 0 à 120, 0 = désactivée. Tout utilisateur
+     connecté le lit via `GET /me/idle-config`.
+   - **Jamais pendant une tâche en cours** (`frontend/src/lib/busyTasks.js`) :
+     - une requête d'écriture vers l'API non terminée (envoi de fichier,
+       génération de rapport, envoi WhatsApp…, hors battements de présence),
+       suivie automatiquement par un intercepteur axios ;
+     - l'enregistrement d'une note vocale dans le chat ;
+     - la période d'inactivité ne recommence qu'une fois toutes les tâches
+       terminées.
+
 ## Volontairement pas dans ce lot
 
 - **Envoi automatique du nouveau mot de passe** par e-mail ou WhatsApp : je
@@ -253,6 +277,13 @@ réinitialisation du mot de passe ferme les sessions du compte concerné.
     interlocuteur s'affiche au-dessus des messages.
 17. **WhatsApp** : ouvre la conversation d'un client connecté au portail. Une
     pastille « En ligne » apparaît dans la liste et sous son numéro.
+18. **Paramètres → Cabinet** : règle « Déconnexion automatique » sur 1 minute
+    et enregistre. Connecte-toi avec un client et ne touche à rien. Après
+    30 s, la fenêtre « Session bientôt fermée » affiche le compte à rebours.
+    À 1 minute, retour à la page de connexion avec le message d'inactivité.
+19. Recommence en téléversant une grosse pièce (connexion lente) sans toucher
+    à rien. Tant que l'envoi n'est pas fini, il n'y a ni avertissement ni
+    déconnexion. **Remets ensuite le délai à 30 minutes.**
 
 Si quelque chose ne marche pas, renvoie-moi le message d'erreur exact (écran
 ou logs backend). Rappel : **aucun test, build, lint, Testing Agent ou

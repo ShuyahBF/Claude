@@ -1,6 +1,6 @@
-From 90834f00ec82f31249e19d3d4508483f54848923 Mon Sep 17 00:00:00 2001
+From 8fd0653223a3dcca08b7ae3fd2f3f86995f7e7a2 Mon Sep 17 00:00:00 2001
 From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
-Date: Sat, 26 Sep 2026 02:08:45 +0000
+Date: Sat, 26 Sep 2026 02:21:42 +0000
 Subject: [PATCH] =?UTF-8?q?Superviseur=20r=C3=A9serv=C3=A9,=20actions=20su?=
  =?UTF-8?q?r=20les=20comptes,=20pr=C3=A9sence,=20comptes=20de=20test,=20Pa?=
  =?UTF-8?q?ram=C3=A8tres?=
@@ -21,20 +21,22 @@ Content-Transfer-Encoding: 8bit
 - Présence en temps réel (keep-alive) des clients et collaborateurs :
   en ligne / absent / hors ligne, dans Clients, Personnels, le chat interne
   et la messagerie WhatsApp.
+- Déconnexion automatique après inactivité (délai réglable, avertissement
+  30 s avant), jamais pendant une tâche en cours (envoi, enregistrement).
 - Bouton « Créer comptes de test » : comptes de la recette avec adresses
   +alias, invisibles de tous sauf du superviseur, exclus des envois de masse ;
   suppression groupée.
 - Paramètres réservés au superviseur (menu et routes : réglages, image de
   marque, certificats, tests de configuration) ; RGPD modifiable par lui.
 ---
- backend/albarka_admin_settings.py             |  14 +-
+ backend/albarka_admin_settings.py             |  20 +-
  backend/albarka_auth.py                       |  18 +-
  backend/albarka_branding.py                   |   4 +-
- backend/albarka_clients.py                    | 248 ++++++++++++++++--
+ backend/albarka_clients.py                    | 248 +++++++++++++++--
  backend/albarka_dashboard.py                  |   9 +-
  backend/albarka_forms.py                      |   5 +-
  backend/albarka_models.py                     |  43 ++-
- backend/albarka_myaccount.py                  |   6 +-
+ backend/albarka_myaccount.py                  |  18 +-
  backend/albarka_notifications.py              |   1 +
  backend/albarka_phase_c.py                    |  13 +-
  backend/albarka_presence.py                   | 113 ++++++++
@@ -42,24 +44,30 @@ Content-Transfer-Encoding: 8bit
  backend/albarka_settings_tests.py             |   4 +-
  backend/albarka_signing.py                    |   5 +-
  backend/server.py                             |   6 +
- backend/tests/test_accounts_lot4.py           | 237 +++++++++++++++++
+ backend/tests/test_accounts_lot4.py           | 249 ++++++++++++++++++
  backend/tests/test_client_space_lot3.py       |  29 +-
  frontend/src/components/AccountActions.jsx    | 142 ++++++++++
- frontend/src/components/ChatBubble.jsx        |  17 +-
- frontend/src/components/PortalLayout.jsx      |  10 +-
+ frontend/src/components/AutoLogoutGate.jsx    |  77 ++++++
+ frontend/src/components/ChatBubble.jsx        |  23 +-
+ frontend/src/components/PortalLayout.jsx      |  13 +-
  frontend/src/components/Presence.jsx          |  97 +++++++
+ frontend/src/lib/busyTasks.js                 |  39 +++
+ frontend/src/lib/useIdleTimer.js              |  83 ++++++
  frontend/src/pages/admin/AdminClients.jsx     |  20 +-
- frontend/src/pages/admin/AdminSettings.jsx    |   7 +-
+ frontend/src/pages/admin/AdminSettings.jsx    |  20 +-
  frontend/src/pages/admin/AdminStaff.jsx       | 128 ++++++++-
  .../admin/AdminWhatsAppConversations.jsx      |  22 +-
- 25 files changed, 1082 insertions(+), 119 deletions(-)
+ 28 files changed, 1333 insertions(+), 119 deletions(-)
  create mode 100644 backend/albarka_presence.py
  create mode 100644 backend/tests/test_accounts_lot4.py
  create mode 100644 frontend/src/components/AccountActions.jsx
+ create mode 100644 frontend/src/components/AutoLogoutGate.jsx
  create mode 100644 frontend/src/components/Presence.jsx
+ create mode 100644 frontend/src/lib/busyTasks.js
+ create mode 100644 frontend/src/lib/useIdleTimer.js
 
 diff --git a/backend/albarka_admin_settings.py b/backend/albarka_admin_settings.py
-index 0c020ca..dbbd2e7 100644
+index 0c020ca..9b17e72 100644
 --- a/backend/albarka_admin_settings.py
 +++ b/backend/albarka_admin_settings.py
 @@ -1,8 +1,8 @@
@@ -91,7 +99,27 @@ index 0c020ca..dbbd2e7 100644
  
  # Champs sensibles : masqués sur lecture (******** = présent).
  SENSITIVE_FIELDS = {"wa_access_token", "recaptcha_secret_key", "pawapay_api_token_sandbox", "pawapay_api_token_production"}
-@@ -208,10 +210,8 @@ async def get_settings(user: dict = Depends(require_roles(_ADMIN_ROLES))):
+@@ -103,6 +105,10 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
+     "client_docs_wa_template_lang": "fr",
+     "client_docs_wa_template_params": "client,nombre,lien",
+     "client_docs_email_fallback": True,
++    # Déconnexion automatique après N minutes sans activité (clavier, souris,
++    # défilement, toucher) — clients et collaborateurs. 0 = désactivée.
++    # Jamais pendant une tâche en cours (envoi, enregistrement…). Repris de Sawali.
++    "auto_logout_minutes": 30,
+ }
+ 
+ 
+@@ -198,6 +204,8 @@ class SettingsUpdate(BaseModel):
+     client_docs_wa_template_lang: Optional[str] = Field(None, max_length=10)
+     client_docs_wa_template_params: Optional[str] = Field(None, max_length=200)
+     client_docs_email_fallback: Optional[bool] = None
++    # Déconnexion automatique (minutes d'inactivité, 0 = désactivée, 120 max)
++    auto_logout_minutes: Optional[int] = Field(None, ge=0, le=120)
+ 
+ 
+ @router.get("/settings")
+@@ -208,10 +216,8 @@ async def get_settings(user: dict = Depends(require_roles(_ADMIN_ROLES))):
  @router.put("/settings")
  async def update_settings(payload: SettingsUpdate, user: dict = Depends(require_roles(_ADMIN_ROLES))):
      changes = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
@@ -641,7 +669,7 @@ index b98204b..38d1a97 100644
  
  def is_superviseur(user: dict) -> bool:
 diff --git a/backend/albarka_myaccount.py b/backend/albarka_myaccount.py
-index 629a01f..6fb8c60 100644
+index 629a01f..5d19ef0 100644
 --- a/backend/albarka_myaccount.py
 +++ b/backend/albarka_myaccount.py
 @@ -30,7 +30,7 @@ from pydantic import BaseModel, Field
@@ -653,7 +681,26 @@ index 629a01f..6fb8c60 100644
  from albarka_storage import guess_content_type, presigned_url, save_and_log
  from db import db, serialize
  
-@@ -68,7 +68,7 @@ async def update_my_account(payload: AccountUpdate, user: dict = Depends(get_cur
+@@ -38,6 +38,18 @@ logger = logging.getLogger("albarka.myaccount")
+ 
+ router = APIRouter(prefix="/me", tags=["Mon compte"])
+ 
++# Avertissement affiché avant la déconnexion automatique (secondes)
++IDLE_WARNING_SECONDS = 30
++
++
++@router.get("/idle-config")
++async def idle_config(user: dict = Depends(get_current_user)):
++    """Délai de déconnexion automatique pour inactivité (réglé dans Paramètres)."""
++    from albarka_admin_settings import get_settings_doc
++    settings = await get_settings_doc()
++    return {"auto_logout_minutes": int(settings.get("auto_logout_minutes") or 0),
++            "warning_seconds": IDLE_WARNING_SECONDS}
++
+ KYC_DOC_TYPES = {"id_photo", "id_card", "letterhead"}
+ ALLOWED_KYC_EXT = {"jpg", "jpeg", "png", "webp", "pdf"}
+ MAX_KYC_UPLOAD_BYTES = 8 * 1024 * 1024  # 8 Mo
+@@ -68,7 +80,7 @@ async def update_my_account(payload: AccountUpdate, user: dict = Depends(get_cur
      changes = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
      if not changes:
          raise HTTPException(status_code=400, detail="Aucun champ à mettre à jour")
@@ -662,7 +709,7 @@ index 629a01f..6fb8c60 100644
      doc = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
      return serialize(doc)
  
-@@ -79,7 +79,7 @@ async def change_my_password(payload: PasswordChange, user: dict = Depends(get_c
+@@ -79,7 +91,7 @@ async def change_my_password(payload: PasswordChange, user: dict = Depends(get_c
      if not full or not verify_password(payload.current_password, full["password_hash"]):
          raise HTTPException(status_code=400, detail="Mot de passe actuel incorrect")
      await db.users.update_one(
@@ -946,10 +993,10 @@ index e4a2c9c..c66a8ca 100644
  
 diff --git a/backend/tests/test_accounts_lot4.py b/backend/tests/test_accounts_lot4.py
 new file mode 100644
-index 0000000..9a64b67
+index 0000000..3a91af6
 --- /dev/null
 +++ b/backend/tests/test_accounts_lot4.py
-@@ -0,0 +1,237 @@
+@@ -0,0 +1,249 @@
 +"""Lot 4 — rôles Superviseur/Administrateur, suppression du personnel,
 +comptes de test, Paramètres réservés au Superviseur.
 +
@@ -1187,6 +1234,18 @@ index 0000000..9a64b67
 +    # Plus de battement depuis 70 s : hors ligne
 +    old = {"last_seen": "2020-01-01T00:00:00+00:00", "visible": True}
 +    assert pr.status_of(old)["status"] == "offline" and pr.status_of(None)["status"] == "offline"
++
++
++def test_auto_logout_setting(env):
++    """Déconnexion automatique : délai réglé par le superviseur, lu par tous."""
++    import albarka_myaccount
++    api = APIRouter(prefix="/api")
++    api.include_router(albarka_myaccount.router)
++    env.c.app.include_router(api)
++    assert env.c.get("/api/me/idle-config", headers=_h("c1")).json() == {"auto_logout_minutes": 30, "warning_seconds": 30}
++    assert env.c.put("/api/admin/settings", headers=_h("sup"), json={"auto_logout_minutes": 121}).status_code == 422
++    env.c.put("/api/admin/settings", headers=_h("sup"), json={"auto_logout_minutes": 0})
++    assert env.c.get("/api/me/idle-config", headers=_h("compta")).json()["auto_logout_minutes"] == 0
 diff --git a/backend/tests/test_client_space_lot3.py b/backend/tests/test_client_space_lot3.py
 index c1c4f6c..68a4c23 100644
 --- a/backend/tests/test_client_space_lot3.py
@@ -1401,19 +1460,109 @@ index 0000000..f2ce59d
 +    </>
 +  );
 +}
+diff --git a/frontend/src/components/AutoLogoutGate.jsx b/frontend/src/components/AutoLogoutGate.jsx
+new file mode 100644
+index 0000000..cc3a61d
+--- /dev/null
++++ b/frontend/src/components/AutoLogoutGate.jsx
+@@ -0,0 +1,77 @@
++/*
++  Déconnexion automatique pour inactivité — repris de Sawali (AutoLogoutGate).
++  Monté dans PortalLayout (espace client et cabinet). Lit le délai réglé par
++  le superviseur (Paramètres → Cabinet, GET /me/idle-config), affiche un
++  avertissement 30 s avant, puis déconnecte (présence « hors ligne » envoyée).
++  Jamais pendant une tâche en cours (envoi, enregistrement…) : busyTasks.js.
++*/
++import React, { useEffect, useState } from "react";
++import { toast } from "sonner";
++import { Clock, LogOut } from "lucide-react";
++import { apiClient } from "@/lib/api";
++import { useAuth } from "@/contexts/AuthContext";
++import { useIdleTimer } from "@/lib/useIdleTimer";
++import { installBusyInterceptor } from "@/lib/busyTasks";
++import { sendOffline } from "@/components/Presence";
++
++// Suivi automatique des requêtes d'écriture en cours (une seule fois)
++installBusyInterceptor(apiClient);
++
++export default function AutoLogoutGate() {
++  const { user, logout } = useAuth() || {};
++  const [config, setConfig] = useState({ auto_logout_minutes: 0, warning_seconds: 30 });
++
++  // Délai lu à la connexion
++  useEffect(() => {
++    if (!user) { setConfig({ auto_logout_minutes: 0, warning_seconds: 30 }); return undefined; }
++    let cancelled = false;
++    apiClient.get("/me/idle-config").then((r) => { if (!cancelled) setConfig(r.data); }).catch(() => { /* désactivée par défaut */ });
++    return () => { cancelled = true; };
++  }, [user]);
++
++  const handleLogout = async () => {
++    await sendOffline(); // hors ligne tout de suite pour le cabinet
++    try { logout && logout(); } catch { /* ignoré */ }
++    toast.warning("Session fermée après une période d'inactivité — merci de vous reconnecter.", { duration: 6000, id: "idle-logout-toast" });
++    // Navigation complète : ferme toutes les fenêtres encore ouvertes
++    window.location.assign("/login");
++  };
++
++  const { warningCountdown, stayConnected } = useIdleTimer({
++    idleMinutes: Number(config.auto_logout_minutes) || 0,
++    warningSeconds: Number(config.warning_seconds) || 30,
++    onLogout: handleLogout,
++    enabled: !!user,
++  });
++
++  if (warningCountdown === null) return null;
++  return (
++    <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
++      role="alertdialog" aria-modal="true" aria-labelledby="idle-warning-title" data-testid="idle-warning-modal">
++      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
++        <div className="flex items-center gap-3 mb-3">
++          <div className="h-12 w-12 rounded-full bg-amber-50 flex items-center justify-center">
++            <Clock className="h-6 w-6 text-[#B45309] animate-pulse" />
++          </div>
++          <div>
++            <h2 id="idle-warning-title" className="font-display text-lg text-slate-900">Session bientôt fermée</h2>
++            <p className="text-xs text-slate-500">Aucune activité détectée</p>
++          </div>
++        </div>
++        <p className="text-sm text-slate-700">
++          Vous allez être déconnecté(e) dans{" "}
++          <strong className="text-[#B45309] tabular-nums" data-testid="idle-warning-countdown">{warningCountdown}</strong>{" "}
++          seconde{warningCountdown > 1 ? "s" : ""} faute d'activité.
++        </p>
++        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 mt-5">
++          <button onClick={handleLogout} className="text-xs inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 px-3 py-2" data-testid="idle-warning-logout-now">
++            <LogOut className="h-3.5 w-3.5" /> Se déconnecter maintenant
++          </button>
++          <button onClick={stayConnected} className="text-sm rounded-lg bg-[#0F6B4A] hover:bg-[#0A4E36] text-white px-4 py-2 font-semibold" data-testid="idle-warning-stay">
++            Rester connecté(e)
++          </button>
++        </div>
++      </div>
++    </div>
++  );
++}
 diff --git a/frontend/src/components/ChatBubble.jsx b/frontend/src/components/ChatBubble.jsx
-index 24c73ce..0e9afc6 100644
+index 24c73ce..e24f7d7 100644
 --- a/frontend/src/components/ChatBubble.jsx
 +++ b/frontend/src/components/ChatBubble.jsx
-@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
+@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
  import { MessageSquare, X, Send, Users, Mic, Square, Search, Paperclip, Loader2, Plus, FileText, MessageCircle } from "lucide-react";
  import { toast } from "sonner";
  import { apiClient, extractError, API } from "@/lib/api";
 +import { usePresence, PresenceLabel } from "@/components/Presence";
++import { beginTask } from "@/lib/busyTasks";
  import { Button } from "@/components/ui/button";
  import { Input } from "@/components/ui/input";
  import { Textarea } from "@/components/ui/textarea";
-@@ -56,6 +57,10 @@ export default function ChatBubble() {
+@@ -51,11 +53,16 @@ export default function ChatBubble() {
+   const [uploadingFile, setUploadingFile] = useState(false);
+   const scrollRef = useRef(null);
+   const mediaRef = useRef(null);
++  const recordingTaskRef = useRef(null); // fin de la tâche « enregistrement » (busyTasks)
+   const chunksRef = useRef([]);
+   const fileInputRef = useRef(null);
    const messageRefs = useRef({});
  
    const threadTitle = (threadId) => threads.find((t) => t.thread_id === threadId)?.title || threadId;
@@ -1424,7 +1573,23 @@ index 24c73ce..0e9afc6 100644
  
    const loadThreads = async () => {
      if (!user) return;
-@@ -292,7 +297,7 @@ export default function ChatBubble() {
+@@ -189,11 +196,15 @@ export default function ChatBubble() {
+       };
+       mediaRef.current = rec;
+       rec.start();
++      // Enregistrement en cours : pas de déconnexion automatique pour inactivité
++      recordingTaskRef.current = beginTask();
+       setRecording(true);
+     } catch (err) { toast.error("Accès micro refusé"); }
+   };
+   const stopRecording = () => {
+     mediaRef.current?.stop();
++    recordingTaskRef.current?.(); // fin de la tâche « enregistrement »
++    recordingTaskRef.current = null;
+     setRecording(false);
+   };
+ 
+@@ -292,7 +303,7 @@ export default function ChatBubble() {
                <Users className="w-3 h-3 text-slate-500 shrink-0" />
                <select className="flex-1 h-7 text-xs bg-white rounded border border-input px-1" value={activeThread || ""} onChange={(e) => setActiveThread(e.target.value)} data-testid="chat-bubble-thread-select">
                  <option value="">— Choisir un fil —</option>
@@ -1433,7 +1598,7 @@ index 24c73ce..0e9afc6 100644
                </select>
              </div>
            )}
-@@ -306,7 +311,9 @@ export default function ChatBubble() {
+@@ -306,7 +317,9 @@ export default function ChatBubble() {
                data-testid="chat-bubble-dm-select"
              >
                <option value="">— Discuter avec un collègue —</option>
@@ -1444,7 +1609,7 @@ index 24c73ce..0e9afc6 100644
              </select>
              <Button
                size="sm" variant="outline" className="h-7 px-2 text-xs"
-@@ -336,6 +343,12 @@ export default function ChatBubble() {
+@@ -336,6 +349,12 @@ export default function ChatBubble() {
              </div>
            )}
  
@@ -1458,18 +1623,19 @@ index 24c73ce..0e9afc6 100644
              {!activeThread && (
                <div className="text-xs text-muted-foreground text-center py-10">
 diff --git a/frontend/src/components/PortalLayout.jsx b/frontend/src/components/PortalLayout.jsx
-index 54dc204..4978c69 100644
+index 54dc204..46c9283 100644
 --- a/frontend/src/components/PortalLayout.jsx
 +++ b/frontend/src/components/PortalLayout.jsx
-@@ -36,6 +36,7 @@ import { Button } from "@/components/ui/button";
+@@ -36,6 +36,8 @@ import { Button } from "@/components/ui/button";
  import { apiClient } from "@/lib/api";
  import ChatBubble from "@/components/ChatBubble";
  import PaymentBubble from "@/components/PaymentBubble";
 +import { usePresenceHeartbeat, sendOffline } from "@/components/Presence";
++import AutoLogoutGate from "@/components/AutoLogoutGate";
  
  // Actualisation des badges non-lus (WhatsApp/Diffusion) par polling — pas de
  // WebSocket/SSE dans l'application, même convention que ChatBubble.jsx.
-@@ -110,8 +111,8 @@ const STAFF_MENU = [
+@@ -110,8 +112,8 @@ const STAFF_MENU = [
      roles: ["superviseur", "direction", "administrateur", "secretariat", "fiscaliste", "comptable"] },
    { to: "/admin/logs", label: "Journal plateforme", icon: ScrollText,
      roles: ["superviseur", "direction", "administrateur"] },
@@ -1480,7 +1646,7 @@ index 54dc204..4978c69 100644
    // Accessible à TOUT collaborateur, quel que soit son rôle (alwaysAllowed) —
    // voir allowedFor() ci-dessous.
    { to: "/admin/mon-compte", label: "Mon compte", icon: UserCog, alwaysAllowed: true },
-@@ -125,6 +126,8 @@ function allowedFor(link, roles) {
+@@ -125,6 +127,8 @@ function allowedFor(link, roles) {
  
  export default function PortalLayout({ admin = false }) {
    const { user, logout } = useAuth();
@@ -1489,7 +1655,7 @@ index 54dc204..4978c69 100644
    const [openSidebar, setOpenSidebar] = useState(false);
    const navigate = useNavigate();
    const roles = user?.roles || [];
-@@ -153,7 +156,8 @@ export default function PortalLayout({ admin = false }) {
+@@ -153,7 +157,8 @@ export default function PortalLayout({ admin = false }) {
      setBadges((b) => ({ ...b, [`${page === "diffusion" ? "diffusion_new" : page}`]: 0 }));
    };
  
@@ -1499,6 +1665,15 @@ index 54dc204..4978c69 100644
      logout();
      navigate("/login");
    };
+@@ -308,6 +313,8 @@ export default function PortalLayout({ admin = false }) {
+       </div>
+       {/* Chat interne — strictement réservé aux collaborateurs, jamais aux clients */}
+       {admin && <ChatBubble />}
++      {/* Déconnexion automatique après inactivité (sauf tâche en cours) */}
++      <AutoLogoutGate />
+       {/* Bulle Paiements — accès rapide à un lien PawaPay, réservée au rôle caissier */}
+       {admin && canUsePayments && <PaymentBubble />}
+     </div>
 diff --git a/frontend/src/components/Presence.jsx b/frontend/src/components/Presence.jsx
 new file mode 100644
 index 0000000..4f77efe
@@ -1602,6 +1777,140 @@ index 0000000..4f77efe
 +    </span>
 +  );
 +}
+diff --git a/frontend/src/lib/busyTasks.js b/frontend/src/lib/busyTasks.js
+new file mode 100644
+index 0000000..41e317d
+--- /dev/null
++++ b/frontend/src/lib/busyTasks.js
+@@ -0,0 +1,39 @@
++// Tâches en cours — empêchent la déconnexion automatique pour inactivité.
++//
++// Une tâche est « en cours » tant que :
++//   - une requête d'écriture vers l'API n'est pas terminée (POST/PUT/PATCH/
++//     DELETE : envoi de fichier, génération de rapport, envoi WhatsApp…),
++//     hors battements de présence ;
++//   - ou un composant l'a déclarée avec beginTask() (ex. enregistrement d'une
++//     note vocale dans le chat) et n'a pas encore appelé la fonction de fin.
++// La minuterie d'inactivité s'abonne aux changements (subscribeBusy).
++let count = 0;
++const listeners = new Set();
++const notify = () => listeners.forEach((fn) => { try { fn(count); } catch { /* ignoré */ } });
++
++export function busyCount() { return count; }
++
++export function subscribeBusy(fn) {
++  listeners.add(fn);
++  return () => listeners.delete(fn);
++}
++
++// Déclare une tâche ; renvoie la fonction à appeler quand elle est finie (une seule fois).
++export function beginTask() {
++  count += 1; notify();
++  let done = false;
++  return () => { if (!done) { done = true; count = Math.max(0, count - 1); notify(); } };
++}
++
++// Branche le suivi automatique des requêtes d'écriture sur le client axios.
++let installed = false;
++export function installBusyInterceptor(client) {
++  if (installed) return;
++  installed = true;
++  const counts = (cfg) => cfg && cfg.method && cfg.method.toLowerCase() !== "get" && !String(cfg.url || "").includes("/presence/");
++  client.interceptors.request.use((cfg) => { if (counts(cfg)) cfg.__endTask = beginTask(); return cfg; });
++  client.interceptors.response.use(
++    (res) => { res.config?.__endTask?.(); return res; },
++    (err) => { err?.config?.__endTask?.(); return Promise.reject(err); },
++  );
++}
+diff --git a/frontend/src/lib/useIdleTimer.js b/frontend/src/lib/useIdleTimer.js
+new file mode 100644
+index 0000000..400c2f7
+--- /dev/null
++++ b/frontend/src/lib/useIdleTimer.js
+@@ -0,0 +1,83 @@
++// Déconnexion automatique pour inactivité — repris de Sawali (useIdleTimer),
++// avec en plus l'exception « tâches en cours » (voir busyTasks.js).
++//
++// Surveille l'activité (souris, clavier, défilement, toucher). Après
++// `idleMinutes` minutes sans activité : `onWarn` 30 s avant, puis `onLogout`.
++// Renvoie le compte à rebours pendant l'avertissement.
++// Tant qu'une tâche est en cours, rien ne se déclenche : la période
++// d'inactivité ne recommence qu'une fois toutes les tâches terminées.
++//
++// idleMinutes = 0 désactive complètement la minuterie.
++import { useEffect, useRef, useState, useCallback } from "react";
++import { busyCount, subscribeBusy } from "@/lib/busyTasks";
++
++const EVENTS = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "click"];
++
++export function useIdleTimer({ idleMinutes, warningSeconds = 30, onWarn, onLogout, enabled = true }) {
++  const [warningCountdown, setWarningCountdown] = useState(null);
++  const lastActivityRef = useRef(Date.now());
++  const warnTimerRef = useRef(null);
++  const logoutTimerRef = useRef(null);
++  const countdownIntervalRef = useRef(null);
++  const onWarnRef = useRef(onWarn);
++  const onLogoutRef = useRef(onLogout);
++
++  useEffect(() => { onWarnRef.current = onWarn; }, [onWarn]);
++  useEffect(() => { onLogoutRef.current = onLogout; }, [onLogout]);
++
++  const clearAll = useCallback(() => {
++    if (warnTimerRef.current) { clearTimeout(warnTimerRef.current); warnTimerRef.current = null; }
++    if (logoutTimerRef.current) { clearTimeout(logoutTimerRef.current); logoutTimerRef.current = null; }
++    if (countdownIntervalRef.current) { clearInterval(countdownIntervalRef.current); countdownIntervalRef.current = null; }
++    setWarningCountdown(null);
++  }, []);
++
++  const reset = useCallback(() => {
++    if (!enabled || !idleMinutes || idleMinutes <= 0) return;
++    lastActivityRef.current = Date.now();
++    clearAll();
++    const idleMs = idleMinutes * 60 * 1000;
++    const warnMs = Math.max(idleMs - warningSeconds * 1000, 1000);
++    // Avertissement (reporté si une tâche est en cours)
++    warnTimerRef.current = setTimeout(() => {
++      if (busyCount() > 0) { reset(); return; }
++      setWarningCountdown(warningSeconds);
++      try { onWarnRef.current && onWarnRef.current(); } catch { /* swallow */ }
++      // Start countdown UI tick
++      countdownIntervalRef.current = setInterval(() => {
++        setWarningCountdown((c) => (c === null ? null : Math.max(c - 1, 0)));
++      }, 1000);
++    }, warnMs);
++    // Déconnexion (jamais pendant une tâche en cours)
++    logoutTimerRef.current = setTimeout(() => {
++      if (busyCount() > 0) { reset(); return; }
++      clearAll();
++      try { onLogoutRef.current && onLogoutRef.current(); } catch { /* swallow */ }
++    }, idleMs);
++  }, [enabled, idleMinutes, warningSeconds, clearAll]);
++
++  // Wire events
++  useEffect(() => {
++    if (!enabled || !idleMinutes || idleMinutes <= 0) {
++      clearAll();
++      return;
++    }
++    const handler = () => reset();
++    EVENTS.forEach((ev) => window.addEventListener(ev, handler, { passive: true }));
++    // Début ou fin d'une tâche : la période d'inactivité repart de zéro
++    const unsubscribe = subscribeBusy(() => reset());
++    reset(); // arm initial timers
++    return () => {
++      EVENTS.forEach((ev) => window.removeEventListener(ev, handler));
++      unsubscribe();
++      clearAll();
++    };
++  }, [enabled, idleMinutes, warningSeconds, reset, clearAll]);
++
++  // Manual "stay connected" action — called from the warning modal
++  const stayConnected = useCallback(() => {
++    reset();
++  }, [reset]);
++
++  return { warningCountdown, stayConnected };
++}
 diff --git a/frontend/src/pages/admin/AdminClients.jsx b/frontend/src/pages/admin/AdminClients.jsx
 index e6584f2..e25038b 100644
 --- a/frontend/src/pages/admin/AdminClients.jsx
@@ -1674,7 +1983,7 @@ index e6584f2..e25038b 100644
                      <Button variant="outline" size="sm" data-testid={`view-client-${c.id}`}>Ouvrir</Button>
                    </Link>
 diff --git a/frontend/src/pages/admin/AdminSettings.jsx b/frontend/src/pages/admin/AdminSettings.jsx
-index 61461a0..8a64e22 100644
+index 61461a0..7464c07 100644
 --- a/frontend/src/pages/admin/AdminSettings.jsx
 +++ b/frontend/src/pages/admin/AdminSettings.jsx
 @@ -20,7 +20,8 @@ const FIELDS_TABS = ["cabinet", "whatsapp", "notifications", "rapports"];
@@ -1687,7 +1996,29 @@ index 61461a0..8a64e22 100644
    const [settings, setSettings] = useState(null);
    const [loading, setLoading] = useState(true);
    const [saving, setSaving] = useState(false);
-@@ -262,7 +263,7 @@ export default function AdminSettings() {
+@@ -238,8 +239,21 @@ export default function AdminSettings() {
+               </div>
+             </div>
+ 
++            {/* Déconnexion automatique après inactivité (clients et collaborateurs) */}
++            <div className="pt-2 border-t">
++              <Label>Déconnexion automatique après inactivité (minutes)</Label>
++              <Input type="number" min={0} max={120} value={settings.auto_logout_minutes ?? 30}
++                onChange={(e) => setSettings({ ...settings, auto_logout_minutes: Math.max(0, Math.min(120, parseInt(e.target.value || "0", 10))) })}
++                className="w-32" data-testid="auto-logout-input" />
++              <div className="text-xs text-muted-foreground mt-1">
++                Sans clavier, souris ni défilement pendant ce délai, la session se ferme (avertissement 30 s avant).
++                Jamais pendant une tâche en cours (envoi de fichier, enregistrement…). 0 = désactivée, 120 max.
++              </div>
++            </div>
++
+             <Button
+               onClick={() => save({
++                auto_logout_minutes: settings.auto_logout_minutes ?? 30,
+                 cabinet_name: settings.cabinet_name,
+                 cabinet_email: settings.cabinet_email,
+                 cabinet_phone: settings.cabinet_phone,
+@@ -262,7 +276,7 @@ export default function AdminSettings() {
                    <div className="text-sm text-muted-foreground max-w-md">
                      Une fois activé, seuls Administrateur/Superviseur/DG/Direction/Secrétariat
                      voient les numéros de téléphone et WhatsApp des clients en clair — les autres
@@ -1696,7 +2027,7 @@ index 61461a0..8a64e22 100644
                    </div>
                  </div>
                  <Switch
-@@ -274,7 +275,7 @@ export default function AdminSettings() {
+@@ -274,7 +288,7 @@ export default function AdminSettings() {
                </div>
                {!isAdministrateur && (
                  <div className="text-xs text-amber-700 mt-2">
