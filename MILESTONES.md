@@ -123,7 +123,10 @@ concerné.
   (modèle Meta hors 24 h, repli e-mail). 18 tests Albarka + parcours
   navigateur OK.
 - **Albarka lot 4 — Superviseur réservé, suppression du personnel, comptes
-  de test, Paramètres** — **livré, en attente de publication** (base
+  de test, Paramètres** — **publié et déployé en production le 2026-09-26**
+  (commit Emergent `655653f` + `36d9fc1`, identique au patch hors .emergent ; routes
+  /api/presence, /api/access, /api/push, /documents/multi, sw.js, manifest et
+  bundle v2026.4 vérifiés sur albarka-bf.com) (base
   `3d6b60a` ; `albarka-portal-livraisons/albarka-portal-corrections_4_3156df6.patch`
   + `albarka-portal-prompt_4.md`, remplace 56d4b58, 37ad3ec, 90834f0, 8fd0653,
   439dc65 et af5114c non publiés ; dev `claude/albarka-lot4` 900bfee). + Dépôt
