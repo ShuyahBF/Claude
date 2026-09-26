@@ -1,9 +1,9 @@
-From af5114c41b70509ba860e504444fb96e3075ca8f Mon Sep 17 00:00:00 2001
+From 3156df6d80905d84e89749f3864b787be539583c Mon Sep 17 00:00:00 2001
 From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
-Date: Sat, 26 Sep 2026 02:59:06 +0000
+Date: Sat, 26 Sep 2026 03:13:22 +0000
 Subject: [PATCH] =?UTF-8?q?Superviseur=20r=C3=A9serv=C3=A9,=20comptes,=20p?=
- =?UTF-8?q?r=C3=A9sence,=20liste=20blanche,=20comptes=20de=20test,=20Param?=
- =?UTF-8?q?=C3=A8tres?=
+ =?UTF-8?q?r=C3=A9sence,=20liste=20blanche,=20d=C3=A9p=C3=B4t=20multi-clie?=
+ =?UTF-8?q?nts,=20Param=C3=A8tres?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -35,12 +35,19 @@ Content-Transfer-Encoding: 8bit
   suppression groupée.
 - Paramètres réservés au superviseur (menu et routes : réglages, image de
   marque, certificats, tests de configuration) ; RGPD modifiable par lui.
+- Dépôt dans l'espace client : mode « Plusieurs clients » (liste à cocher,
+  recherche, tout sélectionner) pour déposer le même document chez tous les
+  clients choisis en une fois, fichier stocké une seule fois, une
+  notification par client et compte rendu (prévenus, non prévenus, module
+  fermé).
+- Barre jaune en haut de la sidebar : date et heure en temps réel à gauche,
+  numéro de version à droite (src/version.js, v2026.4).
 ---
  backend/albarka_access.py                     | 344 ++++++++++++++++++
  backend/albarka_admin_settings.py             |  47 ++-
  backend/albarka_auth.py                       |  34 +-
  backend/albarka_branding.py                   |   4 +-
- backend/albarka_client_space.py               |  25 ++
+ backend/albarka_client_space.py               | 118 ++++++
  backend/albarka_clients.py                    | 248 +++++++++++--
  backend/albarka_dashboard.py                  |   9 +-
  backend/albarka_forms.py                      |   5 +-
@@ -57,7 +64,7 @@ Content-Transfer-Encoding: 8bit
  backend/server.py                             |  29 ++
  backend/tests/test_access_lot4.py             | 177 +++++++++
  backend/tests/test_accounts_lot4.py           | 249 +++++++++++++
- backend/tests/test_client_space_lot3.py       |  29 +-
+ backend/tests/test_client_space_lot3.py       |  53 ++-
  backend/tests/test_push_lot4.py               | 165 +++++++++
  frontend/public/index.html                    |   4 +
  frontend/public/manifest.json                 |  14 +
@@ -66,15 +73,18 @@ Content-Transfer-Encoding: 8bit
  frontend/src/components/AccountActions.jsx    | 142 ++++++++
  frontend/src/components/AutoLogoutGate.jsx    |  77 ++++
  frontend/src/components/ChatBubble.jsx        |  23 +-
- frontend/src/components/PortalLayout.jsx      |  13 +-
+ frontend/src/components/MultiClientUpload.jsx | 175 +++++++++
+ frontend/src/components/PortalLayout.jsx      |  16 +-
  frontend/src/components/Presence.jsx          | 105 ++++++
  frontend/src/components/PushOptIn.jsx         | 103 ++++++
  frontend/src/components/RecentClientsCard.jsx |  72 ++++
+ frontend/src/components/SidebarInfoBar.jsx    |  25 ++
  .../src/components/TemporaryAccessButton.jsx  |  75 ++++
  frontend/src/contexts/AuthContext.jsx         |   9 +-
  frontend/src/lib/busyTasks.js                 |  39 ++
  frontend/src/lib/device.js                    |  23 ++
  frontend/src/lib/useIdleTimer.js              |  83 +++++
+ frontend/src/pages/admin/AdminClientSpace.jsx |  38 +-
  frontend/src/pages/admin/AdminClients.jsx     |  20 +-
  frontend/src/pages/admin/AdminPhaseC.jsx      |   6 +-
  frontend/src/pages/admin/AdminSettings.jsx    |  28 +-
@@ -86,7 +96,8 @@ Content-Transfer-Encoding: 8bit
  frontend/src/pages/auth/Login.jsx             |  24 +-
  .../src/pages/portal/CabinetDocuments.jsx     |   3 +
  frontend/src/pages/public/Error404.jsx        |  20 +
- 50 files changed, 2981 insertions(+), 129 deletions(-)
+ frontend/src/version.js                       |   6 +
+ 54 files changed, 3337 insertions(+), 137 deletions(-)
  create mode 100644 backend/albarka_access.py
  create mode 100644 backend/albarka_presence.py
  create mode 100644 backend/albarka_push.py
@@ -98,15 +109,18 @@ Content-Transfer-Encoding: 8bit
  create mode 100644 frontend/public/sw.js
  create mode 100644 frontend/src/components/AccountActions.jsx
  create mode 100644 frontend/src/components/AutoLogoutGate.jsx
+ create mode 100644 frontend/src/components/MultiClientUpload.jsx
  create mode 100644 frontend/src/components/Presence.jsx
  create mode 100644 frontend/src/components/PushOptIn.jsx
  create mode 100644 frontend/src/components/RecentClientsCard.jsx
+ create mode 100644 frontend/src/components/SidebarInfoBar.jsx
  create mode 100644 frontend/src/components/TemporaryAccessButton.jsx
  create mode 100644 frontend/src/lib/busyTasks.js
  create mode 100644 frontend/src/lib/device.js
  create mode 100644 frontend/src/lib/useIdleTimer.js
  create mode 100644 frontend/src/pages/admin/StaffAccessPanel.jsx
  create mode 100644 frontend/src/pages/public/Error404.jsx
+ create mode 100644 frontend/src/version.js
 
 diff --git a/backend/albarka_access.py b/backend/albarka_access.py
 new file mode 100644
@@ -667,7 +681,7 @@ index e94a50d..e0671b9 100644
  ALLOWED_MIMES = {"image/png", "image/jpeg", "image/webp"}
  MAX_SIZE = 5 * 1024 * 1024  # 5 MB
 diff --git a/backend/albarka_client_space.py b/backend/albarka_client_space.py
-index 928efe3..148ce15 100644
+index 928efe3..08ea6bd 100644
 --- a/backend/albarka_client_space.py
 +++ b/backend/albarka_client_space.py
 @@ -181,6 +181,31 @@ def _notif_email_html(*, cabinet: str, client_name: str, lines: List[str], link:
@@ -702,6 +716,106 @@ index 928efe3..148ce15 100644
      """Prévient le client des documents qu'il vient de recevoir.
      1. WhatsApp : message libre (texte réglé) si la fenêtre de 24 h est
         ouverte ; sinon le modèle Meta réglé, s'il y en a un ;
+@@ -430,6 +455,99 @@ async def upload_documents(
+     return {"items": [_upload_item(d) for d in created], "notification": notification}
+ 
+ 
++MAX_MULTI_CLIENTS = 300
++
++
++@router.post("/documents/multi", status_code=201)
++async def upload_documents_multi(
++    request: Request,
++    tenant_ids: str = Form(...),            # identifiants des clients, séparés par des virgules
++    category: str = Form("autre"),
++    title: str = Form(""),
++    reference: str = Form(""),
++    amount: str = Form(""),
++    doc_date: str = Form(""),
++    visible: bool = Form(True),
++    notify: bool = Form(True),
++    files: List[UploadFile] = File(...),
++    user: dict = Depends(require_roles(CLIENT_SPACE_ROLES)),
++):
++    """Dépose le(s) même(s) document(s) dans l'espace de PLUSIEURS clients
++    (ex. une note des impôts pour une liste de clients). Chaque fichier est
++    stocké une seule fois ; chaque client reçoit sa propre fiche et sa propre
++    notification. Aucune analyse OCR."""
++    _check_category_rights(user, category)
++    ids = list(dict.fromkeys(t.strip() for t in tenant_ids.split(",") if t.strip()))
++    if not ids:
++        raise HTTPException(status_code=400, detail="Choisissez au moins un client")
++    if len(ids) > MAX_MULTI_CLIENTS:
++        raise HTTPException(status_code=400, detail=f"{MAX_MULTI_CLIENTS} clients maximum par dépôt")
++    clients = {c["id"]: c for c in await db.users.find({"id": {"$in": ids}, "roles": "client"},
++                                                      {"_id": 0, "password_hash": 0}).to_list(MAX_MULTI_CLIENTS)}
++    missing = [i for i in ids if i not in clients]
++    if missing:
++        raise HTTPException(status_code=404, detail=f"{len(missing)} client(s) introuvable(s)")
++    if not files or len(files) > MAX_FILES:
++        raise HTTPException(status_code=400, detail=f"Entre 1 et {MAX_FILES} fichiers")
++    try:
++        amount_val = float(amount.replace(" ", "").replace(",", ".")) if amount.strip() else None
++    except ValueError:
++        raise HTTPException(status_code=400, detail="Montant invalide")
++    # 1. Stockage : une seule copie de chaque fichier, partagée par les fiches
++    stored_files = []
++    for f in files:
++        name = f.filename or "document"
++        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
++        if ext not in ALLOWED_EXTENSIONS:
++            raise HTTPException(status_code=400, detail=f"« {name} » : format non accepté (.{ext or '?'})")
++        data = await f.read()
++        if len(data) > MAX_FILE_BYTES:
++            raise HTTPException(status_code=413, detail=f"« {name} » dépasse 20 Mo")
++        stored = await albarka_storage.save_and_log(
++            db, data=data, kind="client_space", tenant_id="multi-clients", ext=ext,
++            content_type=albarka_storage.guess_content_type(ext, f.content_type or "application/octet-stream"),
++            original_filename=name, user_id=user["id"])
++        stored_files.append((name, stored))
++    # 2. Une fiche par client et par fichier, puis une notification par client
++    now = datetime.now(timezone.utc).isoformat()
++    link = _portal_link(request)
++    summary = {"clients": len(ids), "documents": 0, "notified": 0, "not_notified": [], "module_closed": []}
++    for tid in ids:
++        client = clients[tid]
++        created = []
++        for idx, (name, stored) in enumerate(stored_files):
++            base_title = title.strip()
++            doc_title = (f"{base_title} ({idx + 1})" if base_title and len(stored_files) > 1 else base_title) \
++                or name.rsplit(".", 1)[0]
++            doc = {
++                "id": secrets.token_urlsafe(12), "tenant_id": tid, "category": category,
++                "title": doc_title[:200], "reference": reference.strip()[:80] or None, "amount": amount_val,
++                "currency": "XOF", "doc_date": doc_date.strip()[:10] or None,
++                "storage_id": stored["id"], "storage_path": stored["path"], "content_type": stored["content_type"],
++                "size": stored["size"], "original_filename": name, "visible": bool(visible),
++                "published_at": now if visible else None, "uploaded_by": user["id"],
++                "uploaded_by_name": user.get("full_name") or user.get("email"), "created_at": now,
++                "viewed_at": None, "is_deleted": False, "notifications": [], "batch": True,
++            }
++            await db.client_documents.insert_one(dict(doc))
++            created.append(doc)
++        summary["documents"] += len(created)
++        # Module « Factures & documents » fermé pour ce client : signalé au cabinet
++        if "cabinet_documents" not in client_modules(client):
++            summary["module_closed"].append(client.get("full_name"))
++        if visible and notify:
++            n = await notify_client(client, [_upload_item(d) for d in created], link=link)
++            await db.client_documents.update_many({"id": {"$in": [d["id"] for d in created]}},
++                                                  {"$push": {"notifications": n}})
++            if n.get("ok"):
++                summary["notified"] += 1
++            else:
++                summary["not_notified"].append({"name": client.get("full_name"), "error": n.get("error")})
++    await _log(user, "client_space.upload_multi", ids[0],
++               {"clients": len(ids), "files": len(stored_files), "category": category, "visible": bool(visible)})
++    return summary
++
++
+ async def _doc_or_404(doc_id: str) -> Dict[str, Any]:
+     d = await db.client_documents.find_one({"id": doc_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+     if not d:
 diff --git a/backend/albarka_clients.py b/backend/albarka_clients.py
 index ee8c97d..ee2087f 100644
 --- a/backend/albarka_clients.py
@@ -2261,7 +2375,7 @@ index 0000000..3a91af6
 +    env.c.put("/api/admin/settings", headers=_h("sup"), json={"auto_logout_minutes": 0})
 +    assert env.c.get("/api/me/idle-config", headers=_h("compta")).json()["auto_logout_minutes"] == 0
 diff --git a/backend/tests/test_client_space_lot3.py b/backend/tests/test_client_space_lot3.py
-index c1c4f6c..68a4c23 100644
+index c1c4f6c..2cdb155 100644
 --- a/backend/tests/test_client_space_lot3.py
 +++ b/backend/tests/test_client_space_lot3.py
 @@ -1,8 +1,7 @@
@@ -2326,6 +2440,34 @@ index c1c4f6c..68a4c23 100644
  # ------------------------------------------------------------------ Espace client
  def test_upload_external_documents_notifies_client_once(env):
      files = [("files", ("facture-sage-042.pdf", b"%PDF-1", "application/pdf")),
+@@ -327,3 +302,27 @@ def test_superviseur_without_caissier_cannot_encaisser(env):
+     # Un superviseur à qui l'on coche aussi « Caissier » peut encaisser
+     asyncio.run(env.db.users.update_one({"id": "u-sup"}, {"$set": {"roles": ["superviseur", "caissier"]}}))
+     assert env.c.post("/api/billing/payments", headers=_h("sup"), json={"invoice_id": inv["id"], "amount": 1000}).status_code == 200
++
++
++def test_upload_same_document_to_several_clients(env):
++    """Note des impôts envoyée à une liste de clients : un seul dépôt, une
++    fiche et une notification par client, fichier stocké une seule fois."""
++    f = [("files", ("note-impots-2026.pdf", b"%PDF-note", "application/pdf"))]
++    stored_before = len(env.sent["files"])
++    r = env.c.post("/api/client-space/documents/multi", headers=_h("compta"), files=f,
++                   data={"tenant_ids": "c1,c2,c3", "category": "courrier", "title": "Note des impôts 2026"})
++    assert r.status_code == 201, r.text
++    body = r.json()
++    assert body["clients"] == 3 and body["documents"] == 3 and body["notified"] == 2
++    assert body["not_notified"][0]["name"] == "Refus notifs"          # c3 a refusé les notifications
++    assert len(env.sent["files"]) == stored_before + 1                  # une seule copie stockée
++    for who in ("c1", "c2"):
++        mine = env.c.get("/api/me/space", headers=_h(who)).json()["items"]
++        assert [i["title"] for i in mine] == ["Note des impôts 2026"]
++    assert env.c.get("/api/me/space/upload/" + env.c.get("/api/me/space", headers=_h("c2")).json()["items"][0]["id"]
++                     + "/file", headers=_h("c2")).content == b"%PDF-note"
++    # Contrôles : client inconnu, reçu réservé au Caissier
++    assert env.c.post("/api/client-space/documents/multi", headers=_h("compta"), files=f,
++                      data={"tenant_ids": "c1,inconnu"}).status_code == 404
++    assert env.c.post("/api/client-space/documents/multi", headers=_h("compta"), files=f,
++                      data={"tenant_ids": "c1", "category": "recu"}).status_code == 403
 diff --git a/backend/tests/test_push_lot4.py b/backend/tests/test_push_lot4.py
 new file mode 100644
 index 0000000..db1352a
@@ -2904,20 +3046,202 @@ index 24c73ce..e24f7d7 100644
            <div ref={scrollRef} className="flex-1 p-3 overflow-y-auto space-y-2 bg-slate-50" data-testid="chat-bubble-messages">
              {!activeThread && (
                <div className="text-xs text-muted-foreground text-center py-10">
+diff --git a/frontend/src/components/MultiClientUpload.jsx b/frontend/src/components/MultiClientUpload.jsx
+new file mode 100644
+index 0000000..3977ea9
+--- /dev/null
++++ b/frontend/src/components/MultiClientUpload.jsx
+@@ -0,0 +1,175 @@
++/*
++  MultiClientUpload — « Dépôt » en mode « Plusieurs clients » :
++  le MÊME document (ex. une note des impôts) est déposé en une fois dans
++  l'espace de tous les clients cochés, au lieu de recommencer client par client.
++    1. liste des clients à cocher (recherche, « tout sélectionner ») ;
++    2. formulaire identique au dépôt pour un client (catégorie, titre, fichiers…) ;
++    3. compte rendu : clients prévenus, non prévenus (motif), module fermé.
++  API : GET /clients, GET /client-space/catalog, POST /client-space/documents/multi
++*/
++import React, { useEffect, useMemo, useRef, useState } from "react";
++import { toast } from "sonner";
++import { Upload, Camera, Loader2, Users, CheckCircle2, AlertTriangle, Search } from "lucide-react";
++import { apiClient, extractError } from "@/lib/api";
++import { Button } from "@/components/ui/button";
++import { Input } from "@/components/ui/input";
++import { Label } from "@/components/ui/label";
++
++// Nombre maximum de clients par dépôt (identique à MAX_MULTI_CLIENTS côté serveur)
++const MAX_CLIENTS = 300;
++
++export default function MultiClientUpload() {
++  const [catalog, setCatalog] = useState(null);
++  const [clients, setClients] = useState(null);      // tous les clients (GET /clients)
++  const [selected, setSelected] = useState([]);      // identifiants des clients cochés
++  const [search, setSearch] = useState("");
++  // Formulaire de dépôt (mêmes champs que pour un seul client)
++  const emptyForm = { category: "autre", title: "", reference: "", amount: "", doc_date: "", visible: true, notify: true };
++  const [form, setForm] = useState(emptyForm);
++  const [files, setFiles] = useState([]);
++  const [uploading, setUploading] = useState(false);
++  const [report, setReport] = useState(null);        // compte rendu du dernier dépôt
++  const fileRef = useRef(null);
++  const cameraRef = useRef(null);
++
++  // Chargement du catalogue (catégories) et de la liste des clients actifs
++  useEffect(() => {
++    apiClient.get("/client-space/catalog").then(({ data }) => setCatalog(data)).catch(() => {});
++    apiClient.get("/clients")
++      .then(({ data }) => setClients((data || []).filter((c) => c.is_active !== false)))
++      .catch((err) => { toast.error(extractError(err, "Impossible de charger la liste des clients")); setClients([]); });
++  }, []);
++
++  // Clients affichés : filtre de recherche sur le nom, la société et l'e-mail
++  const shown = useMemo(() => {
++    const q = search.trim().toLowerCase();
++    return (clients || []).filter((c) => !q || `${c.full_name || ""} ${c.company || ""} ${c.email || ""}`.toLowerCase().includes(q));
++  }, [clients, search]);
++  const allShownSelected = shown.length > 0 && shown.every((c) => selected.includes(c.id));
++
++  // Coche / décoche un client
++  const toggle = (id) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
++  // « Tout sélectionner » agit sur les clients affichés (donc après recherche)
++  const toggleAllShown = () => {
++    const ids = shown.map((c) => c.id);
++    setSelected((s) => (allShownSelected ? s.filter((x) => !ids.includes(x)) : [...new Set([...s, ...ids])]));
++  };
++
++  // Copie immédiate de la liste de fichiers AVANT la mise à jour de l'état :
++  // le champ est vidé juste après, ce qui viderait aussi la FileList d'origine.
++  const addFiles = (list) => {
++    const picked = Array.from(list || []);
++    setFiles((f) => [...f, ...picked].slice(0, 10));
++  };
++
++  // Envoi : un seul appel pour tous les clients cochés
++  const submit = async () => {
++    if (!selected.length) { toast.error("Cochez au moins un client"); return; }
++    if (selected.length > MAX_CLIENTS) { toast.error(`${MAX_CLIENTS} clients maximum par dépôt`); return; }
++    if (!files.length) { toast.error("Choisissez au moins un fichier"); return; }
++    if (!window.confirm(`Déposer ${files.length} fichier(s) dans l'espace de ${selected.length} client(s) ?`)) return;
++    setUploading(true);
++    try {
++      const fd = new FormData();
++      fd.append("tenant_ids", selected.join(","));
++      Object.entries(form).forEach(([k, v]) => fd.append(k, typeof v === "boolean" ? String(v) : v));
++      files.forEach((f) => fd.append("files", f, f.name));
++      const { data } = await apiClient.post("/client-space/documents/multi", fd, { headers: { "Content-Type": "multipart/form-data" } });
++      setReport(data);
++      toast.success(`${data.documents} document(s) déposé(s) chez ${data.clients} client(s)`);
++      setFiles([]); setForm(emptyForm); setSelected([]);
++    } catch (err) { toast.error(extractError(err)); } finally { setUploading(false); }
++  };
++
++  const categories = (catalog?.categories || []).filter((c) => c.key !== "recu" || catalog?.can_issue_receipt);
++
++  return (
++    <div className="space-y-5" data-testid="multi-client-upload">
++      {/* 1. Clients destinataires */}
++      <div className="albarka-card p-4 space-y-3">
++        <div className="flex flex-wrap items-center gap-3">
++          <div className="flex items-center gap-2 font-semibold"><Users className="w-4 h-4 text-[#0F6B4A]" /> Clients destinataires</div>
++          <span className="albarka-chip bg-[#0F6B4A]/10 text-[#0F6B4A] text-xs" data-testid="mc-count">{selected.length} sélectionné(s)</span>
++          <div className="relative ml-auto w-full sm:w-72">
++            <Search className="w-4 h-4 absolute left-2 top-3 text-muted-foreground" />
++            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un client…" className="pl-8" data-testid="mc-search" />
++          </div>
++        </div>
++        {clients === null ? (
++          <p className="text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin inline" /> Chargement…</p>
++        ) : (
++          <>
++            <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
++              <input type="checkbox" checked={allShownSelected} onChange={toggleAllShown} data-testid="mc-select-all" />
++              Tout sélectionner {search ? "(résultats de la recherche)" : ""} — {shown.length} client(s)
++            </label>
++            <div className="max-h-72 overflow-y-auto border rounded-md divide-y">
++              {shown.length === 0 && <div className="p-3 text-sm text-muted-foreground">Aucun client.</div>}
++              {shown.map((c) => (
++                <label key={c.id} className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-slate-50" data-testid={`mc-client-${c.id}`}>
++                  <input type="checkbox" checked={selected.includes(c.id)} onChange={() => toggle(c.id)} />
++                  <span className="font-medium">{c.full_name}</span>
++                  <span className="text-muted-foreground truncate">{c.company || c.email || ""}</span>
++                </label>
++              ))}
++            </div>
++          </>
++        )}
++      </div>
++
++      {/* 2. Document(s) à déposer chez tous les clients cochés */}
++      <div className="albarka-card p-4 space-y-3">
++        <div className="flex items-center gap-2 font-semibold"><Upload className="w-4 h-4 text-[#0F6B4A]" /> Document commun</div>
++        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
++          <div>
++            <Label className="text-xs">Catégorie</Label>
++            <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="mt-1 w-full h-10 rounded-md border px-2 text-sm bg-white" data-testid="mc-category">
++              {categories.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
++            </select>
++          </div>
++          <div><Label className="text-xs">Titre (facultatif)</Label><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="ex. Note des impôts 2026" data-testid="mc-title" /></div>
++          <div><Label className="text-xs">Référence / n° (facultatif)</Label><Input value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} /></div>
++          <div><Label className="text-xs">Montant FCFA (facultatif)</Label><Input inputMode="decimal" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></div>
++          <div><Label className="text-xs">Date du document</Label><Input type="date" value={form.doc_date} onChange={(e) => setForm({ ...form, doc_date: e.target.value })} /></div>
++        </div>
++        <div className="flex flex-wrap items-center gap-2">
++          {/* Fichiers (plusieurs possibles) et scan par l'appareil photo */}
++          <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv" className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} data-testid="mc-files" />
++          <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
++          <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()}><Upload className="w-4 h-4 mr-1" /> Choisir des fichiers</Button>
++          <Button type="button" variant="outline" size="sm" onClick={() => cameraRef.current?.click()}><Camera className="w-4 h-4 mr-1" /> Scanner</Button>
++          {files.map((f, i) => (
++            <span key={i} className="albarka-chip bg-slate-100 text-slate-700 text-xs">
++              {f.name} <button type="button" className="ml-1 text-slate-400 hover:text-rose-600" onClick={() => setFiles(files.filter((_, j) => j !== i))}>×</button>
++            </span>
++          ))}
++        </div>
++        <div className="flex flex-wrap items-center gap-5 text-sm">
++          <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.visible} onChange={(e) => setForm({ ...form, visible: e.target.checked })} /> Visible par les clients</label>
++          <label className={`flex items-center gap-2 cursor-pointer ${form.visible ? "" : "opacity-40"}`}><input type="checkbox" disabled={!form.visible} checked={form.visible && form.notify} onChange={(e) => setForm({ ...form, notify: e.target.checked })} /> Prévenir chaque client (push, WhatsApp ou e-mail)</label>
++          <Button onClick={submit} disabled={uploading || !files.length || !selected.length} className="bg-[#0F6B4A] hover:bg-[#0A4E36] text-white ml-auto" data-testid="mc-submit">
++            {uploading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Upload className="w-4 h-4 mr-1" />} Déposer chez {selected.length} client(s)
++          </Button>
++        </div>
++      </div>
++
++      {/* 3. Compte rendu du dernier dépôt groupé */}
++      {report && (
++        <div className="albarka-card p-4 space-y-2 text-sm" data-testid="mc-report">
++          <div className="flex items-center gap-2 font-semibold text-emerald-700"><CheckCircle2 className="w-4 h-4" /> {report.documents} document(s) déposé(s) chez {report.clients} client(s) — {report.notified} prévenu(s)</div>
++          {report.not_notified?.length > 0 && (
++            <div className="text-amber-800">
++              <div className="flex items-center gap-2 font-medium"><AlertTriangle className="w-4 h-4" /> Non prévenus ({report.not_notified.length})</div>
++              <ul className="list-disc ml-6">{report.not_notified.map((n, i) => <li key={i}>{n.name} : {n.error || "motif inconnu"}</li>)}</ul>
++            </div>
++          )}
++          {report.module_closed?.length > 0 && (
++            <div className="text-slate-600">
++              Module « Factures & documents » fermé (le document est déposé mais le client ne le voit pas tant que le module est fermé) : {report.module_closed.join(", ")}
++            </div>
++          )}
++        </div>
++      )}
++    </div>
++  );
++}
 diff --git a/frontend/src/components/PortalLayout.jsx b/frontend/src/components/PortalLayout.jsx
-index 54dc204..46c9283 100644
+index 54dc204..904c0f3 100644
 --- a/frontend/src/components/PortalLayout.jsx
 +++ b/frontend/src/components/PortalLayout.jsx
-@@ -36,6 +36,8 @@ import { Button } from "@/components/ui/button";
+@@ -36,6 +36,9 @@ import { Button } from "@/components/ui/button";
  import { apiClient } from "@/lib/api";
  import ChatBubble from "@/components/ChatBubble";
  import PaymentBubble from "@/components/PaymentBubble";
 +import { usePresenceHeartbeat, sendOffline } from "@/components/Presence";
 +import AutoLogoutGate from "@/components/AutoLogoutGate";
++import SidebarInfoBar from "@/components/SidebarInfoBar";
  
  // Actualisation des badges non-lus (WhatsApp/Diffusion) par polling — pas de
  // WebSocket/SSE dans l'application, même convention que ChatBubble.jsx.
-@@ -110,8 +112,8 @@ const STAFF_MENU = [
+@@ -110,8 +113,8 @@ const STAFF_MENU = [
      roles: ["superviseur", "direction", "administrateur", "secretariat", "fiscaliste", "comptable"] },
    { to: "/admin/logs", label: "Journal plateforme", icon: ScrollText,
      roles: ["superviseur", "direction", "administrateur"] },
@@ -2928,7 +3252,7 @@ index 54dc204..46c9283 100644
    // Accessible à TOUT collaborateur, quel que soit son rôle (alwaysAllowed) —
    // voir allowedFor() ci-dessous.
    { to: "/admin/mon-compte", label: "Mon compte", icon: UserCog, alwaysAllowed: true },
-@@ -125,6 +127,8 @@ function allowedFor(link, roles) {
+@@ -125,6 +128,8 @@ function allowedFor(link, roles) {
  
  export default function PortalLayout({ admin = false }) {
    const { user, logout } = useAuth();
@@ -2937,7 +3261,7 @@ index 54dc204..46c9283 100644
    const [openSidebar, setOpenSidebar] = useState(false);
    const navigate = useNavigate();
    const roles = user?.roles || [];
-@@ -153,7 +157,8 @@ export default function PortalLayout({ admin = false }) {
+@@ -153,7 +158,8 @@ export default function PortalLayout({ admin = false }) {
      setBadges((b) => ({ ...b, [`${page === "diffusion" ? "diffusion_new" : page}`]: 0 }));
    };
  
@@ -2947,7 +3271,16 @@ index 54dc204..46c9283 100644
      logout();
      navigate("/login");
    };
-@@ -308,6 +313,8 @@ export default function PortalLayout({ admin = false }) {
+@@ -176,6 +182,8 @@ export default function PortalLayout({ admin = false }) {
+           openSidebar ? "translate-x-0" : "-translate-x-full"
+         }`}
+       >
++        {/* Barre jaune : date/heure en temps réel à gauche, n° de version à droite */}
++        <SidebarInfoBar />
+         <div className="px-5 py-6 border-b border-white/10 flex items-center gap-2.5 shrink-0">
+           <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#0F6B4A] to-[#E5A24B] flex items-center justify-center">
+             <Sprout className="w-5 h-5 text-white" />
+@@ -308,6 +316,8 @@ export default function PortalLayout({ admin = false }) {
        </div>
        {/* Chat interne — strictement réservé aux collaborateurs, jamais aux clients */}
        {admin && <ChatBubble />}
@@ -3254,6 +3587,37 @@ index 0000000..468c15e
 +    </div>
 +  );
 +}
+diff --git a/frontend/src/components/SidebarInfoBar.jsx b/frontend/src/components/SidebarInfoBar.jsx
+new file mode 100644
+index 0000000..b333f3e
+--- /dev/null
++++ b/frontend/src/components/SidebarInfoBar.jsx
+@@ -0,0 +1,25 @@
++/*
++  SidebarInfoBar — barre jaune tout en haut de la sidebar (cabinet et client) :
++    - à gauche : date et heure en temps réel (mise à jour chaque seconde) ;
++    - à droite : numéro de version du portail (APP_VERSION dans src/version.js).
++*/
++import React, { useEffect, useState } from "react";
++import { APP_VERSION } from "@/version";
++
++export default function SidebarInfoBar() {
++  const [now, setNow] = useState(() => new Date());
++  // Horloge : rafraîchit l'affichage toutes les secondes, arrêtée au démontage
++  useEffect(() => {
++    const t = setInterval(() => setNow(new Date()), 1000);
++    return () => clearInterval(t);
++  }, []);
++  // Format français : 26/09/2026 14:05:09
++  const date = now.toLocaleDateString("fr-FR");
++  const time = now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
++  return (
++    <div className="shrink-0 bg-[#FACC15] text-[#0B1912] px-3 py-1 flex items-center justify-between text-xs font-semibold tabular-nums" data-testid="sidebar-info-bar">
++      <span data-testid="sidebar-clock">{date} {time}</span>
++      <span data-testid="sidebar-version">{APP_VERSION}</span>
++    </div>
++  );
++}
 diff --git a/frontend/src/components/TemporaryAccessButton.jsx b/frontend/src/components/TemporaryAccessButton.jsx
 new file mode 100644
 index 0000000..3d92fce
@@ -3524,6 +3888,69 @@ index 0000000..400c2f7
 +
 +  return { warningCountdown, stayConnected };
 +}
+diff --git a/frontend/src/pages/admin/AdminClientSpace.jsx b/frontend/src/pages/admin/AdminClientSpace.jsx
+index abd1723..44f94d7 100644
+--- a/frontend/src/pages/admin/AdminClientSpace.jsx
++++ b/frontend/src/pages/admin/AdminClientSpace.jsx
+@@ -1,16 +1,29 @@
+ /*
+   « Dépôt espace client » — page rapide pour déposer des documents faits
+-  hors du portail (factures, rapports, attestations…) dans l'espace d'un
+-  client : on choisit le client, puis on utilise le même panneau que l'onglet
+-  « Espace client » de sa fiche (ClientSpacePanel).
++  hors du portail (factures, rapports, attestations…) dans l'espace client.
++  Deux modes :
++    - « Un client » : on choisit le client, puis on utilise le même panneau
++      que l'onglet « Espace client » de sa fiche (ClientSpacePanel) ;
++    - « Plusieurs clients » : le même document (ex. note des impôts) est
++      déposé en une fois chez tous les clients cochés (MultiClientUpload).
+ */
+ import React, { useState } from "react";
++import { User, Users } from "lucide-react";
+ import { Label } from "@/components/ui/label";
+ import EntitySelect from "@/components/EntitySelect";
+ import ClientSpacePanel from "@/components/ClientSpacePanel";
++import MultiClientUpload from "@/components/MultiClientUpload";
+ 
+ export default function AdminClientSpace() {
+-  const [tenantId, setTenantId] = useState(""); // client choisi
++  const [mode, setMode] = useState("one");     // "one" = un client, "many" = plusieurs clients
++  const [tenantId, setTenantId] = useState(""); // client choisi (mode « Un client »)
++  // Bouton de choix du mode (style onglet)
++  const modeBtn = (key, Icon, label) => (
++    <button type="button" onClick={() => setMode(key)} data-testid={`cs-mode-${key}`}
++      className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm border ${mode === key ? "bg-[#0F6B4A] text-white border-[#0F6B4A]" : "bg-white text-slate-700"}`}>
++      <Icon className="w-4 h-4" /> {label}
++    </button>
++  );
+   return (
+     <div className="space-y-6" data-testid="admin-client-space-page">
+       <div>
+@@ -18,11 +31,20 @@ export default function AdminClientSpace() {
+         <h1 className="font-display text-3xl md:text-4xl">Dépôt dans l'espace client</h1>
+         <p className="text-muted-foreground mt-1">Factures, rapports, attestations… faits dans un autre logiciel ou scannés : le client les retrouve dans « Factures & documents » et il est prévenu par WhatsApp.</p>
+       </div>
+-      <div className="w-full sm:w-80">
+-        <Label className="text-xs">Client</Label>
+-        <div className="mt-1"><EntitySelect value={tenantId} onChange={setTenantId} placeholder="Choisir un client" testId="cs-client-select" /></div>
++      {/* Choix du mode de dépôt */}
++      <div className="flex flex-wrap gap-2">
++        {modeBtn("one", User, "Un client")}
++        {modeBtn("many", Users, "Plusieurs clients")}
+       </div>
+-      {tenantId ? <ClientSpacePanel key={tenantId} tenantId={tenantId} /> : <p className="text-sm text-muted-foreground">Choisissez d'abord un client.</p>}
++      {mode === "many" ? <MultiClientUpload /> : (
++        <>
++          <div className="w-full sm:w-80">
++            <Label className="text-xs">Client</Label>
++            <div className="mt-1"><EntitySelect value={tenantId} onChange={setTenantId} placeholder="Choisir un client" testId="cs-client-select" /></div>
++          </div>
++          {tenantId ? <ClientSpacePanel key={tenantId} tenantId={tenantId} /> : <p className="text-sm text-muted-foreground">Choisissez d'abord un client.</p>}
++        </>
++      )}
+     </div>
+   );
+ }
 diff --git a/frontend/src/pages/admin/AdminClients.jsx b/frontend/src/pages/admin/AdminClients.jsx
 index e6584f2..e25038b 100644
 --- a/frontend/src/pages/admin/AdminClients.jsx
@@ -4322,6 +4749,18 @@ index 0000000..654a8b5
 +    </div>
 +  );
 +}
+diff --git a/frontend/src/version.js b/frontend/src/version.js
+new file mode 100644
+index 0000000..a3be2ca
+--- /dev/null
++++ b/frontend/src/version.js
+@@ -0,0 +1,6 @@
++/*
++  Numéro de version du portail, affiché à droite de la barre jaune en haut
++  de la sidebar (SidebarInfoBar). À modifier ici à chaque nouvelle livraison.
++  Format : v<année>.<n° de lot>  (ex. v2026.4 = lot 4 de 2026)
++*/
++export const APP_VERSION = "v2026.4";
 -- 
 2.43.0
 

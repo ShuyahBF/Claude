@@ -1,13 +1,13 @@
-# Albarka — Lot 4 : Superviseur réservé, comptes, présence, déconnexion automatique, liste blanche, notifications push, journal avec IP, comptes de test, Paramètres
+# Albarka — Lot 4 : Superviseur réservé, comptes, présence, déconnexion automatique, liste blanche, notifications push, journal avec IP, comptes de test, Paramètres, dépôt multi-clients, barre jaune
 
-Applique `albarka-portal-corrections_4_af5114c.patch` sur la branche
+Applique `albarka-portal-corrections_4_3156df6.patch` sur la branche
 `conflict_030926_0658`. Base attendue : le commit `3d6b60a` (« Auto-generated
 changes », juste après `2e0a021`, le lot 3 que tu as publié). C'est un
 `git format-patch` d'un seul commit : applique-le en UN SEUL `git am`, puis
 redéploie (backend et frontend) et enregistre sur GitHub. Ce patch remplace
 entièrement les versions précédentes du lot 4 (`…_4_56d4b58.patch`,
-`…_4_37ad3ec.patch`, `…_4_90834f0.patch`, `…_4_8fd0653.patch` et
-`…_4_439dc65.patch`) que je t'avais envoyées : n'applique que celui-ci.
+`…_4_37ad3ec.patch`, `…_4_90834f0.patch`, `…_4_8fd0653.patch`,
+`…_4_439dc65.patch` et `…_4_af5114c.patch`) que je t'avais envoyées : n'applique que celui-ci.
 
 Vocabulaire : quand je dis « admin », je parle du compte
 `admin@sawalismartsystems.com`, le super-utilisateur de la plateforme, pas du
@@ -39,6 +39,9 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 - `frontend/public/sw.js` : service worker qui affiche les notifications
 - `frontend/public/manifest.json` : portail installable sur l'écran d'accueil (nécessaire au push sur iPhone)
 - `frontend/src/components/PushOptIn.jsx` : « Notifications sur cet appareil » (espace client)
+- `frontend/src/components/MultiClientUpload.jsx` : Dépôt → mode « Plusieurs clients »
+- `frontend/src/components/SidebarInfoBar.jsx` : barre jaune en haut de la sidebar (date/heure, version)
+- `frontend/src/version.js` : numéro de version affiché (`APP_VERSION = "v2026.4"`)
 
 **Fichiers modifiés**
 - `backend/albarka_models.py` : suppression de `effective_roles()` (lot 3), ajout de `is_test_account()`, `hide_test_accounts_filter()`, `NOT_TEST_ACCOUNT` et `SETTINGS_ROLES`
@@ -65,6 +68,8 @@ de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 - `frontend/public/index.html` : lien vers le manifeste et balises « application » pour iPhone
 - `frontend/src/pages/admin/AdminPhaseC.jsx` : colonne « Adresse IP » dans le Journal plateforme
 - `frontend/src/pages/portal/CabinetDocuments.jsx`, `frontend/src/pages/admin/ClientDocsNotifPanel.jsx` : activation du push côté client, interrupteur dans les Paramètres
+- `backend/albarka_client_space.py` (en plus) : `POST /client-space/documents/multi` (même document déposé chez plusieurs clients) ; `backend/tests/test_client_space_lot3.py` : test correspondant
+- `frontend/src/pages/admin/AdminClientSpace.jsx` : choix « Un client » / « Plusieurs clients » ; `frontend/src/components/PortalLayout.jsx` (en plus) : barre jaune
 - `frontend/src/pages/admin/AdminSettings.jsx` : réglage RGPD modifiable par le superviseur ; champ « Déconnexion automatique après inactivité »
 
 Aucune nouvelle dépendance, aucune migration. Nouvelle collection
@@ -349,6 +354,26 @@ réinitialisation du mot de passe ferme les sessions du compte concerné.
     - Le Journal plateforme a une nouvelle colonne « Adresse IP » ; le
       navigateur s'affiche au survol.
 
+15. **Dépôt dans l'espace client : plusieurs clients en une fois.**
+    - Le module **Dépôt espace client** propose deux modes : « Un client »
+      (comme avant) et « Plusieurs clients ».
+    - En mode « Plusieurs clients » : liste des clients actifs à cocher,
+      recherche, « Tout sélectionner » (sur les résultats de la recherche),
+      compteur de sélection ; même formulaire que pour un client.
+    - `POST /client-space/documents/multi` (champ `tenant_ids` : identifiants
+      séparés par des virgules, 300 clients maximum) : chaque fichier est
+      stocké une seule fois, chaque client reçoit sa propre fiche et sa
+      propre notification (push, WhatsApp ou e-mail).
+    - Compte rendu affiché : nombre de documents et de clients prévenus,
+      clients non prévenus avec le motif, clients dont le module « Factures
+      & documents » est fermé. Action tracée `client_space.upload_multi`.
+
+16. **Barre jaune en haut de la sidebar.**
+    - Cabinet et espace client : date et heure en temps réel à gauche
+      (mise à jour chaque seconde), numéro de version à droite.
+    - La version vient de `frontend/src/version.js` (`v2026.4` pour ce lot) :
+      c'est le seul endroit à modifier aux prochaines livraisons.
+
 ## Volontairement pas dans ce lot
 
 - **Envoi automatique du nouveau mot de passe** par e-mail ou WhatsApp : je
@@ -446,6 +471,14 @@ réinitialisation du mot de passe ferme les sessions du compte concerné.
     ouvre le portail depuis l'icône ALBARKA, puis refais l'étape 27.
 29. **Journal plateforme** : chaque nouvelle action (connexion refusée,
     suppression, réinitialisation…) affiche l'adresse IP de son auteur.
+30. **Dépôt espace client** → **Plusieurs clients** : cherche, coche deux ou
+    trois clients (ou « Tout sélectionner »), choisis un PDF, titre « Note
+    des impôts 2026 », **Déposer chez N client(s)**, confirme. Le compte rendu
+    indique les clients prévenus ; chaque client coché voit le document dans
+    **Factures & documents** et reçoit son WhatsApp.
+31. La **barre jaune** en haut de la sidebar affiche la date et l'heure qui
+    avancent chaque seconde à gauche et **v2026.4** à droite, côté cabinet
+    comme côté client.
 
 Si quelque chose ne marche pas, renvoie-moi le message d'erreur exact (écran
 ou logs backend). Rappel : **aucun test, build, lint, Testing Agent ou
