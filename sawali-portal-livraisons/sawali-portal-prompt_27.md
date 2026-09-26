@@ -1,10 +1,10 @@
-# Sawali — Lot 27 : tâches planifiées réactivées (avec garde-fous), modèles WhatsApp à formulaire (Flow), emojis, annotation d'images, sondages WhatsApp et leur facturation, éditeur de formulaires
+# Sawali — Lot 27 : tâches planifiées réactivées (avec garde-fous), modèles WhatsApp à formulaire (Flow), emojis, annotation d'images, sondages WhatsApp et leur facturation, éditeur de formulaires, doublons de contacts
 
 **Interdiction explicite** : je ne veux AUCUNE commande de test, de build ou
 de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 évaluateur ou analyseur automatique**. Tu appliques et tu déploies directement.
 
-Applique `sawali-portal-corrections_27_cf6ef53.patch` sur la branche
+Applique `sawali-portal-corrections_27_ae43964.patch` sur la branche
 `conflict_230926_1008`. Base attendue : ton commit `d091c30` (« Auto-generated
 changes », juste après `55e46f2`, le lot 26 que tu as publié). Le patch ne
 touche pas au dossier `.emergent`. C'est un `git format-patch` d'un seul
@@ -239,6 +239,25 @@ Dans le module Production (réservé aux clients Fabricant), le mot
 « Recette » devient « Formulation » partout : onglet, boutons, messages,
 analyses, PDF et messages d'erreur du serveur. Les données ne changent pas.
 
+## Doublons de contacts recréés à chaque conversation
+
+Constat : après suppression des doublons dans le Centre de Messagerie, un
+doublon marqué « auto-liluvine » réapparaissait dès que le contact écrivait.
+Exemples : « Catline K. » 22661256822, « NANA Faouzi » 22675597340.
+
+Cause : l'ajout automatique des nouveaux contacts par Liluvine
+(`backend/routes/liluvine_reactions.py`, `auto_add_new_contact_if_enabled`)
+cherchait seulement le numéro sous la forme exacte « +22661256822 ». Un
+contact importé sans « + » ou avec des espaces n'était pas retrouvé, et une
+nouvelle fiche était créée à chaque message.
+
+Correction : le numéro est reconnu sur ses **8 derniers chiffres**, quelle que
+soit sa mise en forme. C'est la même règle que le reste du webhook et l'outil
+de dédoublonnage.
+
+Après le déploiement, supprime une dernière fois les doublons existants
+(Centre de Messagerie → « Contacts en double ») : ils ne reviendront plus.
+
 ## Fichiers touchés
 
 **Nouveaux fichiers**
@@ -269,6 +288,8 @@ analyses, PDF et messages d'erreur du serveur. Les données ne changent pas.
   - branchement des sondages WhatsApp (quelques lignes, après les groupes
     de contacts).
 - `backend/routes/cashier.py` : création d'une facture par le serveur (même logique que la Caisse)
+- `backend/routes/liluvine_reactions.py` : ajout automatique sans doublon (8 derniers chiffres)
+- `backend/tests/test_contacts_no_duplicate_lot27.py` (test autonome — tu ne le lances pas)
 - `backend/routes/production.py`, `frontend/src/pages/portal/Production.jsx` : « Formulation »
 - `frontend/src/pages/portal/FormEditor.jsx` : nouvel éditeur ; `FormRunner.jsx` : rendu d'un champ partagé avec l'aperçu
 - `frontend/src/pages/admin/AdminClientFeatures.jsx` : section Facturation
@@ -346,7 +367,11 @@ production uniquement, puis dis-le-moi.
     - glisse « Date » en haut, ajoute une « Liste déroulante » en moitié de
       largeur, puis Aperçu ;
     - enregistre, puis remplis : le formulaire s'affiche comme dans l'aperçu.
-13. Avec un compte **Fabricant** → Production : l'onglet s'appelle « Formulations ». Le compteur passe en orange et indique
+13. Avec un compte **Fabricant** → Production : l'onglet s'appelle « Formulations ».
+14. **Doublons** : supprime les doublons (Centre de Messagerie → Contacts en
+    double), puis fais écrire « Catline K. » ou « Faouzi » sur WhatsApp :
+    aucune nouvelle fiche « auto-liluvine » n'apparaît et le message arrive
+    dans la fiche gardée. Le compteur passe en orange et indique
    « envoi en Unicode (70 caractères par SMS) ».
 
 Si quelque chose ne marche pas, renvoie-moi le message d'erreur exact (écran

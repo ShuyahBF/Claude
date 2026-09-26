@@ -1,4 +1,4 @@
-From cf6ef539e8998501b203b028b04fa8fa5139d14d Mon Sep 17 00:00:00 2001
+From ae43964ac496a9bb4a99818d7b4cc727d6f99354 Mon Sep 17 00:00:00 2001
 From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
 Date: Sat, 26 Sep 2026 18:57:21 +0000
 Subject: [PATCH] =?UTF-8?q?Lot=2027=20:=20t=C3=A2ches=20planifi=C3=A9es=20?=
@@ -55,15 +55,20 @@ Superviseur, qui choisit pour chaque facture d'appliquer ou non la TVA.
 Éditeur de formulaires à la manière d'ALBARKA (palette, glisser-déposer,
 propriétés, pages, aperçu en direct), sur le même format de formulaire.
 Production (clients Fabricant) : le terme « Recette » devient « Formulation ».
+Doublons de contacts : l'ajout automatique de Liluvine reconnaît maintenant un
+numéro sur ses 8 derniers chiffres (comme le reste du webhook) ; un contact
+enregistré sans « + » n'est plus recréé à chaque conversation.
 ---
  backend/health_report.py                      |   4 +-
  backend/models.py                             |   4 +
  backend/routes/cashier.py                     |  84 ++
+ backend/routes/liluvine_reactions.py          |  28 +-
  backend/routes/portfolio_billing.py           | 535 ++++++++++
  backend/routes/production.py                  |  22 +-
  backend/routes/wa_surveys.py                  | 958 ++++++++++++++++++
  backend/routes/whatsapp_helpers.py            | 149 +++
  backend/server.py                             | 272 ++++-
+ .../tests/test_contacts_no_duplicate_lot27.py |  65 ++
  backend/tests/test_portfolio_billing_lot27.py | 210 ++++
  backend/tests/test_scheduler_lot27.py         | 157 +++
  backend/tests/test_wa_flow_lot27.py           | 249 +++++
@@ -92,9 +97,10 @@ Production (clients Fabricant) : le terme « Recette » devient « Formulation �
  frontend/src/pages/portal/UnifiedInbox.jsx    |   7 +-
  frontend/src/pages/portal/WaBulk.jsx          |   4 +
  frontend/src/pages/public/PublicSurvey.jsx    | 161 +++
- 36 files changed, 5891 insertions(+), 272 deletions(-)
+ 38 files changed, 5979 insertions(+), 277 deletions(-)
  create mode 100644 backend/routes/portfolio_billing.py
  create mode 100644 backend/routes/wa_surveys.py
+ create mode 100644 backend/tests/test_contacts_no_duplicate_lot27.py
  create mode 100644 backend/tests/test_portfolio_billing_lot27.py
  create mode 100644 backend/tests/test_scheduler_lot27.py
  create mode 100644 backend/tests/test_wa_flow_lot27.py
@@ -255,6 +261,53 @@ index f3dc5d0..5272e59 100644
 +
 +    router.create_invoice_for_client = create_invoice_for_client
      return router, run_auto_relance
+diff --git a/backend/routes/liluvine_reactions.py b/backend/routes/liluvine_reactions.py
+index cfc3b66..a374f66 100644
+--- a/backend/routes/liluvine_reactions.py
++++ b/backend/routes/liluvine_reactions.py
+@@ -76,6 +76,20 @@ KNOWN_COMMANDS: Dict[str, List[str]] = {
+ }
+ 
+ 
++
++# Lot 27 — même règle que server.py (_phone_suffix_regex) : 8 derniers chiffres.
++PHONE_SUFFIX_LEN = 8
++
++
++def _phone_suffix_regex(raw: Optional[str]) -> Optional[str]:
++    """Regex Mongo « le numéro se termine par ces 8 chiffres », quelle que soit
++    la mise en forme stockée (espaces, points, « + », indicatif ou non)."""
++    digits = "".join(ch for ch in (raw or "") if ch.isdigit())
++    suffix = digits[-PHONE_SUFFIX_LEN:] if len(digits) >= PHONE_SUFFIX_LEN else digits
++    if len(suffix) < 6:
++        return None
++    return r"\D*".join(re.escape(ch) for ch in suffix) + r"\D*$"
++
+ def _now_iso() -> str:
+     return datetime.now(timezone.utc).isoformat()
+ 
+@@ -720,12 +734,16 @@ def attach_liluvine_reactions_routes(
+         cfg = await _get_config()
+         if not cfg.get("auto_add_new_contacts"):
+             return None
++        # Lot 27 — le numéro est reconnu sur ses 8 derniers chiffres, quelle que
++        # soit sa mise en forme (« 22661256822 », « +226 61 25 68 22 »…), comme
++        # dans le reste du webhook et l'outil de dédoublonnage. Avant, seule la
++        # forme exacte « +226… » était cherchée : un contact importé sans « + »
++        # n'était pas retrouvé et un doublon était recréé à chaque conversation.
++        rx = _phone_suffix_regex(digits)
++        if not rx:
++            return None
+         existing = await db.directory_contacts.find_one(
+-            {"$or": [
+-                {"whatsapp": f"+{digits}"},
+-                {"phone": f"+{digits}"},
+-                {"phone_digits": digits},
+-            ]},
++            {"$or": [{"whatsapp": {"$regex": rx}}, {"phone": {"$regex": rx}}, {"phone_digits": {"$regex": rx}}]},
+             {"_id": 0, "id": 1},
+         )
+         if existing:
 diff --git a/backend/routes/portfolio_billing.py b/backend/routes/portfolio_billing.py
 new file mode 100644
 index 0000000..0977e3a
@@ -2626,6 +2679,77 @@ index 2ffb81a..268a9a5 100644
  # Iter40 (2026-02) — Form categories (max 6 per tenant)
  from routes.form_categories import attach_form_categories_routes as _attach_form_categories  # noqa: E402
  _attach_form_categories(api=api, db=db, get_current_user=get_current_user)
+diff --git a/backend/tests/test_contacts_no_duplicate_lot27.py b/backend/tests/test_contacts_no_duplicate_lot27.py
+new file mode 100644
+index 0000000..d94b28e
+--- /dev/null
++++ b/backend/tests/test_contacts_no_duplicate_lot27.py
+@@ -0,0 +1,65 @@
++"""Lot 27 — plus de doublon recréé à chaque conversation WhatsApp.
++
++Un contact importé sans « + » (« 22661256822 ») ou avec des espaces n'était pas
++retrouvé par l'ajout automatique de Liluvine (qui cherchait seulement
++« +22661256822 ») : un doublon « auto-liluvine » était recréé à chaque message,
++même après dédoublonnage. Le numéro est maintenant reconnu sur ses 8 derniers
++chiffres, comme dans le reste du webhook. Test autonome : MongoDB simulé.
++"""
++from __future__ import annotations
++
++import asyncio
++import sys
++from pathlib import Path
++
++import pytest
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++mongomock_motor = pytest.importorskip("mongomock_motor")
++
++from fastapi import APIRouter  # noqa: E402
++
++import routes.liluvine_reactions as lr  # noqa: E402
++
++
++async def _nobody():
++    return {}
++
++
++async def _scope(u):
++    return []
++
++
++def _helpers(db):
++    return lr.attach_liluvine_reactions_routes(api=APIRouter(), db=db, get_current_user=_nobody, get_current_admin=_nobody,
++                                               _is_super_admin=lambda u: False, _resolve_visible_client_ids=_scope)
++
++
++def test_existing_contact_in_any_format_is_recognised():
++    db = mongomock_motor.AsyncMongoMockClient()["sawali_dup"]
++
++    async def scenario():
++        await db.settings.insert_one({"_id": "global", "liluvine_reactions_config": {"auto_add_new_contacts": True}})
++        await db.directory_contacts.insert_many([
++            {"id": "k1", "client_id": "t1", "name": "Catline K.", "phone": "22661256822", "whatsapp": "22661256822"},
++            {"id": "k2", "client_id": "t1", "name": "NANA Faouzi", "whatsapp": "+226 75 59 73 40"},
++        ])
++        h = _helpers(db)
++        add = h["auto_add_new_contact_if_enabled"]
++        r1 = await add("22661256822", "Catline K.", "t1")      # enregistré sans « + »
++        r2 = await add("22675597340", "Faouzi", "t1")          # enregistré avec des espaces
++        r3 = await add("22670522075", "SANNA Azize", "t1")     # vraiment nouveau
++        r4 = await add("22670522075", "SANNA Azize", "t1")     # 2e message : pas de doublon
++        n = await db.directory_contacts.count_documents({})
++        return r1, r2, r3, r4, n
++    r1, r2, r3, r4, n = asyncio.run(scenario())
++    assert r1 is None and r2 is None and r4 is None
++    assert r3 and r3["id"]
++    assert n == 3
++
++
++def test_suffix_regex():
++    import re
++    rx = lr._phone_suffix_regex("+226 61 25 68 22")
++    assert all(re.search(rx, v) for v in ("22661256822", "+22661256822", "61 25 68 22", "61.25.68.22"))
++    assert not re.search(rx, "22661256823") and lr._phone_suffix_regex("123") is None
 diff --git a/backend/tests/test_portfolio_billing_lot27.py b/backend/tests/test_portfolio_billing_lot27.py
 new file mode 100644
 index 0000000..a5918d6
