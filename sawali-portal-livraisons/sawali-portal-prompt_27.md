@@ -1,10 +1,10 @@
-# Sawali — Lot 27 : tâches planifiées réactivées (avec garde-fous) + emojis dans la messagerie
+# Sawali — Lot 27 : tâches planifiées réactivées (avec garde-fous), modèles WhatsApp à formulaire (Flow), emojis
 
 **Interdiction explicite** : je ne veux AUCUNE commande de test, de build ou
 de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 évaluateur ou analyseur automatique**. Tu appliques et tu déploies directement.
 
-Applique `sawali-portal-corrections_27_8e70384.patch` sur la branche
+Applique `sawali-portal-corrections_27_4ca6874.patch` sur la branche
 `conflict_230926_1008`. Base attendue : ton commit `d091c30` (« Auto-generated
 changes », juste après `55e46f2`, le lot 26 que tu as publié). Le patch ne
 touche pas au dossier `.emergent`. C'est un `git format-patch` d'un seul
@@ -58,6 +58,30 @@ Le bloc a maintenant son propre crochet de démarrage `_start_scheduler`.
    planificateur tourne, pourquoi sinon, et le prochain passage de chaque
    tâche.
 
+## Modèles WhatsApp avec bouton « Flux » (formulaire WhatsApp)
+
+Exemple : le modèle `suivilogiciels_fr` (français), dont le bouton « Commencer
+le Suivi » ouvre un formulaire WhatsApp (bouton de type « Flux terminé »).
+
+1. **À l'envoi**, Meta exige, pour un bouton « Flux », un composant bouton
+   portant un jeton (`flow_token`). Le portail ne l'envoyait pas, et Meta
+   refusait le message.
+   - `_wa_send_template` lit maintenant la définition du modèle chez Meta
+     (mémorisée 1 heure), puis ajoute ce composant pour chaque bouton « Flux ».
+   - Cela vaut pour tous les envois de modèles : conversation, envois groupés,
+     automations, envois programmés.
+   - Si Meta ne répond pas, le message part comme avant.
+   - Le jeton est enregistré (collection `whatsapp_flow_sends`) pour relier la
+     réponse au modèle envoyé.
+2. **À la réception**, la réponse du formulaire (message « nfm_reply ») était
+   perdue. Maintenant :
+   - elle s'affiche dans la conversation (« 📋 Formulaire WhatsApp complété »,
+     puis une ligne par réponse) ;
+   - elle est enregistrée (collection `whatsapp_flow_responses`) ;
+   - elle déclenche le nouvel événement d'automation **« Formulaire WhatsApp
+     (Flow) complété »**, avec les variables `{wa_from}`, `{wa_sender_name}`,
+     `{wa_flow_template}` et `{wa_flow_summary}`.
+
 ## Emojis dans le Centre de Messagerie
 
 - Un bouton 😊 est ajouté à côté de la zone de saisie :
@@ -74,7 +98,8 @@ Le bloc a maintenant son propre crochet de démarrage `_start_scheduler`.
 
 **Nouveaux fichiers**
 - `frontend/src/components/EmojiPicker.jsx`
-- `backend/tests/test_scheduler_lot27.py` (test autonome — tu ne le lances pas)
+- `backend/tests/test_scheduler_lot27.py`, `backend/tests/test_wa_flow_lot27.py`
+  (tests autonomes — tu ne les lances pas)
 
 **Modifiés**
 - `backend/server.py` :
@@ -82,7 +107,11 @@ Le bloc a maintenant son propre crochet de démarrage `_start_scheduler`.
   - `_expire_stale_schedules` ;
   - interrupteur de suspension ;
   - page d'état ;
-  - sauvegarde dans un thread.
+  - sauvegarde dans un thread ;
+  - réponse des formulaires WhatsApp dans le webhook, événement
+    « whatsapp.flow_completed ».
+- `backend/routes/whatsapp_helpers.py` : bouton « Flux » ajouté à l'envoi,
+  lecture de la réponse du formulaire
 - `backend/routes/cashier.py` : garde-fous des relances automatiques
 - `backend/models.py` : réglage `contract_auto_suspend_enabled`
 - `backend/health_report.py` : PDF dans un thread
@@ -116,7 +145,13 @@ production uniquement, puis dis-le-moi.
    comptes en retard » est présent et désactivé.
 4. Centre de Messagerie → conversation d'un contact : clique sur 😊, cherche
    « merci », insère 🙏 au milieu d'une phrase et envoie. Le client le reçoit.
-5. Envoi de SMS : ajoute un emoji. Le compteur passe en orange et indique
+5. Envoie le modèle `suivilogiciels_fr` à ton propre numéro (conversation
+   d'un contact, envoi par modèle). Le message arrive avec le bouton « Commencer le
+   Suivi ». Ouvre-le, remplis le formulaire et envoie-le : la réponse
+   « 📋 Formulaire WhatsApp complété » apparaît dans la conversation.
+   Automations → « Nouvelle automation » : l'événement « Formulaire WhatsApp (Flow)
+   complété » est proposé.
+6. Envoi de SMS : ajoute un emoji. Le compteur passe en orange et indique
    « envoi en Unicode (70 caractères par SMS) ».
 
 Si quelque chose ne marche pas, renvoie-moi le message d'erreur exact (écran

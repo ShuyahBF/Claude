@@ -1,9 +1,9 @@
-From 8e70384c138beee0d085b3ab4685d2dfa3346cc3 Mon Sep 17 00:00:00 2001
+From 4ca6874a764232c0b354c3fca620c91f5140da6d Mon Sep 17 00:00:00 2001
 From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
 Date: Sat, 26 Sep 2026 18:57:21 +0000
 Subject: [PATCH] =?UTF-8?q?Lot=2027=20:=20t=C3=A2ches=20planifi=C3=A9es=20?=
- =?UTF-8?q?r=C3=A9activ=C3=A9es=20avec=20garde-fous=20+=20emojis=20dans=20?=
- =?UTF-8?q?la=20messagerie?=
+ =?UTF-8?q?r=C3=A9activ=C3=A9es,=20mod=C3=A8les=20WhatsApp=20=C3=A0=20form?=
+ =?UTF-8?q?ulaire=20(Flow),=20emojis?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -23,22 +23,31 @@ Garde-fous pour la réactivation :
 - chaque tâche préparée séparément ; page d'état /api/admin/scheduler/status ;
 - sauvegarde hebdomadaire et PDF du rapport exécutés dans un thread ;
   contrôle de l'IA une fois par heure au lieu de tous les quarts d'heure.
+Modèles WhatsApp avec bouton « Flux » (formulaire WhatsApp) :
+- à l'envoi, j'ajoute le composant du bouton FLOW (avec un jeton) que Meta
+  exige, d'après la définition du modèle lue chez Meta (mémorisée 1 h) ;
+- la réponse du formulaire (message « nfm_reply ») s'affiche dans la
+  conversation, est enregistrée et déclenche le nouvel événement
+  d'automation « Formulaire WhatsApp (Flow) complété ».
 Messagerie : bouton emoji dans la conversation WhatsApp, l'envoi de SMS et la
 boîte de réception unifiée ; compteur de SMS (Unicode = 70 caractères).
 ---
  backend/health_report.py                   |   4 +-
  backend/models.py                          |   4 +
  backend/routes/cashier.py                  |  26 +++
- backend/server.py                          | 175 ++++++++++++++++-----
- backend/tests/test_scheduler_lot27.py      | 157 ++++++++++++++++++
- frontend/src/components/EmojiPicker.jsx    | 175 +++++++++++++++++++++
+ backend/routes/whatsapp_helpers.py         | 149 ++++++++++++
+ backend/server.py                          | 222 +++++++++++++++---
+ backend/tests/test_scheduler_lot27.py      | 157 +++++++++++++
+ backend/tests/test_wa_flow_lot27.py        | 249 +++++++++++++++++++++
+ frontend/src/components/EmojiPicker.jsx    | 175 +++++++++++++++
  frontend/src/pages/admin/AdminSettings.jsx |   7 +
  frontend/src/pages/portal/Contacts.jsx     |  25 ++-
  frontend/src/pages/portal/SmsBulk.jsx      |   5 +-
  frontend/src/pages/portal/UnifiedInbox.jsx |   7 +-
  frontend/src/pages/portal/WaBulk.jsx       |   4 +
- 11 files changed, 549 insertions(+), 40 deletions(-)
+ 13 files changed, 993 insertions(+), 41 deletions(-)
  create mode 100644 backend/tests/test_scheduler_lot27.py
+ create mode 100644 backend/tests/test_wa_flow_lot27.py
  create mode 100644 frontend/src/components/EmojiPicker.jsx
 
 diff --git a/backend/health_report.py b/backend/health_report.py
@@ -121,8 +130,200 @@ index f3dc5d0..de13951 100644
              "grace_days": grace_days,
              "business_clients_count": len(eligible_bcs),
              "email_report": {"sent": False, "to": recipient, "error": None},
+diff --git a/backend/routes/whatsapp_helpers.py b/backend/routes/whatsapp_helpers.py
+index 3b84e63..ea9785a 100644
+--- a/backend/routes/whatsapp_helpers.py
++++ b/backend/routes/whatsapp_helpers.py
+@@ -306,6 +306,94 @@ def _wa_clean_template_components(components: Optional[list]) -> Optional[list]:
+     return cleaned
+ 
+ 
++def _wa_add_flow_button_components(components: Optional[list], template_def: Optional[dict], token_fn) -> tuple:
++    """Lot 27 — boutons « Flux » (FLOW) d'un modèle WhatsApp.
++    Meta refuse l'envoi d'un modèle qui contient un bouton FLOW si le message
++    ne porte pas, pour ce bouton, un composant
++    {"type":"button","sub_type":"flow","index":"<i>","parameters":[{"type":"action","action":{"flow_token":"..."}}]}.
++    Le portail ne l'envoyait pas (seuls les boutons URL avaient un composant).
++    On lit la définition du modèle (`template_def`, venant de Meta) et on
++    ajoute ce composant pour chaque bouton FLOW qui n'en a pas.
++    Retourne (composants, liste des jetons ajoutés [(index, flow_token)])."""
++    added = []
++    if not isinstance(template_def, dict):
++        return (components, added)
++    comps = [dict(c) if isinstance(c, dict) else c for c in (components or [])]
++    # Boutons du modèle, dans l'ordre (l'index Meta = position dans la liste)
++    buttons = []
++    for c in template_def.get("components") or []:
++        if isinstance(c, dict) and (c.get("type") or "").upper() == "BUTTONS":
++            buttons = c.get("buttons") or []
++            break
++    for i, btn in enumerate(buttons):
++        if not isinstance(btn, dict) or (btn.get("type") or "").upper() != "FLOW":
++            continue
++        # Composant déjà présent pour cet index ?
++        existing = None
++        for c in comps:
++            if (isinstance(c, dict) and (c.get("type") or "").lower() == "button"
++                    and str(c.get("index")) == str(i)):
++                existing = c
++                break
++        if existing is not None:
++            if (existing.get("sub_type") or "").lower() == "flow" and existing.get("parameters"):
++                continue                                   # déjà correct : on ne touche pas
++            comps.remove(existing)                         # mauvais type (ex. quick_reply) : remplacé
++        token = token_fn()
++        comps.append({
++            "type": "button", "sub_type": "flow", "index": str(i),
++            "parameters": [{"type": "action", "action": {"flow_token": token}}],
++        })
++        added.append((i, token))
++    if not added:
++        return (components, added)
++    return (comps, added)
++
++
++def _wa_parse_flow_reply(interactive: Optional[dict]) -> Optional[dict]:
++    """Lot 27 — réponse d'un formulaire WhatsApp (Flow) reçue par le webhook.
++    Meta l'envoie comme message « interactive » de type « nfm_reply » :
++    {"type":"nfm_reply","nfm_reply":{"name":"flow","body":"Sent","response_json":"{...}"}}.
++    Retourne {flow_token, fields: {champ: valeur}, summary (texte lisible), name, raw}
++    ou None si ce n'est pas une réponse de formulaire."""
++    import re as _re
++    if not isinstance(interactive, dict) or interactive.get("type") != "nfm_reply":
++        return None
++    nfm = interactive.get("nfm_reply") or {}
++    raw = nfm.get("response_json")
++    data = {}
++    if isinstance(raw, dict):
++        data = raw
++    elif isinstance(raw, str) and raw.strip():
++        try:
++            data = json.loads(raw)
++        except Exception:  # noqa: BLE001
++            data = {"reponse": raw}
++    if not isinstance(data, dict):
++        data = {"reponse": data}
++    flow_token = str(data.get("flow_token") or "")
++    fields = {k: v for k, v in data.items() if k != "flow_token"}
++
++    def _fmt(v):
++        # Listes (cases à cocher) -> « a, b » ; objets -> JSON court
++        if isinstance(v, list):
++            return ", ".join(str(x) for x in v)
++        if isinstance(v, dict):
++            return json.dumps(v, ensure_ascii=False)
++        return str(v)
++    lines = ["📋 Formulaire WhatsApp complété"]
++    for k, v in fields.items():
++        label = str(k).replace("_", " ").strip()
++        # Les identifiants techniques Meta (ex. « screen_0_Nom_0 ») sont raccourcis en « Nom »
++        label = _re.sub(r"^screen \d+ ", "", label)
++        label = _re.sub(r" \d+$", "", label).strip()
++        lines.append(f"• {label or k} : {_fmt(v)}")
++    if not fields:
++        lines.append(str(nfm.get("body") or "(réponse vide)"))
++    return {"flow_token": flow_token, "fields": fields, "summary": "\n".join(lines),
++            "name": nfm.get("name") or "flow", "raw": data}
++
++
+ def attach_whatsapp_helpers(
+     *,
+     db,
+@@ -339,6 +427,7 @@ def attach_whatsapp_helpers(
+                 return {
+                     "access_token": token,
+                     "phone_number_id": phone_id,
++                    "waba_id": (smart.get("wa_waba_id") or "").strip(),   # Lot 27 : modèles (boutons Flux)
+                     "source": "tenant",
+                     "tenant_id": tid,
+                 }
+@@ -346,10 +435,51 @@ def attach_whatsapp_helpers(
+         return {
+             "access_token": (g.get("wa_access_token") or "").strip(),
+             "phone_number_id": (g.get("wa_phone_number_id") or "").strip(),
++            "waba_id": (g.get("wa_business_account_id") or "").strip(),  # Lot 27 : modèles (boutons Flux)
+             "source": "global",
+             "tenant_id": None,
+         }
+ 
++    # Lot 27 — définitions des modèles Meta, mémorisées 1 h (clé : WABA, nom, langue).
++    # Sert à savoir si un modèle contient un bouton « Flux » (FLOW).
++    _tpl_def_cache: Dict[tuple, tuple] = {}
++
++    async def _wa_fetch_template_def(waba_id: str, access_token: str, name: str, language: str) -> Optional[dict]:
++        """Définition d'un modèle (ses composants) lue chez Meta, ou None.
++        Au mieux : une erreur réseau ne bloque jamais l'envoi."""
++        import time as _time
++        if not waba_id or not access_token or not name:
++            return None
++        key = (waba_id, name, (language or "").lower())
++        hit = _tpl_def_cache.get(key)
++        if hit and hit[0] > _time.time():
++            return hit[1]
++        found = None
++        try:
++            async with httpx.AsyncClient(timeout=8) as http:
++                r = await http.get(
++                    f"https://graph.facebook.com/{wa_graph_version}/{waba_id}/message_templates",
++                    params={"name": name, "fields": "name,language,status,components", "limit": 50},
++                    headers={"Authorization": f"Bearer {access_token}"},
++                )
++            if r.status_code < 300:
++                items = (r.json() or {}).get("data") or []
++                same_name = [t for t in items if t.get("name") == name]
++                lang = (language or "").lower()
++                # Même langue d'abord (fr, fr_FR…), puis même langue de base, sinon la première version
++                found = (next((t for t in same_name if (t.get("language") or "").lower() == lang), None)
++                         or next((t for t in same_name
++                                  if (t.get("language") or "").lower().split("_")[0] == lang.split("_")[0]), None)
++                         or (same_name[0] if same_name else None))
++                _tpl_def_cache[key] = (_time.time() + 3600, found)
++            else:
++                logger.info("[wa-flow] définition du modèle %s illisible (HTTP %s)", name, r.status_code)
++                _tpl_def_cache[key] = (_time.time() + 300, None)
++        except Exception as exc:  # noqa: BLE001
++            logger.info("[wa-flow] définition du modèle %s indisponible : %s", name, exc)
++            return None
++        return found
++
+     async def _wa_send_template(
+         to_e164: str,
+         template_name: str,
+@@ -381,6 +511,15 @@ def attach_whatsapp_helpers(
+             "type": "template",
+             "template": {"name": template_name, "language": {"code": language_code}},
+         }
++        # Lot 27 : un modèle avec bouton « Flux » (FLOW) exige un composant
++        # bouton portant un flow_token. On lit le modèle chez Meta et on l'ajoute.
++        flow_added = []
++        try:
++            tpl_def = await _wa_fetch_template_def(creds.get("waba_id") or "", access_token, template_name, language_code)
++            components, flow_added = _wa_add_flow_button_components(
++                components, tpl_def, lambda: f"sawali-{uuid_fn()}")
++        except Exception as exc:  # noqa: BLE001
++            logger.info("[wa-flow] ajout du bouton Flux ignoré : %s", exc)
+         if components:
+             # Lot 26 : valeurs nettoyées (retours à la ligne, tabulations, espaces)
+             body["template"]["components"] = _wa_clean_template_components(components)
+@@ -401,6 +540,16 @@ def attach_whatsapp_helpers(
+                     mid = None
+                     if isinstance(raw, dict) and raw.get("messages"):
+                         mid = raw["messages"][0].get("id")
++                    # Lot 27 : jeton du formulaire -> destinataire et modèle (réponse reliée plus tard)
++                    for _idx, _tok in flow_added:
++                        try:
++                            await db.whatsapp_flow_sends.insert_one({
++                                "flow_token": _tok, "to": to_clean, "template": template_name,
++                                "language": language_code, "button_index": _idx, "message_id": mid,
++                                "tenant_id": creds.get("tenant_id"), "created_at": now_fn(),
++                            })
++                        except Exception:  # noqa: BLE001
++                            pass
+                     return {"ok": True, "status": r.status_code, "message_id": mid, "error": None, "raw": raw}
+                 err_msg = None
+                 err_details = None
 diff --git a/backend/server.py b/backend/server.py
-index 2ffb81a..aa6d191 100644
+index 2ffb81a..d876377 100644
 --- a/backend/server.py
 +++ b/backend/server.py
 @@ -5458,9 +5458,14 @@ async def _create_snapshot_record(comment: str, mask_secrets: bool, author_id: O
@@ -161,7 +362,15 @@ index 2ffb81a..aa6d191 100644
                      pretty_size = f"{len(content)/1024:.1f} kB"
                      # Build the companion weekly health report PDF
                      pdf_bytes = b""
-@@ -16830,6 +16835,7 @@ async def me_sms_schedule_cancel(sid: str, user: dict = Depends(get_current_user
+@@ -14068,6 +14073,7 @@ from routes.whatsapp_helpers import (  # noqa: E402
+     _wa_apply_image_watermark_qr,
+     attach_whatsapp_helpers as _attach_whatsapp_helpers,
+     WA_MEDIA_KIND_BY_MIME,
++    _wa_parse_flow_reply,  # Lot 27 : réponses des formulaires WhatsApp (Flow)
+ )
+ 
+ 
+@@ -16830,6 +16836,7 @@ async def me_sms_schedule_cancel(sid: str, user: dict = Depends(get_current_user
  async def _run_scheduled_sms():
      """APScheduler tick (every minute) — drain pending SMS schedules."""
      try:
@@ -169,7 +378,89 @@ index 2ffb81a..aa6d191 100644
          now_iso = datetime.now(timezone.utc).isoformat()
          due = await db.sms_schedules.find(
              {"status": "pending", "scheduled_at": {"$lte": now_iso}}, {"_id": 0},
-@@ -20108,6 +20114,37 @@ async def admin_delete_schedule(sid: str, _: dict = Depends(get_current_admin)):
+@@ -17570,6 +17577,7 @@ async def whatsapp_webhook_incoming(request: Request):
+                     profile_name = profile_by_wa.get(from_num) or profile_by_wa.get(digits_only)
+                     mtype = msg.get("type") or "text"
+                     text_body = None
++                    flow_reply = None  # Lot 27 : réponse d'un formulaire WhatsApp (Flow)
+                     media_info: Optional[Dict[str, Any]] = None  # populated when we download a binary
+                     media_caption: Optional[str] = None
+                     if mtype == "text":
+@@ -17643,8 +17651,11 @@ async def whatsapp_webhook_incoming(request: Request):
+                             pass
+                     elif mtype == "interactive":
+                         interactive = msg.get("interactive") or {}
++                        # Lot 27 : formulaire WhatsApp (Flow) complété par le client.
++                        # Avant, cette réponse était perdue (seuls les boutons et listes étaient lus).
++                        flow_reply = _wa_parse_flow_reply(interactive)
+                         reply = interactive.get("button_reply") or interactive.get("list_reply") or {}
+-                        text_body = reply.get("title") or reply.get("id")
++                        text_body = (flow_reply or {}).get("summary") or reply.get("title") or reply.get("id")
+                         # VIDAL riche — clic sur le bouton "Équivalences" affiché
+                         # après une réponse `!doc`/`!rech` (voir vidal_riche.py).
+                         btn_id = reply.get("id") or ""
+@@ -17877,6 +17888,41 @@ async def whatsapp_webhook_incoming(request: Request):
+                         }))
+                     except Exception as _exc:  # noqa: BLE001
+                         logger.warning("[whatsapp.received automation] emit failed: %s", _exc)
++                    # Lot 27 : réponse d'un formulaire WhatsApp (Flow) -> enregistrée et
++                    # événement d'automation « whatsapp.flow_completed ».
++                    if flow_reply:
++                        try:
++                            sent = None
++                            if flow_reply.get("flow_token"):
++                                sent = await db.whatsapp_flow_sends.find_one(
++                                    {"flow_token": flow_reply["flow_token"]}, {"_id": 0})
++                            await db.whatsapp_flow_responses.insert_one({
++                                "id": _uuid(),
++                                "flow_token": flow_reply.get("flow_token") or None,
++                                "template": (sent or {}).get("template"),
++                                "from": from_num,
++                                "sender_name": profile_name or (contact or {}).get("name") or "",
++                                "contact_id": (contact or {}).get("id"),
++                                "tenant_id": scope_for_msg,
++                                "fields": flow_reply.get("fields") or {},
++                                "summary": flow_reply.get("summary") or "",
++                                "message_id": msg.get("id"),
++                                "created_at": _now(),
++                            })
++                            import asyncio
++                            asyncio.create_task(_emit_event("whatsapp.flow_completed", {
++                                "client_id": scope_for_msg,
++                                "extra_ctx": {
++                                    "wa_from": from_num,
++                                    "wa_sender_name": profile_name or (contact or {}).get("name") or from_num,
++                                    "wa_flow_template": (sent or {}).get("template") or "",
++                                    # Une seule ligne (les modèles Meta refusent les retours à la ligne)
++                                    "wa_flow_summary": " · ".join(
++                                        (flow_reply.get("summary") or "").split("\n")[1:])[:900],
++                                },
++                            }))
++                        except Exception as _exc:  # noqa: BLE001
++                            logger.warning("[whatsapp.flow_completed] enregistrement échoué : %s", _exc)
+                     # Iter34x — activity log for inbound WA
+                     await _log_activity(
+                         client_id=scope_for_msg,
+@@ -19610,6 +19656,9 @@ SUPPORTED_AUTOMATION_EVENTS = {
+     # répondre en préfixant sa réponse par le code (ex: "#R7X2 Bonjour..."),
+     # Liluvine relaye au client sans exposer le numéro admin.
+     "whatsapp.received",
++    # Lot 27 — Formulaire WhatsApp (Flow) complété par un client. Context tokens :
++    # {wa_from}, {wa_sender_name}, {wa_flow_template}, {wa_flow_summary}.
++    "whatsapp.flow_completed",
+ }
+ 
+ 
+@@ -19671,6 +19720,8 @@ async def admin_automation_events(_: dict = Depends(get_current_admin)):
+              "description": "Nouvelle connexion validée (post-OTP). Contexte : {login_email}, {login_full_name}, {login_role}, {login_tracked_role}, {login_ip}, {login_time}."},
+             {"value": "whatsapp.received", "label": "Nouveau message WhatsApp reçu",
+              "description": "Message WA entrant. Contexte : {wa_from}, {wa_sender_name}, {wa_message}, {wa_reply_code}. L'admin peut répondre en préfixant `#R<code>` — Liluvine relaye au client sans exposer son numéro."},
++            {"value": "whatsapp.flow_completed", "label": "Formulaire WhatsApp (Flow) complété",
++             "description": "Un client a rempli le formulaire ouvert par un bouton « Flux » d'un modèle. Contexte : {wa_from}, {wa_sender_name}, {wa_flow_template}, {wa_flow_summary}."},
+         ]
+     }
+ 
+@@ -20108,6 +20159,37 @@ async def admin_delete_schedule(sid: str, _: dict = Depends(get_current_admin)):
      return {"ok": True, "status": "deleted"}
  
  
@@ -207,7 +498,7 @@ index 2ffb81a..aa6d191 100644
  async def _run_scheduled_whatsapp():
      """Cron job (runs every minute) — execute any pending schedule whose scheduled_at <= now.
  
-@@ -20116,6 +20153,7 @@ async def _run_scheduled_whatsapp():
+@@ -20116,6 +20198,7 @@ async def _run_scheduled_whatsapp():
      a top-level `error` string in result_summary on hard failure.
      """
      try:
@@ -215,7 +506,7 @@ index 2ffb81a..aa6d191 100644
          now_iso = datetime.now(timezone.utc).isoformat()
          due = await db.whatsapp_schedules.find(
              {"status": "pending", "scheduled_at": {"$lte": now_iso}},
-@@ -22175,6 +22213,9 @@ async def _run_contract_overdue_alerts() -> Dict[str, Any]:
+@@ -22175,6 +22258,9 @@ async def _run_contract_overdue_alerts() -> Dict[str, Any]:
      today = datetime.now(timezone.utc).date()
      settings_doc = await db.settings.find_one({"_id": "global"}) or {}
      default_threshold = int(settings_doc.get("contract_overdue_days_default") or 5)
@@ -225,7 +516,7 @@ index 2ffb81a..aa6d191 100644
      # Only clients with either a `last_payment_at` or `contract_signed_at`.
      q = {
          "role": {"$in": ["admin", "client", "client-tracked"]},
-@@ -22208,7 +22249,9 @@ async def _run_contract_overdue_alerts() -> Dict[str, Any]:
+@@ -22208,7 +22294,9 @@ async def _run_contract_overdue_alerts() -> Dict[str, Any]:
          # (default 5) still gets suspended on time.
          suspend_threshold = u.get("auto_suspend_after_overdue_days")
          if (
@@ -236,7 +527,7 @@ index 2ffb81a..aa6d191 100644
              and int(suspend_threshold) > 0
              and days >= int(suspend_threshold)
              and (u.get("account_status") or "active").lower() != "suspended"
-@@ -22460,14 +22503,69 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22460,14 +22548,69 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
      return await _run_contract_overdue_alerts()
  
  
@@ -308,7 +599,7 @@ index 2ffb81a..aa6d191 100644
                  _send_weekly_digest,
                  CronTrigger(day_of_week="fri", hour=5, minute=0, timezone="Africa/Abidjan"),
                  id="health_weekly_digest",
-@@ -22478,7 +22576,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22478,7 +22621,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
              # but always persists the result to db.auth_checks for the dashboard banner.
              async def _scheduled_auth_check():
                  await _run_auth_check(triggered_by="cron:hourly")
@@ -317,7 +608,7 @@ index 2ffb81a..aa6d191 100644
                  _scheduled_auth_check,
                  CronTrigger(minute=0, timezone="Africa/Abidjan"),
                  id="auth_checker_hourly",
-@@ -22488,7 +22586,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22488,7 +22631,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
              # Hourly uptime monitor — multi-endpoint probes (db + public APIs).
              async def _scheduled_uptime():
                  await _run_uptime_probes(triggered_by="cron:hourly")
@@ -326,7 +617,7 @@ index 2ffb81a..aa6d191 100644
                  _scheduled_uptime,
                  CronTrigger(minute=5, timezone="Africa/Abidjan"),  # offset 5min from auth check
                  id="uptime_monitor_hourly",
-@@ -22498,7 +22596,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22498,7 +22641,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
              # Iter35b — every 4h check whether Meta is calling our WA webhook.
              async def _scheduled_wa_silence():
                  await _run_wa_silence_check(triggered_by="cron:4h")
@@ -335,7 +626,7 @@ index 2ffb81a..aa6d191 100644
                  _scheduled_wa_silence,
                  CronTrigger(hour="*/4", minute=20, timezone="Africa/Abidjan"),
                  id="wa_silence_detector_4h",
-@@ -22510,7 +22608,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22510,7 +22653,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
              # WhatsApp on failures (throttled 12h to avoid spam).
              async def _scheduled_integration_health():
                  await _run_integration_health_check(triggered_by="cron:4h")
@@ -344,7 +635,7 @@ index 2ffb81a..aa6d191 100644
                  _scheduled_integration_health,
                  CronTrigger(hour="*/4", minute=35, timezone="Africa/Abidjan"),
                  id="integration_health_monitor_4h",
-@@ -22518,7 +22616,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22518,7 +22661,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
                  misfire_grace_time=900,
              )
              # Minute-level WhatsApp scheduler — drains pending schedules due for send.
@@ -353,7 +644,7 @@ index 2ffb81a..aa6d191 100644
                  _run_scheduled_whatsapp,
                  CronTrigger(minute="*", timezone="Africa/Abidjan"),
                  id="whatsapp_scheduler_minutely",
-@@ -22528,7 +22626,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22528,7 +22671,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
              # Iter43-fix24av (2026-02-26) — Minute-level LinkedIn auto-post tick.
              async def _scheduled_linkedin_autopost():
                  await _run_linkedin_autopost_tick(db)
@@ -362,7 +653,7 @@ index 2ffb81a..aa6d191 100644
                  _scheduled_linkedin_autopost,
                  CronTrigger(minute="*", timezone="Africa/Abidjan"),
                  id="linkedin_autopost_minutely",
-@@ -22538,7 +22636,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22538,7 +22681,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
              # Iter43-fix24ay (2026-02-26) — Google Calendar Watch channel renewal (every 6h)
              async def _scheduled_gcal_watch_renewal():
                  await _run_gcal_watch_renewal(db)
@@ -371,7 +662,7 @@ index 2ffb81a..aa6d191 100644
                  _scheduled_gcal_watch_renewal,
                  CronTrigger(hour="*/6", timezone="Africa/Abidjan"),
                  id="gcal_watch_renewal_6h",
-@@ -22551,7 +22649,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22551,7 +22694,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
                      await _run_planning_wa_reminders()
                  except Exception as exc:  # noqa: BLE001
                      logger.warning("[planning] reminder job failed: %s", exc)
@@ -380,7 +671,7 @@ index 2ffb81a..aa6d191 100644
                  _scheduled_planning_wa_reminders,
                  CronTrigger(minute="*/5", timezone="UTC"),
                  id="planning_wa_reminders_5min",
-@@ -22566,7 +22664,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22566,7 +22709,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
                      await _run_contract_overdue_alerts()
                  except Exception as exc:  # noqa: BLE001
                      logger.warning("[contract-overdue] job failed: %s", exc)
@@ -389,7 +680,7 @@ index 2ffb81a..aa6d191 100644
                  _scheduled_contract_overdue_alerts,
                  CronTrigger(hour=8, minute=15, timezone="Africa/Abidjan"),
                  id="contract_overdue_alerts_daily",
-@@ -22579,7 +22677,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22579,7 +22722,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
                      await _run_recurring_billing_reminders()
                  except Exception as exc:  # noqa: BLE001
                      logger.warning("[billing-reminder] job failed: %s", exc)
@@ -398,7 +689,7 @@ index 2ffb81a..aa6d191 100644
                  _scheduled_recurring_billing_reminders,
                  CronTrigger(hour=7, minute=45, timezone="Africa/Abidjan"),
                  id="recurring_billing_reminders_daily",
-@@ -22588,7 +22686,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22588,7 +22731,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
              )
              # Iter38d — Monthly payroll outbound webhook (1st of month, 03:00 UTC).
              try:
@@ -407,7 +698,7 @@ index 2ffb81a..aa6d191 100644
                      _pwh_router._scheduled_auto_dispatch,  # type: ignore[attr-defined]
                      CronTrigger(day=1, hour=3, minute=0, timezone="UTC"),
                      id="payroll_outbound_monthly",
-@@ -22599,7 +22697,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22599,7 +22742,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
              except Exception as _ex:
                  logger.warning("Failed to schedule payroll outbound webhook: %s", _ex)
              # Minute-level SMS scheduler — drains pending SMS schedules due for send.
@@ -416,7 +707,7 @@ index 2ffb81a..aa6d191 100644
                  _run_scheduled_sms,
                  CronTrigger(minute="*", timezone="Africa/Abidjan"),
                  id="sms_scheduler_minutely",
-@@ -22607,7 +22705,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22607,7 +22750,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
                  misfire_grace_time=120,
              )
              # Hourly appointment reminders (J-1 window).
@@ -425,7 +716,7 @@ index 2ffb81a..aa6d191 100644
                  _appointment_reminder_cron,
                  CronTrigger(minute=15, timezone="Africa/Abidjan"),
                  id="appointment_reminder_hourly",
-@@ -22641,7 +22739,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22641,7 +22784,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
                      except Exception:
                          logger.exception("[synthese] minute_check crashed")
  
@@ -434,7 +725,7 @@ index 2ffb81a..aa6d191 100644
                      _synthese_minute_check,
                      CronTrigger(minute="*", timezone="Africa/Abidjan"),
                      id="liluvine_synthese_minutely",
-@@ -22652,7 +22750,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22652,7 +22795,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
              except Exception as _ex:
                  logger.warning("Failed to schedule synthèse cron: %s", _ex)
              # Hourly task reminders (1h window before due_at).
@@ -443,7 +734,7 @@ index 2ffb81a..aa6d191 100644
                  _task_reminder_cron,
                  CronTrigger(minute=20, timezone="Africa/Abidjan"),
                  id="task_reminder_hourly",
-@@ -22668,7 +22766,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22668,7 +22811,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
                      await _run_wa_tasks_digest(db, _send_wa_text_for_digest, _get_settings_async)
                  except Exception as exc:
                      logger.warning("[scheduler:wa_tasks_digest] %s", exc)
@@ -452,7 +743,7 @@ index 2ffb81a..aa6d191 100644
                  _scheduled_wa_tasks_digest,
                  CronTrigger(minute="*/5", timezone="Africa/Abidjan"),
                  id="wa_tasks_digest_5min",
-@@ -22685,7 +22783,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22685,7 +22828,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
                      await _rmpd(db, _send_wa_text_for_digest)
                  except Exception as exc:
                      logger.warning("[scheduler:medecin_planning_digest] %s", exc)
@@ -461,7 +752,7 @@ index 2ffb81a..aa6d191 100644
                  _scheduled_medecin_planning_digest,
                  CronTrigger(minute="*/5", timezone="Africa/Abidjan"),
                  id="medecin_planning_digest_5min",
-@@ -22748,7 +22846,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22748,7 +22891,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
                              logger.warning("[scheduler:wa_token_alert] email send failed: %s", exc)
                  except Exception as exc:
                      logger.warning("[scheduler:wa_token_health] %s", exc)
@@ -470,7 +761,7 @@ index 2ffb81a..aa6d191 100644
                  _scheduled_wa_token_health,
                  CronTrigger(hour=7, minute=30, timezone="Africa/Abidjan"),
                  id="wa_token_health_daily",
-@@ -22763,7 +22861,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22763,7 +22906,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
                      await _run_liluvine_weekly_digest(db, send_email, _get_settings_async)
                  except Exception as exc:
                      logger.warning("[scheduler:liluvine_digest] %s", exc)
@@ -479,7 +770,7 @@ index 2ffb81a..aa6d191 100644
                  _scheduled_liluvine_weekly_digest,
                  CronTrigger(day_of_week="mon", hour=8, minute=0, timezone="Africa/Abidjan"),
                  id="liluvine_weekly_digest_mon",
-@@ -22776,7 +22874,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22776,7 +22919,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
                      await _run_gdpr_anonymization(db, _get_settings_async)
                  except Exception as exc:
                      logger.warning("[scheduler:gdpr_anonymize] %s", exc)
@@ -488,7 +779,7 @@ index 2ffb81a..aa6d191 100644
                  _scheduled_gdpr_anonymize,
                  CronTrigger(hour=3, minute=30, timezone="Africa/Abidjan"),
                  id="gdpr_auto_anonymize_daily",
-@@ -22800,9 +22898,9 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22800,9 +22943,9 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
                      await _llm_warning_alerts(db, send_email, _wa_send_text)
                  except Exception as exc:  # noqa: BLE001
                      logger.warning("[scheduler:llm_health] %s", exc)
@@ -500,7 +791,7 @@ index 2ffb81a..aa6d191 100644
                  id="llm_health_ping_15min",
                  replace_existing=True,
                  misfire_grace_time=300,
-@@ -22819,7 +22917,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22819,7 +22962,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
                      await _run_auto_snapshot(triggered_by="cron:weekly-sun-03")
                  except Exception as exc:  # noqa: BLE001
                      logger.warning("Auto-snapshot cron failed: %s", exc)
@@ -509,7 +800,7 @@ index 2ffb81a..aa6d191 100644
                  _scheduled_auto_snapshot,
                  CronTrigger(day_of_week="sun", hour=3, minute=0, timezone="Africa/Abidjan"),
                  id="db_auto_snapshot_weekly",
-@@ -22835,7 +22933,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22835,7 +22978,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
                      await _run_auto_relance_cashier(triggered_by="cron:daily-09")
                  except Exception as exc:  # noqa: BLE001
                      logger.warning("Auto-relance cron failed: %s", exc)
@@ -518,7 +809,7 @@ index 2ffb81a..aa6d191 100644
                  _scheduled_auto_relance,
                  CronTrigger(hour=9, minute=0, timezone="Africa/Abidjan"),
                  id="cashier_auto_relance_daily",
-@@ -22857,7 +22955,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22857,7 +23000,7 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
                      await _proc(db, send_email_fn=_email_adapter, send_whatsapp_fn=_wa_adapter)
                  except Exception as exc:  # noqa: BLE001
                      logger.warning("AI subscriptions reminders cron failed: %s", exc)
@@ -527,7 +818,7 @@ index 2ffb81a..aa6d191 100644
                  _scheduled_ai_subs_reminders,
                  CronTrigger(hour=8, minute=0, timezone="Africa/Abidjan"),
                  id="ai_subscriptions_reminders_daily",
-@@ -22889,17 +22987,22 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
+@@ -22889,17 +23032,22 @@ async def admin_run_contract_overdue_now(_: dict = Depends(get_current_admin)):
                          logger.info("Ad banner reminders sent: %s", len(res["sent"]))
                  except Exception as exc:  # noqa: BLE001
                      logger.warning("Ad banner reminders cron failed: %s", exc)
@@ -716,6 +1007,261 @@ index 0000000..7bb737c
 +    assert off == {"c1": "active", "sa": "active"}           # interrupteur coupé : aucune suspension
 +    on = loop.run_until_complete(scenario(True))
 +    assert on["c1"] == "suspended" and on["sa"] == "active"   # jamais le super-admin
+diff --git a/backend/tests/test_wa_flow_lot27.py b/backend/tests/test_wa_flow_lot27.py
+new file mode 100644
+index 0000000..7305a33
+--- /dev/null
++++ b/backend/tests/test_wa_flow_lot27.py
+@@ -0,0 +1,249 @@
++"""Lot 27 — modèles WhatsApp avec bouton « Flux » (FLOW).
++
++- à l'envoi : Meta exige, pour chaque bouton FLOW, un composant bouton portant
++  un flow_token ; le portail ne l'envoyait pas (erreur Meta, message non
++  envoyé). Le composant est maintenant ajouté d'après la définition du modèle ;
++- à la réception : la réponse du formulaire (message « nfm_reply ») était
++  perdue ; elle est affichée dans la conversation, enregistrée et déclenche
++  l'événement d'automation « whatsapp.flow_completed ».
++Tests autonomes : MongoDB simulé (mongomock-motor), Meta simulé, aucun envoi réel.
++"""
++from __future__ import annotations
++
++import asyncio
++import json
++import os
++import sys
++import types
++from pathlib import Path
++
++import pytest
++
++os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
++os.environ.setdefault("DB_NAME", "sawali_test")
++os.environ.setdefault("JWT_SECRET", "test")
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++mongomock_motor = pytest.importorskip("mongomock_motor")
++
++import routes.whatsapp_helpers as wh  # noqa: E402
++
++# Définition du modèle telle que Meta la renvoie (cas réel : suivilogiciels_fr)
++TPL_DEF = {
++    "name": "suivilogiciels_fr", "language": "fr", "status": "APPROVED",
++    "components": [
++        {"type": "BODY", "text": "Bonjour {{1}}, suivez votre logiciel."},
++        {"type": "BUTTONS", "buttons": [
++            {"type": "FLOW", "text": "Commencer le Suivi", "flow_id": "123", "flow_action": "navigate"},
++        ]},
++    ],
++}
++
++
++def test_flow_component_added_when_missing():
++    comps = [{"type": "body", "parameters": [{"type": "text", "text": "Awa"}]}]
++    out, added = wh._wa_add_flow_button_components(comps, TPL_DEF, lambda: "tok-1")
++    assert added == [(0, "tok-1")]
++    assert out[0] == comps[0]
++    assert out[1] == {"type": "button", "sub_type": "flow", "index": "0",
++                      "parameters": [{"type": "action", "action": {"flow_token": "tok-1"}}]}
++    # Sans composant du tout (modèle sans variable) : ajouté aussi
++    out2, added2 = wh._wa_add_flow_button_components(None, TPL_DEF, lambda: "tok-2")
++    assert len(out2) == 1 and out2[0]["sub_type"] == "flow" and added2 == [(0, "tok-2")]
++
++
++def test_flow_component_kept_or_replaced():
++    good = [{"type": "button", "sub_type": "flow", "index": "0",
++             "parameters": [{"type": "action", "action": {"flow_token": "deja"}}]}]
++    out, added = wh._wa_add_flow_button_components(good, TPL_DEF, lambda: "x")
++    assert out is good and added == []                     # déjà correct : inchangé
++    wrong = [{"type": "button", "sub_type": "quick_reply", "index": "0", "parameters": []}]
++    out, added = wh._wa_add_flow_button_components(wrong, TPL_DEF, lambda: "t")
++    assert len(out) == 1 and out[0]["sub_type"] == "flow" and added == [(0, "t")]
++
++
++def test_no_change_without_flow_button():
++    tpl = {"components": [{"type": "BUTTONS", "buttons": [{"type": "QUICK_REPLY", "text": "Oui"},
++                                                          {"type": "URL", "text": "Site"}]}]}
++    comps = [{"type": "body", "parameters": []}]
++    assert wh._wa_add_flow_button_components(comps, tpl, lambda: "x") == (comps, [])
++    assert wh._wa_add_flow_button_components(comps, None, lambda: "x") == (comps, [])
++    # Bouton FLOW en 2e position : index « 1 »
++    tpl2 = {"components": [{"type": "BUTTONS", "buttons": [{"type": "QUICK_REPLY", "text": "Oui"},
++                                                           {"type": "FLOW", "text": "Go"}]}]}
++    out, added = wh._wa_add_flow_button_components(None, tpl2, lambda: "k")
++    assert added == [(1, "k")] and out[0]["index"] == "1"
++
++
++def test_parse_flow_reply():
++    inter = {"type": "nfm_reply", "nfm_reply": {
++        "name": "flow", "body": "Sent",
++        "response_json": json.dumps({"flow_token": "sawali-abc", "screen_0_Nom_0": "Awa",
++                                     "logiciels": ["Sage", "Odoo"], "satisfaction": "4"}),
++    }}
++    r = wh._wa_parse_flow_reply(inter)
++    assert r["flow_token"] == "sawali-abc"
++    assert r["fields"] == {"screen_0_Nom_0": "Awa", "logiciels": ["Sage", "Odoo"], "satisfaction": "4"}
++    assert r["summary"].splitlines() == ["📋 Formulaire WhatsApp complété", "• Nom : Awa",
++                                         "• logiciels : Sage, Odoo", "• satisfaction : 4"]
++    assert wh._wa_parse_flow_reply({"type": "button_reply", "button_reply": {"id": "x"}}) is None
++    assert wh._wa_parse_flow_reply(None) is None
++    # JSON illisible : gardé tel quel
++    r2 = wh._wa_parse_flow_reply({"type": "nfm_reply", "nfm_reply": {"response_json": "pas du json"}})
++    assert r2["fields"] == {"reponse": "pas du json"} and r2["flow_token"] == ""
++
++
++class _Resp:
++    def __init__(self, status, data):
++        self.status_code = status
++        self._data = data
++        self.text = json.dumps(data)
++
++    def json(self):
++        return self._data
++
++
++def _fake_meta(calls, template_status=200):
++    """Client httpx simulé : liste des modèles (GET) et envoi du message (POST)."""
++    class _Client:
++        def __init__(self, *a, **k):
++            pass
++
++        async def __aenter__(self):
++            return self
++
++        async def __aexit__(self, *a):
++            return False
++
++        async def get(self, url, params=None, headers=None):
++            calls.append(("GET", url, params))
++            if template_status != 200:
++                return _Resp(template_status, {"error": {"message": "refus"}})
++            return _Resp(200, {"data": [TPL_DEF]})
++
++        async def post(self, url, json=None, headers=None):
++            calls.append(("POST", url, json))
++            return _Resp(200, {"messages": [{"id": "wamid.1"}]})
++    return _Client
++
++
++def _helpers(db):
++    return wh.attach_whatsapp_helpers(
++        db=db, wa_graph_version="v21.0", wa_media_max_bytes=10_000_000,
++        upload_dir=Path("/tmp"), uuid_fn=lambda: "u1", now_fn=lambda: "2026-09-26T10:00:00+00:00")
++
++
++def test_send_template_adds_flow_button_and_records_token(monkeypatch):
++    calls = []
++    monkeypatch.setattr(wh.httpx, "AsyncClient", _fake_meta(calls))
++    db = mongomock_motor.AsyncMongoMockClient()["sawali_flow"]
++
++    async def scenario():
++        await db.settings.insert_one({"_id": "global", "wa_access_token": "T", "wa_phone_number_id": "P",
++                                      "wa_business_account_id": "W"})
++        h = _helpers(db)
++        res1 = await h["_wa_send_template"]("+226 70 00 00 00", "suivilogiciels_fr", "fr",
++                                            [{"type": "body", "parameters": [{"type": "text", "text": "Awa"}]}])
++        # 2e envoi : la définition du modèle est mémorisée (pas de nouvelle lecture)
++        res2 = await h["_wa_send_template"]("22670000001", "suivilogiciels_fr", "fr", None)
++        rows = await db.whatsapp_flow_sends.find({}, {"_id": 0}).to_list(10)
++        return res1, res2, rows
++    res1, res2, rows = asyncio.run(scenario())
++    assert res1["ok"] and res2["ok"]
++    gets = [c for c in calls if c[0] == "GET"]
++    posts = [c for c in calls if c[0] == "POST"]
++    assert len(gets) == 1 and "/W/message_templates" in gets[0][1] and gets[0][2]["name"] == "suivilogiciels_fr"
++    sent = posts[0][2]["template"]["components"]
++    assert sent[1] == {"type": "button", "sub_type": "flow", "index": "0",
++                       "parameters": [{"type": "action", "action": {"flow_token": "sawali-u1"}}]}
++    assert posts[1][2]["template"]["components"][0]["sub_type"] == "flow"
++    assert [r["to"] for r in rows] == ["22670000000", "22670000001"]
++    assert rows[0]["flow_token"] == "sawali-u1" and rows[0]["template"] == "suivilogiciels_fr"
++
++
++def test_send_template_still_works_when_meta_listing_fails(monkeypatch):
++    """Modèle illisible chez Meta : l'envoi part quand même, sans rien ajouter."""
++    calls = []
++    monkeypatch.setattr(wh.httpx, "AsyncClient", _fake_meta(calls, template_status=403))
++    db = mongomock_motor.AsyncMongoMockClient()["sawali_flow2"]
++
++    async def scenario():
++        await db.settings.insert_one({"_id": "global", "wa_access_token": "T", "wa_phone_number_id": "P",
++                                      "wa_business_account_id": "W"})
++        return await _helpers(db)["_wa_send_template"]("22670000000", "autre_modele", "fr",
++                                                       [{"type": "body", "parameters": [{"type": "text", "text": "a"}]}])
++    res = asyncio.run(scenario())
++    posts = [c for c in calls if c[0] == "POST"]
++    assert res["ok"] and posts[0][2]["template"]["components"] == [
++        {"type": "body", "parameters": [{"type": "text", "text": "a"}]}]
++
++
++def test_server_webhook_and_event_wiring():
++    """Le webhook lit la réponse du formulaire et émet « whatsapp.flow_completed »."""
++    src = (Path(__file__).resolve().parents[1] / "server.py").read_text(encoding="utf-8")
++    assert "flow_reply = _wa_parse_flow_reply(interactive)" in src
++    assert src.count('"whatsapp.flow_completed"') >= 3      # événement émis, supporté, listé
++    assert "db.whatsapp_flow_responses.insert_one" in src
++
++
++@pytest.fixture(scope="module")
++def server_mod():
++    """server.py importé dans une boucle (il crée des tâches à l'import)."""
++    pytest.importorskip("apscheduler")
++    if "num2words" not in sys.modules:
++        try:
++            import num2words  # noqa: F401
++        except ImportError:
++            _m = types.ModuleType("num2words")
++            _m.num2words = lambda *a, **k: ""
++            sys.modules["num2words"] = _m
++    loop = asyncio.new_event_loop()
++
++    async def _imp():
++        import server
++        return server
++    mod = loop.run_until_complete(_imp())
++    yield mod, loop
++    loop.close()
++
++
++def test_webhook_stores_flow_reply(server_mod, monkeypatch):
++    server, loop = server_mod
++    db = mongomock_motor.AsyncMongoMockClient()["sawali_flow_wh"]
++    monkeypatch.setattr(server, "db", db)
++    emitted = []
++
++    async def fake_emit(event, target):
++        emitted.append((event, target))
++    monkeypatch.setattr(server, "_emit_event", fake_emit)
++    payload = {"object": "whatsapp_business_account", "entry": [{"changes": [{"value": {
++        "messaging_product": "whatsapp",
++        "metadata": {"phone_number_id": "P"},
++        "contacts": [{"profile": {"name": "Awa"}, "wa_id": "22670000000"}],
++        "messages": [{"from": "22670000000", "id": "wamid.in1", "timestamp": "1790000000",
++                      "type": "interactive", "interactive": {"type": "nfm_reply", "nfm_reply": {
++                          "name": "flow", "body": "Sent",
++                          "response_json": json.dumps({"flow_token": "sawali-u1", "satisfaction": "4"})}}}],
++    }}]}]}
++
++    async def scenario():
++        await db.whatsapp_flow_sends.insert_one({"flow_token": "sawali-u1", "template": "suivilogiciels_fr",
++                                                 "to": "22670000000"})
++        from starlette.requests import Request
++        body = json.dumps(payload).encode()
++
++        async def receive():
++            return {"type": "http.request", "body": body, "more_body": False}
++        req = Request({"type": "http", "method": "POST", "path": "/api/whatsapp/webhook",
++                       "headers": [], "query_string": b""}, receive)
++        await server.whatsapp_webhook_incoming(req)
++        await asyncio.sleep(0.05)                          # tâches d'événements lancées
++        msgs = await db.whatsapp_messages.find({}, {"_id": 0}).to_list(10)
++        resp = await db.whatsapp_flow_responses.find({}, {"_id": 0}).to_list(10)
++        return msgs, resp
++    msgs, resp = loop.run_until_complete(scenario())
++    assert msgs and msgs[0]["body"].startswith("📋 Formulaire WhatsApp complété")
++    assert "• satisfaction : 4" in msgs[0]["body"]
++    assert resp[0]["template"] == "suivilogiciels_fr" and resp[0]["fields"] == {"satisfaction": "4"}
++    ev = [e for e in emitted if e[0] == "whatsapp.flow_completed"]
++    assert ev and ev[0][1]["extra_ctx"]["wa_flow_summary"] == "• satisfaction : 4"
++    assert ev[0][1]["extra_ctx"]["wa_flow_template"] == "suivilogiciels_fr"
 diff --git a/frontend/src/components/EmojiPicker.jsx b/frontend/src/components/EmojiPicker.jsx
 new file mode 100644
 index 0000000..56cbe3c
