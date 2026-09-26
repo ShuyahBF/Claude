@@ -170,10 +170,10 @@ concerné.
   modèles WA (#132018/#131008) dans _wa_send_template. 74 tests autonomes
   (7 nouveaux), build OK. Signalé, non corrigé : bloc APScheduler jamais exécuté
   (server.py ~22426-22865, après un return) → tâches planifiées inactives.
-- **Sawali lot 27 — tâches planifiées réactivées (garde-fous) + modèles WA à Flow + emojis messagerie**
+- **Sawali lot 27 — tâches planifiées réactivées (garde-fous) + modèles WA à Flow + emojis + annotation d'images**
   — **livré, en attente de publication** (base `d091c30` = lot 26 publié ;
-  `sawali-portal-livraisons/sawali-portal-corrections_27_4ca6874.patch` +
-  `sawali-portal-prompt_27.md`, remplace 8e70384 non publié ; dev `claude/lot27` 4ca6874). Bloc APScheduler
+  `sawali-portal-livraisons/sawali-portal-corrections_27_6eb9527.patch` +
+  `sawali-portal-prompt_27.md`, remplace 8e70384 et 4ca6874 non publiés ; dev `claude/lot27` 6eb9527). Bloc APScheduler
   (26 tâches) sorti du code mort vers `_start_scheduler` (add_job protégés,
   start garanti, jamais en preview, DISABLE_SCHEDULER, page d'état
   /api/admin/scheduler/status). Garde-fous : envois WA/SMS programmés > 3 h de
@@ -185,7 +185,10 @@ concerné.
   _wa_send_template d'après la définition Meta (cache 1 h, jeton dans
   whatsapp_flow_sends) ; réponse nfm_reply affichée, stockée
   (whatsapp_flow_responses), événement whatsapp.flow_completed. 87 tests
-  autonomes (13 nouveaux), build OK. Ensuite : découpage de server.py par lots. Lot 26 : 395/395 sondes OK sur 15 min.
+  autonomes (13 nouveaux), build OK. ImageAnnotator.jsx (canvas : flèche,
+  cercle, rectangle, crayon, surligneur, texte, numéros, flou ; annuler/rétablir)
+  branché sur la pièce jointe image de la conversation (Contacts.jsx), testé
+  navigateur (bureau + mobile). Ensuite : découpage de server.py par lots. Lot 26 : 395/395 sondes OK sur 15 min.
 - **Albarka lot 5 — design SAWALI sur tout le portail + corrections de droits**
   — **publié le 2026-09-26** (GitHub d30e280→37de42f, code identique hors
   `.emergent`/`.gitignore` ; production v2026.5) (base `36d9fc1` = lot 4 publié ;

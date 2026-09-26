@@ -1,10 +1,10 @@
-# Sawali — Lot 27 : tâches planifiées réactivées (avec garde-fous), modèles WhatsApp à formulaire (Flow), emojis
+# Sawali — Lot 27 : tâches planifiées réactivées (avec garde-fous), modèles WhatsApp à formulaire (Flow), emojis, annotation d'images
 
 **Interdiction explicite** : je ne veux AUCUNE commande de test, de build ou
 de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 évaluateur ou analyseur automatique**. Tu appliques et tu déploies directement.
 
-Applique `sawali-portal-corrections_27_4ca6874.patch` sur la branche
+Applique `sawali-portal-corrections_27_6eb9527.patch` sur la branche
 `conflict_230926_1008`. Base attendue : ton commit `d091c30` (« Auto-generated
 changes », juste après `55e46f2`, le lot 26 que tu as publié). Le patch ne
 touche pas au dossier `.emergent`. C'est un `git format-patch` d'un seul
@@ -94,10 +94,29 @@ le Suivi » ouvre un formulaire WhatsApp (bouton de type « Flux terminé »).
 - SMS : un compteur indique le nombre de SMS. Un emoji fait passer le
   message en Unicode (70 caractères par SMS au lieu de 160).
 
+## Annoter une image avant de l'envoyer (conversation WhatsApp)
+
+- Quand une image est jointe à la conversation d'un contact (trombone, Ctrl+V
+  ou bouton « Coller »), un bouton **« Annoter »** apparaît à côté de
+  l'aperçu. Un clic sur la vignette ouvre aussi l'éditeur.
+- Outils :
+  - **Flèche**, **Cercle** (pour entourer une zone), **Rectangle** ;
+  - **Crayon** (main levée) et **Surligneur** ;
+  - **Texte** : on clique à l'endroit voulu, on tape, puis Entrée ;
+  - **Numéro** : pastilles 1, 2, 3… pour indiquer des étapes ;
+  - **Flouter** : on encadre une zone pour la pixeliser (numéro de compte,
+    visage, mot de passe). Le flou reste sous les autres annotations.
+- 6 couleurs et 3 épaisseurs. Annuler / Rétablir (Ctrl+Z / Ctrl+Y), Tout effacer.
+- Marche à la souris, au doigt et au stylet (téléphone, tablette).
+- **Terminer** : l'image annotée remplace la pièce jointe (même légende, même
+  bouton Envoyer). Elle reste en JPEG, ou en PNG pour une capture PNG.
+- Aucune dépendance nouvelle : le dessin se fait dans le navigateur.
+
 ## Fichiers touchés
 
 **Nouveaux fichiers**
 - `frontend/src/components/EmojiPicker.jsx`
+- `frontend/src/components/ImageAnnotator.jsx`
 - `backend/tests/test_scheduler_lot27.py`, `backend/tests/test_wa_flow_lot27.py`
   (tests autonomes — tu ne les lances pas)
 
@@ -115,7 +134,8 @@ le Suivi » ouvre un formulaire WhatsApp (bouton de type « Flux terminé »).
 - `backend/routes/cashier.py` : garde-fous des relances automatiques
 - `backend/models.py` : réglage `contract_auto_suspend_enabled`
 - `backend/health_report.py` : PDF dans un thread
-- `frontend/src/pages/portal/Contacts.jsx`, `UnifiedInbox.jsx` : emojis, compteur SMS
+- `frontend/src/pages/portal/Contacts.jsx` : emojis, compteur SMS, bouton « Annoter »
+- `frontend/src/pages/portal/UnifiedInbox.jsx` : emojis
 - `frontend/src/pages/portal/WaBulk.jsx`, `SmsBulk.jsx` : motif d'annulation affiché
 - `frontend/src/pages/admin/AdminSettings.jsx` : interrupteur « Suspendre automatiquement… »
 
@@ -151,7 +171,11 @@ production uniquement, puis dis-le-moi.
    « 📋 Formulaire WhatsApp complété » apparaît dans la conversation.
    Automations → « Nouvelle automation » : l'événement « Formulaire WhatsApp (Flow)
    complété » est proposé.
-6. Envoi de SMS : ajoute un emoji. Le compteur passe en orange et indique
+6. Conversation d'un contact : joins une capture d'écran, clique sur
+   **Annoter**, trace une flèche, entoure une zone, floute un numéro et ajoute
+   un texte, puis **Terminer**. L'aperçu montre l'image annotée ; envoie-la :
+   le client la reçoit avec les annotations.
+7. Envoi de SMS : ajoute un emoji. Le compteur passe en orange et indique
    « envoi en Unicode (70 caractères par SMS) ».
 
 Si quelque chose ne marche pas, renvoie-moi le message d'erreur exact (écran
