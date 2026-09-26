@@ -156,6 +156,20 @@ concerné.
   les suivis, Documentation/Formulaires toujours visibles aux créateurs,
   Voice Studio grisé, « Générer l'image », liste noire anti-verrouillage ;
   16 tests nouveaux, 67 autonomes OK, build OK.
+- **Sawali lot 26 — le serveur ne se fige plus + valeurs des modèles WhatsApp**
+  — **livré, en attente de publication** (base `793ef31` = lot 25 publié ;
+  `sawali-portal-livraisons/sawali-portal-corrections_26_6bf4403.patch` +
+  `sawali-portal-prompt_26.md` ; dev `claude/lot26` 6bf4403). Diagnostic :
+  gel de ~35 s mesuré en production (17:58:35→17:59:10, 520 Cloudflare), cause
+  principale storage.py synchrone (init 30 s, PUT 120 s, GET 60 s) appelé dans
+  des routes async. Correctifs : storage non bloquant (init en arrière-plan,
+  wrappers asyncio.to_thread, cache négatif 10 min) sur toutes les routes ;
+  boucle WS chat qui pouvait tourner à vide ; empreinte /api/version calculée
+  une fois ; Google Agenda, Qdrant/VIDAL, bcrypt en thread ; météo « indisponible »
+  au lieu de 502 ; Content-Disposition RFC 6266 ; nettoyage des paramètres de
+  modèles WA (#132018/#131008) dans _wa_send_template. 74 tests autonomes
+  (7 nouveaux), build OK. Signalé, non corrigé : bloc APScheduler jamais exécuté
+  (server.py ~22426-22865, après un return) → tâches planifiées inactives.
 - **Albarka lot 5 — design SAWALI sur tout le portail + corrections de droits**
   — **publié le 2026-09-26** (GitHub d30e280→37de42f, code identique hors
   `.emergent`/`.gitignore` ; production v2026.5) (base `36d9fc1` = lot 4 publié ;
