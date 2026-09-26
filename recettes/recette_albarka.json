@@ -1,0 +1,1318 @@
+[
+ {
+  "id": "g-comptes",
+  "title": "Préparation des comptes de recette",
+  "who": "Cabinet → Personnels (/admin/staff) et Contrats clients — à faire par admin puis par le Superviseur",
+  "prep": "Avoir une boîte e-mail de recette (ex. recette@gmail.com) et deux numéros WhatsApp au format +226… (Client 1 : a écrit au WhatsApp du cabinet il y a moins de 24 h ; Client 2 : pas depuis 24 h).",
+  "items": [
+   {
+    "id": "g-comptes-1",
+    "do": "Connecté en admin (admin@sawalismartsystems.com), ouvrir Personnels, cliquer « Créer comptes de test », saisir l'e-mail de recette, un mot de passe commun (8 caractères min.) et les deux numéros WhatsApp, puis « Créer / remettre à neuf ».",
+    "expect": [
+     "La liste affiche TEST Superviseur, TEST Secrétaire A, TEST Secrétaire B (caissière), TEST Collaborateur Formulaires, TEST Comptable, TEST Client 1 et TEST Client 2 avec le statut « créé » ou « mis à jour ».",
+     "Chaque adresse est de la forme recette+test-xxx@… et les lignes portent le badge jaune « TEST »."
+    ]
+   },
+   {
+    "id": "g-comptes-2",
+    "do": "Refaire « Créer comptes de test » connecté avec le Superviseur démo (superviseur@albarka-demo.bf), pas admin.",
+    "expect": [
+     "TEST Superviseur apparaît « ignoré » avec le message « Seul le compte admin du portail peut créer un superviseur »."
+    ]
+   },
+   {
+    "id": "g-comptes-3",
+    "do": "Toujours en Superviseur : Contrats clients → « Nouveau contrat » pour TEST Client 1 puis TEST Client 2 (Début = aujourd'hui, Statut « En cours »). Créer aussi un vrai client « CLIENT RECETTE » via Clients → « Nouveau client » avec son contrat.",
+    "expect": [
+     "Les 3 contrats apparaissent dans la liste.",
+     "Sans contrat actif, un client ne peut pas se connecter (voir g-connexion)."
+    ]
+   },
+   {
+    "id": "g-comptes-4",
+    "do": "Avec « Nouveau personnel », créer les comptes manquants (non-test) : Direction, Directeur Général, RH, Communication, Aide-comptable, Fiscaliste, un comptable avec « Téléchargement » coché, un compte « Caissier » seul. Pour « Administrateur », se connecter avec un compte qui porte déjà ce rôle.",
+    "expect": [
+     "Chaque compte créé apparaît dans Personnels avec ses badges de rôles.",
+     "La case « Superviseur » est grisée pour tout autre compte qu'admin ; la case « Administrateur » n'apparaît que pour un Administrateur."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "g-connexion",
+  "title": "Connexion (mot de passe + code OTP)",
+  "who": "Page /login — tous les comptes",
+  "prep": "Comptes de g-comptes. Un compte à désactiver pour le test 3.",
+  "items": [
+   {
+    "id": "g-connexion-1",
+    "do": "Aller sur /login, saisir e-mail et mot de passe d'un collaborateur, cliquer « Recevoir mon code ».",
+    "expect": [
+     "Passage à « Étape 2 sur 2 — Code d'accès » avec le message « Un code de vérification a été envoyé à votre adresse email » (ou, si l'e-mail n'est pas configuré, un encadré « Mode pilote » affichant le code).",
+     "Le code (6 chiffres) arrive dans la boîte e-mail."
+    ]
+   },
+   {
+    "id": "g-connexion-2",
+    "do": "Saisir un code faux puis « Se connecter » ; ensuite le bon code.",
+    "expect": [
+     "Code faux : message « Code incorrect ».",
+     "Bon code : message « Bienvenue, <nom> » ; un collaborateur arrive sur /admin, un client sur /portal."
+    ]
+   },
+   {
+    "id": "g-connexion-3",
+    "do": "Tester un mauvais mot de passe, puis un compte désactivé (icône « Désactiver le compte » dans Clients/Personnels).",
+    "expect": [
+     "Mauvais mot de passe : « Identifiants invalides ».",
+     "Compte désactivé : « Compte désactivé » dès l'étape 1."
+    ]
+   },
+   {
+    "id": "g-connexion-4",
+    "do": "Se connecter avec un client SANS contrat actif (ou mettre son contrat en « Suspendu »), puis cliquer « Déconnexion » en bas de la barre latérale d'un compte connecté.",
+    "expect": [
+     "Client sans contrat : « Aucun contrat actif — veuillez contacter votre cabinet ALBARKA pour activer votre accès. »",
+     "Déconnexion : retour sur /login ; revenir à /admin ou /portal renvoie vers /login."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "g-liste-blanche",
+  "title": "Liste blanche du personnel, page /erreur-404 et accès temporaire (/login?acces=CODE)",
+  "who": "Paramètres → onglet « Accès du personnel » (Superviseur) ; bouton « Accès temporaire » dans Personnels (admin ou e-mails désignés par admin)",
+  "prep": "Deux navigateurs/appareils : un « bureau » et un « externe » (ex. téléphone en 4G). Compte TEST Comptable.",
+  "items": [
+   {
+    "id": "g-liste-blanche-1",
+    "do": "En Superviseur, onglet « Accès du personnel » : sur l'appareil bureau cliquer « Autoriser cet appareil (poste partagé) », activer l'interrupteur « Liste blanche du personnel », puis « Enregistrer ».",
+    "expect": [
+     "L'appareil apparaît dans « Appareils autorisés » avec « (cet appareil) » et « Tout le personnel (poste partagé) ».",
+     "Le message rappelle qu'admin et le Superviseur ne sont jamais bloqués et que les clients ne sont pas concernés."
+    ]
+   },
+   {
+    "id": "g-liste-blanche-2",
+    "do": "Sur l'appareil externe, se connecter en TEST Comptable (mot de passe + bon code).",
+    "expect": [
+     "Après le code, la page affiche seulement « 404 — ERREUR — La page demandée est introuvable » (/erreur-404), sans dire que les identifiants étaient bons.",
+     "Dans Paramètres → Accès du personnel, une « Demande en attente » apparaît avec l'IP et le nombre de tentatives ; Journal plateforme contient l'action login.blocked_whitelist."
+    ]
+   },
+   {
+    "id": "g-liste-blanche-3",
+    "do": "En admin : Personnels → icône « Accès temporaire » sur la ligne de TEST Comptable, durée « 4 heures », « Créer et envoyer ».",
+    "expect": [
+     "La fenêtre affiche la date de fin, « Envoi : e-mail ✓/✗ · WhatsApp ✓/✗ », le code (10 caractères) et le lien …/login?acces=CODE.",
+     "L'icône n'apparaît pas sur les lignes Superviseur ni sur la ligne admin ; elle est invisible pour un Superviseur non désigné."
+    ]
+   },
+   {
+    "id": "g-liste-blanche-4",
+    "do": "Sur l'appareil externe, ouvrir le lien reçu (/login?acces=CODE), saisir mot de passe puis code OTP ; ensuite, en admin, révoquer le jeton (Paramètres → Accès temporaires → « Révoquer ») et en admin seulement, ajouter un e-mail dans « Adresses e-mail autorisées à créer des accès temporaires ».",
+    "expect": [
+     "Le champ « Code d'accès temporaire » est déjà rempli à l'étape 2 et la connexion réussit.",
+     "Après révocation, une nouvelle connexion externe retombe sur la page 404.",
+     "Pour un Superviseur non-admin, le champ des e-mails autorisés est grisé avec « Seul admin peut modifier cette liste »."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "g-barre-jaune",
+  "title": "Barre jaune (date/heure et version)",
+  "who": "Haut de la barre latérale — cabinet et espace client",
+  "prep": "",
+  "items": [
+   {
+    "id": "g-barre-jaune-1",
+    "do": "Se connecter (cabinet puis client) et regarder la bande jaune tout en haut de la barre latérale ; attendre quelques secondes.",
+    "expect": [
+     "À gauche : date et heure au format 26/09/2026 14:05:09, les secondes avancent chaque seconde.",
+     "À droite : « v2026.4 »."
+    ]
+   },
+   {
+    "id": "g-barre-jaune-2",
+    "do": "Sur téléphone, ouvrir le menu (icône ☰ en haut à gauche).",
+    "expect": [
+     "La barre jaune est visible en haut du menu ouvert, sans espace vide en bas du menu.",
+     "Sous le menu : nom, badges de rôles, « Dernière connexion : … » et bouton « Déconnexion »."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "g-deconnexion-auto",
+  "title": "Déconnexion automatique après inactivité",
+  "who": "Tous les comptes connectés ; délai réglé dans Paramètres → Cabinet (Superviseur)",
+  "prep": "Superviseur : régler « Déconnexion automatique après inactivité (minutes) » à 1 puis « Enregistrer ». Remettre la valeur d'origine (30) en fin de test.",
+  "items": [
+   {
+    "id": "g-deconnexion-auto-1",
+    "do": "Se reconnecter (client ou collaborateur) et ne plus toucher clavier ni souris pendant 1 minute.",
+    "expect": [
+     "30 s avant la fin, une fenêtre « Session bientôt fermée » avec un compte à rebours apparaît.",
+     "Boutons « Rester connecté(e) » et « Se déconnecter maintenant »."
+    ]
+   },
+   {
+    "id": "g-deconnexion-auto-2",
+    "do": "Cliquer « Rester connecté(e) » ; puis laisser à nouveau le compte à rebours aller à zéro.",
+    "expect": [
+     "« Rester connecté(e) » ferme la fenêtre et la session continue.",
+     "À zéro : retour sur /login avec le message « Session fermée après une période d'inactivité — merci de vous reconnecter. »"
+    ]
+   },
+   {
+    "id": "g-deconnexion-auto-3",
+    "do": "Lancer un téléversement long (grosse pièce de 15–20 Mo) puis ne plus bouger.",
+    "expect": [
+     "Pas de déconnexion tant que l'envoi est en cours."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "g-presence",
+  "title": "Présence en ligne",
+  "who": "Clients (/admin/clients), Personnels, bulle de chat, WhatsApp, carte « Derniers clients connectés » du Tableau de bord",
+  "prep": "Un client connecté dans un autre navigateur.",
+  "items": [
+   {
+    "id": "g-presence-1",
+    "do": "Connecter CLIENT RECETTE dans un autre navigateur, puis ouvrir Clients côté cabinet (attendre 15 s).",
+    "expect": [
+     "En tête : « · 1 client(s) en ligne » (ou plus) ; sur la ligne du client : pastille verte « En ligne »."
+    ]
+   },
+   {
+    "id": "g-presence-2",
+    "do": "Côté client, passer l'onglet en arrière-plan, puis fermer l'onglet / cliquer « Déconnexion ».",
+    "expect": [
+     "Onglet en arrière-plan : pastille orange « Absent ».",
+     "Après fermeture/déconnexion : pastille grise « Vu à l'instant / il y a x min »."
+    ]
+   },
+   {
+    "id": "g-presence-3",
+    "do": "En Direction ou Secrétariat, ouvrir le Tableau de bord cabinet.",
+    "expect": [
+     "Carte « Derniers clients connectés » : client, « Connecté le », « Dernière activité », « Durée d'activité » ; le nom mène à la fiche client.",
+     "La carte n'apparaît pas pour un Comptable ou un Fiscaliste."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "g-chat",
+  "title": "Bulle de chat interne",
+  "who": "Bulle verte en bas à droite — tous les collaborateurs (jamais les clients) ; création de fils : Administrateur, Superviseur, DG, Direction, Secrétariat",
+  "prep": "Deux collaborateurs connectés (ex. TEST Secrétaire A et TEST Comptable).",
+  "items": [
+   {
+    "id": "g-chat-1",
+    "do": "En TEST Secrétaire A, ouvrir la bulle, choisir un collègue dans « — Discuter avec un collègue — » (● en ligne, ○ hors ligne) et cliquer le bouton à côté ; écrire un message et « Entrée ».",
+    "expect": [
+     "Le fil s'ouvre, la présence du collègue s'affiche sous l'en-tête, le message apparaît.",
+     "Chez le collègue, la bulle affiche une pastille orange de non-lus."
+    ]
+   },
+   {
+    "id": "g-chat-2",
+    "do": "En Secrétaire, créer un fil « Nouveau fil… (ex. Mission Traoré BTP) » ; en Comptable vérifier que ce champ n'existe pas.",
+    "expect": [
+     "Secrétaire : le fil est créé et sélectionné.",
+     "Comptable : pas de champ de création, message « Sélectionnez un fil pour commencer »."
+    ]
+   },
+   {
+    "id": "g-chat-3",
+    "do": "Envoyer un fichier (trombone, < 10 Mo), une note vocale (micro) et utiliser la loupe « Rechercher ».",
+    "expect": [
+     "Le fichier apparaît dans le fil ; > 10 Mo : « Fichier trop volumineux (max 10 Mo) ».",
+     "La note vocale est transcrite en texte ; la recherche retrouve le message et le surligne."
+    ]
+   },
+   {
+    "id": "g-chat-4",
+    "do": "Se connecter en client.",
+    "expect": [
+     "Aucune bulle de chat n'est affichée côté client."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "g-bulle-paiement",
+  "title": "Bulle de paiement (lien mobile money)",
+  "who": "Bulle orange au-dessus de la bulle de chat — rôle Caissier (et Superviseur)",
+  "prep": "PawaPay activé et configuré dans Paramètres → Paiements (sinon on vérifie le message d'erreur). Compte TEST Secrétaire B (caissière).",
+  "items": [
+   {
+    "id": "g-bulle-paiement-1",
+    "do": "En TEST Secrétaire B, cliquer la bulle orange (carte bancaire), choisir un client, saisir un montant, laisser le téléphone vide, « Générer le lien de paiement ».",
+    "expect": [
+     "Le lien s'affiche avec « Copier », « Ouvrir » et « Créer un autre lien ».",
+     "Si PawaPay n'est pas activé : message « PawaPay non activé dans les paramètres »."
+    ]
+   },
+   {
+    "id": "g-bulle-paiement-2",
+    "do": "Cliquer sans client ni montant ; puis se connecter en TEST Secrétaire A (sans Caissier).",
+    "expect": [
+     "Message « Client et montant requis ».",
+     "Secrétaire A : pas de bulle orange, et pas de lien « Paiements » dans le menu."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-dashboard",
+  "title": "Tableau de bord (cabinet)",
+  "who": "Cabinet → Tableau de bord (/admin) — visible par : Superviseur, Direction, Secrétariat, Fiscaliste, Comptable, Aide-comptable, RH (pas Administrateur, DG, Caissier, Communication, Formulaires seuls)",
+  "prep": "Quelques pièces, missions et échéances existantes.",
+  "items": [
+   {
+    "id": "c-dashboard-1",
+    "do": "Se connecter en Direction et ouvrir Tableau de bord.",
+    "expect": [
+     "« Vue cabinet — Bonjour <prénom> » ; tuiles Pièces déposées, Missions en cours, Échéances à venir, Échéances en retard, Clients, Collaborateurs.",
+     "Encadré « Envois du mois — AAAA-MM » : Rapports générés, Emails envoyés, WhatsApp délivrés, WhatsApp échoués, Signatures."
+    ]
+   },
+   {
+    "id": "c-dashboard-2",
+    "do": "Comparer le nombre « Clients » entre le Superviseur et la Direction.",
+    "expect": [
+     "Le Superviseur compte en plus les comptes de test ; la Direction ne les compte pas."
+    ]
+   },
+   {
+    "id": "c-dashboard-3",
+    "do": "Se connecter en Administrateur (ou Caissier seul) : regarder le menu puis la page d'arrivée /admin.",
+    "expect": [
+     "Le lien « Tableau de bord » est absent du menu, mais la page /admin s'affiche quand même après la connexion (incohérence à noter)."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-clients",
+  "title": "Clients (liste et fiche client)",
+  "who": "Cabinet → Clients (/admin/clients) — visible par : Superviseur, Direction, Secrétariat ; création/modification : Administrateur, Superviseur, DG, Direction, Secrétariat ; suppression : admin uniquement",
+  "prep": "CLIENT RECETTE existant.",
+  "items": [
+   {
+    "id": "c-clients-1",
+    "do": "En Secrétariat, « Nouveau client » : e-mail, nom, entreprise, téléphone, numéro WhatsApp (+226…), mot de passe (temp), « Créer ». Puis crayon « Modifier », changer l'entreprise, « Enregistrer ».",
+    "expect": [
+     "Messages « Client créé » puis « Client mis à jour » ; la colonne « Connexion / modification » affiche « Modifié : <date> · <nom> ».",
+     "L'e-mail est « (non modifiable) » en modification."
+    ]
+   },
+   {
+    "id": "c-clients-2",
+    "do": "En Direction, cliquer « Non vérifié » sous le téléphone et sous le WhatsApp ; en Secrétariat, vérifier que ces boutons n'apparaissent pas.",
+    "expect": [
+     "Direction : message « Numéro attesté vérifié », le libellé passe à « Vérifié » (vert).",
+     "Secrétariat : pas de bouton de vérification."
+    ]
+   },
+   {
+    "id": "c-clients-3",
+    "do": "Icône clé « Réinitialiser le mot de passe » (champ vide) → « Réinitialiser » ; puis icône « Désactiver le compte ».",
+    "expect": [
+     "Un mot de passe de 10 caractères s'affiche une seule fois avec « Copier » ; le client connecté est déconnecté (« Session expirée : mot de passe réinitialisé »).",
+     "Désactivé : statut « Inactif » ; le client ne peut plus se connecter."
+    ]
+   },
+   {
+    "id": "c-clients-4",
+    "do": "Comparer l'icône corbeille « Supprimer » entre admin et le Superviseur, puis « Ouvrir » une fiche client.",
+    "expect": [
+     "Corbeille visible pour admin uniquement ; « Supprimer ce client ? » → « Compte de … supprimé » (tracé dans Journal plateforme : client.delete).",
+     "Fiche client : onglets Rapports, Contacts, Pièces, Missions, Échéances, Espace client et lien « Retour aux clients »."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-contacts",
+  "title": "Contacts",
+  "who": "Cabinet → Contacts (/admin/contacts) — visible par : Superviseur, Direction, Secrétariat, Comptable, Fiscaliste",
+  "prep": "Un fichier CSV de 3 contacts (dont 1 doublon d'e-mail).",
+  "items": [
+   {
+    "id": "c-contacts-1",
+    "do": "Onglet « Par client », choisir CLIENT RECETTE, « Ajouter » : nom, fonction, e-mail, téléphone (+226…), cocher Email et WhatsApp, « Contact principal », « Ajouter ».",
+    "expect": [
+     "Message « Contact créé » ; le contact apparaît dans le tableau.",
+     "L'icône « Définir comme principal » sur un autre contact affiche « <nom> défini comme contact principal »."
+    ]
+   },
+   {
+    "id": "c-contacts-2",
+    "do": "« Importer » → « Télécharger le modèle CSV », puis charger le fichier de test et « Importer ».",
+    "expect": [
+     "Résumé « x importés · y mis à jour · z ignorés » et avertissements par ligne si erreurs."
+    ]
+   },
+   {
+    "id": "c-contacts-3",
+    "do": "Sous-onglet « Groupes » : créer un groupe avec 2 contacts ; onglet « Cabinet » : ajouter un contact externe (impôts, banque…).",
+    "expect": [
+     "Messages « Groupe créé » et « Contact créé » ; le groupe sera proposé à l'envoi des rapports."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-personnels",
+  "title": "Personnels",
+  "who": "Cabinet → Personnels (/admin/staff) — visible par : Superviseur, Direction ; modification : Administrateur, Superviseur, Direction ; suppression d'un collaborateur : Superviseur ; rôle Superviseur : admin uniquement",
+  "prep": "Comptes de g-comptes.",
+  "items": [
+   {
+    "id": "c-personnels-1",
+    "do": "En Direction : « Nouveau personnel », rôles Comptable + Téléchargement, « Créer » ; puis crayon « Modifier » et tenter de cocher « Superviseur ».",
+    "expect": [
+     "Message « Personnel créé » ; en tête « · x collaborateur(s) en ligne ».",
+     "La case « Superviseur » est grisée avec « Le rôle Superviseur ne peut être donné ou retiré que par le compte admin du portail »."
+    ]
+   },
+   {
+    "id": "c-personnels-2",
+    "do": "En admin : modifier TEST Comptable, cocher « Superviseur », « Enregistrer », puis le décocher.",
+    "expect": [
+     "Message « Personnel mis à jour » les deux fois ; le badge « superviseur » apparaît puis disparaît."
+    ]
+   },
+   {
+    "id": "c-personnels-3",
+    "do": "Comparer la corbeille « Supprimer » entre Direction, Superviseur et admin (sur un compte ordinaire puis sur un compte Superviseur).",
+    "expect": [
+     "Direction : pas de corbeille. Superviseur : corbeille sur les comptes ordinaires, pas sur un Superviseur ni sur admin. admin : corbeille aussi sur un Superviseur.",
+     "Après suppression : « Compte de … supprimé » et action staff.delete dans le Journal plateforme."
+    ]
+   },
+   {
+    "id": "c-personnels-4",
+    "do": "Comparer la liste vue par la Direction et par le Superviseur.",
+    "expect": [
+     "Le bouton « Créer comptes de test » et les lignes badge « TEST » ne sont visibles que du Superviseur.",
+     "Les comptes Administrateur ne sont visibles que d'un Administrateur."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-pieces",
+  "title": "Pièces (OCR des pièces)",
+  "who": "Cabinet → Pièces (/admin/documents) — visible par : Superviseur, Direction, Secrétariat, Fiscaliste, Comptable, Aide-comptable, RH ; télécharger : Administrateur, Superviseur, DG, Direction, Secrétariat ou rôle Téléchargement ; supprimer : Administrateur, Superviseur, DG, Direction",
+  "prep": "Une facture scannée (PDF ou photo) lisible.",
+  "items": [
+   {
+    "id": "c-pieces-1",
+    "do": "En Direction : Type « Pièce comptable », choisir un « Modèle d'IA », un Client, puis « Téléverser une pièce ».",
+    "expect": [
+     "Message « Pièce téléversée, analyse IA en cours… » ; statut « Analyse en cours » puis « Analysé » (rafraîchi seul).",
+     "Colonne « Analyses IA » : modèle · coût · « à évaluer »."
+    ]
+   },
+   {
+    "id": "c-pieces-2",
+    "do": "Déplier la pièce (flèche) : corriger un champ, donner une note, « Enregistrer l'évaluation » ; puis choisir un autre modèle et « Relancer avec ce modèle ».",
+    "expect": [
+     "« Évaluation enregistrée — précision réelle : x % ».",
+     "« Analyse relancée avec … » et une 2e analyse apparaît ; le bouton « Tableau de bord OCR » compare les modèles (coût, note, précision)."
+    ]
+   },
+   {
+    "id": "c-pieces-3",
+    "do": "Sur une ligne : « Envoyer par email » puis « Envoyer par WhatsApp ».",
+    "expect": [
+     "« Pièce envoyée par email » / « Pièce envoyée par WhatsApp » (ou message d'erreur explicite)."
+    ]
+   },
+   {
+    "id": "c-pieces-4",
+    "do": "Se connecter en Comptable (sans Téléchargement), puis en comptable avec Téléchargement, puis en Secrétariat.",
+    "expect": [
+     "Comptable : pas de bouton Télécharger ni Supprimer. Avec Téléchargement : bouton Télécharger présent.",
+     "Secrétariat : Télécharger présent, Supprimer absent. Communication : WhatsApp seulement si le numéro du client est « Vérifié »."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-missions",
+  "title": "Missions",
+  "who": "Cabinet → Missions (/admin/missions) — visible par : Superviseur, Direction, Secrétariat, Fiscaliste, Comptable, Aide-comptable",
+  "prep": "",
+  "items": [
+   {
+    "id": "c-missions-1",
+    "do": "« Nouvelle mission » : Client, Titre, Type, Échéance, Description, « Créer ».",
+    "expect": [
+     "Message « Mission créée » ; la mission apparaît avec le statut « En attente »."
+    ]
+   },
+   {
+    "id": "c-missions-2",
+    "do": "Changer le statut dans la liste déroulante de la ligne (ex. « En cours » puis « Terminée »).",
+    "expect": [
+     "Message « Statut mis à jour » ; la tuile « Missions en cours » du tableau de bord suit."
+    ]
+   },
+   {
+    "id": "c-missions-3",
+    "do": "Se connecter en CLIENT RECETTE → Mes missions.",
+    "expect": [
+     "La mission est visible, sans bouton de création ni liste de statut."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-echeances",
+  "title": "Échéances fiscales",
+  "who": "Cabinet → Échéances fiscales (/admin/echeances) — visible par : Superviseur, Direction, Secrétariat, Fiscaliste, Comptable",
+  "prep": "CLIENT RECETTE avec e-mail et WhatsApp renseignés.",
+  "items": [
+   {
+    "id": "c-echeances-1",
+    "do": "« Nouvelle échéance » : Client, Titre, Type (TVA…), Date limite, Montant (FCFA), Période (2026-Q3), « Créer ».",
+    "expect": [
+     "Message « Échéance ajoutée » ; ligne avec montant « x FCFA »."
+    ]
+   },
+   {
+    "id": "c-echeances-2",
+    "do": "Cliquer l'icône avion « Notifier le client (email + WhatsApp) ».",
+    "expect": [
+     "Message « Notification envoyée (email + WhatsApp si numéro renseigné) » ; le client reçoit l'e-mail / le WhatsApp."
+    ]
+   },
+   {
+    "id": "c-echeances-3",
+    "do": "Passer le statut à « En retard » puis « Traitée ».",
+    "expect": [
+     "« Statut mis à jour » ; la tuile « Échéances en retard » varie en conséquence."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-paie",
+  "title": "Paie & RH",
+  "who": "Cabinet → Paie & RH (/admin/paie) — visible par : Superviseur, Direction, RH",
+  "prep": "",
+  "items": [
+   {
+    "id": "c-paie-1",
+    "do": "Onglet « Employés » → « Nouvel employé » : Client, Nom complet, Fonction, Salaire de base, « Ajouter ».",
+    "expect": [
+     "Message « Employé ajouté » ; l'employé est listé."
+    ]
+   },
+   {
+    "id": "c-paie-2",
+    "do": "Onglet « Bulletins » → « Nouveau bulletin » : Employé, Période 2026-09, Brut, Retenues, Primes, « Créer ».",
+    "expect": [
+     "Message « Bulletin créé » ; Net = Brut − Retenues + Primes."
+    ]
+   },
+   {
+    "id": "c-paie-3",
+    "do": "Cliquer le bouton de téléchargement du bulletin.",
+    "expect": [
+     "Un PDF bulletin_2026-09_<nom>.pdf est téléchargé et s'ouvre."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-rapports",
+  "title": "Rapports client",
+  "who": "Cabinet → Rapports client (/admin/rapports) — visible par : Superviseur, Direction, Secrétariat, Comptable, Fiscaliste",
+  "prep": "Un certificat actif (Paramètres → Signature) pour tester la signature ; un groupe de contacts pour CLIENT RECETTE.",
+  "items": [
+   {
+    "id": "c-rapports-1",
+    "do": "Onglet « Rapports » : rechercher CLIENT RECETTE, « Ouvrir », « Générer un rapport » (Rapport mensuel, mois courant, modèle par défaut), « Générer ».",
+    "expect": [
+     "Message « Rapport <numéro> généré » ; icône Télécharger ouvre le PDF (logo/papier à en-tête si activés)."
+    ]
+   },
+   {
+    "id": "c-rapports-2",
+    "do": "Icône « Envoyer par email » : destinataire direct ou groupe, objet, « Envoyer » ; icône « Envoyer par WhatsApp » : cocher « Programmer l'envoi plus tard » puis « Programmer ».",
+    "expect": [
+     "« Envoyé à … » pour l'e-mail.",
+     "« WhatsApp programmé pour le … » ; l'envoi apparaît dans l'onglet « Journal WhatsApp » avec possibilité d'annuler."
+    ]
+   },
+   {
+    "id": "c-rapports-3",
+    "do": "Icône « Signer » : choisir « Sceau du cabinet », « Signer ».",
+    "expect": [
+     "« Rapport signé » ; les icônes Signer et Supprimer disparaissent pour ce rapport ; l'onglet « Journal signatures » affiche la ligne."
+    ]
+   },
+   {
+    "id": "c-rapports-4",
+    "do": "Onglet « Modèles » : « Ajouter » un modèle avec sections KPIs/Missions ; l'utiliser pour un nouveau rapport.",
+    "expect": [
+     "« Modèle créé » ; le modèle est proposé dans « Modèle de rapport (optionnel) »."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-rapports-masse",
+  "title": "Rapports en masse",
+  "who": "Cabinet → Rapports en masse (/admin/rapports/bulk) — visible par : Superviseur, Direction, Comptable, Fiscaliste",
+  "prep": "",
+  "items": [
+   {
+    "id": "c-rapports-masse-1",
+    "do": "« Génération bulk mensuelle » : Type, Période 2026-09, « Lancer la génération ».",
+    "expect": [
+     "« x rapports générés (y échecs) » ; tableau Client / Numéro.",
+     "Les comptes de test (TEST Client 1/2) ne sont jamais inclus."
+    ]
+   },
+   {
+    "id": "c-rapports-masse-2",
+    "do": "« Export trimestriel » : Client, Trimestre 2026-Q3, « Générer le trimestriel ».",
+    "expect": [
+     "« ✓ Rapport <numéro> généré » avec type, période et taille."
+    ]
+   },
+   {
+    "id": "c-rapports-masse-3",
+    "do": "Pendant qu'on est sur cette page, regarder le menu.",
+    "expect": [
+     "« Rapports en masse » est surligné — et « Rapports client » l'est aussi en même temps (petit défaut d'affichage)."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-contrats",
+  "title": "Contrats clients",
+  "who": "Cabinet → Contrats clients (/admin/contrats) — visible par : Superviseur, Direction, Administrateur, Secrétariat",
+  "prep": "",
+  "items": [
+   {
+    "id": "c-contrats-1",
+    "do": "« Nouveau contrat » : Client, Titre, numéro vide, Début, Fin, Montant, Statut « En cours », « Créer ».",
+    "expect": [
+     "« Contrat créé » avec numéro auto CTR-AAAA-NNNN."
+    ]
+   },
+   {
+    "id": "c-contrats-2",
+    "do": "Modifier le contrat en « Suspendu », puis tenter la connexion du client.",
+    "expect": [
+     "« Contrat mis à jour » ; le client est refusé : « Aucun contrat actif … »."
+    ]
+   },
+   {
+    "id": "c-contrats-3",
+    "do": "Remettre « En cours » ; supprimer un contrat de test.",
+    "expect": [
+     "Le client se reconnecte ; « Contrat supprimé »."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-caisse",
+  "title": "Caisse (factures, encaissement, reçus)",
+  "who": "Cabinet → Caisse (/admin/caisse) — visible par : Superviseur, Direction, Administrateur, Comptable, Secrétariat, Caissier ; encaisser / reçu : Caissier uniquement (même un Superviseur sans Caissier ne peut pas)",
+  "prep": "TEST Secrétaire A (sans Caissier) et TEST Secrétaire B (caissière) ; un client réel (CLIENT RECETTE) car les comptes de test du personnel ne voient pas les clients de test.",
+  "items": [
+   {
+    "id": "c-caisse-1",
+    "do": "En Secrétaire A : « Nouvelle facture », type « Facture », client, titre, 2 lignes (Description, Qté, Prix U., TVA 18 %), cocher « Mettre à disposition dans l'espace du client », « Créer ».",
+    "expect": [
+     "« Facture créé(e) » ; badge « Espace client » sur la ligne ; le client est prévenu (WhatsApp/push/e-mail).",
+     "Le type « Reçu de caisse » n'est pas proposé et le bouton « Encaisser » n'apparaît pas."
+    ]
+   },
+   {
+    "id": "c-caisse-2",
+    "do": "En Secrétaire B : « Encaisser » sur la facture, montant partiel, Méthode « Espèces », « Valider » ; puis encaisser le solde.",
+    "expect": [
+     "« Encaissement enregistré — reçu REC-… délivré » avec l'action « Voir le reçu » (PDF du reçu).",
+     "« Reste dû » diminue ; statut payé après le solde ; l'onglet « Encaissements » liste les paiements."
+    ]
+   },
+   {
+    "id": "c-caisse-3",
+    "do": "Menu « … » d'une ligne : « Voir le PDF », « Régénérer le PDF », « Envoyer par email », « Envoyer par WhatsApp », « Supprimer le PDF ».",
+    "expect": [
+     "« PDF régénéré », « Document envoyé (…) à … », « PDF supprimé (régénérable à tout moment) ».",
+     "« Télécharger » n'apparaît que si le compte a le rôle Téléchargement ; le menu « … » est absent pour un Comptable."
+    ]
+   },
+   {
+    "id": "c-caisse-4",
+    "do": "Filtres : en Secrétariat, regarder les dates ; en Superviseur/Administrateur, utiliser « Depuis toujours », « 3 derniers mois », « Période » ; filtrer un client puis « Exporter en PDF (situation de compte) » et « Envoyer au client ».",
+    "expect": [
+     "Secrétariat : pas de sélecteur de période, encaissements du jour seulement.",
+     "PDF situation_de_compte_… téléchargé ; « Situation de compte envoyée (WhatsApp) à … »."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-paiements",
+  "title": "Paiements (liens mobile money)",
+  "who": "Cabinet → Paiements (/admin/paiements) — visible par : Caissier (et Superviseur)",
+  "prep": "PawaPay configuré en « Sandbox » dans Paramètres → Paiements.",
+  "items": [
+   {
+    "id": "c-paiements-1",
+    "do": "En TEST Secrétaire B : « Nouveau lien de paiement », client, montant, motif, « Générer le lien de paiement ».",
+    "expect": [
+     "Lien affiché avec « Copier » / « Ouvrir » ; la ligne apparaît avec le statut « Initié » ou « En attente », « Créé par » = Secrétaire B."
+    ]
+   },
+   {
+    "id": "c-paiements-2",
+    "do": "Payer via le lien en sandbox puis recharger la page.",
+    "expect": [
+     "Statut « Payé » (ou « Échoué » si refusé)."
+    ]
+   },
+   {
+    "id": "c-paiements-3",
+    "do": "En Secrétaire A, taper /admin/paiements dans la barre d'adresse.",
+    "expect": [
+     "Le lien est absent du menu ; en tapant l'adresse, message d'erreur d'accès et tableau « Aucun lien de paiement. »"
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-formulaires",
+  "title": "Formulaires (+ lien public /f/…)",
+  "who": "Cabinet → Formulaires (/admin/forms) — visible par : rôle Formulaires (et Superviseur)",
+  "prep": "TEST Collaborateur Formulaires ; un client réel avec e-mail/WhatsApp (les clients de test ne sont proposés qu'au Superviseur).",
+  "items": [
+   {
+    "id": "c-formulaires-1",
+    "do": "« Nouveau formulaire », titre « Questionnaire satisfaction 2026 », « Créer et construire » ; ajouter 3 questions (texte, choix, étoiles), « Enregistrer ».",
+    "expect": [
+     "Onglets Constructeur, Envoi & suivi, Réponses, Statistiques ; message « Formulaire enregistré. »"
+    ]
+   },
+   {
+    "id": "c-formulaires-2",
+    "do": "« Envoi & suivi » : cocher un client, canaux E-mail + WhatsApp, « Envoyer à 1 client(s) » ; puis « Activer le lien public ».",
+    "expect": [
+     "« Formulaire envoyé à 1 destinataire(s). » ; suivi « Envoyé » puis « Ouvert » / « Répondu ».",
+     "Lien public + QR code (« Télécharger le QR code »)."
+    ]
+   },
+   {
+    "id": "c-formulaires-3",
+    "do": "Ouvrir le lien public dans une fenêtre privée (/f/…), répondre, « Envoyer mes réponses » ; puis onglet « Réponses » → « Export Excel (CSV) » et « Statistiques ».",
+    "expect": [
+     "Réponse enregistrée sans connexion ; elle apparaît avec l'origine « Lien public ».",
+     "Fichier CSV téléchargé ; les statistiques affichent réponses, ouvertures, graphiques."
+    ]
+   },
+   {
+    "id": "c-formulaires-4",
+    "do": "Bibliothèque : « Dupliquer », « Archiver » ; en Secrétariat, vérifier le menu.",
+    "expect": [
+     "« Copie créée. » ; archivé : ses liens cessent de fonctionner.",
+     "Secrétariat : pas de lien « Formulaires »."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-depot-espace-client",
+  "title": "Dépôt espace client (et modules visibles)",
+  "who": "Cabinet → Dépôt espace client (/admin/espace-client) — visible par : Administrateur, Direction, DG, Secrétariat, Comptable, Fiscaliste, Aide-comptable, Caissier, Superviseur ; modules visibles modifiables par : Administrateur, Superviseur, DG, Direction, Secrétariat",
+  "prep": "CLIENT RECETTE connecté sur un autre appareil avec les notifications push activées (voir cl-factures).",
+  "items": [
+   {
+    "id": "c-depot-espace-client-1",
+    "do": "Mode « Un client » : choisir le client, catégorie « Facture », titre, montant, « Choisir des fichiers » (ou « Scanner » sur téléphone), laisser « Visible par le client » et « Prévenir le client » cochés, « Déposer ».",
+    "expect": [
+     "« 1 document(s) déposé(s) — client prévenu par WhatsApp » (ou « client non prévenu : <motif> »).",
+     "La ligne affiche « Déposé par <nom> », « Visible, non consulté », canal de notification."
+    ]
+   },
+   {
+    "id": "c-depot-espace-client-2",
+    "do": "Côté client, ouvrir le document ; côté cabinet, recharger ; puis utiliser « Masquer au client », « Prévenir à nouveau le client », « Retirer ».",
+    "expect": [
+     "Colonne Client : « Consulté le <date> ».",
+     "Masqué : « Masqué au client » ; prévenir : « Client prévenu par … » ; retirer : « Document retiré »."
+    ]
+   },
+   {
+    "id": "c-depot-espace-client-3",
+    "do": "« Modules visibles dans l'espace client » : décocher « Mes missions » et « Historique », « Enregistrer les modules » ; en Comptable, regarder les cases.",
+    "expect": [
+     "« Modules de l'espace client enregistrés » ; après reconnexion, le client ne voit plus ces liens.",
+     "Comptable : cases grisées, pas de bouton d'enregistrement."
+    ]
+   },
+   {
+    "id": "c-depot-espace-client-4",
+    "do": "Mode « Plusieurs clients » : rechercher, « Tout sélectionner », joindre un fichier, « Déposer chez x client(s) » et confirmer ; en non-Caissier vérifier que la catégorie « Reçu » n'existe pas.",
+    "expect": [
+     "Compte rendu : « x document(s) déposé(s) chez y client(s) — z prévenu(s) », liste des « Non prévenus » avec motif et des clients au module « Factures & documents » fermé.",
+     "« Reçu » proposé uniquement au Caissier."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-comptabilite",
+  "title": "Comptabilité OHADA",
+  "who": "Cabinet → Comptabilité OHADA (/admin/comptabilite) — visible par : Superviseur, Direction, Administrateur, Comptable, Aide-comptable, Fiscaliste ; valider/supprimer une écriture : Superviseur, Direction, Administrateur, Comptable",
+  "prep": "",
+  "items": [
+   {
+    "id": "c-comptabilite-1",
+    "do": "Choisir un client, cliquer « Initialiser plan SYSCOHADA ».",
+    "expect": [
+     "« Plan SYSCOHADA initialisé : x comptes » ; l'onglet « Plan comptable » est rempli."
+    ]
+   },
+   {
+    "id": "c-comptabilite-2",
+    "do": "Onglet « Écritures » → « Nouvelle écriture » : journal, date, libellé, 2 lignes débit/crédit équilibrées, « Créer ».",
+    "expect": [
+     "« Écriture créée » ; le bouton « Créer » reste grisé tant que débit ≠ crédit."
+    ]
+   },
+   {
+    "id": "c-comptabilite-3",
+    "do": "Cliquer « Valider » sur l'écriture ; puis onglet « Balance ». Refaire en Aide-comptable.",
+    "expect": [
+     "« Écriture validée » ; la balance reprend les montants.",
+     "Aide-comptable : la validation est refusée (message d'accès)."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-diffusion",
+  "title": "Diffusion",
+  "who": "Cabinet → Diffusion (/admin/messagerie) — visible par : Superviseur, Direction, Administrateur, Communication (badge rouge de nouveautés)",
+  "prep": "Au moins un client réel avec e-mail (les comptes de test ne reçoivent jamais de diffusion).",
+  "items": [
+   {
+    "id": "c-diffusion-1",
+    "do": "« Nouvelle diffusion » : Sujet, Message, Destinataires « Collaborateurs », Canal « Email », « Envoyer ».",
+    "expect": [
+     "« Diffusion envoyée : x/y » ; ligne ajoutée dans le tableau.",
+     "Aucun compte TEST n'est dans les destinataires."
+    ]
+   },
+   {
+    "id": "c-diffusion-2",
+    "do": "« Détails » sur la diffusion ; si des échecs existent, « Renvoyer aux x échec(s) ».",
+    "expect": [
+     "Liste des destinataires « Réussi » / « Échoué » avec l'erreur ; « a/b échec(s) renvoyé(s) avec succès »."
+    ]
+   },
+   {
+    "id": "c-diffusion-3",
+    "do": "Cliquer le lien « Diffusion » alors qu'un badge rouge est affiché.",
+    "expect": [
+     "Le badge disparaît (marqué comme vu)."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-whatsapp",
+  "title": "WhatsApp (conversations et statistiques)",
+  "who": "Cabinet → WhatsApp (/admin/whatsapp) — visible par : Superviseur, Direction, Administrateur, Communication (badge rouge de non-lus)",
+  "prep": "WhatsApp configuré (Paramètres → WhatsApp). Le téléphone du Client 1 écrit au numéro du cabinet.",
+  "items": [
+   {
+    "id": "c-whatsapp-1",
+    "do": "Depuis le téléphone Client 1, envoyer « Bonjour » au WhatsApp du cabinet ; attendre ≤ 15 s sur la page.",
+    "expect": [
+     "La conversation apparaît en tête avec compteur de non-lus ; le badge rouge du menu augmente."
+    ]
+   },
+   {
+    "id": "c-whatsapp-2",
+    "do": "Ouvrir la conversation, répondre, « Entrée » ; appliquer l'étiquette « À traiter » puis « Résolu ».",
+    "expect": [
+     "« Réponse envoyée » ; message reçu sur le téléphone.",
+     "« Étiquette \"À traiter\" appliquée »."
+    ]
+   },
+   {
+    "id": "c-whatsapp-3",
+    "do": "« Nouvelle conversation » vers le numéro du Client 2 (pas écrit depuis 24 h) et envoyer un texte libre.",
+    "expect": [
+     "Avertissement « Message envoyé hors fenêtre 24h — Meta peut le refuser. » et mention « Hors fenêtre 24h » sur le message."
+    ]
+   },
+   {
+    "id": "c-whatsapp-4",
+    "do": "Menu « Réponses rapides » : créer une réponse, l'insérer ; « Alertes désactivées » → activer ; « Stats ».",
+    "expect": [
+     "Réponse rapide enregistrée et réutilisable ; « Alertes activées ».",
+     "Page Statistiques : Reçus, Envoyés, Temps de réponse moyen, Top contacts, Volume par jour."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-archives",
+  "title": "Archives",
+  "who": "Cabinet → Archives (/admin/archives) — visible par : Superviseur, Direction, Administrateur, Secrétariat, Fiscaliste, Comptable",
+  "prep": "",
+  "items": [
+   {
+    "id": "c-archives-1",
+    "do": "« Ajouter » : Titre, Catégorie, Description, Tags (virgules), « Ajouter ».",
+    "expect": [
+     "« Archive ajoutée » ; ligne avec catégorie, tags, date.",
+     "Remarque : aucun fichier ne peut être joint (fiche descriptive seulement)."
+    ]
+   },
+   {
+    "id": "c-archives-2",
+    "do": "Supprimer l'archive (corbeille) et confirmer.",
+    "expect": [
+     "La ligne disparaît."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-journal",
+  "title": "Journal plateforme",
+  "who": "Cabinet → Journal plateforme (/admin/logs) — visible par : Superviseur, Direction, Administrateur",
+  "prep": "Avoir fait quelques actions (création facture, suppression compte, réinitialisation mot de passe…).",
+  "items": [
+   {
+    "id": "c-journal-1",
+    "do": "Ouvrir la page et saisir « account.reset_password » puis « client.delete » dans « Filtre action ».",
+    "expect": [
+     "Lignes avec Date, Action, Entité, Auteur, Rôle, Adresse IP (navigateur au survol), Métadonnées ; jamais de mot de passe ni de code affiché."
+    ]
+   },
+   {
+    "id": "c-journal-2",
+    "do": "Faire une action en admin (ex. réinitialiser un mot de passe), puis ouvrir le journal en Superviseur, puis en admin.",
+    "expect": [
+     "Superviseur/Direction : l'action d'admin n'apparaît pas.",
+     "admin : il voit ses propres actions."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-parametres",
+  "title": "Paramètres",
+  "who": "Cabinet → Paramètres (/admin/settings) — visible par : Superviseur uniquement (admin inclus)",
+  "prep": "Noter les valeurs d'origine pour les remettre.",
+  "items": [
+   {
+    "id": "c-parametres-1",
+    "do": "Onglet « Cabinet » : modifier le téléphone, « Enregistrer » ; activer « RGPD — masquer les numéros clients » puis « Enregistrer le RGPD » ; reCAPTCHA : cocher la case puis « Tester ».",
+    "expect": [
+     "Messages d'enregistrement ; RGPD actif : les numéros clients sont masqués pour le personnel.",
+     "reCAPTCHA activé : la page de connexion affiche la case « Je ne suis pas un robot »."
+    ]
+   },
+   {
+    "id": "c-parametres-2",
+    "do": "Onglet « WhatsApp » : « Envoyer un message de test » vers son numéro, « Tester » ; « Enregistrer filigrane/QR ».",
+    "expect": [
+     "Message de test reçu sur WhatsApp ; résultat affiché."
+    ]
+   },
+   {
+    "id": "c-parametres-3",
+    "do": "Onglet « Notifications » : textes des « Documents mis à disposition des clients » (aperçu, « Revenir au texte d'origine »), push, e-mail de secours, rappels J-7,3,1 ; « Enregistrer ».",
+    "expect": [
+     "L'aperçu se met à jour ; enregistrement confirmé ; le prochain dépôt utilise le nouveau texte."
+    ]
+   },
+   {
+    "id": "c-parametres-4",
+    "do": "Onglets « Rapports » (préfixe), « Branding » (logo, papier à entête, signature DG, filigrane), « Signature » (« Nouveau certificat » → « Créer & activer »), « Paiements » (« Tester (sandbox) »). Puis ouvrir /admin/settings en Direction.",
+    "expect": [
+     "« Certificat créé et activé » ; le logo apparaît sur le prochain rapport PDF.",
+     "Direction : lien absent ; en tapant l'adresse, message d'erreur d'accès et aucun réglage affiché."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "c-mon-compte",
+  "title": "Mon compte (cabinet)",
+  "who": "Cabinet → Mon compte (/admin/mon-compte) — visible par : tous les collaborateurs",
+  "prep": "",
+  "items": [
+   {
+    "id": "c-mon-compte-1",
+    "do": "Modifier le téléphone et le numéro WhatsApp, basculer « Recevoir les notifications (rappels, rapports…) », « Enregistrer ».",
+    "expect": [
+     "« Compte mis à jour » ; l'e-mail n'est pas modifiable."
+    ]
+   },
+   {
+    "id": "c-mon-compte-2",
+    "do": "« Changer le mot de passe » : mauvais mot de passe actuel, puis confirmation différente, puis correct.",
+    "expect": [
+     "« Mot de passe actuel incorrect » ; « La confirmation ne correspond pas » ; « Mot de passe changé ».",
+     "Pas de section KYC côté cabinet."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cl-dashboard",
+  "title": "Tableau de bord (client)",
+  "who": "Espace client → Tableau de bord (/portal) — toujours visible",
+  "prep": "CLIENT RECETTE avec contrat actif, quelques pièces/missions/échéances.",
+  "items": [
+   {
+    "id": "cl-dashboard-1",
+    "do": "Se connecter en CLIENT RECETTE.",
+    "expect": [
+     "« Vue client — Bonjour <prénom> » ; 4 tuiles (Pièces déposées, Missions en cours, Échéances à venir, Échéances en retard), pas de tuiles Clients/Collaborateurs.",
+     "Encadrés « Échéances proches » et « Dernières pièces » limités à ses données."
+    ]
+   },
+   {
+    "id": "cl-dashboard-2",
+    "do": "Fermer le module « Mes pièces » pour ce client (c-depot-espace-client) puis revenir au tableau de bord.",
+    "expect": [
+     "À vérifier : la tuile et la liste « Dernières pièces » restent affichées alors que le module est fermé (incohérence connue)."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cl-pieces",
+  "title": "Mes pièces",
+  "who": "Espace client → Mes pièces (/portal/documents) — module « documents »",
+  "prep": "Notifications de dépôt activées dans Paramètres → Notifications.",
+  "items": [
+   {
+    "id": "cl-pieces-1",
+    "do": "Type « Pièce comptable », « Téléverser une pièce » (PDF/photo ≤ 20 Mo).",
+    "expect": [
+     "« Pièce téléversée, analyse IA en cours… » ; statut « Analyse en cours » puis « Analysé ».",
+     "Les collaborateurs (hors comptes de test) reçoivent l'alerte « Nouvelle pièce déposée » par e-mail (et WhatsApp si activé)."
+    ]
+   },
+   {
+    "id": "cl-pieces-2",
+    "do": "Déplier la pièce.",
+    "expect": [
+     "« Synthèse IA » : type détecté, résumé, champs extraits (sans « [object Object] » ni « null »)."
+    ]
+   },
+   {
+    "id": "cl-pieces-3",
+    "do": "Télécharger puis supprimer sa pièce.",
+    "expect": [
+     "Le fichier se télécharge ; « Pièce supprimée »."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cl-factures",
+  "title": "Factures & documents (+ notifications push)",
+  "who": "Espace client → Factures & documents (/portal/documents-cabinet) — module « cabinet_documents »",
+  "prep": "Une facture mise à disposition (c-caisse) et un document déposé (c-depot-espace-client).",
+  "items": [
+   {
+    "id": "cl-factures-1",
+    "do": "Ouvrir la page puis cliquer « Activer » dans « Notifications sur cet appareil » et accepter ; cliquer « Tester ».",
+    "expect": [
+     "« Notifications activées sur cet appareil » puis « Notification d'essai envoyée (1 appareil(s)) » et la notification s'affiche.",
+     "iPhone hors écran d'accueil : message expliquant « Partager » puis « Sur l'écran d'accueil »."
+    ]
+   },
+   {
+    "id": "cl-factures-2",
+    "do": "Regarder la liste et les onglets.",
+    "expect": [
+     "En-tête « x nouveau(x) document(s) du cabinet » ; badge « Nouveau » ; onglets « Tout », « Facture »… avec compteurs.",
+     "Facture : statut « À payer — reste x FCFA », « Partiellement payée » ou « Payée »."
+    ]
+   },
+   {
+    "id": "cl-factures-3",
+    "do": "« Ouvrir » un document puis l'icône Télécharger ; portail fermé, faire déposer un nouveau document par le cabinet.",
+    "expect": [
+     "Le badge « Nouveau » disparaît ; côté cabinet « Consulté le … ».",
+     "Une notification push arrive même portail fermé ; un reçu déposé par un Caissier est visible."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cl-missions",
+  "title": "Mes missions",
+  "who": "Espace client → Mes missions (/portal/missions) — module « missions »",
+  "prep": "",
+  "items": [
+   {
+    "id": "cl-missions-1",
+    "do": "Ouvrir « Mes missions ».",
+    "expect": [
+     "Titre « Mes missions », liste en lecture seule (Titre, Type, Échéance, Statut), pas de bouton « Nouvelle mission »."
+    ]
+   },
+   {
+    "id": "cl-missions-2",
+    "do": "Faire fermer le module « Mes missions » par le cabinet, se déconnecter et se reconnecter, puis taper /portal/missions.",
+    "expect": [
+     "Le lien disparaît du menu ; la page affiche « Aucune mission. » (le serveur ne renvoie rien)."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cl-echeances",
+  "title": "Échéances",
+  "who": "Espace client → Échéances (/portal/echeances) — module « echeances »",
+  "prep": "",
+  "items": [
+   {
+    "id": "cl-echeances-1",
+    "do": "Ouvrir « Échéances ».",
+    "expect": [
+     "Titre « Mes échéances » ; colonnes Échéance, Type, Date, Période, Montant, Statut ; pas de bouton d'ajout ni de notification."
+    ]
+   },
+   {
+    "id": "cl-echeances-2",
+    "do": "Le cabinet clique « Notifier le client » sur une échéance.",
+    "expect": [
+     "Le client reçoit l'e-mail (et WhatsApp si numéro)."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cl-historique",
+  "title": "Historique",
+  "who": "Espace client → Historique (/portal/historique) — module « historique »",
+  "prep": "",
+  "items": [
+   {
+    "id": "cl-historique-1",
+    "do": "Ouvrir « Historique » et passer les onglets.",
+    "expect": [
+     "Titre « Toutes vos activités » ; onglets Pièces, Missions, Échéances avec ses seules données."
+    ]
+   },
+   {
+    "id": "cl-historique-2",
+    "do": "Fermer « Mes pièces » mais laisser « Historique » ouvert.",
+    "expect": [
+     "À vérifier : l'onglet Pièces montre encore les pièces (même incohérence que le tableau de bord)."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cl-formulaires",
+  "title": "Mes formulaires",
+  "who": "Espace client → Mes formulaires (/portal/formulaires) — module « formulaires »",
+  "prep": "Un formulaire envoyé à ce client (c-formulaires).",
+  "items": [
+   {
+    "id": "cl-formulaires-1",
+    "do": "Ouvrir « Mes formulaires » et cliquer « Remplir ».",
+    "expect": [
+     "Le formulaire s'ouvre avec « Bonjour <nom> » ; « Envoyer mes réponses » enregistre la réponse."
+    ]
+   },
+   {
+    "id": "cl-formulaires-2",
+    "do": "Revenir sur la page.",
+    "expect": [
+     "Le formulaire affiche « Répondu » ou « Modifier ma réponse » ; côté cabinet le suivi passe à « Répondu »."
+    ]
+   },
+   {
+    "id": "cl-formulaires-3",
+    "do": "Client sans formulaire.",
+    "expect": [
+     "« Vous avez reçu aucun formulaire. »"
+    ]
+   }
+  ]
+ },
+ {
+  "id": "cl-mon-compte",
+  "title": "Mon compte (client, fiche KYC)",
+  "who": "Espace client → Mon compte (/portal/mon-compte) — toujours visible",
+  "prep": "Un registre du commerce ou papier à en-tête scanné (PDF/image ≤ 8 Mo).",
+  "items": [
+   {
+    "id": "cl-mon-compte-1",
+    "do": "Modifier téléphone/WhatsApp, « Enregistrer » ; changer le mot de passe.",
+    "expect": [
+     "« Compte mis à jour » ; « Mot de passe changé »."
+    ]
+   },
+   {
+    "id": "cl-mon-compte-2",
+    "do": "Section KYC : « Choisir » pour « Papier à en-tête / registre du commerce ».",
+    "expect": [
+     "« Champs préremplis par l'IA : Raison sociale, IFU, RCCM… » ; les champs portent la mention « IA » ; lien « Voir »."
+    ]
+   },
+   {
+    "id": "cl-mon-compte-3",
+    "do": "Compléter « Coordonnées bancaires », « Enregistrer les données » ; envoyer un fichier > 8 Mo.",
+    "expect": [
+     "« Fiche KYC enregistrée ».",
+     "« Fichier trop volumineux (max 8 Mo, actuel : x Mo) »."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "r-droits",
+  "title": "Droits par rôle (liens attendus / absents)",
+  "who": "Barre latérale cabinet et client — un compte par rôle",
+  "prep": "Un compte par rôle (voir g-comptes). Se connecter avec chacun et comparer le menu à la liste attendue.",
+  "items": [
+   {
+    "id": "r-droits-superviseur",
+    "do": "Se connecter avec un compte Superviseur et lister les liens du menu. Tous les liens : Tableau de bord, Clients, Contacts, Personnels, Pièces, Missions, Échéances fiscales, Paie & RH, Rapports client, Rapports en masse, Contrats clients, Caisse, Paiements, Formulaires, Dépôt espace client, Comptabilité OHADA, Diffusion, WhatsApp, Archives, Journal plateforme, Paramètres, Mon compte (22) + bulle de chat + bulle de paiement.",
+    "expect": [
+     "22 liens présents, dont Paramètres.",
+     "Voit les comptes TEST ; ne peut pas encaisser ni délivrer de reçu sans le rôle Caissier ; ne peut pas cocher « Superviseur »."
+    ]
+   },
+   {
+    "id": "r-droits-admin",
+    "do": "Se connecter avec un compte admin (admin@sawalismartsystems.com) et lister les liens du menu. Mêmes liens que le Superviseur.",
+    "expect": [
+     "Seul à pouvoir cocher/décocher « Superviseur », voir la corbeille « Supprimer » sur les clients, et modifier la liste des e-mails autorisés à créer des accès temporaires.",
+     "Voit ses propres actions dans le Journal plateforme ; jamais bloqué par la liste blanche."
+    ]
+   },
+   {
+    "id": "r-droits-administrateur",
+    "do": "Se connecter avec un compte Administrateur et lister les liens du menu. Attendus : Contrats clients, Caisse, Dépôt espace client, Comptabilité OHADA, Diffusion, WhatsApp, Archives, Journal plateforme, Mon compte.",
+    "expect": [
+     "Absents : Tableau de bord, Clients, Contacts, Personnels, Pièces, Missions, Échéances fiscales, Paie & RH, Rapports, Paiements, Formulaires, Paramètres.",
+     "À signaler : il gère les clients (droits serveur) mais n'a pas le lien « Clients »."
+    ]
+   },
+   {
+    "id": "r-droits-direction",
+    "do": "Se connecter avec un compte Direction et lister les liens du menu. Attendus : Tableau de bord, Clients, Contacts, Personnels, Pièces, Missions, Échéances fiscales, Paie & RH, Rapports client, Rapports en masse, Contrats clients, Caisse, Dépôt espace client, Comptabilité OHADA, Diffusion, WhatsApp, Archives, Journal plateforme, Mon compte.",
+    "expect": [
+     "Absents : Paiements, Formulaires, Paramètres.",
+     "Carte « Derniers clients connectés » visible."
+    ]
+   },
+   {
+    "id": "r-droits-dg",
+    "do": "Se connecter avec un compte Directeur Général (dg) et lister les liens du menu. Attendus d'après le menu actuel : Dépôt espace client, Mon compte seulement.",
+    "expect": [
+     "Tous les autres liens absents (incohérence : le DG a pourtant des droits de gestion côté serveur).",
+     "Pas de carte « Derniers clients connectés »."
+    ]
+   },
+   {
+    "id": "r-droits-secretariat",
+    "do": "Se connecter avec un compte Secrétariat et lister les liens du menu. Attendus : Tableau de bord, Clients, Contacts, Pièces, Missions, Échéances fiscales, Rapports client, Contrats clients, Caisse, Dépôt espace client, Archives, Mon compte.",
+    "expect": [
+     "Absents : Personnels, Paie & RH, Rapports en masse, Paiements, Formulaires, Comptabilité OHADA, Diffusion, WhatsApp, Journal plateforme, Paramètres.",
+     "Caisse sans bouton « Encaisser » ni « Reçu de caisse »."
+    ]
+   },
+   {
+    "id": "r-droits-fiscaliste",
+    "do": "Se connecter avec un compte Fiscaliste et lister les liens du menu. Attendus : Tableau de bord, Contacts, Pièces, Missions, Échéances fiscales, Rapports client, Rapports en masse, Dépôt espace client, Comptabilité OHADA, Archives, Mon compte.",
+    "expect": [
+     "Absents : Clients, Personnels, Paie & RH, Contrats, Caisse, Paiements, Formulaires, Diffusion, WhatsApp, Journal, Paramètres."
+    ]
+   },
+   {
+    "id": "r-droits-comptable",
+    "do": "Se connecter avec un compte Comptable et lister les liens du menu. Attendus : Tableau de bord, Contacts, Pièces, Missions, Échéances fiscales, Rapports client, Rapports en masse, Caisse, Dépôt espace client, Comptabilité OHADA, Archives, Mon compte.",
+    "expect": [
+     "Absents : Clients, Personnels, Paie & RH, Contrats, Paiements, Formulaires, Diffusion, WhatsApp, Journal, Paramètres.",
+     "Pièces : ni Télécharger ni Supprimer (sauf rôle Téléchargement)."
+    ]
+   },
+   {
+    "id": "r-droits-aide-comptable",
+    "do": "Se connecter avec un compte Aide-comptable et lister les liens du menu. Attendus : Tableau de bord, Pièces, Missions, Dépôt espace client, Comptabilité OHADA, Mon compte.",
+    "expect": [
+     "Tous les autres absents ; ne peut pas valider une écriture."
+    ]
+   },
+   {
+    "id": "r-droits-rh",
+    "do": "Se connecter avec un compte RH et lister les liens du menu. Attendus : Tableau de bord, Pièces, Paie & RH, Mon compte.",
+    "expect": [
+     "Tous les autres absents."
+    ]
+   },
+   {
+    "id": "r-droits-communication",
+    "do": "Se connecter avec un compte Communication et lister les liens du menu. Attendus : Diffusion, WhatsApp, Mon compte.",
+    "expect": [
+     "Pas de Tableau de bord dans le menu.",
+     "Envoi WhatsApp d'une pièce possible seulement si le numéro du client est « Vérifié »."
+    ]
+   },
+   {
+    "id": "r-droits-telechargement",
+    "do": "Se connecter avec un compte Téléchargement (rôle cumulé) et lister les liens du menu. N'ajoute aucun lien ; ajouter ce rôle à un Comptable.",
+    "expect": [
+     "Le bouton Télécharger apparaît dans Pièces et « Télécharger » dans le menu « … » de la Caisse."
+    ]
+   },
+   {
+    "id": "r-droits-caissier",
+    "do": "Se connecter avec un compte Caissier et lister les liens du menu. Attendus (Caissier seul) : Caisse, Paiements, Dépôt espace client, Mon compte + bulle orange de paiement.",
+    "expect": [
+     "Seul rôle avec « Encaisser » et « Reçu de caisse » ; catégorie « Reçu » proposée au dépôt.",
+     "Pas de Tableau de bord dans le menu."
+    ]
+   },
+   {
+    "id": "r-droits-formulaires",
+    "do": "Se connecter avec un compte Formulaires (rôle cumulé) et lister les liens du menu. Ajoute le lien Formulaires (seul : Formulaires + Mon compte).",
+    "expect": [
+     "TEST Collaborateur Formulaires (Comptable + Formulaires) = liens Comptable + Formulaires."
+    ]
+   },
+   {
+    "id": "r-droits-client",
+    "do": "Se connecter avec un compte Client et lister les liens du menu. Attendus : Tableau de bord, Mes pièces, Factures & documents, Mes missions, Échéances, Historique, Mes formulaires, Mon compte (selon les modules ouverts).",
+    "expect": [
+     "Jamais de lien cabinet, ni bulle de chat ni bulle de paiement ; /admin renvoie vers /portal.",
+     "Module fermé = lien absent après reconnexion ; Tableau de bord et Mon compte toujours visibles."
+    ]
+   }
+  ]
+ }
+]

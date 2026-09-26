@@ -1,0 +1,1473 @@
+[
+ {
+  "id": "a-dashboard",
+  "title": "Tableau de bord",
+  "who": "Admin → Tableau de bord (/admin) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "",
+  "items": [
+   {
+    "id": "a-dashboard-1",
+    "do": "Connectez-vous avec le compte super-admin puis cliquez sur « Tableau de bord » dans la barre latérale.",
+    "expect": [
+     "Le titre « Tableau de bord » s'affiche.",
+     "Cinq cartes chiffrées sont visibles : Clients, RDV, Documents, Interventions, Messages.",
+     "Les chiffres correspondent à peu près au nombre de lignes des pages Clients, Rendez-vous, Documents, Interventions et Messages reçus."
+    ]
+   },
+   {
+    "id": "a-dashboard-2",
+    "do": "Cliquez sur la carte « Mes rapports » (ou « Mes suivis ») si elle est affichée.",
+    "expect": [
+     "La page des notes (rapports ou suivis) s'ouvre sous /admin/notes/…",
+     "Le nombre affiché sur la carte correspond au nombre de notes de la liste."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-clients",
+  "title": "Clients",
+  "who": "Admin → Clients (/admin/clients) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production). Prévoir une adresse e-mail de test que vous contrôlez.",
+  "items": [
+   {
+    "id": "a-clients-1",
+    "do": "Cliquez sur « Nouveau client », remplissez « Nom complet * » (TEST-RECETTE Client), « Email * », « Mot de passe * », laissez le « Rôle » sur « Client » puis cliquez sur « Enregistrer ».",
+    "expect": [
+     "Le client apparaît dans la liste, dans le groupe « Clients ».",
+     "Le compteur du filtre « Tous » augmente de 1."
+    ]
+   },
+   {
+    "id": "a-clients-2",
+    "do": "Utilisez les filtres en haut (« Tous », « Admins clients », « Superviseurs », « Modérateurs »…, « 📱 WhatsApp OTP ») et le bouton de tri « ↑ Asc / ↓ Desc ».",
+    "expect": [
+     "La liste se filtre selon le rôle choisi et le compteur du bouton correspond au nombre de lignes affichées.",
+     "L'ordre de la liste s'inverse au clic sur le bouton de tri."
+    ]
+   },
+   {
+    "id": "a-clients-3",
+    "do": "Sur la ligne du client de test, ouvrez successivement les icônes « Timeline CRM », « SMART Communications », « Consommation WhatsApp » et « Paiements / historique règlements » ; dans Paiements cliquez « Nouveau paiement », saisissez une date et une « Référence facture » TEST puis « Enregistrer ».",
+    "expect": [
+     "Chaque icône ouvre la bonne page ou fenêtre (timeline, fonctionnalités, statistiques WhatsApp, paiements).",
+     "Le paiement de test apparaît dans l'historique ; l'icône corbeille demande « Supprimer ce paiement ? » et le retire."
+    ]
+   },
+   {
+    "id": "a-clients-4",
+    "do": "Cliquez sur l'icône corbeille du client de test.",
+    "expect": [
+     "Une confirmation « Supprimer ce client ? » s'affiche.",
+     "Après validation, le client disparaît de la liste.",
+     "ATTENTION : ne jamais choisir le rôle « Admin (client) » pour un compte de test : ce rôle donne l'accès complet à l'administration."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-usage",
+  "title": "Usage & Facturation",
+  "who": "Admin → Usage & Facturation (/admin/usage) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Ne JAMAIS valider « Mettre à 0 » ni « Purger TOUT » en production : se limiter à ouvrir puis « Annuler ».",
+  "items": [
+   {
+    "id": "a-usage-1",
+    "do": "Ouvrez la page et changez la période (« 7 j », « 30 j », « 90 j », « 6 mois »), puis cliquez « Actualiser ».",
+    "expect": [
+     "Le titre « Tableau de bord — Usage & Facturation » s'affiche.",
+     "Les blocs « Efficacité de campagne », « Activité quotidienne » et « Détails par client » se mettent à jour selon la période."
+    ]
+   },
+   {
+    "id": "a-usage-2",
+    "do": "Cliquez sur « CSV ».",
+    "expect": [
+     "Un fichier CSV est téléchargé et s'ouvre dans un tableur avec une ligne par client."
+    ]
+   },
+   {
+    "id": "a-usage-3",
+    "do": "Dans « Connexions & pages visitées », changez la période (« Aujourd'hui », « 7 jours », « 30 jours »…).",
+    "expect": [
+     "La liste des connexions et la carte de chaleur changent selon la période."
+    ]
+   },
+   {
+    "id": "a-usage-4",
+    "do": "Cliquez sur « Réinitialiser », cochez « Purge complète » sans valider, puis cliquez « Annuler ».",
+    "expect": [
+     "La fenêtre « Réinitialiser le compteur d'usage » s'ouvre et le bouton passe de « Mettre à 0 » à « Purger TOUT » quand la case est cochée.",
+     "Après « Annuler », aucun chiffre n'a changé."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-appointments",
+  "title": "Rendez-vous",
+  "who": "Admin → Rendez-vous (/admin/appointments) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Avoir au moins un RDV existant (ou en créer un depuis le site public avec le sujet TEST-RECETTE).",
+  "items": [
+   {
+    "id": "a-appointments-1",
+    "do": "Ouvrez la page puis cliquez « Actualiser ».",
+    "expect": [
+     "Le texte « Toutes les demandes de RDV (publiques et clients). » s'affiche.",
+     "La liste montre Date, Client, Sujet, Durée, Statut."
+    ]
+   },
+   {
+    "id": "a-appointments-2",
+    "do": "Sur le RDV de test cliquez « Modifier », changez la « Durée (min) » et ajoutez un participant via « Rechercher un contact (nom ou téléphone)… », puis « Enregistrer ».",
+    "expect": [
+     "La fenêtre « Modifier le rendez-vous » se ferme.",
+     "La nouvelle durée apparaît dans la liste."
+    ]
+   },
+   {
+    "id": "a-appointments-3",
+    "do": "Cliquez « Supprimer » sur le RDV de test.",
+    "expect": [
+     "Une confirmation « Supprimer ce RDV ? » apparaît.",
+     "Après validation le RDV disparaît."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-interventions",
+  "title": "Interventions",
+  "who": "Admin → Interventions (/admin/interventions) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production).",
+  "items": [
+   {
+    "id": "a-interventions-1",
+    "do": "Cliquez « Nouvelle intervention », choisissez un « Client * », saisissez « Titre * » (TEST-RECETTE), « Date * », « Durée (h) », « Technicien », puis « Enregistrer ».",
+    "expect": [
+     "L'intervention apparaît dans la liste avec le bon client et le bon statut.",
+     "Le badge de la barre latérale (tickets en attente) reste cohérent."
+    ]
+   },
+   {
+    "id": "a-interventions-2",
+    "do": "Modifiez l'intervention (icône crayon), changez le statut, enregistrez.",
+    "expect": [
+     "Le nouveau statut et la colonne « Mis à jour » sont actualisés."
+    ]
+   },
+   {
+    "id": "a-interventions-3",
+    "do": "Supprimez l'intervention (icône corbeille rouge).",
+    "expect": [
+     "Une confirmation « Supprimer ? » apparaît.",
+     "L'intervention disparaît de la liste."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-documents",
+  "title": "Documents",
+  "who": "Admin → Documents (/admin/documents) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production). Prévoir un petit PDF.",
+  "items": [
+   {
+    "id": "a-documents-1",
+    "do": "Cliquez « Nouveau document », saisissez « Titre * », joignez un « Fichier (PDF / image) », choisissez la « Visibilité » (Public ou Client spécifique), puis « Enregistrer ».",
+    "expect": [
+     "Le document apparaît dans la liste avec la bonne visibilité.",
+     "S'il est lié à un client, ce client le voit dans son portail ; les autres non."
+    ]
+   },
+   {
+    "id": "a-documents-2",
+    "do": "Cliquez « Historique » sur le document.",
+    "expect": [
+     "La fenêtre « Historique du document » liste les téléversements / téléchargements (ou « Aucun événement. »)."
+    ]
+   },
+   {
+    "id": "a-documents-3",
+    "do": "Cliquez « Catégories », ajoutez une catégorie TEST avec « Ajouter », puis supprimez-la.",
+    "expect": [
+     "La catégorie apparaît puis disparaît après confirmation."
+    ]
+   },
+   {
+    "id": "a-documents-4",
+    "do": "Cliquez « Supprimer » sur le document de test.",
+    "expect": [
+     "Confirmation « Supprimer ? » puis le document disparaît."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-forms",
+  "title": "Formulaires",
+  "who": "Admin → Formulaires (/admin/forms) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production).",
+  "items": [
+   {
+    "id": "a-forms-1",
+    "do": "Cliquez « Nouveau formulaire », donnez un « Titre du formulaire » (TEST-RECETTE) et cliquez « Créer ».",
+    "expect": [
+     "L'éditeur du formulaire s'ouvre.",
+     "À noter : l'adresse passe en /portal/forms/… et la barre latérale devient celle du portail client (comportement actuel)."
+    ]
+   },
+   {
+    "id": "a-forms-2",
+    "do": "Revenez sur Admin → Formulaires, cliquez « Remplir » puis « Stats » sur le formulaire de test.",
+    "expect": [
+     "Le formulaire peut être rempli et envoyé.",
+     "La page de statistiques affiche la saisie."
+    ]
+   },
+   {
+    "id": "a-forms-3",
+    "do": "Cliquez « Gérer » (catégories), créez une catégorie puis supprimez-la ; enfin supprimez le formulaire de test.",
+    "expect": [
+     "La catégorie apparaît dans les filtres puis disparaît.",
+     "La suppression du formulaire demande « Supprimer ce formulaire et toutes ses saisies ? »."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-messaging",
+  "title": "Messagerie WhatsApp",
+  "who": "Admin → Messagerie WhatsApp (/admin/messaging) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Envoi réel et facturé : utiliser UNIQUEMENT un destinataire de test (votre propre numéro WhatsApp) et un template approuvé.",
+  "items": [
+   {
+    "id": "a-messaging-1",
+    "do": "Ouvrez la page et cliquez « Rafraîchir ».",
+    "expect": [
+     "La liste des destinataires, l'« Historique des envois (200 derniers) » et les « Envois programmés » s'affichent.",
+     "Si WhatsApp n'est pas configuré, le message « WhatsApp Business API non configurée. » s'affiche."
+    ]
+   },
+   {
+    "id": "a-messaging-2",
+    "do": "Choisissez un template dans « — Sélectionner un template approuvé — », cochez UN seul destinataire (vous-même), cliquez « Aperçu » puis « Envoyer à 1 » et confirmez.",
+    "expect": [
+     "Le bouton indique bien « Envoyer à 1 » (jamais plus).",
+     "Le message arrive sur votre WhatsApp.",
+     "L'envoi apparaît dans l'historique avec son statut."
+    ]
+   },
+   {
+    "id": "a-messaging-3",
+    "do": "Dans « Planifier un envoi », planifiez le même envoi dans 1 heure puis cliquez « Planifier » ; ensuite supprimez la planification.",
+    "expect": [
+     "La planification apparaît dans « Envois programmés ».",
+     "La suppression demande « Annuler / supprimer cette planification ? » et la retire."
+    ]
+   },
+   {
+    "id": "a-messaging-4",
+    "do": "Point sensible : vérifiez le bouton « Tout sélectionner (avec tél.) » SANS envoyer.",
+    "expect": [
+     "Le compteur du bouton d'envoi affiche le nombre total de destinataires ; décochez tout avant de quitter."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-whatsapp-templates",
+  "title": "Templates WhatsApp",
+  "who": "Admin → Templates WhatsApp (/admin/whatsapp-templates) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Ne pas soumettre de template à Meta sauf besoin réel ; ne pas supprimer un template utilisé.",
+  "items": [
+   {
+    "id": "a-whatsapp-templates-1",
+    "do": "Ouvrez la page et cliquez « Rafraîchir ».",
+    "expect": [
+     "La liste des templates Meta s'affiche avec leur statut et des filtres par statut avec compteurs."
+    ]
+   },
+   {
+    "id": "a-whatsapp-templates-2",
+    "do": "Sur un template, cliquez « Cliquez pour ajouter une note… », saisissez une note et validez avec « OK ».",
+    "expect": [
+     "La note s'affiche sous le template et reste après rechargement de la page."
+    ]
+   },
+   {
+    "id": "a-whatsapp-templates-3",
+    "do": "Cliquez « Nouveau template », regardez le formulaire puis « Annuler ».",
+    "expect": [
+     "La fenêtre « Nouveau template Meta » s'ouvre avec le bouton « Soumettre à Meta ».",
+     "« Annuler » ferme sans rien créer."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-automations",
+  "title": "Automations",
+  "who": "Admin → Automations (/admin/automations) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production).",
+  "items": [
+   {
+    "id": "a-automations-1",
+    "do": "Cliquez « Nouvelle automation », choisissez un événement et un template, puis « Créer ».",
+    "expect": [
+     "L'automation apparaît dans la liste « Automations WhatsApp »."
+    ]
+   },
+   {
+    "id": "a-automations-2",
+    "do": "Cliquez sur le bouton « ON / OFF » de l'automation de test.",
+    "expect": [
+     "L'état bascule entre ON et OFF et reste après rechargement."
+    ]
+   },
+   {
+    "id": "a-automations-3",
+    "do": "Supprimez l'automation de test.",
+    "expect": [
+     "Confirmation « Supprimer cette automation ? » puis elle disparaît."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-liluvine-history",
+  "title": "Liluvine PRO — Historique",
+  "who": "Admin → Liluvine PRO — Historique (/admin/liluvine-history) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "",
+  "items": [
+   {
+    "id": "a-liluvine-history-1",
+    "do": "Ouvrez la page, cliquez « Actualiser » et filtrez par canal (« Tous canaux », « Web », « WhatsApp », « Facebook », « SMS »).",
+    "expect": [
+     "Les conversations Liluvine s'affichent avec un compteur par canal.",
+     "Le filtre ne garde que le canal choisi."
+    ]
+   },
+   {
+    "id": "a-liluvine-history-2",
+    "do": "Cliquez « Voir » sur une conversation.",
+    "expect": [
+     "Le détail des messages de la conversation s'ouvre ; « Fermer » le referme."
+    ]
+   },
+   {
+    "id": "a-liluvine-history-3",
+    "do": "Sur une conversation de test, cliquez « Reprendre », confirmez, puis « Libérer ».",
+    "expect": [
+     "Après « Reprendre », un compteur « reprise(s) » apparaît et Liluvine arrête de répondre automatiquement.",
+     "Après « Libérer », la conversation redevient automatique."
+    ]
+   },
+   {
+    "id": "a-liluvine-history-4",
+    "do": "Cliquez l'onglet « Captures & Analytics ».",
+    "expect": [
+     "Les statistiques s'affichent sans erreur."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-suggestions",
+  "title": "Suggestions",
+  "who": "Admin → Suggestions (/admin/suggestions) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) ») (libellé complet : « Suggestions (registre S###) »)",
+  "prep": "",
+  "items": [
+   {
+    "id": "a-suggestions-1",
+    "do": "Ouvrez la page et cliquez « Rafraîchir ».",
+    "expect": [
+     "Le titre « Registre des suggestions (SUGGESTIONS.md) » s'affiche avec la liste des suggestions S###."
+    ]
+   },
+   {
+    "id": "a-suggestions-2",
+    "do": "Tapez un mot dans la recherche puis cliquez « Effacer » ; cliquez « Copier MD ».",
+    "expect": [
+     "La liste se filtre puis revient complète.",
+     "Un message confirme la copie dans le presse-papiers."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-suggestions-history",
+  "title": "Historique des suggestions",
+  "who": "Admin → Historique des suggestions (/admin/suggestions-history) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "",
+  "items": [
+   {
+    "id": "a-suggestions-history-1",
+    "do": "Ouvrez la page et cliquez sur les filtres de statut (« Toutes », « IMPLÉMENTÉE », « ACCEPTÉE », « PROPOSÉE », « DIFFÉRÉE », « REFUSÉE »).",
+    "expect": [
+     "Chaque filtre affiche son compteur et ne montre que les suggestions du statut choisi."
+    ]
+   },
+   {
+    "id": "a-suggestions-history-2",
+    "do": "Sur une suggestion, changez son statut puis cliquez « Voter ».",
+    "expect": [
+     "Le statut est enregistré et le compteur du filtre change.",
+     "Le retrait d'un statut demande une confirmation."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-download-audit",
+  "title": "Téléchargements — Audit",
+  "who": "Admin → Téléchargements — Audit (/admin/download-audit) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) ») (libellé complet : « Téléchargements — Audit (S029) »)",
+  "prep": "",
+  "items": [
+   {
+    "id": "a-download-audit-1",
+    "do": "Ouvrez la page et cliquez « Rafraîchir ».",
+    "expect": [
+     "Le titre « Journal d'audit — Téléchargements » s'affiche.",
+     "Les demandes sont listées avec leur statut : En attente, Autorisé, Refusé, Expiré, Annulé."
+    ]
+   },
+   {
+    "id": "a-download-audit-2",
+    "do": "Cliquez sur un statut (ex. « Refusé ») puis sur « Tout (…) » ; utilisez « Filtrer ».",
+    "expect": [
+     "La liste ne montre que le statut choisi, puis tout revient.",
+     "Les compteurs correspondent au nombre de lignes."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-i18n",
+  "title": "Régionalisation",
+  "who": "Admin → Régionalisation (/admin/i18n) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) ») — et, prévu par conception, les utilisateurs suivis au rôle « Traducteur » (voir section Droits)",
+  "prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production).",
+  "items": [
+   {
+    "id": "a-i18n-1",
+    "do": "Ouvrez la page ; cliquez « Nouvelle clé », créez la clé test.recette avec un texte FR et cliquez « Save ».",
+    "expect": [
+     "La clé apparaît dans le tableau des traductions."
+    ]
+   },
+   {
+    "id": "a-i18n-2",
+    "do": "Sur la clé de test, cliquez « ✨ IA » dans une langue vide.",
+    "expect": [
+     "Une proposition de traduction apparaît dans la cellule ; « Save » l'enregistre."
+    ]
+   },
+   {
+    "id": "a-i18n-3",
+    "do": "Cliquez « Exporter CSV ».",
+    "expect": [
+     "Un fichier CSV des traductions est téléchargé."
+    ]
+   },
+   {
+    "id": "a-i18n-4",
+    "do": "Supprimez la clé de test (icône corbeille). Ne pas lancer « Traduire toutes les cellules vides » (coût IA).",
+    "expect": [
+     "Confirmation « Supprimer la traduction « test.recette » ? Cette action est irréversible. » puis la clé disparaît."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-policies",
+  "title": "Politiques publiques",
+  "who": "Admin → Politiques publiques (/admin/policies) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Prévoir un PDF de moins de 15 Mo. Attention : les PDF sont publics (Google / Facebook) ; remettre l'original après le test.",
+  "items": [
+   {
+    "id": "a-policies-1",
+    "do": "Ouvrez la page.",
+    "expect": [
+     "Trois cartes s'affichent : « Politique de confidentialité (RGPD) », « Politique de services », « Politique de suppression »."
+    ]
+   },
+   {
+    "id": "a-policies-2",
+    "do": "Sur une carte, cliquez l'icône « Copier le lien » puis ouvrez ce lien dans un nouvel onglet.",
+    "expect": [
+     "Le PDF public s'ouvre (ou une erreur si aucun PDF n'est chargé)."
+    ]
+   },
+   {
+    "id": "a-policies-3",
+    "do": "Cliquez « Remplacer le PDF » (ou « Charger le PDF ») et choisissez le fichier.",
+    "expect": [
+     "Le message « Envoi en cours… » apparaît puis la carte affiche la nouvelle date et l'auteur.",
+     "Un fichier non-PDF ou de plus de 15 Mo est refusé."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-formations",
+  "title": "Formations",
+  "who": "Admin → Formations (/admin/formations) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production).",
+  "items": [
+   {
+    "id": "a-formations-1",
+    "do": "Cliquez « Nouvelle formation », remplissez le titre et cliquez « Enregistrer ».",
+    "expect": [
+     "La formation apparaît dans « Formations Spécialisées »."
+    ]
+   },
+   {
+    "id": "a-formations-2",
+    "do": "Cliquez « Modules » sur la formation, puis « Nouveau module », enregistrez.",
+    "expect": [
+     "La fenêtre « Gestion de la formation » montre « Modules (1) ».",
+     "L'onglet « Inscrits (…) » liste les inscrits."
+    ]
+   },
+   {
+    "id": "a-formations-3",
+    "do": "Supprimez la formation de test.",
+    "expect": [
+     "Confirmation « Supprimer cette formation et tous ses modules ? » puis elle disparaît."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-contents",
+  "title": "Contenus du site",
+  "who": "Admin → Contenus du site (/admin/contents) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Modifie le site public en direct : noter le texte d'origine avant de tester.",
+  "items": [
+   {
+    "id": "a-contents-1",
+    "do": "Choisissez la section « Notre Mission », modifiez un mot, cliquez « Enregistrer ».",
+    "expect": [
+     "Le message de succès s'affiche.",
+     "Le changement est visible sur sawalismartsystems.com (page d'accueil) après rechargement."
+    ]
+   },
+   {
+    "id": "a-contents-2",
+    "do": "Remettez le texte d'origine et « Enregistrer ».",
+    "expect": [
+     "Le site public affiche de nouveau le texte d'origine."
+    ]
+   },
+   {
+    "id": "a-contents-3",
+    "do": "Cliquez sur une langue (ex. EN) puis sur « Par défaut (FR base) ».",
+    "expect": [
+     "Le contenu affiché change selon la langue ; les langues déjà surchargées sont marquées d'un indicateur."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-case-studies",
+  "title": "Études de cas",
+  "who": "Admin → Études de cas (/admin/case-studies) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production).",
+  "items": [
+   {
+    "id": "a-case-studies-1",
+    "do": "Cliquez « Nouvelle étude », remplissez le titre et cliquez « Créer l'étude de cas ».",
+    "expect": [
+     "L'étude apparaît dans la liste, non publiée."
+    ]
+   },
+   {
+    "id": "a-case-studies-2",
+    "do": "Cliquez « Publier » puis « Dépublier ».",
+    "expect": [
+     "Une fois publiée, elle est visible sur la page Études de cas du site public ; dépubliée, elle disparaît du site."
+    ]
+   },
+   {
+    "id": "a-case-studies-3",
+    "do": "Cliquez « Supprimer ».",
+    "expect": [
+     "Confirmation « Supprimer cette étude ? » puis elle disparaît."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-blog",
+  "title": "Blog",
+  "who": "Admin → Blog (/admin/blog) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production).",
+  "items": [
+   {
+    "id": "a-blog-1",
+    "do": "Cliquez « Nouvel article », renseignez titre et introduction, puis « Créer l'article ».",
+    "expect": [
+     "L'article apparaît dans « Blog technique », non publié."
+    ]
+   },
+   {
+    "id": "a-blog-2",
+    "do": "Cliquez « Publier », vérifiez le blog public, puis « Dépublier ».",
+    "expect": [
+     "L'article apparaît puis disparaît du blog public."
+    ]
+   },
+   {
+    "id": "a-blog-3",
+    "do": "Cliquez « Supprimer ».",
+    "expect": [
+     "Confirmation « Supprimer cet article ? » puis il disparaît."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-subscriptions",
+  "title": "Abonnements",
+  "who": "Admin → Abonnements (/admin/subscriptions) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production). Ne pas modifier les formules réelles (prix affichés aux clients).",
+  "items": [
+   {
+    "id": "a-subscriptions-1",
+    "do": "Parcourez les onglets « Formules », « Catégories », « Souscriptions ».",
+    "expect": [
+     "Chaque onglet affiche sa liste sans erreur ; « Souscriptions » liste les commandes clients."
+    ]
+   },
+   {
+    "id": "a-subscriptions-2",
+    "do": "Dans « Formules », cliquez « Nouvelle formule », créez une formule TEST et « Enregistrer », puis « Supprimer ».",
+    "expect": [
+     "La formule apparaît puis disparaît après la confirmation « Supprimer TEST… ? »."
+    ]
+   },
+   {
+    "id": "a-subscriptions-3",
+    "do": "Dans « Catégories », créez puis supprimez une catégorie TEST.",
+    "expect": [
+     "La confirmation précise que les formules seront détachées (non supprimées)."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-newsletter",
+  "title": "Newsletter",
+  "who": "Admin → Newsletter (/admin/newsletter) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "S'inscrire à la newsletter depuis le site public avec une adresse de test.",
+  "items": [
+   {
+    "id": "a-newsletter-1",
+    "do": "Ouvrez la page et cherchez votre adresse dans « Rechercher email ou prénom... ».",
+    "expect": [
+     "L'abonné de test apparaît ; les cartes Total, Abonnés actifs, Désabonnés sont cohérentes."
+    ]
+   },
+   {
+    "id": "a-newsletter-2",
+    "do": "Cliquez « Exporter CSV ».",
+    "expect": [
+     "Un fichier CSV des abonnés est téléchargé."
+    ]
+   },
+   {
+    "id": "a-newsletter-3",
+    "do": "Supprimez l'abonné de test.",
+    "expect": [
+     "Confirmation « Supprimer cet abonné ? » puis il disparaît."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-visits",
+  "title": "Trafic & Visites",
+  "who": "Admin → Trafic & Visites (/admin/visits) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "",
+  "items": [
+   {
+    "id": "a-visits-1",
+    "do": "Visitez 2-3 pages du site public dans une fenêtre privée, puis ouvrez Trafic & Visites.",
+    "expect": [
+     "Les cartes « Visites totales » et « Pays uniques » s'affichent.",
+     "Vos visites récentes apparaissent dans la liste (Date / Heure, Page, Pays / Ville, Référent).",
+     "« Pages les plus consultées » et « Top pays » sont remplis."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-deployments",
+  "title": "Déploiements",
+  "who": "Admin → Déploiements (/admin/deployments) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Cette liste alimente le site public : supprimer la ligne de test aussitôt.",
+  "items": [
+   {
+    "id": "a-deployments-1",
+    "do": "Cliquez « Nouveau déploiement », saisissez « Solution / Logiciel * » (TEST-RECETTE), « Pays * », « Nombre d'installations * », puis « Enregistrer ».",
+    "expect": [
+     "La ligne apparaît ; les cartes « Solutions distribuées », « Pays couverts », « Installations totales » augmentent."
+    ]
+   },
+   {
+    "id": "a-deployments-2",
+    "do": "Supprimez la ligne de test.",
+    "expect": [
+     "Confirmation « Supprimer ce déploiement ? » puis les totaux reviennent à leur valeur."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-blacklist",
+  "title": "Blacklist IP",
+  "who": "Admin → Blacklist IP (/admin/blacklist) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "SÉCURITÉ : ne JAMAIS bloquer votre propre adresse IP ni une plage large (ex. 0.0.0.0/0) : cela coupe l'accès à tout le portail. Utiliser l'adresse de test 203.0.113.7.",
+  "items": [
+   {
+    "id": "a-blacklist-1",
+    "do": "Dans « IP ou CIDR * » saisissez 203.0.113.7, dans « Motif (optionnel) » TEST-RECETTE, cliquez « Bloquer ».",
+    "expect": [
+     "Message « IP ajoutée à la blacklist ».",
+     "La ligne apparaît avec IP / CIDR, Motif et « Ajouté le »."
+    ]
+   },
+   {
+    "id": "a-blacklist-2",
+    "do": "Saisissez de nouveau 203.0.113.7 et cliquez « Bloquer ».",
+    "expect": [
+     "Un message d'erreur « Cette entrée existe déjà » s'affiche."
+    ]
+   },
+   {
+    "id": "a-blacklist-3",
+    "do": "Saisissez 999.1.1.1 et cliquez « Bloquer ».",
+    "expect": [
+     "Un message d'erreur « IP/CIDR invalide … » s'affiche ; rien n'est ajouté."
+    ]
+   },
+   {
+    "id": "a-blacklist-4",
+    "do": "Retirez 203.0.113.7 (icône corbeille).",
+    "expect": [
+     "Confirmation « Retirer 203.0.113.7 de la blacklist ? » puis « IP retirée » ; la liste est revenue à l'état initial."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-access-logs",
+  "title": "Logs d'accès",
+  "who": "Admin → Logs d'accès (/admin/access-logs) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Se connecter au préalable avec un compte client de test et ouvrir 2 pages du portail.",
+  "items": [
+   {
+    "id": "a-access-logs-1",
+    "do": "Ouvrez « Logs d'accès » et cliquez « Actualiser ».",
+    "expect": [
+     "Le titre « Logs d'accès portail » s'affiche avec les cartes « Événements », « Utilisateurs uniques » et « Top modules ».",
+     "Les pages visitées par le compte de test apparaissent (Date, Utilisateur, Rôle, Module, Page)."
+    ]
+   },
+   {
+    "id": "a-access-logs-2",
+    "do": "Tapez l'e-mail du compte de test dans « Rechercher par email, nom, module ou page… » puis « Rechercher ».",
+    "expect": [
+     "Seules les lignes de ce compte restent affichées."
+    ]
+   },
+   {
+    "id": "a-access-logs-3",
+    "do": "Cliquez « Exporter CSV ».",
+    "expect": [
+     "Un fichier CSV est téléchargé (colonnes date, email, nom, rôle, module, page, IP)."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-api-traces",
+  "title": "Traces API",
+  "who": "Admin → Traces API (/admin/api-traces) — visible par : UNIQUEMENT le super-administrateur admin@sawalismartsystems.com (libellé complet : « Traces API (debug) »)",
+  "prep": "Ne pas cliquer « Effacer » en production sauf décision explicite (efface toutes les traces).",
+  "items": [
+   {
+    "id": "a-api-traces-1",
+    "do": "Avec le super-admin, ouvrez la page et cliquez « Actualiser ».",
+    "expect": [
+     "Le titre « Traces API (Debug) » s'affiche avec les cartes Événements, Utilisateurs, Erreurs (≥400), Durée moy."
+    ]
+   },
+   {
+    "id": "a-api-traces-2",
+    "do": "Choisissez une méthode (ex. « POST »), tapez un e-mail dans « Rechercher email, URL, body… » puis « Filtrer » ; ouvrez une ligne.",
+    "expect": [
+     "La liste est filtrée.",
+     "Le détail montre « Corps de la requête » et « Réponse » ; les mots de passe / jetons sont masqués ([REDACTED])."
+    ]
+   },
+   {
+    "id": "a-api-traces-3",
+    "do": "Cliquez « Export CSV ».",
+    "expect": [
+     "Un fichier CSV est téléchargé."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-sms-dashboard",
+  "title": "Tableau de bord SMS",
+  "who": "Admin → Tableau de bord SMS (/admin/sms-dashboard) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "",
+  "items": [
+   {
+    "id": "a-sms-dashboard-1",
+    "do": "Ouvrez la page, changez la période (30 j, 90 j, 365 j) puis cliquez « Actualiser ».",
+    "expect": [
+     "Les cartes « Envoyés OK », « Échecs », « Taux succès », « Coût estimé » se mettent à jour.",
+     "« Détail par opérateur » et « Top des erreurs » s'affichent (ou « Aucun envoi sur la période. »)."
+    ]
+   },
+   {
+    "id": "a-sms-dashboard-2",
+    "do": "Regardez le bloc « Budget mensuel SMS ».",
+    "expect": [
+     "Il indique « Sous contrôle », « ⚠ Bientôt épuisé » ou « DÉPASSEMENT » selon la consommation."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-health",
+  "title": "Santé applicative",
+  "who": "Admin → Santé applicative (/admin/health) — visible par : UNIQUEMENT le super-administrateur admin@sawalismartsystems.com",
+  "prep": "",
+  "items": [
+   {
+    "id": "a-health-1",
+    "do": "Avec le super-admin, ouvrez la page et changez la fenêtre « 24 h » / « 14 j ».",
+    "expect": [
+     "Les cartes « Taux d'erreur », « Erreurs ≥ 400 », « Durée moyenne » et le graphique « Activité par heure » s'affichent."
+    ]
+   },
+   {
+    "id": "a-health-2",
+    "do": "Cliquez « Vérifier maintenant » (Auth Checker).",
+    "expect": [
+     "Un nouveau contrôle apparaît dans « 24 derniers contrôles » avec son résultat (étapes en erreur listées le cas échéant)."
+    ]
+   },
+   {
+    "id": "a-health-3",
+    "do": "Cliquez « Test alerte ».",
+    "expect": [
+     "Un message confirme l'envoi et l'e-mail d'alerte de test arrive chez le destinataire configuré."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-db-explorer",
+  "title": "Explorateur DB",
+  "who": "Admin → Explorateur DB (/admin/db-explorer) — visible par : UNIQUEMENT le super-administrateur admin@sawalismartsystems.com",
+  "prep": "Consultation seule : aucune modification possible depuis cette page.",
+  "items": [
+   {
+    "id": "a-db-explorer-1",
+    "do": "Avec le super-admin, choisissez la « Collection » users, une « Limite » de 20, puis « Exécuter ».",
+    "expect": [
+     "Les documents s'affichent en tableau.",
+     "Les champs sensibles (mot de passe, jetons) apparaissent masqués « [REDACTED] » ou absents."
+    ]
+   },
+   {
+    "id": "a-db-explorer-2",
+    "do": "Ajoutez un filtre avec « + ajouter » (champ role, valeur admin), puis « Exécuter » ; cliquez sur un en-tête de colonne.",
+    "expect": [
+     "Seuls les comptes admin s'affichent.",
+     "Le tri change au clic sur l'en-tête."
+    ]
+   },
+   {
+    "id": "a-db-explorer-3",
+    "do": "Cliquez « Export CSV » puis « JSON ».",
+    "expect": [
+     "Les deux fichiers sont téléchargés."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-integration-links",
+  "title": "Liens cryptés",
+  "who": "Admin → Liens cryptés (/admin/integration-links) — visible par : UNIQUEMENT le super-administrateur admin@sawalismartsystems.com",
+  "prep": "",
+  "items": [
+   {
+    "id": "a-integration-links-1",
+    "do": "Avec le super-admin, choisissez l'« Action » « Connexion au portail », une « Durée de validité » « 5 minutes », saisissez l'e-mail d'un compte de test, cliquez « Générer le lien ».",
+    "expect": [
+     "Le bloc « Lien généré avec succès » apparaît avec l'URL (…/launch?t=…) et la date d'expiration.",
+     "« Copier » affiche « Lien copié »."
+    ]
+   },
+   {
+    "id": "a-integration-links-2",
+    "do": "Ouvrez le lien dans une fenêtre privée.",
+    "expect": [
+     "Le texte « Validation du lien sécurisé… » puis « Redirection en cours » s'affichent et la page cible s'ouvre."
+    ]
+   },
+   {
+    "id": "a-integration-links-3",
+    "do": "Attendez plus de 5 minutes et rouvrez le lien ; modifiez aussi un caractère du lien.",
+    "expect": [
+     "Lien expiré : « Lien expiré — Ce lien a expiré. Demandez à votre administrateur de le régénérer. »",
+     "Lien modifié : « Lien invalide — Le lien est mal formé ou altéré. »"
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-contacts",
+  "title": "Messages reçus",
+  "who": "Admin → Messages reçus (/admin/contacts) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Envoyer un message via le formulaire de contact du site public (nom TEST-RECETTE).",
+  "items": [
+   {
+    "id": "a-contacts-1",
+    "do": "Ouvrez la page.",
+    "expect": [
+     "Le message de test apparaît avec Nom, Email, Société, Téléphone.",
+     "Le badge de la barre latérale diminue après ouverture de la page."
+    ]
+   },
+   {
+    "id": "a-contacts-2",
+    "do": "Cliquez « Enregistrer » sur le message, choisissez un « Client * » et un « Rôle * » dans « Enregistrer comme utilisateur suivi », puis « Enregistrer ».",
+    "expect": [
+     "L'expéditeur apparaît ensuite dans Admin → Utilisateurs suivis pour ce client (à supprimer après le test)."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-testimonials",
+  "title": "Témoignages NPS",
+  "who": "Admin → Témoignages NPS (/admin/testimonials) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production).",
+  "items": [
+   {
+    "id": "a-testimonials-1",
+    "do": "Cliquez « Nouveau témoignage », remplissez-le puis « Créer le témoignage ».",
+    "expect": [
+     "Le témoignage apparaît dans « Témoignages clients »."
+    ]
+   },
+   {
+    "id": "a-testimonials-2",
+    "do": "Cliquez « Publier », vérifiez le site public, puis « Masquer » et « Mettre en modération ».",
+    "expect": [
+     "Publié : visible sur le site ; masqué / en modération : invisible."
+    ]
+   },
+   {
+    "id": "a-testimonials-3",
+    "do": "Dans « Demander un avis NPS automatique », choisissez un RDV, cliquez « Générer le lien » puis « Copier le lien ».",
+    "expect": [
+     "Un lien d'avis est généré et copié ; ouvert en fenêtre privée, il affiche le formulaire NPS."
+    ]
+   },
+   {
+    "id": "a-testimonials-4",
+    "do": "Supprimez le témoignage de test.",
+    "expect": [
+     "Confirmation « Supprimer ? » puis il disparaît."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-tracked-users",
+  "title": "Utilisateurs suivis",
+  "who": "Admin → Utilisateurs suivis (/admin/tracked-users) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production). Ces comptes servent aussi à la section Droits (Modération, Traducteur…).",
+  "items": [
+   {
+    "id": "a-tracked-users-1",
+    "do": "Cliquez « Nouvel utilisateur », choisissez « Client * », « Rôle * » (ex. Consultation), un e-mail de test, puis « Enregistrer ».",
+    "expect": [
+     "L'utilisateur apparaît dans « Utilisateurs suivis (par client) » avec son rôle et son statut."
+    ]
+   },
+   {
+    "id": "a-tracked-users-2",
+    "do": "Cliquez l'icône clé « Définir un mot de passe », saisissez 8 caractères minimum (ou « Générer ») puis « Activer l'accès ».",
+    "expect": [
+     "Message « Accès portail activé ».",
+     "L'utilisateur peut se connecter sur /login avec cet e-mail (code OTP envoyé par e-mail).",
+     "L'icône « Révoquer l'accès portail » apparaît."
+    ]
+   },
+   {
+    "id": "a-tracked-users-3",
+    "do": "Cliquez « Révoquer l'accès portail » et confirmez.",
+    "expect": [
+     "L'utilisateur ne peut plus se connecter."
+    ]
+   },
+   {
+    "id": "a-tracked-users-4",
+    "do": "Supprimez l'utilisateur de test (corbeille).",
+    "expect": [
+     "Confirmation « Supprimer ? » puis il disparaît."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-brochures",
+  "title": "Brochures & Guide",
+  "who": "Admin → Brochures & Guide (/admin/brochures) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production).",
+  "items": [
+   {
+    "id": "a-brochures-1",
+    "do": "Ouvrez la page.",
+    "expect": [
+     "Le titre « Brochures, Guides & Médias » s'affiche avec « Bibliothèque médias » et « Téléchargez nos brochures »."
+    ]
+   },
+   {
+    "id": "a-brochures-2",
+    "do": "Cliquez « Téléverser un média », choisissez une petite image, puis basculez « Privé / Public ».",
+    "expect": [
+     "Le média apparaît dans la bibliothèque et son état Public / Privé change."
+    ]
+   },
+   {
+    "id": "a-brochures-3",
+    "do": "Supprimez le média de test.",
+    "expect": [
+     "Confirmation « Supprimer « … » ? » puis il disparaît."
+    ]
+   },
+   {
+    "id": "a-brochures-4",
+    "do": "Cliquez sur une brochure PDF de la liste.",
+    "expect": [
+     "Le PDF s'ouvre ou se télécharge (ne pas cliquer « Régénérer le PDF » sauf besoin)."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-voice-notifications",
+  "title": "Notifications vocales",
+  "who": "Admin → Notifications vocales (/admin/voice-notifications) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) ») (libellé complet : « Notifications vocales (HA) »)",
+  "prep": "Nécessite un Home Assistant / Voice Monkey configuré ; sinon vérifier seulement l'affichage.",
+  "items": [
+   {
+    "id": "a-voice-notifications-1",
+    "do": "Ouvrez la page.",
+    "expect": [
+     "Les blocs « Configuration de la passerelle vocale », « Catalogue des actions » et « Journal des envois » s'affichent."
+    ]
+   },
+   {
+    "id": "a-voice-notifications-2",
+    "do": "Cliquez « Tester ».",
+    "expect": [
+     "Une annonce est lue par l'enceinte et une ligne apparaît dans « Journal des envois » avec le statut HA."
+    ]
+   },
+   {
+    "id": "a-voice-notifications-3",
+    "do": "Cliquez « Évènement perso », créez la clé test_recette, puis supprimez-la.",
+    "expect": [
+     "L'évènement apparaît dans le catalogue puis disparaît après confirmation."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-ad-banners",
+  "title": "Régie publicitaire",
+  "who": "Admin → Régie publicitaire (/admin/ad-banners) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production). Laisser la bannière de test inactive pour qu'elle ne soit pas diffusée.",
+  "items": [
+   {
+    "id": "a-ad-banners-1",
+    "do": "Cliquez « Nouvelle bannière », chargez une image (« Choisir un fichier »), décochez « Active (diffusée) », puis « Créer ».",
+    "expect": [
+     "La bannière apparaît dans la liste avec l'état « Inactive » et l'« Aperçu en direct » était visible dans le formulaire."
+    ]
+   },
+   {
+    "id": "a-ad-banners-2",
+    "do": "Cliquez l'icône « Statistiques » de la bannière.",
+    "expect": [
+     "La fenêtre « Statistiques de la bannière » montre Affichages, Clics / CTR et l'historique quotidien."
+    ]
+   },
+   {
+    "id": "a-ad-banners-3",
+    "do": "Cliquez « Copier le lien public pour l'annonceur » puis « Régénérer le lien public ».",
+    "expect": [
+     "Le lien est copié ; après régénération (confirmation), l'ancien lien ne fonctionne plus."
+    ]
+   },
+   {
+    "id": "a-ad-banners-4",
+    "do": "Supprimez la bannière de test.",
+    "expect": [
+     "Confirmation « Supprimer la bannière « … » ? » puis elle disparaît."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-officines-registry",
+  "title": "Officines",
+  "who": "Admin → Officines (/admin/officines-registry) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) ») ; lien GRISÉ si le module VIDAL n'est pas activé pour votre compte (message « Fonctionnalité … non activée ») ; accessible aussi aux non-admin délégués (Paramètres → « Délégation menu Officines »)",
+  "prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production).",
+  "items": [
+   {
+    "id": "a-officines-registry-1",
+    "do": "Ouvrez la page (libellé complet : « Officines (validation) »).",
+    "expect": [
+     "Le « Registre des Officines » s'affiche avec filtres et pagination « ‹ Préc. / Suiv. › »."
+    ]
+   },
+   {
+    "id": "a-officines-registry-2",
+    "do": "Cliquez « Nouvelle officine », remplissez puis « Créer l'officine ».",
+    "expect": [
+     "L'officine de test apparaît dans le registre."
+    ]
+   },
+   {
+    "id": "a-officines-registry-3",
+    "do": "Sur l'officine de test cliquez « Suspendre » puis « Réactiver ».",
+    "expect": [
+     "Une confirmation « Confirmer : … ? » s'affiche et le statut change à chaque fois."
+    ]
+   },
+   {
+    "id": "a-officines-registry-4",
+    "do": "Cliquez « Voir les produits » puis fermez ; ne pas lancer « 🌍 Résoudre géoloc » (coût).",
+    "expect": [
+     "La fenêtre « Produits de l'officine » s'ouvre et se ferme avec « Fermer »."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-ocr-pieces",
+  "title": "OCR sur Pièces",
+  "who": "Admin → OCR sur Pièces (/admin/ocr-pieces) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Prévoir une facture fournisseur scannée (PDF ou photo) de test. Chaque analyse a un coût IA.",
+  "items": [
+   {
+    "id": "a-ocr-pieces-1",
+    "do": "Onglet « Pièces » : choisissez le type, une pharmacie, un « Modèle d'IA », joignez le fichier et cliquez « Déposer et analyser ».",
+    "expect": [
+     "La pièce apparaît avec « L'analyse de cette pièce est en cours… » puis « Type reconnu : … »."
+    ]
+   },
+   {
+    "id": "a-ocr-pieces-2",
+    "do": "Dépliez la pièce, corrigez un champ dans « Champs extraits (corrigez ce qui est faux) » et donnez une note dans « Votre note : » (étoiles).",
+    "expect": [
+     "La note est enregistrée (la pièce n'est plus « non évaluée »)."
+    ]
+   },
+   {
+    "id": "a-ocr-pieces-3",
+    "do": "Onglet « Tableau de bord OCR ».",
+    "expect": [
+     "« Comparaison des modèles » affiche par modèle : Pièces, Coût cumulé, Coût moyen, Note moyenne, Précision réelle."
+    ]
+   },
+   {
+    "id": "a-ocr-pieces-4",
+    "do": "Supprimez la pièce de test (icône « Supprimer »).",
+    "expect": [
+     "Confirmation « Supprimer la pièce « … » et ses analyses ? » puis elle disparaît."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-garde-planning",
+  "title": "Planning des gardes",
+  "who": "Admin → Planning des gardes (/admin/garde-planning) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) ») (réservé admin/superviseur, mais les superviseurs n'entrent pas dans /admin)",
+  "prep": "Modifie le planning réel des pharmacies de garde : ne pas utiliser « Réinitialiser tout » ni « Générer rotation séquentielle » sur l'année en cours.",
+  "items": [
+   {
+    "id": "a-garde-planning-1",
+    "do": "Ouvrez la page, choisissez l'année et cliquez « Rafraîchir ».",
+    "expect": [
+     "Le tableau Semaine / Début / Groupe / Statut s'affiche ; la semaine courante est marquée « en cours »."
+    ]
+   },
+   {
+    "id": "a-garde-planning-2",
+    "do": "Sur une semaine future, changez le groupe manuellement puis cliquez « Réinitialiser » sur cette semaine.",
+    "expect": [
+     "La semaine passe en « manuel », puis revient en « auto » après la confirmation « Réinitialiser la semaine … en mode automatique ? »."
+    ]
+   },
+   {
+    "id": "a-garde-planning-3",
+    "do": "Regardez le « Cycle de rotation des groupes » (« Samedi 12h00 » / « Lundi 00h00 (legacy) »).",
+    "expect": [
+     "Le mode actif porte la mention « (actif) »."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-liluvine-wa-requests",
+  "title": "Exclamations Reçues",
+  "who": "Admin → Exclamations Reçues (/admin/liluvine-wa-requests) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Envoyer au préalable une commande WhatsApp comme « !Meteo » au numéro Liluvine.",
+  "items": [
+   {
+    "id": "a-liluvine-wa-requests-1",
+    "do": "Ouvrez la page et cliquez « Rafraîchir ».",
+    "expect": [
+     "Votre commande apparaît avec Numéro WA, Identité affichée, Commandes, Requêtes, Dernier message.",
+     "La carte « Numéros distincts » est cohérente."
+    ]
+   },
+   {
+    "id": "a-liluvine-wa-requests-2",
+    "do": "Cochez votre ligne et cliquez « Imprimer PDF (1) ».",
+    "expect": [
+     "Un PDF de la sélection est généré."
+    ]
+   },
+   {
+    "id": "a-liluvine-wa-requests-3",
+    "do": "Cochez votre ligne et cliquez « Importer 1 → Contacts » puis confirmez.",
+    "expect": [
+     "Le contact est ajouté au groupe « Interrogations WA » du répertoire."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-handler-suggestions",
+  "title": "Handlers IA",
+  "who": "Admin → Handlers IA (/admin/handler-suggestions) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "",
+  "items": [
+   {
+    "id": "a-handler-suggestions-1",
+    "do": "Ouvrez la page, cliquez « Rafraîchir » et filtrez « ⏳ En attente » / « ✅ Appliqués ».",
+    "expect": [
+     "Le titre « Suggestions Handlers IA » s'affiche avec Commande, Modèle, Générée le, Statut."
+    ]
+   },
+   {
+    "id": "a-handler-suggestions-2",
+    "do": "Cliquez « Voir le code » sur une suggestion, puis « Tester ce handler en dry-run (sandbox) » et « Exécuter le dry-run ».",
+    "expect": [
+     "Le code s'affiche ; « Copier » le copie.",
+     "Le dry-run renvoie un résultat sans écrire en base."
+    ]
+   },
+   {
+    "id": "a-handler-suggestions-3",
+    "do": "Cliquez sur le statut d'une suggestion pour le basculer, puis ajoutez une note.",
+    "expect": [
+     "Le statut bascule entre « En attente » et « Appliqué » ; la note est conservée."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-bird-cost",
+  "title": "Coût SMS Bird",
+  "who": "Admin → Coût SMS Bird (/admin/bird-cost) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "",
+  "items": [
+   {
+    "id": "a-bird-cost-1",
+    "do": "Ouvrez la page et cliquez « Rafraîchir ».",
+    "expect": [
+     "Les cartes « Aujourd'hui », « Hier », « 7 derniers jours », « 30 derniers jours », « Total » et le « Coût unitaire » s'affichent."
+    ]
+   },
+   {
+    "id": "a-bird-cost-2",
+    "do": "Changez la fenêtre de « Évolution journalière » (7, 14, 30, 90 jours).",
+    "expect": [
+     "Le graphique se met à jour (ou « Aucun SMS Bird envoyé sur cette période. »)."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-story-studio",
+  "title": "Story Studio",
+  "who": "Admin → Story Studio (/admin/story-studio) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) ») (libellé complet : « Story Studio (AI) »)",
+  "prep": "Génération IA payante et publication réelle sur les réseaux : utiliser « 📝 Enregistrer brouillon » et un compte de test.",
+  "items": [
+   {
+    "id": "a-story-studio-1",
+    "do": "Parcourez les onglets « Créer », « Bibliothèque », « Comptes Meta », « Historique », « Facturation », « Paramètres ».",
+    "expect": [
+     "Chaque onglet s'affiche sans erreur."
+    ]
+   },
+   {
+    "id": "a-story-studio-2",
+    "do": "Onglet « Créer » : choisissez « Image », saisissez une consigne courte et cliquez « Générer la image ».",
+    "expect": [
+     "Le message « Génération en cours… » puis l'image générée apparaissent ; elle figure dans « Bibliothèque » avec « Télécharger »."
+    ]
+   },
+   {
+    "id": "a-story-studio-3",
+    "do": "Onglet « Facturation » → « Tenants » → « Détails → ».",
+    "expect": [
+     "Le détail du tenant (factures mensuelles, journal) s'affiche ; « ← Retour à la liste » revient à la liste."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-vidal-logs",
+  "title": "Suivi des logs VIDAL",
+  "who": "Admin → Suivi des logs VIDAL (/admin/vidal-logs) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "",
+  "items": [
+   {
+    "id": "a-vidal-logs-1",
+    "do": "Ouvrez la page et cliquez « Filtrer ».",
+    "expect": [
+     "Le titre « Suivi des logs VIDAL » s'affiche avec la liste des appels API VIDAL et le journal de synchronisation."
+    ]
+   },
+   {
+    "id": "a-vidal-logs-2",
+    "do": "Cliquez « Imprimer ».",
+    "expect": [
+     "La fenêtre d'impression du navigateur s'ouvre avec le tableau."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-settings",
+  "title": "Paramètres",
+  "who": "Admin → Paramètres (/admin/settings) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+  "prep": "Toute modification s'applique à TOUTE la plateforme : noter la valeur d'origine et la remettre après chaque test. Le bouton bleu « Enregistrer les paramètres généraux » (en bas) ne sauvegarde que les paramètres généraux ; certaines sections ont leur propre bouton « Enregistrer ».",
+  "items": [
+   {
+    "id": "a-settings-1",
+    "do": "Onglets : cliquez successivement « Tous », « Sécurité & Auth », « Liluvine PRO », « META (FB / WA) », « IA & Universal Key », « Paiements & Caisse », « Communications », « GRH & Personnel », « Modules & Bonus », « Météo », « Diagnostics & Logs » ; puis tapez « WhatsApp » dans « Rechercher un paramètre par son titre… ».",
+    "expect": [
+     "Chaque onglet n'affiche que ses sections et son compteur correspond au nombre de blocs.",
+     "La recherche affiche « N paramètre(s) trouvé(s) pour « WhatsApp » » ; « Aller à un paramètre… » fait défiler jusqu'à la section choisie."
+    ]
+   },
+   {
+    "id": "a-settings-2",
+    "do": "Sécurité & Auth — section « Sécurité — Déconnexion automatique par inactivité » : saisissez 1 dans « Personnalisé : … min », cliquez « Enregistrer les paramètres généraux », déconnectez-vous puis reconnectez-vous et ne touchez plus à la souris ni au clavier.",
+    "expect": [
+     "Après environ 30 secondes, la fenêtre « Session bientôt fermée » s'affiche avec un compte à rebours et les boutons « Rester connecté(e) » / « Se déconnecter maintenant ».",
+     "« Rester connecté(e) » ferme la fenêtre et relance le délai.",
+     "Sans action, retour à /login avec le message « Session expirée par inactivité — merci de vous reconnecter. » — ensuite remettre la valeur d'origine (ou « Désactivé ») et enregistrer."
+    ]
+   },
+   {
+    "id": "a-settings-3",
+    "do": "META (FB / WA) — section « WhatsApp Business API (Meta Cloud) » : cliquez « Tester la connexion Meta » ; Communications — section « SMS — Opérateurs Burkina Faso » : envoyez « 🧪 Envoyer le SMS test » à votre propre numéro.",
+    "expect": [
+     "Le test Meta affiche un résultat clair (succès ou erreur détaillée).",
+     "Le SMS de test arrive sur votre téléphone."
+    ]
+   },
+   {
+    "id": "a-settings-4",
+    "do": "Modules & Bonus — section « Demandes de modification de profil (utilisateurs) » : passez de « En attente » à « Traitées » ; Diagnostics & Logs — ouvrez « Historique des modifications de clés ».",
+    "expect": [
+     "Les demandes s'affichent (ou « Aucune demande en attente — tout est à jour 🎉 ») et le badge Paramètres de la barre latérale est cohérent.",
+     "L'historique indique qui a changé quelle clé et quand, sans jamais afficher la valeur."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a-droits",
+  "title": "Droits d'accès par rôle",
+  "who": "Admin → tous les liens — l'espace /admin n'est ouvert qu'aux comptes au rôle système « admin » ; les autres rôles sont renvoyés vers /portal",
+  "prep": "Préparer un compte par rôle (Admin → Clients pour les rôles système, Admin → Utilisateurs suivis pour Modération / Traducteur), chacun avec une adresse de test. Tester chaque compte dans une fenêtre privée.",
+  "items": [
+   {
+    "id": "a-droits-1",
+    "do": "Se connecter avec le super-administrateur admin@sawalismartsystems.com.",
+    "expect": [
+     "Arrivée sur /admin ; la barre latérale affiche TOUS les liens admin, y compris « Traces API », « Santé applicative », « Explorateur DB » et « Liens cryptés ».",
+     "« Officines » est cliquable si le module VIDAL est activé, sinon grisé."
+    ]
+   },
+   {
+    "id": "a-droits-2",
+    "do": "Se connecter avec un autre compte au rôle « Admin (client) » (rôle système admin), puis taper directement /admin/health et /admin/db-explorer dans la barre d'adresse.",
+    "expect": [
+     "Tous les liens admin sont présents SAUF « Traces API », « Santé applicative », « Explorateur DB » et « Liens cryptés ».",
+     "En tapant l'adresse, la page s'ouvre mais ne montre aucune donnée (accès refusé côté serveur, message d'erreur ou « Réservé au superviseur principal »)."
+    ]
+   },
+   {
+    "id": "a-droits-3",
+    "do": "Se connecter avec un compte au rôle « Superviseur » (rôle système), puis taper /admin dans la barre d'adresse.",
+    "expect": [
+     "Arrivée sur /portal (portail client), pas sur /admin.",
+     "En tapant /admin, retour automatique sur /portal : aucun lien admin n'est visible (y compris « Planning des gardes », « Exclamations Reçues », « Suivi des logs VIDAL »)."
+    ]
+   },
+   {
+    "id": "a-droits-4",
+    "do": "Se connecter avec un utilisateur suivi au rôle « Moderation », puis avec un compte au rôle système « Modérateur » ; taper /admin.",
+    "expect": [
+     "Les deux comptes arrivent sur /portal et /admin les renvoie vers /portal.",
+     "Le compte suivi « Moderation » voit dans le portail « Liluvine PRO — Historique » et « Brochures & Guides » ; le compte au rôle système « Modérateur » ne les voit pas (à signaler si attendu)."
+    ]
+   },
+   {
+    "id": "a-droits-5",
+    "do": "Se connecter avec un utilisateur suivi au rôle « Traducteur ».",
+    "expect": [
+     "Attendu par conception : arrivée sur Régionalisation (/admin/i18n) avec ce seul lien dans la barre latérale.",
+     "Résultat probable actuel : renvoi vers /portal avec une barre latérale vide ou presque (anomalie connue à signaler)."
+    ]
+   },
+   {
+    "id": "a-droits-6",
+    "do": "Se connecter avec un compte « Client » standard, puis taper /admin et /admin/blacklist dans la barre d'adresse.",
+    "expect": [
+     "Arrivée sur /portal ; chaque adresse /admin renvoie vers /portal.",
+     "Aucun lien admin n'est visible."
+    ]
+   },
+   {
+    "id": "a-droits-7",
+    "do": "Se déconnecter puis taper /admin/settings dans la barre d'adresse.",
+    "expect": [
+     "Renvoi vers la page /login."
+    ]
+   }
+  ]
+ }
+]
