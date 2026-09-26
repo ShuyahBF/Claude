@@ -1,0 +1,3370 @@
+From cd6c45aa7977d5b527ad351f43b36c120bac6e5a Mon Sep 17 00:00:00 2001
+From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
+Date: Thu, 24 Sep 2026 20:58:22 +0000
+Subject: [PATCH] =?UTF-8?q?feat:=20lots=2020=20=C3=A0=2022=20=E2=80=94=20e?=
+ =?UTF-8?q?xplorateur=20R2=20de=20Gestion=20de=20Stocks,=20prospects=20Wha?=
+ =?UTF-8?q?tsApp=20Liluvine,=20tags=20des=20documents=20R2?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Lot 20 — Explorateur Stockage R2 de Gestion de Stocks :
+- fil d'Ariane « Compartiment <bucket> › <client> › <dossier> » ; le
+  compartiment et le client sont cliquables pour revenir aux dossiers ;
+- dépôt depuis l'ordinateur : bouton « Déposer des fichiers », glisser-
+  déposer, plusieurs fichiers envoyés un par un avec leur progression ;
+- accès complet du superviseur aux routes admin du module (liste des
+  clients, dépôt, suppression) : admin OU superviseur ;
+- dépôt par un utilisateur suivi autorisé par l'administrateur, dans les
+  dossiers de son tenant uniquement, avec une taille maximale par fichier
+  réglable par utilisateur suivi (1,5 Mo par défaut) ; au-delà, refus avec
+  le motif ;
+- espace alloué par client/tenant (2 Go par défaut), réglable dans
+  SMART Communications du client ; tout dépôt qui le dépasserait est
+  refusé avec le motif ;
+- jauge « espace occupé / espace alloué » sur le tableau de bord du
+  Pharmacien suivi et dans l'explorateur ;
+- l'explorateur reflète le contenu réel du compartiment : fichiers posés à
+  la racine du code client (tuile « Racine (hors dossier) », lecture seule)
+  et sous-dossiers existants en plus des 6 dossiers standard ; ces 6
+  dossiers sont créés dans R2 (marqueur vide) à la première ouverture ;
+  une légende explique la couleur des dossiers ;
+- Centre de Messagerie en pleine largeur (plafond max-w-6xl retiré de
+  Contacts.jsx) ;
+- compartiment par défaut « gestionstocks » (nom réel, sans tiret) si
+  R2_STOCKS_BUCKET n'est pas défini.
+
+Nouvelles routes : GET /gestion-stocks/folders, GET /gestion-stocks/storage, POST
+/gestion-stocks/folders/{folder}/upload, GET/PUT
+/admin/gestion-stocks/tracked-users/{id}/upload-rights, GET/PUT
+/admin/gestion-stocks/tenants/{client_id}/storage. Champs :
+tracked_users.r2_upload_allowed / r2_upload_max_mb,
+users.gestion_stocks_quota_gb.
+
+Lot 21 — Auto-réponse WhatsApp Liluvine pour les prospects (expéditeurs
+non contractuels : numéro inconnu du carnet et des comptes, ou contact
+étiqueté « prospect ») :
+- prompt système dédié aux prospects, modifiable dans Admin → Paramètres →
+  « Liluvine PRO — Auto-réponse WhatsApp » (vide = texte par défaut), et
+  case pour couper ces réponses ;
+- plus aucune donnée du CRM (contacts, paiements, tickets, RAG métier)
+  injectée dans le contexte d'une réponse à un prospect : seule la base de
+  connaissance reste ;
+- consignes « Mode auto-réponse WhatsApp » modifiables pour toutes les
+  réponses (vide = texte d'origine) ;
+- le compte de la plateforme (admin/superviseur) n'est plus soumis aux
+  contrôles de contrat/accès restreint, qui bloquaient toute réponse aux
+  numéros inconnus quand ce compte n'avait pas de numéro de contrat ;
+- réponses aux prospects marquées « Prospect » dans l'historique.
+Clés settings.global : liluvine_wa_prospect_enabled,
+liluvine_wa_prospect_system_prompt, liluvine_wa_mode_instructions.
+
+Lot 22 — Tags et recherche des documents de l'Explorateur Stockage R2 :
+- R2 ne sait lister que par chemin : les tags vivent dans une nouvelle
+  collection Mongo `stock_files` (une fiche par fichier : tags,
+  description, auteur du dépôt, suggestions IA), R2 restant la source de
+  vérité des fichiers ;
+- tags et description saisis au dépôt (appliqués à chaque fichier du lot),
+  puis modifiables sur chaque fichier ; fiche créée automatiquement pour
+  les fichiers déjà présents ;
+- recherche dans tous les dossiers du client (nom, tags, description, sans
+  tenir compte des accents ni des majuscules) et pastilles de tags pour
+  filtrer, avec le dossier de chaque résultat ;
+- droits : admin et superviseur taguent tout ; un Pharmacien suivi
+  autorisé à déposer tague ses propres fichiers ; chacun ne voit que son
+  client ;
+- suggestions IA facultatives (désactivées par défaut, activables par
+  client dans SMART Communications) : ocr_core avec Claude Haiku 4.5 après
+  chaque dépôt, ou à la demande ; les tags proposés ne sont jamais
+  appliqués d'office.
+Nouvelles routes : GET /gestion-stocks/tags, GET /gestion-stocks/search,
+PUT /gestion-stocks/files/meta, POST /gestion-stocks/files/suggest-tags.
+Champ : users.gestion_stocks_ai_tags.
+---
+ backend/r2_stocks_client.py                   |  23 +-
+ backend/routes/gestion_stocks.py              | 529 +++++++++++++++++-
+ backend/routes/gestion_stocks_tags.py         | 330 +++++++++++
+ backend/routes/liluvine_pro.py                |  45 +-
+ backend/routes/liluvine_wa_autoreply.py       |  94 +++-
+ backend/tests/test_gestion_stocks_r2_lot20.py | 212 +++++++
+ .../tests/test_gestion_stocks_tags_lot22.py   | 243 ++++++++
+ .../tests/test_liluvine_wa_prospects_lot21.py | 212 +++++++
+ frontend/src/components/R2FileTags.jsx        | 222 ++++++++
+ frontend/src/components/R2StorageGauge.jsx    |  69 +++
+ .../src/pages/admin/AdminClientFeatures.jsx   | 107 +++-
+ .../src/pages/admin/AdminTrackedUsers.jsx     |  93 ++-
+ .../sections/LiluvineSystemPromptSection.jsx  |   3 +
+ .../sections/LiluvineWaAutoreplySection.jsx   |  90 ++-
+ frontend/src/pages/portal/Contacts.jsx        |   5 +-
+ frontend/src/pages/portal/Dashboard.jsx       |   6 +
+ frontend/src/pages/portal/GestionStocks.jsx   | 420 ++++++++++++--
+ 17 files changed, 2607 insertions(+), 96 deletions(-)
+ create mode 100644 backend/routes/gestion_stocks_tags.py
+ create mode 100644 backend/tests/test_gestion_stocks_r2_lot20.py
+ create mode 100644 backend/tests/test_gestion_stocks_tags_lot22.py
+ create mode 100644 backend/tests/test_liluvine_wa_prospects_lot21.py
+ create mode 100644 frontend/src/components/R2FileTags.jsx
+ create mode 100644 frontend/src/components/R2StorageGauge.jsx
+
+diff --git a/backend/r2_stocks_client.py b/backend/r2_stocks_client.py
+index fcf0772..a763603 100644
+--- a/backend/r2_stocks_client.py
++++ b/backend/r2_stocks_client.py
+@@ -48,7 +48,9 @@ def _get_client():
+ 
+ 
+ def _bucket() -> str:
+-    return (os.environ.get("R2_STOCKS_BUCKET") or "gestion-stocks").strip()
++    # Lot 20 — nom par défaut aligné sur le compartiment réel « gestionstocks »
++    # (sans tiret) ; R2_STOCKS_BUCKET reste prioritaire s'il est défini.
++    return (os.environ.get("R2_STOCKS_BUCKET") or "gestionstocks").strip()
+ 
+ 
+ def is_configured() -> bool:
+@@ -78,10 +80,29 @@ def list_objects(prefix: str) -> List[dict]:
+     return objects
+ 
+ 
++def list_folder_markers(prefix: str) -> List[str]:
++    """Clés des marqueurs de dossier (objets vides terminés par « / ») sous
++    `prefix` — `list_objects` les ignore volontairement (ce ne sont pas des
++    fichiers), mais ils matérialisent un dossier vide (lot 20)."""
++    client = _get_client()
++    keys: List[str] = []
++    paginator = client.get_paginator("list_objects_v2")
++    for page in paginator.paginate(Bucket=_bucket(), Prefix=prefix):
++        for item in page.get("Contents", []):
++            if item["Key"].endswith("/"):
++                keys.append(item["Key"])
++    return keys
++
++
+ def put_bytes(key: str, data: bytes, content_type: str = "application/octet-stream") -> None:
+     _get_client().put_object(Bucket=_bucket(), Key=key, Body=data, ContentType=content_type)
+ 
+ 
++def get_bytes(key: str) -> bytes:
++    """Lot 22 — contenu d'un fichier (analyse IA à la demande pour suggérer des tags)."""
++    return _get_client().get_object(Bucket=_bucket(), Key=key)["Body"].read()
++
++
+ def get_presigned_url(key: str, expires_in: int = 300) -> str:
+     """URL de lecture temporaire (GET), pour que le navigateur du pharmacien
+     ouvre/télécharge le fichier directement depuis R2 sans passer par le
+diff --git a/backend/routes/gestion_stocks.py b/backend/routes/gestion_stocks.py
+index 2b1ef37..c1add85 100644
+--- a/backend/routes/gestion_stocks.py
++++ b/backend/routes/gestion_stocks.py
+@@ -24,13 +24,14 @@ jamais de requête Mongo lui-même et n'a aucun accès direct à la base
+ """
+ from __future__ import annotations
+ 
++import asyncio
+ import json
+ import logging
+ import os
+ from datetime import datetime, timedelta, timezone
+ from typing import Any, Dict, List, Optional
+ 
+-from fastapi import Body, Depends, File, HTTPException, Query, UploadFile
++from fastapi import Body, Depends, File, Form, HTTPException, Query, UploadFile
+ 
+ logger = logging.getLogger("sawali.gestion_stocks")
+ 
+@@ -47,6 +48,21 @@ DEFAULT_FOLDERS: List[str] = [
+ 
+ MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 Mo par fichier
+ 
++# Lot 20 — pseudo-dossier désignant la racine du code client (fichiers posés
++# directement sous `<client_code>/`, hors de tout sous-dossier, par exemple
++# via le tableau de bord Cloudflare). Lecture seule : on n'y dépose pas.
++ROOT_FOLDER = "_racine"
++
++# Lot 20 — dépôts par les utilisateurs suivis et espace alloué par tenant.
++# Taille max d'un fichier déposé par un utilisateur suivi autorisé (réglable
++# par utilisateur suivi dans Admin → Utilisateurs suivis → « Dépôt R2 »).
++DEFAULT_TRACKED_UPLOAD_MAX_MB = 1.5
++# Espace R2 alloué à un client/tenant (tous ses dossiers), réglable dans
++# Admin → Clients → SMART Communications → « Espace de stockage R2 ».
++DEFAULT_TENANT_QUOTA_GB = 2.0
++_MB = 1024 * 1024
++_GB = 1024 * 1024 * 1024
++
+ 
+ def _now() -> str:
+     return datetime.now(timezone.utc).isoformat()
+@@ -83,6 +99,123 @@ def _safe_filename(name: str) -> str:
+     return "".join(c for c in base if c.isalnum() or c in (" ", ".", "-", "_")).strip() or "fichier"
+ 
+ 
++# ----------------------------------------------------------------------
++# Lot 20 — droits de dépôt des utilisateurs suivis et quota par tenant
++# ----------------------------------------------------------------------
++def _check_folder(folder: str, *, allow_root: bool) -> None:
++    """Nom de dossier accepté : un des 6 dossiers standard, un sous-dossier
++    existant (nom simple, sans « / » ni « .. »), ou la racine si autorisée.
++    Le préfixe `<client_code>/` est toujours ajouté par le serveur : un nom de
++    dossier ne peut jamais sortir de l'espace du tenant."""
++    if folder == ROOT_FOLDER:
++        if allow_root:
++            return
++        raise HTTPException(status_code=400, detail="Déposez vos fichiers dans un dossier, pas à la racine.")
++    if folder in DEFAULT_FOLDERS:
++        return
++    if not folder or len(folder) > 100 or "/" in folder or "\\" in folder or folder in (".", "..") or folder.startswith("."):
++        raise HTTPException(status_code=404, detail="Dossier inconnu.")
++
++
++def _discover_folders(objects: List[dict], code: str) -> Dict[str, Any]:
++    """Dossiers réellement présents sous `<code>/` (1er niveau) et nombre de
++    fichiers posés directement à la racine."""
++    prefix = f"{code}/"
++    extra, root_files = set(), 0
++    for o in objects:
++        rest = o["key"][len(prefix):]
++        if "/" in rest:
++            extra.add(rest.split("/", 1)[0])
++        elif rest:
++            root_files += 1
++    others = sorted(f for f in extra if f and f not in DEFAULT_FOLDERS)
++    return {"folders": DEFAULT_FOLDERS + others, "extra_folders": others, "root_files": root_files,
++            "present": sorted(f for f in extra if f)}
++
++
++def _is_staff(user: dict) -> bool:
++    """Administrateur ou superviseur SAWALI : accès complet au module."""
++    return (user.get("role") or "") in ("admin", "superviseur")
++
++
++def _fmt_mb(n_bytes: float) -> str:
++    """Taille lisible en Mo, virgule décimale française (« 1,5 Mo »)."""
++    return f"{n_bytes / _MB:.2f}".rstrip("0").rstrip(".").replace(".", ",") + " Mo"
++
++
++def _fmt_gb(n_bytes: float) -> str:
++    return f"{n_bytes / _GB:.2f}".rstrip("0").rstrip(".").replace(".", ",") + " Go"
++
++
++def _clean_max_mb(value) -> float:
++    """Taille max par fichier d'un utilisateur suivi : nombre > 0, sinon défaut."""
++    try:
++        v = float(value)
++        return v if v > 0 else DEFAULT_TRACKED_UPLOAD_MAX_MB
++    except (TypeError, ValueError):
++        return DEFAULT_TRACKED_UPLOAD_MAX_MB
++
++
++def _clean_quota_gb(value) -> float:
++    """Espace alloué au tenant : nombre > 0, sinon défaut (2 Go)."""
++    try:
++        v = float(value)
++        return v if v > 0 else DEFAULT_TENANT_QUOTA_GB
++    except (TypeError, ValueError):
++        return DEFAULT_TENANT_QUOTA_GB
++
++
++async def _tracked_upload_rights(db, user: dict) -> Dict[str, Any]:
++    """Droit de dépôt d'un utilisateur suivi, lu sur sa fiche `tracked_users`
++    (liée au compte de connexion par `tracked_user_id`) — jamais depuis la requête."""
++    tu_id = user.get("tracked_user_id")
++    tu = await db.tracked_users.find_one(
++        {"id": tu_id}, {"_id": 0, "r2_upload_allowed": 1, "r2_upload_max_mb": 1},
++    ) if tu_id else None
++    tu = tu or {}
++    return {
++        "allowed": bool(tu.get("r2_upload_allowed")),
++        "max_mb": _clean_max_mb(tu.get("r2_upload_max_mb", DEFAULT_TRACKED_UPLOAD_MAX_MB)),
++    }
++
++
++async def _tenant_by_code(db, code: str) -> Optional[dict]:
++    """Fiche du client/tenant (compte principal, pas un utilisateur suivi) qui porte ce client_code."""
++    return await db.users.find_one(
++        {"client_code": {"$in": [code, code.lower()]}, "tracked_user_id": {"$in": [None, ""]},
++         "tracked_role": {"$in": [None, ""]}},
++        {"_id": 0, "id": 1, "client_code": 1, "company": 1, "full_name": 1, "gestion_stocks_quota_gb": 1},
++    )
++
++
++async def _storage_usage(db, code: str) -> Dict[str, Any]:
++    """Espace occupé par tous les fichiers du tenant (préfixe `<client_code>/`) et espace alloué."""
++    from r2_stocks_client import list_objects
++    import asyncio
++    objects = await asyncio.to_thread(list_objects, f"{code}/")
++    used = sum(int(o.get("size") or 0) for o in objects)
++    tenant = await _tenant_by_code(db, code) or {}
++    quota_gb = _clean_quota_gb(tenant.get("gestion_stocks_quota_gb", DEFAULT_TENANT_QUOTA_GB))
++    return {
++        "client_code": code,
++        "files": len(objects),
++        "used_bytes": used,
++        "quota_gb": quota_gb,
++        "quota_bytes": int(quota_gb * _GB),
++    }
++
++
++def _quota_refusal(usage: Dict[str, Any], size: int) -> Optional[str]:
++    """Motif de refus si le fichier ferait dépasser l'espace alloué au tenant, sinon None."""
++    if usage["used_bytes"] + size <= usage["quota_bytes"]:
++        return None
++    return (
++        f"Fichier refusé : espace de stockage insuffisant. {_fmt_gb(usage['used_bytes'])} "
++        f"déjà utilisés sur {_fmt_gb(usage['quota_bytes'])} alloués ; ce fichier fait {_fmt_mb(size)}. "
++        "Libérez de l'espace ou demandez à votre administrateur SAWALI d'augmenter l'espace alloué."
++    )
++
++
+ # ======================================================================
+ # Explorateur BD MongoDB Atlas — agrégations sur le VRAI schéma HFSQL
+ # (fourni par l'utilisateur le 2026-09, "Structure_des_fichiers_HFSQL.zip"),
+@@ -363,6 +496,14 @@ async def _analyse_llm_send(session_id: str, system_text: str, user_text: str) -
+ 
+ 
+ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin):
++    # Lot 20 — les routes « admin » du module sont ouvertes au superviseur
++    # (demande explicite) : admin OU superviseur, jamais un autre rôle.
++    # `get_current_admin` reste accepté dans la signature (appel de server.py inchangé).
++    async def staff_user(user: dict = Depends(get_current_user)) -> dict:
++        if not _is_staff(user):
++            raise HTTPException(status_code=403, detail="Accès réservé à l'administrateur ou au superviseur SAWALI.")
++        return user
++
+ 
+     @api.get("/gestion-stocks/context", tags=["Portail — Gestion Stocks"])
+     async def gestion_stocks_context(user: dict = Depends(get_current_user)):
+@@ -370,7 +511,7 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+         frontend s'en sert pour savoir quoi afficher avant tout listing."""
+         if not _can_access_own_stocks(user):
+             raise HTTPException(status_code=403, detail="Accès réservé aux comptes Pharmacien suivis (et admin/superviseur).")
+-        from r2_stocks_client import is_configured
++        from r2_stocks_client import _bucket, is_configured
+         client_code = None
+         if (user.get("role") or "") in ("admin", "superviseur"):
+             client_code = None  # l'admin choisit un client_code explicitement (voir endpoints /admin/*)
+@@ -380,9 +521,155 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+             "client_code": client_code,
+             "folders": DEFAULT_FOLDERS,
+             "r2_configured": is_configured(),
++            # Lot 20 — nom du compartiment R2 affiché dans le fil d'Ariane de
++            # l'explorateur (information non sensible : ni clé ni compte).
++            "bucket": _bucket() if is_configured() else None,
++            "max_upload_mb": MAX_UPLOAD_BYTES // (1024 * 1024),
+             "is_admin": (user.get("role") or "") in ("admin", "superviseur"),
++            # Droit de dépôt de l'utilisateur courant : admin/superviseur
++            # toujours (25 Mo) ; utilisateur suivi selon sa fiche (défaut 1,5 Mo).
++            **(await _upload_rights_for(user)),
+         }
+ 
++    async def _upload_rights_for(user: dict) -> Dict[str, Any]:
++        if _is_staff(user):
++            return {"can_upload": True, "upload_max_mb": MAX_UPLOAD_BYTES // _MB}
++        rights = await _tracked_upload_rights(db, user)
++        return {"can_upload": rights["allowed"], "upload_max_mb": rights["max_mb"] if rights["allowed"] else None}
++
++    async def _after_upload(*, code: str, key: str, data: bytes, content_type: Optional[str], user: dict,
++                            tags: Optional[str], description: Optional[str]) -> Dict[str, Any]:
++        """Lot 22 — après un dépôt réussi dans R2 : fiche Mongo `stock_files`
++        (tags, description, auteur) et, si le client les a activées,
++        suggestions IA de tags lancées en arrière-plan."""
++        from routes import gestion_stocks_tags as gt
++        doc = await gt.index_upload(db, code=code, key=key, size=len(data),
++                                    content_type=content_type or "application/octet-stream",
++                                    user=user, tags=tags, description=description)
++        ai_started = False
++        try:
++            ai_started = await gt.maybe_schedule_after_upload(db, code=code, key=key, data=data,
++                                                              content_type=content_type or "")
++        except Exception:  # noqa: BLE001 — le dépôt est réussi quoi qu'il arrive à l'IA
++            logger.exception("[gestion_stocks] lancement des suggestions IA échoué key=%s", key)
++        return {"ok": True, "key": key, "size": len(data), "tags": doc.get("tags") or [],
++                "description": doc.get("description") or "", "ai_tags_started": ai_started}
++
++    @api.get("/gestion-stocks/folders", tags=["Portail — Gestion Stocks"])
++    async def gestion_stocks_folders(
++        client_code: Optional[str] = Query(None, description="Admin/superviseur uniquement — ignoré pour un utilisateur suivi."),
++        user: dict = Depends(get_current_user),
++    ):
++        """Dossiers à afficher pour un tenant : les 6 dossiers standard, les
++        autres sous-dossiers réellement présents dans R2, et le nombre de
++        fichiers posés à la racine du code client (pseudo-dossier `_racine`).
++
++        Les 6 dossiers standard manquants sont CRÉÉS dans R2 à la première
++        ouverture (objet marqueur vide `<code>/<dossier>/`, comme le bouton
++        « Ajouter un dossier » de Cloudflare), pour que la page et le tableau
++        de bord Cloudflare affichent la même chose."""
++        if not _can_access_own_stocks(user):
++            raise HTTPException(status_code=403, detail="Accès réservé aux comptes Pharmacien suivis (et admin/superviseur).")
++        code = (client_code or "").strip().upper() if _is_staff(user) else await _resolve_own_client_code(db, user)
++        if not code:
++            raise HTTPException(status_code=409, detail="Aucun code client (client_code) configuré pour ce tenant.")
++        from r2_stocks_client import is_configured, list_folder_markers, put_bytes
++        from r2_stocks_client import list_objects
++        import asyncio
++        if not is_configured():
++            raise HTTPException(status_code=503, detail="Stockage R2 Gestion Stocks non configuré.")
++        try:
++            objects = await asyncio.to_thread(list_objects, f"{code}/")
++            markers = await asyncio.to_thread(list_folder_markers, f"{code}/")
++        except Exception:
++            logger.exception("[gestion_stocks] folder discovery failed code=%s", code)
++            raise HTTPException(status_code=502, detail="Erreur de lecture du stockage R2.")
++        # Les marqueurs de dossier vides comptent comme dossiers existants.
++        found = _discover_folders(objects + [{"key": m} for m in markers], code)
++        present = set(found.pop("present"))
++        # Création des dossiers standard manquants — seulement pour un vrai
++        # client (un code saisi par l'administration qui ne correspond à aucun
++        # client ne crée rien).
++        missing = [f for f in DEFAULT_FOLDERS if f not in present]
++        created: List[str] = []
++        if missing and (not _is_staff(user) or await _tenant_by_code(db, code)):
++            for folder in missing:
++                try:
++                    await asyncio.to_thread(put_bytes, f"{code}/{folder}/", b"", "application/x-directory")
++                    created.append(folder)
++                except Exception:  # noqa: BLE001 — l'affichage ne doit pas échouer pour autant
++                    logger.exception("[gestion_stocks] folder marker creation failed %s/%s", code, folder)
++        from routes.gestion_stocks_tags import tenant_ai_enabled
++        # Lot 22 — l'écran affiche le bouton « Suggérer des tags (IA) » seulement si activé pour ce client.
++        return {"client_code": code, "root_folder": ROOT_FOLDER, "created_folders": created,
++                "ai_tags_enabled": await tenant_ai_enabled(db, code), **found}
++
++    @api.get("/gestion-stocks/storage", tags=["Portail — Gestion Stocks"])
++    async def gestion_stocks_storage(
++        client_code: Optional[str] = Query(None, description="Admin/superviseur uniquement — ignoré pour un utilisateur suivi."),
++        user: dict = Depends(get_current_user),
++    ):
++        """Espace occupé par les fichiers du tenant sur l'espace alloué (tableau
++        de bord de l'utilisateur suivi, jauge de l'explorateur R2)."""
++        if not _can_access_own_stocks(user):
++            raise HTTPException(status_code=403, detail="Accès réservé aux comptes Pharmacien suivis (et admin/superviseur).")
++        code = (client_code or "").strip().upper() if _is_staff(user) else await _resolve_own_client_code(db, user)
++        if not code:
++            raise HTTPException(status_code=409, detail="Aucun code client (client_code) configuré pour ce tenant.")
++        from r2_stocks_client import is_configured
++        if not is_configured():
++            raise HTTPException(status_code=503, detail="Stockage R2 Gestion Stocks non configuré.")
++        try:
++            return await _storage_usage(db, code)
++        except Exception:
++            logger.exception("[gestion_stocks] storage usage failed code=%s", code)
++            raise HTTPException(status_code=502, detail="Erreur de lecture du stockage R2.")
++
++    @api.post("/gestion-stocks/folders/{folder}/upload", tags=["Portail — Gestion Stocks"])
++    async def gestion_stocks_tracked_upload(
++        folder: str,
++        file: UploadFile = File(...),
++        tags: Optional[str] = Form(None, description="Lot 22 — tags séparés par des virgules"),
++        description: Optional[str] = Form(None, description="Lot 22 — description facultative"),
++        user: dict = Depends(get_current_user),
++    ):
++        """Dépôt par un utilisateur suivi AUTORISÉ, dans les dossiers de SON
++        tenant uniquement (client_code résolu côté serveur). Refus motivé si
++        la taille max de son compte ou l'espace alloué au tenant est dépassé."""
++        if _is_staff(user) or (user.get("tracked_role") or "") != "Pharmacien":
++            raise HTTPException(status_code=403, detail="Dépôt réservé aux utilisateurs suivis autorisés (l'administration utilise son propre espace de dépôt).")
++        rights = await _tracked_upload_rights(db, user)
++        if not rights["allowed"]:
++            raise HTTPException(status_code=403, detail="Dépôt refusé : votre compte n'est pas autorisé à déposer des fichiers. Demandez l'autorisation à votre administrateur SAWALI.")
++        _check_folder(folder, allow_root=False)
++        code = await _resolve_own_client_code(db, user)
++        if not code:
++            raise HTTPException(status_code=409, detail="Aucun code client configuré pour votre société — contactez votre administrateur SAWALI.")
++        from r2_stocks_client import is_configured, put_bytes
++        import asyncio
++        if not is_configured():
++            raise HTTPException(status_code=503, detail="Stockage R2 Gestion Stocks non configuré.")
++        data = await file.read()
++        max_bytes = int(rights["max_mb"] * _MB)
++        if len(data) > max_bytes:
++            raise HTTPException(status_code=413, detail=(
++                f"Fichier refusé : « {file.filename} » fait {_fmt_mb(len(data))}, au-delà de la taille maximale "
++                f"autorisée pour votre compte ({_fmt_mb(max_bytes)} par fichier)."
++            ))
++        usage = await _storage_usage(db, code)
++        refusal = _quota_refusal(usage, len(data))
++        if refusal:
++            raise HTTPException(status_code=413, detail=refusal)
++        filename = _safe_filename(file.filename or "fichier")
++        key = f"{code}/{folder}/{filename}"
++        try:
++            await asyncio.to_thread(put_bytes, key, data, file.content_type or "application/octet-stream")
++        except Exception:
++            logger.exception("[gestion_stocks] tracked upload failed key=%s", key)
++            raise HTTPException(status_code=502, detail="Échec de l'envoi vers R2.")
++        return await _after_upload(code=code, key=key, data=data, content_type=file.content_type,
++                                   user=user, tags=tags, description=description)
++
+     @api.post("/gestion-stocks/analyse", tags=["Portail — Gestion Stocks"])
+     async def gestion_stocks_analyse(
+         payload: Dict[str, Any] = Body(...),
+@@ -461,8 +748,7 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+     ):
+         if not _can_access_own_stocks(user):
+             raise HTTPException(status_code=403, detail="Accès réservé aux comptes Pharmacien suivis (et admin/superviseur).")
+-        if folder not in DEFAULT_FOLDERS:
+-            raise HTTPException(status_code=404, detail="Dossier inconnu.")
++        _check_folder(folder, allow_root=True)
+         is_admin = (user.get("role") or "") in ("admin", "superviseur")
+         code = (client_code or "").strip().upper() if is_admin else await _resolve_own_client_code(db, user)
+         if not code:
+@@ -471,12 +757,15 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+         import asyncio
+         if not is_configured():
+             raise HTTPException(status_code=503, detail="Stockage R2 Gestion Stocks non configuré (variables R2_STOCKS_* manquantes).")
+-        prefix = f"{code}/{folder}/"
++        # Racine : fichiers posés directement sous `<code>/` (pas ceux des sous-dossiers).
++        prefix = f"{code}/" if folder == ROOT_FOLDER else f"{code}/{folder}/"
+         try:
+             objects = await asyncio.to_thread(list_objects, prefix)
+         except Exception:
+             logger.exception("[gestion_stocks] list_objects failed prefix=%s", prefix)
+             raise HTTPException(status_code=502, detail="Erreur de lecture du stockage R2.")
++        if folder == ROOT_FOLDER:
++            objects = [o for o in objects if "/" not in o["key"][len(prefix):]]
+         files = [
+             {
+                 "key": o["key"],
+@@ -487,6 +776,15 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+             for o in objects
+         ]
+         files.sort(key=lambda f: f["last_modified"], reverse=True)
++        # Lot 22 — fiches Mongo (créées au passage pour les fichiers qui n'en
++        # ont pas encore) : tags, description, suggestions IA, droit de modifier.
++        from routes import gestion_stocks_tags as gt
++        docs = await gt.ensure_docs(db, code, files)
++        upload_allowed = is_admin or (await _tracked_upload_rights(db, user))["allowed"]
++        for f in files:
++            doc = docs.get(f["key"])
++            f.update(gt.public_meta(doc))
++            f["can_edit"] = gt.can_edit(user, doc, is_staff=is_admin, upload_allowed=upload_allowed)
+         return {"client_code": code, "folder": folder, "files": files}
+ 
+     @api.get("/gestion-stocks/files/view-url", tags=["Portail — Gestion Stocks"])
+@@ -521,7 +819,7 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+     # discuté ; en attendant, l'admin peut déposer des documents à la main).
+     # ------------------------------------------------------------------
+     @api.get("/admin/gestion-stocks/clients", tags=["Admin — Gestion Stocks"])
+-    async def admin_gestion_stocks_clients(_: dict = Depends(get_current_admin)):
++    async def admin_gestion_stocks_clients(_: dict = Depends(staff_user)):
+         cursor = db.users.find(
+             {"client_code": {"$exists": True, "$nin": [None, ""]}},
+             {"_id": 0, "id": 1, "client_code": 1, "company": 1, "full_name": 1},
+@@ -540,10 +838,11 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+         client_code: str,
+         folder: str,
+         file: UploadFile = File(...),
+-        _: dict = Depends(get_current_admin),
++        tags: Optional[str] = Form(None, description="Lot 22 — tags séparés par des virgules"),
++        description: Optional[str] = Form(None, description="Lot 22 — description facultative"),
++        user: dict = Depends(staff_user),
+     ):
+-        if folder not in DEFAULT_FOLDERS:
+-            raise HTTPException(status_code=404, detail="Dossier inconnu.")
++        _check_folder(folder, allow_root=False)
+         code = (client_code or "").strip().upper()
+         if not code:
+             raise HTTPException(status_code=400, detail="client_code manquant.")
+@@ -554,6 +853,10 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+         data = await file.read()
+         if len(data) > MAX_UPLOAD_BYTES:
+             raise HTTPException(status_code=413, detail=f"Fichier trop volumineux (max {MAX_UPLOAD_BYTES // (1024*1024)} Mo).")
++        # Lot 20 — l'espace alloué au tenant vaut aussi pour les dépôts de l'administration.
++        refusal = _quota_refusal(await _storage_usage(db, code), len(data))
++        if refusal:
++            raise HTTPException(status_code=413, detail=refusal)
+         filename = _safe_filename(file.filename or "fichier")
+         key = f"{code}/{folder}/{filename}"
+         try:
+@@ -561,12 +864,13 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+         except Exception:
+             logger.exception("[gestion_stocks] upload failed key=%s", key)
+             raise HTTPException(status_code=502, detail="Échec de l'envoi vers R2.")
+-        return {"ok": True, "key": key, "size": len(data)}
++        return await _after_upload(code=code, key=key, data=data, content_type=file.content_type,
++                                   user=user, tags=tags, description=description)
+ 
+     @api.delete("/admin/gestion-stocks/file", tags=["Admin — Gestion Stocks"])
+     async def admin_gestion_stocks_delete(
+         key: str = Query(...),
+-        _: dict = Depends(get_current_admin),
++        _: dict = Depends(staff_user),
+     ):
+         from r2_stocks_client import is_configured, delete_object
+         import asyncio
+@@ -577,8 +881,211 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+         except Exception:
+             logger.exception("[gestion_stocks] delete failed key=%s", key)
+             raise HTTPException(status_code=502, detail="Échec de la suppression.")
++        await db.stock_files.delete_one({"key": key})  # Lot 22 — la fiche (tags) part avec le fichier
+         return {"ok": True}
+ 
++    # ------------------------------------------------------------------
++    # Lot 20 — réglages : droit de dépôt par utilisateur suivi, espace alloué par tenant
++    # ------------------------------------------------------------------
++    @api.get("/admin/gestion-stocks/tracked-users/{tu_id}/upload-rights", tags=["Admin — Gestion Stocks"])
++    async def admin_get_upload_rights(tu_id: str, _: dict = Depends(staff_user)):
++        tu = await db.tracked_users.find_one({"id": tu_id}, {"_id": 0, "id": 1, "r2_upload_allowed": 1, "r2_upload_max_mb": 1})
++        if not tu:
++            raise HTTPException(status_code=404, detail="Utilisateur suivi introuvable.")
++        return {
++            "tracked_user_id": tu_id,
++            "allowed": bool(tu.get("r2_upload_allowed")),
++            "max_mb": _clean_max_mb(tu.get("r2_upload_max_mb", DEFAULT_TRACKED_UPLOAD_MAX_MB)),
++            "default_max_mb": DEFAULT_TRACKED_UPLOAD_MAX_MB,
++        }
++
++    @api.put("/admin/gestion-stocks/tracked-users/{tu_id}/upload-rights", tags=["Admin — Gestion Stocks"])
++    async def admin_set_upload_rights(tu_id: str, payload: Dict[str, Any] = Body(...), user: dict = Depends(staff_user)):
++        tu = await db.tracked_users.find_one({"id": tu_id}, {"_id": 0, "id": 1})
++        if not tu:
++            raise HTTPException(status_code=404, detail="Utilisateur suivi introuvable.")
++        try:
++            max_mb = float(payload.get("max_mb", DEFAULT_TRACKED_UPLOAD_MAX_MB))
++        except (TypeError, ValueError):
++            raise HTTPException(status_code=400, detail="Taille maximale invalide.")
++        if not 0 < max_mb <= MAX_UPLOAD_BYTES / _MB:
++            raise HTTPException(status_code=400, detail=f"La taille maximale doit être comprise entre 0 et {MAX_UPLOAD_BYTES // _MB} Mo.")
++        doc = {"r2_upload_allowed": bool(payload.get("allowed")), "r2_upload_max_mb": max_mb,
++               "r2_upload_updated_at": _now(), "r2_upload_updated_by": user["id"]}
++        await db.tracked_users.update_one({"id": tu_id}, {"$set": doc})
++        return {"tracked_user_id": tu_id, "allowed": doc["r2_upload_allowed"], "max_mb": max_mb}
++
++    @api.get("/admin/gestion-stocks/tenants/{client_id}/storage", tags=["Admin — Gestion Stocks"])
++    async def admin_get_tenant_storage(client_id: str, _: dict = Depends(staff_user)):
++        tenant = await db.users.find_one({"id": client_id}, {"_id": 0, "id": 1, "client_code": 1, "gestion_stocks_quota_gb": 1,
++                                                             "gestion_stocks_ai_tags": 1})
++        if not tenant:
++            raise HTTPException(status_code=404, detail="Client introuvable.")
++        code = (tenant.get("client_code") or "").strip().upper()
++        out = {
++            "client_id": client_id, "client_code": code or None,
++            "quota_gb": _clean_quota_gb(tenant.get("gestion_stocks_quota_gb", DEFAULT_TENANT_QUOTA_GB)),
++            "default_quota_gb": DEFAULT_TENANT_QUOTA_GB, "used_bytes": None, "files": None,
++            # Lot 22 — suggestions IA de tags (désactivées par défaut)
++            "ai_tags": bool(tenant.get("gestion_stocks_ai_tags")),
++        }
++        from r2_stocks_client import is_configured
++        if code and is_configured():
++            try:
++                usage = await _storage_usage(db, code)
++                out.update(used_bytes=usage["used_bytes"], files=usage["files"])
++            except Exception:  # noqa: BLE001 — l'affichage du réglage ne doit pas échouer
++                logger.exception("[gestion_stocks] storage usage failed code=%s", code)
++        return out
++
++    @api.put("/admin/gestion-stocks/tenants/{client_id}/storage", tags=["Admin — Gestion Stocks"])
++    async def admin_set_tenant_storage(client_id: str, payload: Dict[str, Any] = Body(...), _: dict = Depends(staff_user)):
++        tenant = await db.users.find_one({"id": client_id}, {"_id": 0, "id": 1})
++        if not tenant:
++            raise HTTPException(status_code=404, detail="Client introuvable.")
++        update: Dict[str, Any] = {}
++        # Lot 22 — `quota_gb` et `ai_tags` sont chacun facultatifs (au moins un des deux).
++        if "quota_gb" in payload:
++            try:
++                quota_gb = float(payload.get("quota_gb"))
++            except (TypeError, ValueError):
++                raise HTTPException(status_code=400, detail="Espace alloué invalide.")
++            if not 0 < quota_gb <= 10000:
++                raise HTTPException(status_code=400, detail="L'espace alloué doit être compris entre 0 et 10 000 Go.")
++            update["gestion_stocks_quota_gb"] = quota_gb
++        if "ai_tags" in payload:
++            update["gestion_stocks_ai_tags"] = bool(payload.get("ai_tags"))
++        if not update:
++            raise HTTPException(status_code=400, detail="Rien à enregistrer.")
++        await db.users.update_one({"id": client_id}, {"$set": update})
++        return {"client_id": client_id, "quota_gb": update.get("gestion_stocks_quota_gb"),
++                "ai_tags": update.get("gestion_stocks_ai_tags")}
++
++    # ------------------------------------------------------------------
++    # Lot 22 — tags et recherche des documents (index Mongo `stock_files`)
++    # ------------------------------------------------------------------
++    async def _code_for(user: dict, client_code: Optional[str]) -> str:
++        """Tenant de la requête : choisi par l'administration, résolu côté
++        serveur pour un utilisateur suivi (jamais depuis la requête)."""
++        if not _can_access_own_stocks(user):
++            raise HTTPException(status_code=403, detail="Accès réservé aux comptes Pharmacien suivis (et admin/superviseur).")
++        code = (client_code or "").strip().upper() if _is_staff(user) else await _resolve_own_client_code(db, user)
++        if not code:
++            raise HTTPException(status_code=409, detail="Aucun code client (client_code) configuré pour ce tenant.")
++        return code
++
++    async def _code_for_key(user: dict, key: str) -> str:
++        """Tenant d'un fichier désigné par sa clé R2 : un utilisateur suivi ne
++        peut jamais viser une clé hors de son propre préfixe."""
++        if not key or ".." in key.split("/") or "/" not in key:
++            raise HTTPException(status_code=400, detail="Fichier invalide.")
++        if _is_staff(user):
++            return key.split("/", 1)[0]
++        code = await _code_for(user, None)
++        if not key.startswith(f"{code}/"):
++            raise HTTPException(status_code=403, detail="Ce document n'appartient pas à votre espace.")
++        return code
++
++    async def _editable_doc(user: dict, key: str) -> Dict[str, Any]:
++        """Fiche d'un fichier que l'utilisateur a le droit de taguer (403 sinon)."""
++        from routes import gestion_stocks_tags as gt
++        code = await _code_for_key(user, key)
++        doc = await db.stock_files.find_one({"key": key}, {"_id": 0})
++        if doc is None:
++            # Fichier sans fiche (posé hors Sawali) : on vérifie qu'il existe dans R2.
++            from r2_stocks_client import list_objects
++            objects = [o for o in await asyncio.to_thread(list_objects, key) if o["key"] == key]
++            if not objects:
++                raise HTTPException(status_code=404, detail="Fichier introuvable.")
++            doc = (await gt.ensure_docs(db, code, objects))[key]
++        allowed = _is_staff(user) or (await _tracked_upload_rights(db, user))["allowed"]
++        if not gt.can_edit(user, doc, is_staff=_is_staff(user), upload_allowed=allowed):
++            raise HTTPException(status_code=403, detail=(
++                "Vous ne pouvez modifier les tags que des fichiers que vous avez déposés vous-même "
++                "(et si votre compte est autorisé à déposer)."))
++        return {"code": code, "doc": doc}
++
++    @api.get("/gestion-stocks/tags", tags=["Portail — Gestion Stocks"])
++    async def gestion_stocks_tags(
++        client_code: Optional[str] = Query(None, description="Admin/superviseur uniquement."),
++        user: dict = Depends(get_current_user),
++    ):
++        """Tags utilisés par le client, avec leur nombre de fichiers."""
++        from routes import gestion_stocks_tags as gt
++        code = await _code_for(user, client_code)
++        return {"client_code": code, "tags": await gt.tag_counts(db, code)}
++
++    @api.get("/gestion-stocks/search", tags=["Portail — Gestion Stocks"])
++    async def gestion_stocks_search(
++        q: str = Query("", max_length=200),
++        tags: str = Query("", description="Tags obligatoires, séparés par des virgules"),
++        client_code: Optional[str] = Query(None, description="Admin/superviseur uniquement."),
++        user: dict = Depends(get_current_user),
++    ):
++        """Recherche dans tous les dossiers du client : nom, tags, description."""
++        from routes import gestion_stocks_tags as gt
++        from r2_stocks_client import is_configured, list_objects
++        code = await _code_for(user, client_code)
++        if not is_configured():
++            raise HTTPException(status_code=503, detail="Stockage R2 Gestion Stocks non configuré.")
++        try:
++            objects = await asyncio.to_thread(list_objects, f"{code}/")
++        except Exception:
++            logger.exception("[gestion_stocks] search list_objects failed code=%s", code)
++            raise HTTPException(status_code=502, detail="Erreur de lecture du stockage R2.")
++        docs = {d["key"]: d async for d in db.stock_files.find({"client_code": code}, {"_id": 0})}
++        results = gt.search(objects, docs, code, q=q, tags=gt.clean_tags(tags))
++        upload_allowed = _is_staff(user) or (await _tracked_upload_rights(db, user))["allowed"]
++        for r in results:
++            r["can_edit"] = gt.can_edit(user, docs.get(r["key"]), is_staff=_is_staff(user), upload_allowed=upload_allowed)
++        return {"client_code": code, "q": q, "tags": gt.clean_tags(tags), "results": results,
++                "truncated": len(results) >= gt.MAX_SEARCH_RESULTS}
++
++    @api.put("/gestion-stocks/files/meta", tags=["Portail — Gestion Stocks"])
++    async def gestion_stocks_set_meta(payload: Dict[str, Any] = Body(...), user: dict = Depends(get_current_user)):
++        """Tags et description d'un fichier (remplacent les précédents)."""
++        from routes import gestion_stocks_tags as gt
++        key = str(payload.get("key") or "")
++        ctx = await _editable_doc(user, key)
++        update: Dict[str, Any] = {"updated_at": _now()}
++        if "tags" in payload:
++            update["tags"] = gt.clean_tags(payload.get("tags"))
++        if "description" in payload:
++            update["description"] = gt.clean_description(payload.get("description"))
++        await db.stock_files.update_one({"key": key}, {"$set": update})
++        doc = await db.stock_files.find_one({"key": key}, {"_id": 0})
++        return {"key": key, **gt.public_meta(doc), "can_edit": True, "client_code": ctx["code"]}
++
++    @api.post("/gestion-stocks/files/suggest-tags", tags=["Portail — Gestion Stocks"])
++    async def gestion_stocks_suggest_tags(payload: Dict[str, Any] = Body(...), user: dict = Depends(get_current_user)):
++        """Suggestions IA de tags pour un fichier déjà déposé (à la demande).
++        Réservé aux clients pour lesquels l'administration a activé l'option."""
++        from routes import gestion_stocks_tags as gt
++        from r2_stocks_client import get_bytes, is_configured
++        key = str(payload.get("key") or "")
++        ctx = await _editable_doc(user, key)
++        if not await gt.tenant_ai_enabled(db, ctx["code"]):
++            raise HTTPException(status_code=403, detail=(
++                "Les suggestions de tags par l'IA ne sont pas activées pour ce client "
++                "(Admin → Clients → SMART Communications → Espace de stockage R2)."))
++        name = ctx["doc"].get("name") or key.rsplit("/", 1)[-1]
++        if not gt.is_ai_taggable(name, ctx["doc"].get("size")):
++            raise HTTPException(status_code=400, detail=(
++                "Ce type de fichier ne peut pas être analysé par l'IA (PDF, images, .txt et .csv "
++                "de 10 Mo au plus uniquement)."))
++        if not is_configured():
++            raise HTTPException(status_code=503, detail="Stockage R2 Gestion Stocks non configuré.")
++        try:
++            data = await asyncio.to_thread(get_bytes, key)
++        except Exception:
++            logger.exception("[gestion_stocks] get_bytes failed key=%s", key)
++            raise HTTPException(status_code=502, detail="Erreur de lecture du stockage R2.")
++        out = await gt.suggest_tags(db, code=ctx["code"], key=key, data=data,
++                                    content_type=ctx["doc"].get("content_type") or gt.guess_content_type(name),
++                                    filename=name)
++        doc = await db.stock_files.find_one({"key": key}, {"_id": 0})
++        return {"key": key, **gt.public_meta(doc), "cost_xof": out["cost_xof"]}
++
+     logger.info("[gestion_stocks] routes mounted under /api/gestion-stocks and /api/admin/gestion-stocks")
+ 
+ 
+diff --git a/backend/routes/gestion_stocks_tags.py b/backend/routes/gestion_stocks_tags.py
+new file mode 100644
+index 0000000..e939b91
+--- /dev/null
++++ b/backend/routes/gestion_stocks_tags.py
+@@ -0,0 +1,330 @@
++"""Lot 22 — Tags et recherche des documents de l'Explorateur Stockage R2
++(Gestion de Stocks).
++
++R2 ne sait lister un compartiment que par préfixe (chemin) : il ne peut pas
++retrouver « tous les fichiers tagués facture ». Les tags vivent donc dans
++MongoDB, dans la collection `stock_files` (une fiche par fichier R2), et la
++recherche se fait côté serveur :
++  - R2 reste la SOURCE DE VÉRITÉ des fichiers (un fichier supprimé dans
++    Cloudflare disparaît des résultats, même si sa fiche existe encore) ;
++  - la fiche porte : tags, description, auteur du dépôt, suggestions IA.
++
++Fiche `stock_files` :
++  id, client_code, key (clé R2 complète, unique), folder, name, size,
++  content_type, tags [str], description, uploaded_by (id du compte ou None
++  pour un fichier posé hors Sawali), uploaded_by_name, created_at,
++  updated_at, ai_suggested_tags [str], ai_suggested_description, ai_model,
++  ai_cost_xof (cumul), ai_at, ai_error.
++
++Suggestions IA (facultatives, désactivées par défaut, activables par client
++dans SMART Communications → « Espace de stockage R2 ») : on réutilise le
++module commun `ocr_core` (lot 19) avec Claude Haiku 4.5, le modèle le moins
++cher, et on déduit les tags de sa réponse (type de document, fournisseur,
++mois/année). Les suggestions ne sont JAMAIS appliquées d'office : l'utilisateur
++les ajoute d'un clic.
++
++Ce module est importé en différé par routes/gestion_stocks.py (pas
++d'import circulaire) et réutilise ses helpers de droits et de tenant.
++"""
++from __future__ import annotations
++
++import asyncio
++import logging
++import mimetypes
++import re
++import unicodedata
++import uuid
++from typing import Any, Dict, Iterable, List, Optional
++
++from routes.gestion_stocks import ROOT_FOLDER, _now
++
++logger = logging.getLogger("sawali.gestion_stocks.tags")
++
++MAX_TAGS = 15              # tags par fichier
++MAX_TAG_LEN = 40           # caractères par tag
++MAX_DESCRIPTION = 500      # caractères de description
++MAX_SEARCH_RESULTS = 200
++
++# Suggestions IA : modèle le moins cher du catalogue ocr_core, fichiers
++# lisibles par ocr_core uniquement, et pas au-delà de 10 Mo.
++AI_TAGS_MODEL = "claude-haiku-4-5-20251001"
++AI_MAX_BYTES = 10 * 1024 * 1024
++AI_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "webp", "gif", "txt", "csv"}
++
++# Consigne système propre à la Gestion de Stocks (le format de réponse JSON
++# est celui, commun, de ocr_core).
++def _ai_system_prompt() -> str:
++    import ocr_core
++    return ocr_core.build_system_prompt(
++        organisation="SAWALI SMART SYSTEMS (gestion de stocks des pharmacies et officines, au Burkina Faso)",
++        documents=(
++            "dans l'espace documentaire de gestion de stocks d'une pharmacie : inventaire, état de stock, "
++            "rapport, analyse, contrôle qualité, facture ou bon de livraison de grossiste-répartiteur, etc."
++        ),
++    )
++
++
++_MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
++         "septembre", "octobre", "novembre", "décembre"]
++
++# Tâches de suggestion IA lancées en arrière-plan après un dépôt (référence
++# gardée pour qu'elles ne soient pas collectées avant la fin).
++_PENDING: set = set()
++
++
++# ----------------------------------------------------------------------
++# Normalisation
++# ----------------------------------------------------------------------
++def norm_text(value: str) -> str:
++    """Texte comparable : minuscules, sans accents, espaces réduits
++    (« Contrôle  Qualité » → « controle qualite »)."""
++    s = unicodedata.normalize("NFKD", str(value or ""))
++    s = "".join(c for c in s if not unicodedata.combining(c))
++    return re.sub(r"\s+", " ", s).strip().lower()
++
++
++def clean_tags(raw: Any) -> List[str]:
++    """Liste de tags propre à partir d'une liste ou d'un texte « a, b ; c » :
++    minuscules, espaces réduits, caractères spéciaux retirés, 40 caractères
++    max par tag, 15 tags max, sans doublon (ordre conservé)."""
++    if raw is None:
++        return []
++    items: Iterable[Any] = re.split(r"[,;\n]", raw) if isinstance(raw, str) else raw
++    out: List[str] = []
++    seen = set()
++    for item in items:
++        tag = re.sub(r"[^\w\s\-.'&]", "", str(item or ""), flags=re.UNICODE)
++        tag = re.sub(r"\s+", " ", tag).strip().lower()[:MAX_TAG_LEN].strip()
++        key = norm_text(tag)
++        if tag and key not in seen:
++            seen.add(key)
++            out.append(tag)
++        if len(out) >= MAX_TAGS:
++            break
++    return out
++
++
++def clean_description(raw: Any) -> str:
++    return re.sub(r"\s+", " ", str(raw or "")).strip()[:MAX_DESCRIPTION]
++
++
++def split_key(code: str, key: str) -> Dict[str, str]:
++    """Dossier et nom d'un fichier à partir de sa clé R2 `<code>/<dossier>/<nom>`
++    (ou `<code>/<nom>` pour un fichier posé à la racine → dossier `_racine`)."""
++    rest = key[len(code) + 1:]
++    if "/" in rest:
++        folder, name = rest.split("/", 1)
++        return {"folder": folder, "name": name}
++    return {"folder": ROOT_FOLDER, "name": rest}
++
++
++def is_ai_taggable(name: str, size: Optional[int]) -> bool:
++    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
++    return ext in AI_EXTENSIONS and (size is None or size <= AI_MAX_BYTES)
++
++
++def guess_content_type(name: str) -> str:
++    return mimetypes.guess_type(name)[0] or "application/octet-stream"
++
++
++# ----------------------------------------------------------------------
++# Tags déduits de l'analyse ocr_core
++# ----------------------------------------------------------------------
++def tags_from_ocr(result: Dict[str, Any]) -> List[str]:
++    """Tags proposés à partir d'un résultat ocr_core : type de document,
++    fournisseur/émetteur, mois et année du document (6 au plus)."""
++    tags: List[str] = []
++    if result.get("document_type"):
++        tags.append(str(result["document_type"]))
++    fields = result.get("extracted_fields") or {}
++    date_done = False
++    for k, v in fields.items():
++        kn = norm_text(k)
++        if isinstance(v, str) and len(v.strip()) <= MAX_TAG_LEN and any(
++            w in kn for w in ("fournisseur", "emetteur", "laboratoire", "grossiste", "vendeur", "repartiteur")
++        ):
++            tags.append(v)
++        if not date_done and ("date" in kn or "periode" in kn):
++            m = re.search(r"(20\d{2}|19\d{2})-(\d{2})", str(v))
++            if m and 1 <= int(m.group(2)) <= 12:
++                tags += [f"{_MOIS[int(m.group(2)) - 1]} {m.group(1)}", m.group(1)]
++                date_done = True
++    return clean_tags(tags)[:6]
++
++
++# ----------------------------------------------------------------------
++# Accès à l'index Mongo
++# ----------------------------------------------------------------------
++async def tenant_ai_enabled(db, code: str) -> bool:
++    """Suggestions IA activées pour ce client (désactivées par défaut)."""
++    tenant = await db.users.find_one(
++        {"client_code": {"$in": [code, code.lower()]}, "tracked_user_id": {"$in": [None, ""]},
++         "tracked_role": {"$in": [None, ""]}},
++        {"_id": 0, "gestion_stocks_ai_tags": 1},
++    )
++    return bool((tenant or {}).get("gestion_stocks_ai_tags"))
++
++
++async def index_upload(db, *, code: str, key: str, size: int, content_type: str, user: dict,
++                       tags: Any = None, description: Any = None) -> Dict[str, Any]:
++    """Crée ou met à jour la fiche d'un fichier qui vient d'être déposé
++    (un dépôt sous le même nom remplace le fichier : la fiche est conservée,
++    ses tags aussi sauf si de nouveaux tags sont fournis)."""
++    parts = split_key(code, key)
++    now = _now()
++    set_doc: Dict[str, Any] = {
++        "client_code": code, "folder": parts["folder"], "name": parts["name"], "size": size,
++        "content_type": content_type, "updated_at": now,
++        "uploaded_by": user.get("id"), "uploaded_by_name": user.get("full_name") or user.get("email") or "",
++    }
++    new_tags = clean_tags(tags)
++    if new_tags:
++        set_doc["tags"] = new_tags
++    if description is not None and clean_description(description):
++        set_doc["description"] = clean_description(description)
++    on_insert = {"id": str(uuid.uuid4()), "key": key, "created_at": now,
++                 "ai_suggested_tags": [], "ai_suggested_description": "", "ai_cost_xof": 0.0}
++    if "tags" not in set_doc:
++        on_insert["tags"] = []
++    if "description" not in set_doc:
++        on_insert["description"] = ""
++    await db.stock_files.update_one({"key": key}, {"$set": set_doc, "$setOnInsert": on_insert}, upsert=True)
++    return await db.stock_files.find_one({"key": key}, {"_id": 0})
++
++
++async def ensure_docs(db, code: str, files: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
++    """Fiches des fichiers listés, créées au passage pour les fichiers qui
++    n'en ont pas encore (fichiers déposés avant le lot 22 ou depuis Cloudflare).
++    Renvoie {clé R2: fiche}."""
++    keys = [f["key"] for f in files]
++    docs = {d["key"]: d async for d in db.stock_files.find({"key": {"$in": keys}}, {"_id": 0})}
++    now = _now()
++    missing = []
++    for f in files:
++        if f["key"] in docs:
++            continue
++        parts = split_key(code, f["key"])
++        doc = {"id": str(uuid.uuid4()), "client_code": code, "key": f["key"], "folder": parts["folder"],
++               "name": parts["name"], "size": f.get("size"), "content_type": guess_content_type(parts["name"]),
++               "tags": [], "description": "", "uploaded_by": None, "uploaded_by_name": "",
++               "ai_suggested_tags": [], "ai_suggested_description": "", "ai_cost_xof": 0.0,
++               "created_at": now, "updated_at": now}
++        missing.append(doc)
++        docs[f["key"]] = doc
++    if missing:
++        await db.stock_files.insert_many([dict(d) for d in missing])
++    return docs
++
++
++def can_edit(user: dict, doc: Optional[Dict[str, Any]], *, is_staff: bool, upload_allowed: bool) -> bool:
++    """Admin/superviseur : tout. Utilisateur suivi : seulement s'il est
++    autorisé à déposer ET que le fichier est le sien."""
++    if is_staff:
++        return True
++    return bool(upload_allowed and doc and doc.get("uploaded_by") and doc.get("uploaded_by") == user.get("id"))
++
++
++def public_meta(doc: Optional[Dict[str, Any]]) -> Dict[str, Any]:
++    """Champs de la fiche renvoyés à l'écran."""
++    doc = doc or {}
++    return {
++        "tags": doc.get("tags") or [],
++        "description": doc.get("description") or "",
++        "uploaded_by_name": doc.get("uploaded_by_name") or "",
++        "ai_suggested_tags": [t for t in (doc.get("ai_suggested_tags") or []) if t not in (doc.get("tags") or [])],
++        "ai_suggested_description": doc.get("ai_suggested_description") or "",
++        "ai_error": doc.get("ai_error") or "",
++    }
++
++
++async def tag_counts(db, code: str) -> List[Dict[str, Any]]:
++    """Tags utilisés par ce client avec leur nombre de fichiers (les plus
++    fréquents d'abord) — suggestions de saisie et pastilles de filtre."""
++    counts: Dict[str, int] = {}
++    async for d in db.stock_files.find({"client_code": code, "tags.0": {"$exists": True}}, {"_id": 0, "tags": 1}):
++        for t in d.get("tags") or []:
++            counts[t] = counts.get(t, 0) + 1
++    return [{"tag": t, "count": n} for t, n in sorted(counts.items(), key=lambda x: (-x[1], x[0]))]
++
++
++def search(objects: List[Dict[str, Any]], docs: Dict[str, Dict[str, Any]], code: str,
++           q: str = "", tags: Optional[List[str]] = None) -> List[Dict[str, Any]]:
++    """Recherche dans TOUS les dossiers du client : chaque mot de `q` doit
++    figurer dans le nom, les tags ou la description (sans tenir compte des
++    accents ni des majuscules) ; chaque tag de `tags` doit être posé sur le fichier.
++    `objects` = contenu réel de R2 (source de vérité), `docs` = fiches Mongo."""
++    words = norm_text(q).split()
++    wanted = [norm_text(t) for t in (tags or [])]
++    out = []
++    for o in objects:
++        parts = split_key(code, o["key"])
++        doc = docs.get(o["key"]) or {}
++        file_tags = doc.get("tags") or []
++        norm_tags = [norm_text(t) for t in file_tags]
++        if any(t not in norm_tags for t in wanted):
++            continue
++        if words:
++            hay = norm_text(" ".join([parts["name"], parts["folder"], *file_tags, doc.get("description") or ""]))
++            if any(w not in hay for w in words):
++                continue
++        out.append({"key": o["key"], "name": parts["name"], "folder": parts["folder"],
++                    "size": o.get("size"), "last_modified": o.get("last_modified"), **public_meta(doc)})
++    out.sort(key=lambda f: f.get("last_modified") or "", reverse=True)
++    return out[:MAX_SEARCH_RESULTS]
++
++
++# ----------------------------------------------------------------------
++# Suggestions IA
++# ----------------------------------------------------------------------
++async def suggest_tags(db, *, code: str, key: str, data: bytes, content_type: str, filename: str) -> Dict[str, Any]:
++    """Analyse le fichier avec ocr_core (Haiku 4.5) et enregistre les tags et
++    la description suggérés sur sa fiche. Ne lève jamais : en cas d'échec, le
++    motif est enregistré dans `ai_error`."""
++    import ocr_core
++    result = await ocr_core.analyze_document(
++        data, content_type, filename, AI_TAGS_MODEL,
++        system_prompt=_ai_system_prompt(), default_model=AI_TAGS_MODEL,
++    )
++    suggested = tags_from_ocr(result)
++    description = clean_description(result.get("summary"))
++    error = "" if (suggested or description) else ((result.get("flags") or ["Aucun tag trouvé"])[0])
++    cost = float(result.get("cost_xof") or 0.0)
++    await db.stock_files.update_one({"key": key}, {
++        "$set": {"ai_suggested_tags": suggested, "ai_suggested_description": description,
++                 "ai_model": result.get("model") or AI_TAGS_MODEL, "ai_at": _now(), "ai_error": error},
++        "$inc": {"ai_cost_xof": cost},
++    })
++    logger.info("[gestion_stocks.tags] IA %s : %d tag(s), %.2f FCFA", key, len(suggested), cost)
++    return {"ai_suggested_tags": suggested, "ai_suggested_description": description,
++            "ai_error": error, "cost_xof": cost}
++
++
++def schedule_suggest(db, **kwargs) -> None:
++    """Lance `suggest_tags` en arrière-plan après un dépôt : le dépôt répond
++    tout de suite, les suggestions apparaissent au rafraîchissement suivant."""
++    async def _run():
++        try:
++            await suggest_tags(db, **kwargs)
++        except Exception:  # noqa: BLE001 — ne jamais faire échouer un dépôt pour ça
++            logger.exception("[gestion_stocks.tags] suggestion IA en arrière-plan échouée pour %s", kwargs.get("key"))
++    task = asyncio.get_event_loop().create_task(_run())
++    _PENDING.add(task)
++    task.add_done_callback(_PENDING.discard)
++
++
++async def maybe_schedule_after_upload(db, *, code: str, key: str, data: bytes, content_type: str) -> bool:
++    """Après un dépôt : lance les suggestions IA si le client les a activées
++    et que le fichier s'y prête. Renvoie True si une analyse est lancée."""
++    name = split_key(code, key)["name"]
++    if not is_ai_taggable(name, len(data)) or not await tenant_ai_enabled(db, code):
++        return False
++    schedule_suggest(db, code=code, key=key, data=data, content_type=content_type or guess_content_type(name),
++                     filename=name)
++    return True
++
++
++__all__ = [
++    "AI_TAGS_MODEL", "MAX_TAGS", "can_edit", "clean_description", "clean_tags", "ensure_docs",
++    "index_upload", "is_ai_taggable", "maybe_schedule_after_upload", "norm_text", "public_meta",
++    "search", "split_key", "suggest_tags", "tag_counts", "tags_from_ocr", "tenant_ai_enabled",
++]
+diff --git a/backend/routes/liluvine_pro.py b/backend/routes/liluvine_pro.py
+index b89b06b..eb751c1 100644
+--- a/backend/routes/liluvine_pro.py
++++ b/backend/routes/liluvine_pro.py
+@@ -58,6 +58,34 @@ L'interface chat les affichera automatiquement sous forme de carrousel numérot
+ de quoi il parle. Ne fabrique jamais d'URL : utilise UNIQUEMENT celles fournies dans le
+ contexte. N'inclus pas d'image si aucune ne convient vraiment à la question."""
+ 
++# Lot 21 — Auto-réponse WhatsApp : textes par défaut, modifiables dans
++# Admin → Paramètres → « Liluvine PRO — Auto-réponse WhatsApp » (clés
++# settings.global `liluvine_wa_mode_instructions` et
++# `liluvine_wa_prospect_system_prompt`). Au scope module pour être importés
++# par routes/liluvine_wa_autoreply.py.
++
++# Consignes ajoutées à TOUTE réponse WhatsApp, sous l'en-tête fixe
++# « [IMPORTANT — Mode auto-réponse WhatsApp] » (texte identique à celui qui
++# était écrit en dur avant le lot 21 : rien ne change si l'admin n'y touche pas).
++DEFAULT_WA_MODE_INSTRUCTIONS = (
++    "Tu réponds à un message reçu sur WhatsApp. Sois courtois et concis (3-4 phrases max). "
++    "Ne réponds JAMAIS comme un humain — tu es Liluvine PRO, l'assistant SAWALI. "
++    "Si la question dépasse tes capacités, dis-lui qu'un agent humain va le recontacter rapidement."
++)
++
++# Prompt système des PROSPECTS : expéditeurs non contractuels (numéro inconnu
++# du carnet et des comptes, ou fiche contact étiquetée « prospect »). Il
++# remplace le prompt du tenant, qui décrit un accès aux données métier dont
++# un prospect ne doit rien recevoir.
++DEFAULT_WA_PROSPECT_SYSTEM_PROMPT = """Tu es Liluvine PRO, l'assistante virtuelle de SAWALI SMART SYSTEMS.
++La personne qui t'écrit n'est PAS encore cliente sous contrat : c'est un prospect.
++Tu réponds toujours en **français**, de façon chaleureuse et concise.
++- Présente simplement SAWALI et ses solutions (CRM, Caisse, Facturation, GRH, Tickets, WhatsApp Business, Liluvine) en t'appuyant UNIQUEMENT sur la base de connaissance fournie.
++- Tu n'as accès à AUCUNE donnée client : ne parle jamais de contacts, paiements, tickets, rendez-vous ou dossiers.
++- N'invente ni tarif, ni délai, ni engagement contractuel : si l'information n'est pas dans la base de connaissance, propose qu'un conseiller SAWALI le recontacte.
++- Invite la personne à indiquer son nom, sa structure et son besoin pour qu'un conseiller la rappelle."""
++
++
+ # Iter38r-fix9o (Item 1) — Tenant-configurable system prompt + escalation.
+ # Au SCOPE MODULE (pas dans une closure de attach_liluvine_pro_routes) —
+ # même raison que le hotfix Pydantic de vidal_securisation.py/vidal_patients.py :
+@@ -156,6 +184,10 @@ class AutoreplyConfigPayload(BaseModel):
+     brand_longitude: Optional[float] = Field(None, ge=-180, le=180)
+     brand_hours: Optional[str] = Field(None, max_length=2000)
+     brand_maps_url: Optional[str] = Field(None, max_length=500)
++    # Lot 21 — Prospects WhatsApp (expéditeurs non contractuels) + bloc « Mode WhatsApp » modifiable
++    prospect_enabled: Optional[bool] = None
++    prospect_system_prompt: Optional[str] = Field(None, max_length=20000)
++    mode_instructions: Optional[str] = Field(None, max_length=4000)
+ 
+ 
+ # Bypass list (2026-02) — Admin payload to overwrite the email allowlist.
+@@ -707,6 +739,10 @@ def setup_liluvine_pro_routes(*, db, api, get_current_user, wa_send_text=None):
+         "brand_longitude": "liluvine_wa_brand_longitude",
+         "brand_hours": "liluvine_wa_brand_hours",
+         "brand_maps_url": "liluvine_wa_brand_maps_url",
++        # Lot 21 — Prospects + bloc « Mode WhatsApp »
++        "prospect_enabled": "liluvine_wa_prospect_enabled",
++        "prospect_system_prompt": "liluvine_wa_prospect_system_prompt",
++        "mode_instructions": "liluvine_wa_mode_instructions",
+     }
+ 
+     @api.get("/admin/liluvine-pro/wa-autoreply", tags=["Admin — Liluvine PRO"])
+@@ -739,6 +775,12 @@ def setup_liluvine_pro_routes(*, db, api, get_current_user, wa_send_text=None):
+             "brand_longitude": s.get("liluvine_wa_brand_longitude"),
+             "brand_hours": s.get("liluvine_wa_brand_hours") or "",
+             "brand_maps_url": s.get("liluvine_wa_brand_maps_url") or "",
++            # Lot 21 — Prospects (réponse activée par défaut, comme avant le lot)
++            "prospect_enabled": s.get("liluvine_wa_prospect_enabled") is not False,
++            "prospect_system_prompt": s.get("liluvine_wa_prospect_system_prompt") or "",
++            "mode_instructions": s.get("liluvine_wa_mode_instructions") or "",
++            "default_mode_instructions": DEFAULT_WA_MODE_INSTRUCTIONS,
++            "default_prospect_system_prompt": DEFAULT_WA_PROSPECT_SYSTEM_PROMPT,
+         }
+ 
+     @api.put("/admin/liluvine-pro/wa-autoreply", tags=["Admin — Liluvine PRO"])
+@@ -770,7 +812,8 @@ def setup_liluvine_pro_routes(*, db, api, get_current_user, wa_send_text=None):
+         cursor = db.liluvine_pro_messages.find(
+             {"external_source": "whatsapp_native", "role": "assistant"},
+             {"_id": 0, "id": 1, "session_id": 1, "content": 1, "wa_message_id_out": 1,
+-             "tokens": 1, "created_at": 1, "context_injected": 1},
++             "tokens": 1, "created_at": 1, "context_injected": 1,
++             "prospect": 1},  # Lot 21 — badge « Prospect » dans l'historique
+         ).sort("created_at", -1).limit(min(max(limit, 1), 200))
+         items = await cursor.to_list(min(max(limit, 1), 200))
+         # Enrich with the originating session label
+diff --git a/backend/routes/liluvine_wa_autoreply.py b/backend/routes/liluvine_wa_autoreply.py
+index 36549b3..549a4d9 100644
+--- a/backend/routes/liluvine_wa_autoreply.py
++++ b/backend/routes/liluvine_wa_autoreply.py
+@@ -186,6 +186,33 @@ def _tenant_contract_validity(tenant_doc: Dict[str, Any], default_threshold: int
+     }
+ 
+ 
++async def _is_prospect_sender(db, contact: Optional[Dict[str, Any]]) -> bool:
++    """Lot 21 — Vrai si l'expéditeur WhatsApp n'est pas un client sous contrat :
++      - numéro inconnu : aucune fiche contact et aucun compte utilisateur
++        (le webhook passe alors `contact=None` et rattache le message au
++        tenant principal, c.-à-d. le compte SAWALI lui-même) ;
++      - OU fiche contact portant l'étiquette « prospect » (posée à la main
++        dans le carnet, insensible à la casse).
++    """
++    if not contact:
++        return True
++    tags = contact.get("tags")
++    if tags is None and contact.get("id"):
++        # Le webhook ne transmet pas les étiquettes : on relit la fiche.
++        doc = await db.directory_contacts.find_one({"id": contact["id"]}, {"_id": 0, "tags": 1}) or {}
++        tags = doc.get("tags")
++    return any(str(t).strip().lower() == "prospect" for t in (tags or []))
++
++
++def _is_platform_tenant(tenant_doc: Dict[str, Any]) -> bool:
++    """Lot 21 — Le tenant est le compte de la plateforme SAWALI (admin ou
++    superviseur), et non un client : il n'a pas de contrat avec lui-même, les
++    contrôles de contrat/accès restreint ne le concernent donc pas. Sans cette
++    exception, un compte SAWALI sans `contract_number` bloquait toute réponse
++    IA aux numéros inconnus (et notifiait ses décisionnaires à chaque message)."""
++    return (tenant_doc.get("role") or "") in ("admin", "superviseur")
++
++
+ async def _find_decision_maker_contacts(db, client_id: str) -> List[Dict[str, Any]]:
+     """Contacts marqués "décisionnaire" (Responsable/DG/Directeur, voir
+     is_decision_maker sur DirectoryContactCreate/Update) pour ce tenant —
+@@ -775,7 +802,10 @@ async def autoreply_to_inbound(
+ 
+     # Build the LLM context (reuse the same RAG helper as the chat UI)
+     try:
+-        from routes.liluvine_pro import _fetch_context_snippets, _resolve_base_system_prompt
++        from routes.liluvine_pro import (
++            DEFAULT_WA_MODE_INSTRUCTIONS, DEFAULT_WA_PROSPECT_SYSTEM_PROMPT,
++            _fetch_context_snippets, _resolve_base_system_prompt,
++        )
+     except Exception as exc:
+         logger.warning("[wa_autoreply] could not import liluvine helpers: %s", exc)
+         return {"ok": False, "reason": f"liluvine_import_failed: {exc!r}"}
+@@ -788,13 +818,22 @@ async def autoreply_to_inbound(
+     if not user_doc:
+         return {"ok": False, "reason": "tenant_user_not_found"}
+ 
++    # Lot 21 — Prospect (expéditeur non contractuel) : prompt dédié, aucune
++    # donnée du tenant dans le contexte, et possibilité de couper ces réponses
++    # (Admin → Paramètres → Auto-réponse WhatsApp → « Prospects »).
++    is_prospect = await _is_prospect_sender(db, contact)
++    if is_prospect and settings_doc.get("liluvine_wa_prospect_enabled") is False:
++        return {"ok": False, "reason": "prospect_replies_disabled"}
++    # Lot 21 — le compte de la plateforme n'est pas soumis aux contrôles de contrat.
++    platform_tenant = _is_platform_tenant(user_doc)
++
+     # Lot Liluvine (2026-09, point 3) — contrat invalide/expiré : plutôt que
+     # de générer une réponse IA normale, on notifie le(s) contact(s)
+     # décisionnaire(s) du tenant avec un message admin-configurable, et on
+     # s'arrête là (pas de réponse IA à l'expéditeur dans ce cas).
+     default_overdue_threshold = int(settings_doc.get("contract_overdue_days_default") or 5)
+     contract_status = _tenant_contract_validity(user_doc, default_overdue_threshold)
+-    if not contract_status["valid"]:
++    if not platform_tenant and not contract_status["valid"]:
+         decision_makers = await _find_decision_maker_contacts(db, scope_uid)
+         if not decision_makers:
+             logger.warning(
+@@ -838,7 +877,7 @@ async def autoreply_to_inbound(
+     # (montant de contrat sous le seuil, ou mode explicitement "restricted") :
+     # hors jours/heures ouvrées, on notifie les décisionnaires au lieu de
+     # répondre normalement.
+-    access_mode = _tenant_effective_access_mode(user_doc, settings_doc)
++    access_mode = None if platform_tenant else _tenant_effective_access_mode(user_doc, settings_doc)
+     if access_mode == "restricted":
+         try:
+             open_h = int(str(settings_doc.get("business_open_time") or "09:00").split(":", 1)[0])
+@@ -876,14 +915,21 @@ async def autoreply_to_inbound(
+                 )
+             return {"ok": False, "reason": "access_restricted_outside_hours", "notified_decision_makers": notified}
+ 
+-    ctx = await _fetch_context_snippets(db, user_doc, text)
+-    # Iter40 (2026-02) — Business RAG : queries on RDV/Tickets/HR/Caisse…
+-    # Filtré par ACL (liste blanche par module/numéro).
+-    try:
+-        from routes.liluvine_business_rag import build_business_rag_context
+-        biz_ctx = await build_business_rag_context(db, phone_digits=phone_digits, query=text)
+-    except Exception:  # noqa: BLE001
+-        biz_ctx = ""
++    # Lot 21 — Un prospect ne reçoit AUCUNE donnée du tenant : avant ce lot,
++    # un inconnu qui écrivait « mes contacts » ou « paiements » recevait dans
++    # le contexte de l'IA les 10 derniers contacts/paiements du compte SAWALI.
++    # Seule la base de connaissance (plus bas) reste injectée.
++    if is_prospect:
++        ctx, biz_ctx = "", ""
++    else:
++        ctx = await _fetch_context_snippets(db, user_doc, text)
++        # Iter40 (2026-02) — Business RAG : queries on RDV/Tickets/HR/Caisse…
++        # Filtré par ACL (liste blanche par module/numéro).
++        try:
++            from routes.liluvine_business_rag import build_business_rag_context
++            biz_ctx = await build_business_rag_context(db, phone_digits=phone_digits, query=text)
++        except Exception:  # noqa: BLE001
++            biz_ctx = ""
+     # Iter38r-fix9c — Also inject the Knowledge Base for WhatsApp auto-reply
+     try:
+         from routes.liluvine_kb import build_kb_context
+@@ -899,13 +945,25 @@ async def autoreply_to_inbound(
+     # avec l'auto-réponse WhatsApp. Version SANS règle d'escalade (celle du
+     # chat web) : la réponse WA a déjà son propre marqueur d'escalade
+     # `[ESCALATE: ...]`, ajouté séparément juste plus bas via ESCALATE_PROMPT_HINT.
+-    tenant_system_prompt = await _resolve_base_system_prompt(db, scope_uid)
++    # Lot 21 — Prospect : prompt dédié (settings.global
++    # `liluvine_wa_prospect_system_prompt`, sinon le prompt prospect par défaut).
++    # Client : prompt du tenant, comme avant.
++    if is_prospect:
++        base_prompt = (
++            (settings_doc.get("liluvine_wa_prospect_system_prompt") or "").strip()
++            or DEFAULT_WA_PROSPECT_SYSTEM_PROMPT
++        )
++    else:
++        base_prompt = await _resolve_base_system_prompt(db, scope_uid)
++    # Lot 21 — consignes « Mode WhatsApp » modifiables (vide = texte d'origine).
++    mode_instructions = (
++        (settings_doc.get("liluvine_wa_mode_instructions") or "").strip()
++        or DEFAULT_WA_MODE_INSTRUCTIONS
++    )
+     sys_text = (
+-        tenant_system_prompt
++        base_prompt
+         + "\n\n[IMPORTANT — Mode auto-réponse WhatsApp]\n"
+-        "Tu réponds à un message reçu sur WhatsApp. Sois courtois et concis (3-4 phrases max). "
+-        "Ne réponds JAMAIS comme un humain — tu es Liluvine PRO, l'assistant SAWALI. "
+-        "Si la question dépasse tes capacités, dis-lui qu'un agent humain va le recontacter rapidement."
++        + mode_instructions
+         + (("\n" + ctx) if ctx else "")
+         + (("\n" + biz_ctx) if biz_ctx else "")
+         + (("\n\n" + kb) if kb else "")
+@@ -1036,6 +1094,7 @@ async def autoreply_to_inbound(
+             "message_count": 0,
+             "external_source": "whatsapp_native",
+             "external_payload": {"phone_digits": phone_digits, "contact_id": (contact or {}).get("id")},
++            "prospect": is_prospect,  # Lot 21
+         })
+     await db.liluvine_pro_messages.insert_one({
+         "id": secrets.token_urlsafe(12),
+@@ -1052,6 +1111,7 @@ async def autoreply_to_inbound(
+         "user_id": user_doc["id"], "role": "assistant", "content": final_text,
+         "tokens": tokens, "model": "claude-haiku-4-5-20251001",
+         "context_injected": bool(ctx),
++        "prospect": is_prospect,  # Lot 21 — réponse faite avec le prompt prospect
+         "external_source": "whatsapp_native",
+         "wa_message_id_out": send_res.get("message_id"),
+         "created_at": _now_iso(),
+@@ -1104,7 +1164,7 @@ async def autoreply_to_inbound(
+         "ok": True, "reason": "sent",
+         "wa_out_message_id": send_res.get("message_id"),
+         "session_id": session_id, "reply_message_id": out_msg_id,
+-        "tokens": tokens,
++        "tokens": tokens, "prospect": is_prospect,
+     }
+ 
+ 
+diff --git a/backend/tests/test_gestion_stocks_r2_lot20.py b/backend/tests/test_gestion_stocks_r2_lot20.py
+new file mode 100644
+index 0000000..22f58f3
+--- /dev/null
++++ b/backend/tests/test_gestion_stocks_r2_lot20.py
+@@ -0,0 +1,212 @@
++"""Lot 20 — Explorateur R2 de Gestion de Stocks : accès superviseur, dépôt par
++les utilisateurs suivis autorisés (taille max par utilisateur, 1,5 Mo par
++défaut), espace alloué par tenant (2 Go par défaut) avec refus motivé.
++
++Tests autonomes : MongoDB simulé (mongomock-motor) et R2 simulé en mémoire —
++aucun serveur, aucune clé, aucun réseau.
++Lancer : cd backend && python -m pytest tests/test_gestion_stocks_r2_lot20.py -q
++"""
++from __future__ import annotations
++
++import sys
++import types
++from pathlib import Path
++
++import pytest
++
++pytest.importorskip("mongomock_motor")
++from fastapi import APIRouter, FastAPI, Header, HTTPException  # noqa: E402
++from fastapi.testclient import TestClient  # noqa: E402
++from mongomock_motor import AsyncMongoMockClient  # noqa: E402
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++MB = 1024 * 1024
++USERS = {
++    "admin": {"id": "admin", "role": "admin", "full_name": "Admin"},
++    "sup": {"id": "sup", "role": "superviseur", "full_name": "Superviseur"},
++    # Pharmacien suivi de la pharmacie PDP (tenant « t-pdp »), fiche tracked_users « tu-1 »
++    "suivi": {"id": "suivi", "role": "client", "tracked_role": "Pharmacien", "tracked_user_id": "tu-1",
++              "parent_client_id": "t-pdp", "full_name": "Pharmacien suivi"},
++    "secretaire": {"id": "sec", "role": "client", "tracked_role": "Secrétaire", "tracked_user_id": "tu-2",
++                   "parent_client_id": "t-pdp"},
++}
++
++
++@pytest.fixture()
++def env(monkeypatch):
++    objects: dict = {"PDP/Inventaires/ancien.xlsx": b"x" * 1000}
++    r2 = types.ModuleType("r2_stocks_client")
++    r2._bucket = lambda: "gestionstocks"
++    r2.is_configured = lambda: True
++    r2.list_objects = lambda prefix: [
++        {"key": k, "size": len(v), "last_modified": "2026-09-23T10:00:00"}
++        for k, v in objects.items() if k.startswith(prefix) and not k.endswith("/")
++    ]
++    r2.list_folder_markers = lambda prefix: [k for k in objects if k.startswith(prefix) and k.endswith("/")]
++    r2.put_bytes = lambda key, data, ct="application/octet-stream": objects.__setitem__(key, data)
++    r2.get_presigned_url = lambda key, expires_in=300: "https://r2/signed"
++    r2.delete_object = lambda key: objects.pop(key, None)
++    monkeypatch.setitem(sys.modules, "r2_stocks_client", r2)
++
++    db = AsyncMongoMockClient()["sawali_test"]
++
++    async def get_current_user(x_user: str = Header(...)):
++        if x_user not in USERS:
++            raise HTTPException(status_code=401)
++        return USERS[x_user]
++
++    async def get_current_admin(x_user: str = Header(...)):
++        raise AssertionError("le module ne doit plus utiliser get_current_admin")
++
++    from routes.gestion_stocks import attach_gestion_stocks_routes
++    api = APIRouter(prefix="/api")
++    attach_gestion_stocks_routes(api=api, db=db, get_current_user=get_current_user, get_current_admin=get_current_admin)
++    app = FastAPI()
++    app.include_router(api)
++    with TestClient(app) as client:
++        client.portal.call(db.users.insert_many, [
++            {"id": "t-pdp", "role": "pharmacien", "company": "Pharmacie du Progrès", "client_code": "PDP"},
++            *[dict(u) for u in USERS.values()],
++        ])
++        client.portal.call(db.tracked_users.insert_many, [
++            {"id": "tu-1", "client_id": "t-pdp", "name": "Pharmacien suivi", "role": "Pharmacien"},
++            {"id": "tu-2", "client_id": "t-pdp", "name": "Secrétaire", "role": "Secrétaire"},
++        ])
++        yield types.SimpleNamespace(client=client, db=db, objects=objects)
++
++
++def _h(user):
++    return {"X-User": user}
++
++
++def _post_tracked(env, size, folder="Inventaires", name="f.pdf"):
++    return env.client.post(f"/api/gestion-stocks/folders/{folder}/upload", headers=_h("suivi"),
++                           files={"file": (name, b"a" * size, "application/pdf")})
++
++
++def _set_rights(env, allowed, max_mb=None, who="admin"):
++    body = {"allowed": allowed}
++    if max_mb is not None:
++        body["max_mb"] = max_mb
++    return env.client.put("/api/admin/gestion-stocks/tracked-users/tu-1/upload-rights", headers=_h(who), json=body)
++
++
++def test_superviseur_has_admin_access(env):
++    assert env.client.get("/api/admin/gestion-stocks/clients", headers=_h("sup")).status_code == 200
++    r = env.client.post("/api/admin/gestion-stocks/PDP/Rapports/upload", headers=_h("sup"),
++                        files={"file": ("r.pdf", b"z" * 10, "application/pdf")})
++    assert r.status_code == 200 and "PDP/Rapports/r.pdf" in env.objects
++    ctx = env.client.get("/api/gestion-stocks/context", headers=_h("sup")).json()
++    assert ctx["can_upload"] is True and ctx["upload_max_mb"] == 25 and ctx["bucket"] == "gestionstocks"
++
++
++def test_tracked_user_not_allowed_by_default(env):
++    ctx = env.client.get("/api/gestion-stocks/context", headers=_h("suivi")).json()
++    assert ctx["can_upload"] is False
++    r = _post_tracked(env, 100)
++    assert r.status_code == 403 and "pas autorisé" in r.json()["detail"]
++
++
++def test_rights_default_1_5_mb_and_refusal_message(env):
++    got = env.client.get("/api/admin/gestion-stocks/tracked-users/tu-1/upload-rights", headers=_h("admin")).json()
++    assert got == {"tracked_user_id": "tu-1", "allowed": False, "max_mb": 1.5, "default_max_mb": 1.5}
++    assert _set_rights(env, True).status_code == 200
++    ctx = env.client.get("/api/gestion-stocks/context", headers=_h("suivi")).json()
++    assert ctx["can_upload"] is True and ctx["upload_max_mb"] == 1.5
++    r = _post_tracked(env, 2 * MB, name="gros.pdf")
++    assert r.status_code == 413
++    assert "gros.pdf" in r.json()["detail"] and "1,5 Mo" in r.json()["detail"]
++    ok = _post_tracked(env, MB, name="petit.pdf")
++    assert ok.status_code == 200 and ok.json()["key"] == "PDP/Inventaires/petit.pdf"
++
++
++def test_rights_are_configurable_per_tracked_user(env):
++    _set_rights(env, True, max_mb=3)
++    assert _post_tracked(env, 2 * MB).status_code == 200
++    assert _set_rights(env, True, max_mb=0).status_code == 400
++    assert _set_rights(env, True, max_mb=99).status_code == 400
++    # Seuls l'admin et le superviseur règlent les droits.
++    assert _set_rights(env, True, who="suivi").status_code == 403
++
++
++def test_other_tracked_roles_cannot_upload(env):
++    r = env.client.post("/api/gestion-stocks/folders/Inventaires/upload", headers=_h("secretaire"),
++                        files={"file": ("f.pdf", b"a", "application/pdf")})
++    assert r.status_code == 403
++
++
++def test_tenant_quota_default_2gb_and_refusal(env):
++    got = env.client.get("/api/admin/gestion-stocks/tenants/t-pdp/storage", headers=_h("admin")).json()
++    assert got["quota_gb"] == 2.0 and got["used_bytes"] == 1000 and got["client_code"] == "PDP"
++    # Espace réduit à ~1 Mo : un dépôt qui le dépasserait est refusé, avec le motif.
++    assert env.client.put("/api/admin/gestion-stocks/tenants/t-pdp/storage", headers=_h("admin"),
++                          json={"quota_gb": 0.001}).status_code == 200
++    _set_rights(env, True)
++    r = _post_tracked(env, int(1.2 * MB))
++    assert r.status_code == 413 and "espace de stockage insuffisant" in r.json()["detail"]
++    # Même règle pour un dépôt de l'administration.
++    r2 = env.client.post("/api/admin/gestion-stocks/PDP/Autres/upload", headers=_h("admin"),
++                         files={"file": ("g.pdf", b"a" * int(1.2 * MB), "application/pdf")})
++    assert r2.status_code == 413
++    assert env.client.put("/api/admin/gestion-stocks/tenants/t-pdp/storage", headers=_h("admin"),
++                          json={"quota_gb": -1}).status_code == 400
++
++
++def test_storage_endpoint_scoped_to_own_tenant(env):
++    st = env.client.get("/api/gestion-stocks/storage?client_code=AUTRE", headers=_h("suivi")).json()
++    assert st["client_code"] == "PDP" and st["files"] == 1 and st["quota_bytes"] == 2 * 1024 ** 3
++    staff = env.client.get("/api/gestion-stocks/storage?client_code=PDP", headers=_h("sup")).json()
++    assert staff["used_bytes"] == 1000
++
++
++def test_real_folders_and_root_files_are_listed(env):
++    # Fichier déposé à la racine du code client (ex. via le tableau de bord Cloudflare)
++    # et sous-dossier non standard : tous deux doivent apparaître.
++    env.objects["PDP/INV DEC 2024 - PDP.pdf"] = b"p" * 500
++    env.objects["PDP/Archives 2024/vieux.pdf"] = b"q" * 10
++    env.objects["AUTRE/secret.pdf"] = b"s"
++    got = env.client.get("/api/gestion-stocks/folders", headers=_h("suivi")).json()
++    assert got["client_code"] == "PDP" and got["root_files"] == 1
++    assert got["extra_folders"] == ["Archives 2024"] and got["folders"][:6][0] == "Inventaires"
++    root = env.client.get("/api/gestion-stocks/folders/_racine/files", headers=_h("suivi")).json()
++    assert [f["name"] for f in root["files"]] == ["INV DEC 2024 - PDP.pdf"]
++    extra = env.client.get("/api/gestion-stocks/folders/Archives 2024/files", headers=_h("suivi")).json()
++    assert [f["name"] for f in extra["files"]] == ["vieux.pdf"]
++
++
++def test_folder_names_cannot_escape_tenant(env):
++    for bad in ("..", ".cache"):
++        assert env.client.get(f"/api/gestion-stocks/folders/{bad}/files", headers=_h("suivi")).status_code in (404, 405)
++    # Pas de dépôt à la racine.
++    _set_rights(env, True)
++    r = env.client.post("/api/gestion-stocks/folders/_racine/upload", headers=_h("suivi"),
++                        files={"file": ("f.pdf", b"a", "application/pdf")})
++    assert r.status_code == 400
++
++
++def test_standard_folders_are_created_once_in_r2(env):
++    got = env.client.get("/api/gestion-stocks/folders", headers=_h("suivi")).json()
++    # « Inventaires » existe déjà (un fichier dedans) : seuls les 5 autres sont créés.
++    assert got["created_folders"] == ["Rapports", "Analyses", "Controle qualite", "Factures", "Autres"]
++    assert "PDP/Rapports/" in env.objects and env.objects["PDP/Rapports/"] == b""
++    again = env.client.get("/api/gestion-stocks/folders", headers=_h("suivi")).json()
++    assert again["created_folders"] == [] and again["extra_folders"] == []
++    # Les marqueurs ne sont ni des fichiers listés ni de l'espace occupé.
++    assert env.client.get("/api/gestion-stocks/folders/Rapports/files", headers=_h("suivi")).json()["files"] == []
++    assert env.client.get("/api/gestion-stocks/storage", headers=_h("suivi")).json()["files"] == 1
++    # Un code saisi par l'administration qui ne correspond à aucun client ne crée rien.
++    none = env.client.get("/api/gestion-stocks/folders?client_code=XYZ", headers=_h("admin")).json()
++    assert none["created_folders"] == [] and not any(k.startswith("XYZ/") for k in env.objects)
++
++
++def test_default_bucket_is_gestionstocks(monkeypatch):
++    """Sans R2_STOCKS_BUCKET, le compartiment par défaut est « gestionstocks » (sans tiret)."""
++    pytest.importorskip("boto3")
++    monkeypatch.delitem(sys.modules, "r2_stocks_client", raising=False)
++    import importlib
++    real = importlib.import_module("r2_stocks_client")
++    monkeypatch.delenv("R2_STOCKS_BUCKET", raising=False)
++    assert real._bucket() == "gestionstocks"
++    monkeypatch.setenv("R2_STOCKS_BUCKET", "autre")
++    assert real._bucket() == "autre"
+diff --git a/backend/tests/test_gestion_stocks_tags_lot22.py b/backend/tests/test_gestion_stocks_tags_lot22.py
+new file mode 100644
+index 0000000..e4536db
+--- /dev/null
++++ b/backend/tests/test_gestion_stocks_tags_lot22.py
+@@ -0,0 +1,243 @@
++"""Lot 22 — Tags et recherche des documents de l'Explorateur Stockage R2 :
++fiche Mongo `stock_files` par fichier, tags à la saisie et après coup,
++recherche dans tous les dossiers du client, droits (admin/superviseur : tout ;
++Pharmacien suivi autorisé : ses propres fichiers), suggestions IA facultatives.
++
++Tests autonomes : MongoDB simulé (mongomock-motor), R2 simulé en mémoire, IA
++simulée — aucun serveur, aucune clé, aucun réseau.
++Lancer : cd backend && python -m pytest tests/test_gestion_stocks_tags_lot22.py -q
++"""
++from __future__ import annotations
++
++import asyncio
++import sys
++import types
++from pathlib import Path
++
++import pytest
++
++pytest.importorskip("mongomock_motor")
++from fastapi import APIRouter, FastAPI, Header, HTTPException  # noqa: E402
++from fastapi.testclient import TestClient  # noqa: E402
++from mongomock_motor import AsyncMongoMockClient  # noqa: E402
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++USERS = {
++    "admin": {"id": "admin", "role": "admin", "full_name": "Admin"},
++    "sup": {"id": "sup", "role": "superviseur", "full_name": "Superviseur"},
++    # Pharmacien suivi de la pharmacie PDP (tenant « t-pdp »), fiche tracked_users « tu-1 »
++    "suivi": {"id": "suivi", "role": "client", "tracked_role": "Pharmacien", "tracked_user_id": "tu-1",
++              "parent_client_id": "t-pdp", "full_name": "Pharmacien suivi"},
++    # Autre Pharmacien suivi du même tenant, NON autorisé à déposer
++    "lecteur": {"id": "lecteur", "role": "client", "tracked_role": "Pharmacien", "tracked_user_id": "tu-2",
++                "parent_client_id": "t-pdp", "full_name": "Lecteur"},
++}
++
++# Réponse simulée de ocr_core.analyze_document
++FAKE_OCR = {
++    "document_type": "Facture", "summary": "Facture COPHARMED de décembre 2024 pour 12 produits.",
++    "extracted_fields": {"fournisseur": "COPHARMED", "date": "2024-12-15", "montant total": 150000},
++    "flags": [], "model": "claude-haiku-4-5-20251001", "cost_xof": 1.25,
++}
++
++
++@pytest.fixture()
++def env(monkeypatch):
++    objects: dict = {
++        "PDP/Inventaires/ancien.xlsx": b"x" * 1000,      # fichier posé avant le lot 22
++        "AUTRE/Factures/secret.pdf": b"s" * 10,          # autre client
++    }
++    r2 = types.ModuleType("r2_stocks_client")
++    r2._bucket = lambda: "gestionstocks"
++    r2.is_configured = lambda: True
++    r2.list_objects = lambda prefix: [
++        {"key": k, "size": len(v), "last_modified": f"2026-09-2{i % 9}T10:00:00"}
++        for i, (k, v) in enumerate(objects.items()) if k.startswith(prefix) and not k.endswith("/")
++    ]
++    r2.list_folder_markers = lambda prefix: [k for k in objects if k.startswith(prefix) and k.endswith("/")]
++    r2.put_bytes = lambda key, data, ct="application/octet-stream": objects.__setitem__(key, data)
++    r2.get_bytes = lambda key: objects[key]
++    r2.get_presigned_url = lambda key, expires_in=300: "https://r2/signed"
++    r2.delete_object = lambda key: objects.pop(key, None)
++    monkeypatch.setitem(sys.modules, "r2_stocks_client", r2)
++
++    # IA simulée : compte les appels
++    calls = []
++
++    async def fake_analyze(data, content_type, filename, model_id=None, *, system_prompt, default_model=None):
++        calls.append({"filename": filename, "model": model_id, "content_type": content_type})
++        return dict(FAKE_OCR)
++    import ocr_core
++    monkeypatch.setattr(ocr_core, "analyze_document", fake_analyze)
++
++    db = AsyncMongoMockClient()["sawali_test_lot22"]
++
++    async def get_current_user(x_user: str = Header(...)):
++        if x_user not in USERS:
++            raise HTTPException(status_code=401)
++        return USERS[x_user]
++
++    from routes.gestion_stocks import attach_gestion_stocks_routes
++    api = APIRouter(prefix="/api")
++    attach_gestion_stocks_routes(api=api, db=db, get_current_user=get_current_user, get_current_admin=get_current_user)
++    app = FastAPI()
++    app.include_router(api)
++    with TestClient(app) as client:
++        client.portal.call(db.users.insert_many, [
++            {"id": "t-pdp", "role": "pharmacien", "company": "Pharmacie du Progrès", "client_code": "PDP"},
++            {"id": "t-autre", "role": "pharmacien", "company": "Autre", "client_code": "AUTRE"},
++            *[dict(u) for u in USERS.values()],
++        ])
++        client.portal.call(db.tracked_users.insert_many, [
++            {"id": "tu-1", "client_id": "t-pdp", "role": "Pharmacien", "r2_upload_allowed": True, "r2_upload_max_mb": 5},
++            {"id": "tu-2", "client_id": "t-pdp", "role": "Pharmacien"},
++        ])
++        yield types.SimpleNamespace(client=client, db=db, objects=objects, calls=calls)
++
++
++def _h(user):
++    return {"X-User": user}
++
++
++def _upload(env, name="facture-dec.pdf", tags="", description="", who="suivi", folder="Factures"):
++    url = (f"/api/gestion-stocks/folders/{folder}/upload" if who == "suivi"
++           else f"/api/admin/gestion-stocks/PDP/{folder}/upload")
++    return env.client.post(url, headers=_h(who), data={"tags": tags, "description": description},
++                           files={"file": (name, b"%PDF-1.4 test", "application/pdf")})
++
++
++def _files(env, folder, who="suivi"):
++    params = {} if who == "suivi" or who == "lecteur" else {"client_code": "PDP"}
++    return env.client.get(f"/api/gestion-stocks/folders/{folder}/files", headers=_h(who), params=params).json()["files"]
++
++
++def _drain(env):
++    """Attend la fin des suggestions IA lancées en arrière-plan après un dépôt."""
++    from routes import gestion_stocks_tags as gt
++
++    async def _wait():
++        for _ in range(50):
++            if not gt._PENDING:
++                return
++            await asyncio.sleep(0.01)
++    env.client.portal.call(_wait)
++
++
++def test_upload_with_tags_and_description(env):
++    r = _upload(env, tags="Facture, facture ,  Fournisseur  COPHARMED", description="  Livraison   de décembre ")
++    assert r.status_code == 200
++    body = r.json()
++    assert body["tags"] == ["facture", "fournisseur copharmed"]  # nettoyés, sans doublon
++    assert body["description"] == "Livraison de décembre" and body["ai_tags_started"] is False
++    f = next(x for x in _files(env, "Factures") if x["name"] == "facture-dec.pdf")
++    assert f["tags"] == ["facture", "fournisseur copharmed"] and f["can_edit"] is True
++    assert f["uploaded_by_name"] == "Pharmacien suivi"
++
++
++def test_existing_files_get_a_record_and_rights(env):
++    f = _files(env, "Inventaires")[0]
++    assert f["name"] == "ancien.xlsx" and f["tags"] == [] and f["can_edit"] is False
++    doc = env.client.portal.call(env.db.stock_files.find_one, {"key": "PDP/Inventaires/ancien.xlsx"})
++    assert doc["uploaded_by"] is None and doc["client_code"] == "PDP"
++    # Le Pharmacien suivi ne tague pas un fichier qu'il n'a pas déposé…
++    r = env.client.put("/api/gestion-stocks/files/meta", headers=_h("suivi"),
++                       json={"key": "PDP/Inventaires/ancien.xlsx", "tags": ["inventaire"]})
++    assert r.status_code == 403
++    # … le superviseur, si.
++    r = env.client.put("/api/gestion-stocks/files/meta", headers=_h("sup"),
++                       json={"key": "PDP/Inventaires/ancien.xlsx", "tags": "Inventaire, 2024", "description": "Clôture"})
++    assert r.status_code == 200 and r.json()["tags"] == ["inventaire", "2024"]
++
++
++def test_tracked_user_edits_own_file_only_when_allowed(env):
++    _upload(env, tags="facture")
++    key = "PDP/Factures/facture-dec.pdf"
++    ok = env.client.put("/api/gestion-stocks/files/meta", headers=_h("suivi"), json={"key": key, "tags": ["urgent"]})
++    assert ok.status_code == 200 and ok.json()["tags"] == ["urgent"]
++    # Un Pharmacien suivi non autorisé à déposer voit les tags mais ne modifie rien.
++    assert _files(env, "Factures", who="lecteur")[0]["can_edit"] is False
++    assert env.client.put("/api/gestion-stocks/files/meta", headers=_h("lecteur"),
++                          json={"key": key, "tags": ["x"]}).status_code == 403
++    # Et personne ne vise un fichier hors de son tenant.
++    assert env.client.put("/api/gestion-stocks/files/meta", headers=_h("suivi"),
++                          json={"key": "AUTRE/Factures/secret.pdf", "tags": ["x"]}).status_code == 403
++
++
++def test_search_across_folders_accents_tags_and_tenant(env):
++    _upload(env, name="facture-dec.pdf", tags="facture, copharmed", description="Contrôle des prix")
++    _upload(env, name="rapport.pdf", tags="rapport", folder="Rapports")
++    def search(**params):
++        return env.client.get("/api/gestion-stocks/search", headers=_h("suivi"), params=params).json()
++    # Sans accent ni majuscule, dans la description
++    assert [r["name"] for r in search(q="CONTROLE prix")["results"]] == ["facture-dec.pdf"]
++    # Par tag, tous dossiers confondus
++    res = search(tags="Rapport")["results"]
++    assert [(r["name"], r["folder"]) for r in res] == [("rapport.pdf", "Rapports")]
++    # Par nom de fichier (fichier sans tag), et jamais les fichiers d'un autre client
++    assert [r["name"] for r in search(q="ancien")["results"]] == ["ancien.xlsx"]
++    assert search(q="secret")["results"] == []
++    # Un fichier supprimé dans Cloudflare disparaît des résultats même si sa fiche existe.
++    env.objects.pop("PDP/Rapports/rapport.pdf")
++    assert search(tags="rapport")["results"] == []
++
++
++def test_tag_counts(env):
++    _upload(env, name="a.pdf", tags="facture, copharmed")
++    _upload(env, name="b.pdf", tags="facture")
++    got = env.client.get("/api/gestion-stocks/tags", headers=_h("suivi")).json()
++    assert got["tags"] == [{"tag": "facture", "count": 2}, {"tag": "copharmed", "count": 1}]
++
++
++def test_ai_suggestions_disabled_by_default_then_on_demand(env):
++    _upload(env, tags="facture")
++    key = "PDP/Factures/facture-dec.pdf"
++    r = env.client.post("/api/gestion-stocks/files/suggest-tags", headers=_h("suivi"), json={"key": key})
++    assert r.status_code == 403 and "pas activées" in r.json()["detail"] and env.calls == []
++    # L'administration active l'option pour ce client (sans toucher à l'espace alloué).
++    put = env.client.put("/api/admin/gestion-stocks/tenants/t-pdp/storage", headers=_h("admin"), json={"ai_tags": True})
++    assert put.status_code == 200
++    st = env.client.get("/api/admin/gestion-stocks/tenants/t-pdp/storage", headers=_h("admin")).json()
++    assert st["ai_tags"] is True and st["quota_gb"] == 2.0
++    r = env.client.post("/api/gestion-stocks/files/suggest-tags", headers=_h("suivi"), json={"key": key})
++    assert r.status_code == 200
++    body = r.json()
++    # « facture » est déjà posé : il n'est plus proposé.
++    assert body["ai_suggested_tags"] == ["copharmed", "décembre 2024", "2024"]
++    assert body["ai_suggested_description"].startswith("Facture COPHARMED") and body["cost_xof"] == 1.25
++    assert env.calls[-1]["model"] == "claude-haiku-4-5-20251001"
++    doc = env.client.portal.call(env.db.stock_files.find_one, {"key": key})
++    assert doc["tags"] == ["facture"]  # jamais appliqués d'office
++    assert doc["ai_cost_xof"] == 1.25
++
++
++def test_ai_runs_in_background_after_upload_when_enabled(env):
++    env.client.put("/api/admin/gestion-stocks/tenants/t-pdp/storage", headers=_h("admin"), json={"ai_tags": True})
++    r = _upload(env, name="livraison.pdf")
++    assert r.json()["ai_tags_started"] is True
++    _drain(env)
++    f = next(x for x in _files(env, "Factures") if x["name"] == "livraison.pdf")
++    assert f["ai_suggested_tags"] == ["facture", "copharmed", "décembre 2024", "2024"]
++    # Un Excel n'est pas analysé (ocr_core ne le lit pas).
++    r = env.client.post("/api/gestion-stocks/folders/Factures/upload", headers=_h("suivi"),
++                        files={"file": ("stock.xlsx", b"PK..", "application/vnd.ms-excel")})
++    assert r.json()["ai_tags_started"] is False
++
++
++def test_folders_expose_ai_flag_and_delete_removes_record(env):
++    assert env.client.get("/api/gestion-stocks/folders", headers=_h("suivi")).json()["ai_tags_enabled"] is False
++    _upload(env, who="admin", tags="facture")
++    key = "PDP/Factures/facture-dec.pdf"
++    assert env.client.delete("/api/admin/gestion-stocks/file", headers=_h("admin"), params={"key": key}).status_code == 200
++    assert env.client.portal.call(env.db.stock_files.find_one, {"key": key}) is None
++
++
++def test_helpers():
++    from routes.gestion_stocks_tags import clean_tags, norm_text, split_key, tags_from_ocr
++    assert clean_tags("A, a;B\n<script>c</script>") == ["a", "b", "scriptcscript"]
++    assert len(clean_tags([f"t{i}" for i in range(30)])) == 15
++    assert clean_tags(["x" * 60])[0] == "x" * 40
++    assert norm_text("  Contrôle   Qualité ") == "controle qualite"
++    assert split_key("PDP", "PDP/INV.pdf") == {"folder": "_racine", "name": "INV.pdf"}
++    assert split_key("PDP", "PDP/Archives 2024/a/b.pdf") == {"folder": "Archives 2024", "name": "a/b.pdf"}
++    assert tags_from_ocr({"document_type": None, "extracted_fields": {"période": "2025-03"}}) == ["mars 2025", "2025"]
+diff --git a/backend/tests/test_liluvine_wa_prospects_lot21.py b/backend/tests/test_liluvine_wa_prospects_lot21.py
+new file mode 100644
+index 0000000..e157e9f
+--- /dev/null
++++ b/backend/tests/test_liluvine_wa_prospects_lot21.py
+@@ -0,0 +1,212 @@
++"""Lot 21 — Auto-réponse WhatsApp Liluvine : prompt dédié aux prospects
++(expéditeurs non contractuels), consignes « Mode WhatsApp » modifiables,
++aucune donnée CRM transmise à un prospect, et compte plateforme exempté des
++contrôles de contrat.
++
++Tests autonomes : MongoDB simulé (mongomock-motor), IA et envois WhatsApp
++simulés — aucun serveur, aucune clé, aucun réseau.
++Lancer : cd backend && python -m pytest tests/test_liluvine_wa_prospects_lot21.py -q
++"""
++from __future__ import annotations
++
++import asyncio
++import sys
++import types
++from pathlib import Path
++
++import pytest
++
++pytest.importorskip("mongomock_motor")
++from mongomock_motor import AsyncMongoMockClient  # noqa: E402
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++# Numéros de test
++UNKNOWN = "22670000001"       # numéro absent du carnet et des comptes
++CLIENT_CONTACT = "22670000002"  # contact normal d'une pharmacie cliente
++TAGGED = "22670000003"        # contact étiqueté « prospect » chez la pharmacie
++
++
++class _FakeChat:
++    """Remplace LlmChat : mémorise le prompt système reçu, répond un texte fixe."""
++    last_system = None
++
++    def __init__(self, api_key=None, session_id=None, system_message=""):
++        _FakeChat.last_system = system_message
++
++    def with_model(self, *_a):
++        return self
++
++    async def send_message(self, _msg):
++        return "Bonjour, merci pour votre message."
++
++
++def _stub(monkeypatch, name, **attrs):
++    """Installe un faux module `name` (avec ses attributs) dans sys.modules."""
++    mod = types.ModuleType(name)
++    for k, v in attrs.items():
++        setattr(mod, k, v)
++    monkeypatch.setitem(sys.modules, name, mod)
++    return mod
++
++
++@pytest.fixture()
++def env(monkeypatch):
++    # --- Dépendances externes simulées ---------------------------------
++    monkeypatch.setenv("EMERGENT_LLM_KEY", "test-key")
++    _stub(monkeypatch, "server")  # pas de LILUVINE_REACTIONS_HELPERS
++    _stub(monkeypatch, "emergentintegrations")
++    _stub(monkeypatch, "emergentintegrations.llm")
++    _stub(monkeypatch, "emergentintegrations.llm.chat", LlmChat=_FakeChat, UserMessage=lambda text: text)
++
++    async def _kb(db, max_chars=0, query=""):
++        return "BASE_DE_CONNAISSANCE"
++
++    async def _biz(db, phone_digits="", query=""):
++        return "DONNEES_METIER_ACL"
++
++    async def _noop(*a, **k):
++        return None
++
++    async def _no_agents(db):
++        return []
++
++    _stub(monkeypatch, "routes.liluvine_kb", build_kb_context=_kb)
++    _stub(monkeypatch, "routes.liluvine_business_rag", build_business_rag_context=_biz)
++    _stub(monkeypatch, "routes.liluvine_escalation", ESCALATE_PROMPT_HINT="",
++          strip_escalation_marker=lambda r: (r, None), notify_admin=_noop)
++    _stub(monkeypatch, "routes.liluvine_agents", get_agents=_no_agents,
++          match_agent_for_message=lambda a, t: None, build_signature=lambda a: "")
++    _stub(monkeypatch, "routes.llm_health", record_llm_outcome=_noop)
++    _stub(monkeypatch, "routes.ai_quotas", track_ai_usage=_noop)
++
++    from routes import liluvine_pro
++    from routes import liluvine_wa_autoreply as autoreply
++
++    # Contexte CRM du tenant : marqueur reconnaissable
++    async def _ctx(db, user, text):
++        return "DONNEES_CRM_DU_TENANT"
++    monkeypatch.setattr(liluvine_pro, "_fetch_context_snippets", _ctx)
++
++    db = AsyncMongoMockClient()["sawali_test_lot21"]
++    loop = asyncio.new_event_loop()
++    loop.run_until_complete(db.users.insert_many([
++        # Compte SAWALI (tenant principal) : superviseur SANS numéro de contrat
++        {"id": "sawali", "role": "superviseur", "company": "SAWALI", "features": {"ai_liluvine_pro": True},
++         "liluvine_pro_system_prompt": "PROMPT_DU_COMPTE_SAWALI"},
++        # Pharmacie cliente sous contrat valable (paiement récent)
++        {"id": "pharma", "role": "pharmacien", "company": "Pharmacie Test", "features": {"ai_liluvine_pro": True},
++         "contract_number": "C-001", "last_payment_at": _today(),
++         "liluvine_pro_system_prompt": "PROMPT_DE_LA_PHARMACIE"},
++        # Pharmacie cliente SANS contrat
++        {"id": "pharma-sans", "role": "pharmacien", "company": "Sans Contrat", "features": {"ai_liluvine_pro": True}},
++    ]))
++    loop.run_until_complete(db.directory_contacts.insert_many([
++        {"id": "c-client", "client_id": "pharma", "name": "Client fidèle", "phone": f"+{CLIENT_CONTACT}"},
++        {"id": "c-tag", "client_id": "pharma-sans", "name": "Curieux", "phone": f"+{TAGGED}", "tags": ["Prospect"]},
++    ]))
++
++    sent: list = []
++
++    async def wa_send_text(to, text, reply_to_message_id=None):
++        sent.append({"to": to, "text": text})
++        return {"ok": True, "message_id": "wamid.out"}
++
++    def run(phone, tenant, contact=None, text="Bonjour, quels sont vos services ?", **settings):
++        """Simule un message WhatsApp entrant et renvoie le résultat de l'auto-réponse."""
++        _FakeChat.last_system = None
++        base = {
++            "liluvine_wa_autoreply_enabled": True,
++            "liluvine_wa_autoreply_cooldown_seconds": 0,
++        }
++        base.update(settings)
++        inbound = {"from": f"+{phone}", "phone_digits": phone, "body": text,
++                   "wa_message_id": f"wamid.in.{phone}", "client_id": tenant, "message_type": "text"}
++        return loop.run_until_complete(autoreply.autoreply_to_inbound(
++            db, inbound_doc=inbound, contact=contact, settings_doc=base, wa_send_text=wa_send_text,
++        ))
++
++    yield types.SimpleNamespace(run=run, sent=sent, db=db, loop=loop, liluvine_pro=liluvine_pro)
++    loop.close()
++
++
++def _today():
++    from datetime import date
++    return date.today().isoformat()
++
++
++def test_unknown_sender_gets_default_prospect_prompt_without_crm_data(env):
++    res = env.run(UNKNOWN, "sawali")
++    # Compte SAWALI sans contrat : la réponse part quand même (compte plateforme exempté).
++    assert res["ok"] is True and res["prospect"] is True
++    system = _FakeChat.last_system
++    assert system.startswith(env.liluvine_pro.DEFAULT_WA_PROSPECT_SYSTEM_PROMPT)
++    assert "PROMPT_DU_COMPTE_SAWALI" not in system
++    # Aucune donnée du CRM, seulement la base de connaissance.
++    assert "DONNEES_CRM_DU_TENANT" not in system and "DONNEES_METIER_ACL" not in system
++    assert "BASE_DE_CONNAISSANCE" in system
++    # Consignes « Mode WhatsApp » d'origine
++    assert env.liluvine_pro.DEFAULT_WA_MODE_INSTRUCTIONS in system
++    # Traçabilité : message assistant marqué « prospect »
++    msg = env.loop.run_until_complete(env.db.liluvine_pro_messages.find_one({"role": "assistant"}))
++    assert msg["prospect"] is True and msg["context_injected"] is False
++
++
++def test_custom_prospect_prompt_and_mode_instructions(env):
++    res = env.run(UNKNOWN, "sawali",
++                  liluvine_wa_prospect_system_prompt="  MON_PROMPT_PROSPECT  ",
++                  liluvine_wa_mode_instructions="MES_CONSIGNES_WA")
++    assert res["ok"] is True
++    system = _FakeChat.last_system
++    assert system.startswith("MON_PROMPT_PROSPECT")
++    assert "[IMPORTANT — Mode auto-réponse WhatsApp]\nMES_CONSIGNES_WA" in system
++    assert env.liluvine_pro.DEFAULT_WA_MODE_INSTRUCTIONS not in system
++
++
++def test_prospect_replies_can_be_disabled(env):
++    res = env.run(UNKNOWN, "sawali", liluvine_wa_prospect_enabled=False)
++    assert res == {"ok": False, "reason": "prospect_replies_disabled"}
++    assert env.sent == [] and _FakeChat.last_system is None
++
++
++def test_known_client_keeps_tenant_prompt_and_crm_context(env):
++    res = env.run(CLIENT_CONTACT, "pharma", contact={"id": "c-client", "client_id": "pharma", "name": "Client fidèle"},
++                  liluvine_wa_prospect_system_prompt="MON_PROMPT_PROSPECT",
++                  liluvine_wa_mode_instructions="MES_CONSIGNES_WA")
++    assert res["ok"] is True and res["prospect"] is False
++    system = _FakeChat.last_system
++    assert system.startswith("PROMPT_DE_LA_PHARMACIE") and "MON_PROMPT_PROSPECT" not in system
++    assert "DONNEES_CRM_DU_TENANT" in system and "DONNEES_METIER_ACL" in system
++    # Les consignes « Mode WhatsApp » s'appliquent aussi aux clients.
++    assert "MES_CONSIGNES_WA" in system
++
++
++def test_tagged_prospect_of_client_without_contract_is_still_gated(env):
++    # Le contrôle de contrat reste actif pour un tenant client, même pour un prospect.
++    res = env.run(TAGGED, "pharma-sans", contact={"id": "c-tag", "client_id": "pharma-sans", "name": "Curieux"})
++    assert res["ok"] is False and res["reason"].startswith("contract_invalid")
++    assert _FakeChat.last_system is None
++
++
++def test_client_tenant_without_contract_still_blocked_for_clients(env):
++    env.loop.run_until_complete(env.db.directory_contacts.insert_one(
++        {"id": "c-x", "client_id": "pharma-sans", "name": "Client X", "phone": "+22670000009"}))
++    res = env.run("22670000009", "pharma-sans", contact={"id": "c-x", "client_id": "pharma-sans", "name": "Client X"})
++    assert res["ok"] is False and res["reason"].startswith("contract_invalid")
++
++
++def test_is_prospect_sender_rules(env):
++    from routes.liluvine_wa_autoreply import _is_prospect_sender, _is_platform_tenant
++    run = env.loop.run_until_complete
++    assert run(_is_prospect_sender(env.db, None)) is True
++    assert run(_is_prospect_sender(env.db, {"id": "c-tag"})) is True          # étiquette relue en base
++    assert run(_is_prospect_sender(env.db, {"id": "c-client"})) is False
++    assert run(_is_prospect_sender(env.db, {"id": "x", "tags": ["vip"]})) is False
++    assert _is_platform_tenant({"role": "superviseur"}) and _is_platform_tenant({"role": "admin"})
++    assert not _is_platform_tenant({"role": "pharmacien"})
++
++
++def test_admin_payload_accepts_lot21_fields(env):
++    payload = env.liluvine_pro.AutoreplyConfigPayload(
++        prospect_enabled=False, prospect_system_prompt="P", mode_instructions="M")
++    assert payload.prospect_enabled is False and payload.mode_instructions == "M"
+diff --git a/frontend/src/components/R2FileTags.jsx b/frontend/src/components/R2FileTags.jsx
+new file mode 100644
+index 0000000..2dbeaba
+--- /dev/null
++++ b/frontend/src/components/R2FileTags.jsx
+@@ -0,0 +1,222 @@
++import React, { useState } from "react";
++import { toast } from "sonner";
++import { FileText, Tag, X, Plus, Sparkles, Loader2, Check, Folder } from "lucide-react";
++import { apiClient } from "@/lib/api";
++
++/*
++  Lot 22 — Tags des documents de l'Explorateur Stockage R2 (Gestion de Stocks).
++
++  R2FileRow : une ligne de fichier (liste d'un dossier OU résultat de
++  recherche) avec ses tags, sa description et, si l'utilisateur en a le droit
++  (`file.can_edit`, calculé par le serveur), un éditeur en ligne :
++    - ajout/retrait de tags (suggestions = tags déjà utilisés par le client) ;
++    - description ;
++    - suggestions de l'IA (cliquer pour ajouter) et bouton « Suggérer des
++      tags (IA) » si l'option est activée pour le client (`aiEnabled`).
++  Le serveur nettoie toujours les tags (minuscules, 40 caractères, 15 max) :
++  l'écran affiche ce qu'il renvoie.
++*/
++
++// Taille lisible (« 12,3 Ko ») et date courte française.
++function formatSize(bytes) {
++  if (bytes == null) return "";
++  if (bytes < 1024) return `${bytes} o`;
++  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
++  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
++}
++function formatDate(iso) {
++  if (!iso) return "";
++  try { return new Date(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }); } catch { return iso; }
++}
++
++// Pastille de tag ; `onRemove` affiche une croix, `onClick` la rend cliquable.
++export function TagChip({ tag, onRemove, onClick, active = false, variant = "teal" }) {
++  const colors = variant === "ai"
++    ? "bg-violet-50 text-violet-700 ring-violet-200 hover:bg-violet-100"
++    : active
++      ? "bg-teal-600 text-white ring-teal-600"
++      : "bg-teal-50 text-teal-800 ring-teal-200";
++  const Comp = onClick ? "button" : "span";
++  return (
++    <Comp type={onClick ? "button" : undefined} onClick={onClick}
++      className={`inline-flex items-center gap-1 rounded-full ring-1 px-2 py-0.5 text-[11px] ${colors}`}
++      data-testid={`r2-tag-${variant}-${tag}`}>
++      {variant === "ai" ? <Plus className="w-3 h-3" /> : <Tag className="w-3 h-3" />}
++      {tag}
++      {onRemove && (
++        <X className="w-3 h-3 cursor-pointer hover:text-rose-600" onClick={(e) => { e.stopPropagation(); onRemove(); }} />
++      )}
++    </Comp>
++  );
++}
++
++// Transforme un texte « facture, copharmed » en liste de tags (le serveur finalise).
++export function parseTags(text) {
++  return (text || "").split(/[,;\n]/).map((t) => t.trim().toLowerCase()).filter(Boolean);
++}
++
++export function R2FileRow({ file, onOpen, onChanged, knownTags = [], aiEnabled = false, showFolder = false, folderLabel = (f) => f }) {
++  const [editing, setEditing] = useState(false);
++  const [tags, setTags] = useState(file.tags || []);
++  const [draft, setDraft] = useState("");
++  const [description, setDescription] = useState(file.description || "");
++  const [saving, setSaving] = useState(false);
++  const [suggesting, setSuggesting] = useState(false);
++  const [aiTags, setAiTags] = useState(file.ai_suggested_tags || []);
++  const [aiDescription, setAiDescription] = useState(file.ai_suggested_description || "");
++
++  // Ouvre l'éditeur avec les valeurs actuelles du fichier.
++  const startEdit = (e) => {
++    e.stopPropagation();
++    setTags(file.tags || []); setDescription(file.description || ""); setDraft("");
++    setAiTags(file.ai_suggested_tags || []); setAiDescription(file.ai_suggested_description || "");
++    setEditing(true);
++  };
++
++  // Ajoute le(s) tag(s) saisi(s) dans la zone de saisie.
++  const addDraft = () => {
++    const extra = parseTags(draft).filter((t) => !tags.includes(t));
++    if (extra.length) setTags([...tags, ...extra]);
++    setDraft("");
++  };
++
++  // Enregistre tags + description (PUT /gestion-stocks/files/meta).
++  const save = async () => {
++    const finalTags = [...tags, ...parseTags(draft).filter((t) => !tags.includes(t))];
++    setSaving(true);
++    try {
++      const r = await apiClient.put("/gestion-stocks/files/meta", { key: file.key, tags: finalTags, description });
++      toast.success("Tags enregistrés");
++      setEditing(false);
++      onChanged?.({ ...file, ...r.data });
++    } catch (err) {
++      toast.error(err?.response?.data?.detail || "Erreur d'enregistrement des tags");
++    } finally {
++      setSaving(false);
++    }
++  };
++
++  // Demande à l'IA des tags pour ce fichier (POST /gestion-stocks/files/suggest-tags).
++  const suggest = async () => {
++    setSuggesting(true);
++    try {
++      const r = await apiClient.post("/gestion-stocks/files/suggest-tags", { key: file.key });
++      setAiTags(r.data?.ai_suggested_tags || []);
++      setAiDescription(r.data?.ai_suggested_description || "");
++      if (r.data?.ai_error) toast.warning(r.data.ai_error);
++      else toast.success(`Suggestions de l'IA prêtes (${Number(r.data?.cost_xof || 0).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} FCFA)`);
++      onChanged?.({ ...file, ai_suggested_tags: r.data?.ai_suggested_tags || [], ai_suggested_description: r.data?.ai_suggested_description || "" }, { keepEditing: true });
++    } catch (err) {
++      toast.error(err?.response?.data?.detail || "Suggestion IA impossible");
++    } finally {
++      setSuggesting(false);
++    }
++  };
++
++  const pendingAi = aiTags.filter((t) => !tags.includes(t));
++  const listId = `r2-known-tags-${file.key}`;
++
++  return (
++    <li className="px-3 py-2 hover:bg-slate-50" data-testid="gestion-stocks-file-row">
++      <div className="flex items-center justify-between gap-3 cursor-pointer" onDoubleClick={() => onOpen(file)} title="Double-cliquer pour afficher">
++        <span className="flex items-center gap-2 text-sm text-slate-700 min-w-0">
++          <FileText className="w-4 h-4 text-slate-400 shrink-0" />
++          <span className="truncate">{file.name}</span>
++          {/* Résultat de recherche : dossier où se trouve le fichier */}
++          {showFolder && (
++            <span className="inline-flex items-center gap-1 text-[10px] text-slate-500 bg-slate-100 rounded px-1.5 py-0.5 shrink-0"
++              data-testid="r2-file-folder">
++              <Folder className="w-3 h-3" /> {folderLabel(file.folder)}
++            </span>
++          )}
++        </span>
++        <span className="flex items-center gap-2 shrink-0">
++          <span className="text-[11px] text-slate-400">{formatSize(file.size)} · {formatDate(file.last_modified)}</span>
++          {file.can_edit && !editing && (
++            <button type="button" onClick={startEdit} title="Modifier les tags"
++              className="inline-flex items-center gap-1 text-[11px] text-teal-700 hover:underline" data-testid="r2-file-edit-tags">
++              <Tag className="w-3.5 h-3.5" /> Tags
++            </button>
++          )}
++        </span>
++      </div>
++
++      {/* Lecture : tags, description, suggestions IA en attente */}
++      {!editing && (file.tags?.length > 0 || file.description || file.ai_suggested_tags?.length > 0) && (
++        <div className="mt-1 ml-6 space-y-1">
++          {file.tags?.length > 0 && (
++            <div className="flex flex-wrap gap-1">{file.tags.map((t) => <TagChip key={t} tag={t} />)}</div>
++          )}
++          {file.description && <p className="text-[11px] text-slate-500">{file.description}</p>}
++          {file.can_edit && file.ai_suggested_tags?.length > 0 && (
++            <p className="text-[10px] text-violet-700 inline-flex items-center gap-1">
++              <Sparkles className="w-3 h-3" /> {file.ai_suggested_tags.length} tag(s) suggéré(s) par l'IA — cliquez sur « Tags » pour les voir.
++            </p>
++          )}
++        </div>
++      )}
++
++      {/* Édition en ligne */}
++      {editing && (
++        <div className="mt-2 ml-6 space-y-2 rounded-lg ring-1 ring-teal-200 bg-teal-50/40 p-2" onDoubleClick={(e) => e.stopPropagation()}
++          data-testid="r2-file-tag-editor">
++          <div className="flex flex-wrap gap-1">
++            {tags.length === 0 && <span className="text-[11px] italic text-slate-400">Aucun tag</span>}
++            {tags.map((t) => <TagChip key={t} tag={t} onRemove={() => setTags(tags.filter((x) => x !== t))} />)}
++          </div>
++          <div className="flex gap-2">
++            <input value={draft} onChange={(e) => setDraft(e.target.value)} list={listId}
++              onKeyDown={(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addDraft(); } }}
++              placeholder="Ajouter un tag puis Entrée (ex. facture, copharmed, décembre 2024)"
++              className="flex-1 px-2 py-1 rounded ring-1 ring-slate-300 text-xs bg-white" data-testid="r2-tag-input" />
++            {/* Suggestions de saisie : tags déjà utilisés par ce client */}
++            <datalist id={listId}>{knownTags.map((k) => <option key={k.tag} value={k.tag} />)}</datalist>
++            <button type="button" onClick={addDraft} className="px-2 py-1 rounded text-xs ring-1 ring-teal-300 text-teal-800 bg-white">Ajouter</button>
++          </div>
++          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} maxLength={500}
++            placeholder="Description (facultative)" className="w-full px-2 py-1 rounded ring-1 ring-slate-300 text-xs bg-white"
++            data-testid="r2-description-input" />
++
++          {/* Suggestions de l'IA : jamais appliquées d'office, un clic pour ajouter */}
++          {(pendingAi.length > 0 || (aiDescription && aiDescription !== description)) && (
++            <div className="rounded bg-violet-50/60 ring-1 ring-violet-200 p-2 space-y-1" data-testid="r2-ai-suggestions">
++              <p className="text-[10px] font-semibold text-violet-800 inline-flex items-center gap-1"><Sparkles className="w-3 h-3" /> Suggestions de l'IA (cliquez pour ajouter)</p>
++              <div className="flex flex-wrap gap-1">
++                {pendingAi.map((t) => <TagChip key={t} tag={t} variant="ai" onClick={() => setTags([...tags, t])} />)}
++                {pendingAi.length > 1 && (
++                  <button type="button" onClick={() => setTags([...tags, ...pendingAi])} className="text-[10px] text-violet-700 hover:underline">Tout ajouter</button>
++                )}
++              </div>
++              {aiDescription && aiDescription !== description && (
++                <button type="button" onClick={() => setDescription(aiDescription)} className="text-[10px] text-violet-700 hover:underline text-left"
++                  data-testid="r2-ai-use-description">
++                  Utiliser la description proposée : « {aiDescription} »
++                </button>
++              )}
++            </div>
++          )}
++
++          <div className="flex items-center justify-between gap-2 flex-wrap">
++            {aiEnabled ? (
++              <button type="button" onClick={suggest} disabled={suggesting}
++                className="inline-flex items-center gap-1 text-[11px] text-violet-700 hover:underline disabled:opacity-50" data-testid="r2-ai-suggest">
++                {suggesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
++                {suggesting ? "Analyse en cours…" : "Suggérer des tags (IA)"}
++              </button>
++            ) : <span />}
++            <span className="flex gap-2">
++              <button type="button" onClick={() => setEditing(false)} className="px-2 py-1 rounded text-xs text-slate-600 hover:bg-slate-100">Annuler</button>
++              <button type="button" onClick={save} disabled={saving}
++                className="inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-medium text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50"
++                data-testid="r2-tags-save">
++                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Enregistrer
++              </button>
++            </span>
++          </div>
++        </div>
++      )}
++    </li>
++  );
++}
++
++export default R2FileRow;
+diff --git a/frontend/src/components/R2StorageGauge.jsx b/frontend/src/components/R2StorageGauge.jsx
+new file mode 100644
+index 0000000..e7df28c
+--- /dev/null
++++ b/frontend/src/components/R2StorageGauge.jsx
+@@ -0,0 +1,69 @@
++import React, { useCallback, useEffect, useImperativeHandle, useState, forwardRef } from "react";
++import { HardDrive } from "lucide-react";
++import { apiClient } from "@/lib/api";
++
++/*
++  Lot 20 — Jauge « espace occupé / espace alloué » de l'espace R2 Gestion de
++  Stocks d'un tenant (tous ses dossiers). Utilisée :
++    - sur le tableau de bord du Pharmacien suivi (portal/Dashboard.jsx) ;
++    - dans l'Explorateur Stockage R2 (GestionStocks.jsx).
++  Données : GET /gestion-stocks/storage (le serveur résout lui-même le tenant
++  d'un utilisateur suivi ; `clientCode` n'est transmis que pour l'administration).
++  Si le module n'est pas accessible ou pas configuré, la jauge ne s'affiche pas.
++*/
++
++// Octets → « 1,2 Go » / « 350 Mo » / « 12 Ko » (format français).
++export function formatBytes(bytes) {
++  const n = Number(bytes) || 0;
++  const units = [["Go", 1024 ** 3], ["Mo", 1024 ** 2], ["Ko", 1024]];
++  for (const [unit, size] of units) {
++    if (n >= size) return `${(n / size).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} ${unit}`;
++  }
++  return `${n} o`;
++}
++
++const R2StorageGauge = forwardRef(function R2StorageGauge({ clientCode = null, compact = false }, ref) {
++  const [data, setData] = useState(null);
++
++  // Rechargement (exposé au parent pour rafraîchir après un dépôt).
++  const load = useCallback(async () => {
++    try {
++      const r = await apiClient.get("/gestion-stocks/storage", { params: clientCode ? { client_code: clientCode } : {} });
++      setData(r.data);
++    } catch {
++      setData(null);
++    }
++  }, [clientCode]);
++
++  useEffect(() => { load(); }, [load]);
++  useImperativeHandle(ref, () => ({ reload: load }), [load]);
++
++  if (!data) return null;
++  const pct = data.quota_bytes ? Math.min(100, Math.round((data.used_bytes / data.quota_bytes) * 100)) : 0;
++  const bar = pct >= 100 ? "bg-rose-600" : pct >= 80 ? "bg-amber-500" : "bg-teal-500";
++  const quotaLabel = `${Number(data.quota_gb).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} Go`;
++
++  return (
++    <div className={`rounded-xl ring-1 ring-teal-200 bg-white ${compact ? "px-3 py-2" : "p-4"} flex items-center gap-3`}
++      data-testid="r2-storage-gauge">
++      <div className="h-9 w-9 rounded-lg bg-teal-50 flex items-center justify-center shrink-0">
++        <HardDrive className="h-4 w-4 text-teal-600" />
++      </div>
++      <div className="flex-1 min-w-0">
++        <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
++          Espace de stockage Gestion de Stocks
++        </p>
++        <p className="text-sm text-slate-900 font-semibold tabular-nums" data-testid="r2-storage-text">
++          {formatBytes(data.used_bytes)} <span className="font-normal text-slate-500">utilisés sur {quotaLabel}</span>
++          <span className="font-normal text-slate-400"> · {data.files} fichier{data.files > 1 ? "s" : ""}</span>
++        </p>
++        <div className="mt-1 h-2 rounded-full bg-slate-100 overflow-hidden">
++          <div className={`h-full ${bar} transition-all`} style={{ width: `${pct}%` }} />
++        </div>
++      </div>
++      <span className="text-xs tabular-nums text-slate-500 shrink-0" data-testid="r2-storage-pct">{pct} %</span>
++    </div>
++  );
++});
++
++export default R2StorageGauge;
+diff --git a/frontend/src/pages/admin/AdminClientFeatures.jsx b/frontend/src/pages/admin/AdminClientFeatures.jsx
+index 94cbe30..7e24fea 100644
+--- a/frontend/src/pages/admin/AdminClientFeatures.jsx
++++ b/frontend/src/pages/admin/AdminClientFeatures.jsx
+@@ -1,8 +1,9 @@
+ import React, { useEffect, useState } from "react";
+ import { useParams, Link } from "react-router-dom";
+ import { apiClient } from "@/lib/api";
++import { formatBytes } from "@/components/R2StorageGauge";
+ import { toast } from "sonner";
+-import { ArrowLeft, MessageCircle, Smartphone, Sparkles, CreditCard, Save, ShieldCheck, Webhook, Building2, Volume2, MessageSquareText, Facebook, Megaphone, Image as ImageIcon, Film, Gauge, Wallet, Download, FileSpreadsheet, FileText } from "lucide-react";
++import { ArrowLeft, MessageCircle, Smartphone, Sparkles, CreditCard, Save, ShieldCheck, Webhook, Building2, Volume2, MessageSquareText, Facebook, Megaphone, Image as ImageIcon, Film, Gauge, Wallet, Download, FileSpreadsheet, FileText, HardDrive } from "lucide-react";
+ 
+ /*
+   Admin → Fiche client → SMART Communications
+@@ -502,6 +503,9 @@ export default function AdminClientFeatures() {
+         </div>
+       )}
+ 
++      {/* Lot 20 — Espace de stockage R2 (Gestion de Stocks) alloué à ce client */}
++      <R2StorageQuotaSection clientId={id} />
++
+       {/* Iter41 Phase 2 — VIDAL mode selector (only shown when vidal_enabled=true) */}
+       {features.vidal_enabled && (
+         <div className="rounded-2xl ring-1 ring-rose-200 bg-rose-50/40 p-5 space-y-3" data-testid="vidal-client-config-section">
+@@ -950,3 +954,104 @@ function AiQuotasSection({ clientId, clientLabel }) {
+     </div>
+   );
+ }
++
++
++// ====================================================================
++// Lot 20 — Espace de stockage R2 (Gestion de Stocks) alloué au client/tenant
++// Partagé par tous ses dossiers et tous ses utilisateurs suivis ; 2 Go par
++// défaut. Enregistrement indépendant du bouton « Enregistrer » des
++// fonctionnalités (route dédiée /admin/gestion-stocks/tenants/{id}/storage).
++// ====================================================================
++function R2StorageQuotaSection({ clientId }) {
++  const [info, setInfo] = useState(null);
++  const [quota, setQuota] = useState("");
++  const [saving, setSaving] = useState(false);
++
++  const load = async () => {
++    try {
++      const r = await apiClient.get(`/admin/gestion-stocks/tenants/${clientId}/storage`);
++      setInfo(r.data);
++      setQuota(String(r.data.quota_gb));
++    } catch {
++      setInfo(null);
++    }
++  };
++  // Rechargement quand on change de client (load ne dépend que de clientId).
++  // eslint-disable-next-line react-hooks/exhaustive-deps
++  useEffect(() => { load(); }, [clientId]);
++
++  const save = async () => {
++    const value = parseFloat(String(quota).replace(",", "."));
++    if (!(value > 0)) { toast.error("Indiquez un espace supérieur à 0 Go"); return; }
++    setSaving(true);
++    try {
++      await apiClient.put(`/admin/gestion-stocks/tenants/${clientId}/storage`, { quota_gb: value });
++      toast.success("Espace de stockage enregistré");
++      load();
++    } catch (err) {
++      toast.error(err?.response?.data?.detail || "Erreur");
++    } finally {
++      setSaving(false);
++    }
++  };
++
++  // Lot 22 — suggestions de tags par l'IA (désactivées par défaut) : enregistrées dès le clic.
++  const toggleAiTags = async (checked) => {
++    try {
++      await apiClient.put(`/admin/gestion-stocks/tenants/${clientId}/storage`, { ai_tags: checked });
++      setInfo((cur) => ({ ...cur, ai_tags: checked }));
++      toast.success(checked ? "Suggestions de tags par l'IA activées" : "Suggestions de tags par l'IA désactivées");
++    } catch (err) {
++      toast.error(err?.response?.data?.detail || "Erreur");
++    }
++  };
++
++  if (!info) return null;
++  const usedGb = info.used_bytes != null ? info.used_bytes / (1024 ** 3) : null;
++  const pct = usedGb != null && info.quota_gb ? Math.min(100, Math.round((usedGb / info.quota_gb) * 100)) : null;
++  return (
++    <div className="rounded-2xl ring-1 ring-teal-200 bg-teal-50/40 p-5 space-y-3" data-testid="r2-storage-quota-section">
++      <div className="flex items-start gap-3">
++        <div className="h-10 w-10 rounded-xl bg-teal-100 flex items-center justify-center">
++          <HardDrive className="h-5 w-5 text-teal-600" />
++        </div>
++        <div className="flex-1">
++          <h3 className="font-display font-semibold text-slate-900">Espace de stockage R2 (Gestion de Stocks)</h3>
++          <p className="text-xs text-slate-500 mt-1">
++            Volume total alloué aux fichiers de ce client dans l'Explorateur Stockage R2 (tous dossiers, tous
++            utilisateurs suivis). Un dépôt qui le dépasserait est refusé avec le motif. {info.default_quota_gb} Go par défaut.
++            {!info.client_code && " Ce client n'a pas encore de code client : l'espace n'est pas encore utilisé."}
++          </p>
++        </div>
++      </div>
++      <div className="flex items-end gap-3 flex-wrap">
++        <label className="block">
++          <span className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Espace alloué (Go)</span>
++          <input type="number" min="0.1" step="0.5" value={quota} onChange={(e) => setQuota(e.target.value)}
++            className="mt-1 w-40 text-sm rounded-lg ring-1 ring-slate-300 px-3 py-2 bg-white" data-testid="r2-storage-quota-input" />
++        </label>
++        <button onClick={save} disabled={saving}
++          className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-60"
++          data-testid="r2-storage-quota-save">
++          <Save className="h-4 w-4" /> {saving ? "Enregistrement…" : "Enregistrer l'espace"}
++        </button>
++        {pct != null && (
++          <p className="text-xs text-slate-600 tabular-nums" data-testid="r2-storage-quota-usage">
++            Utilisé : {formatBytes(info.used_bytes)} ({pct} %) · {info.files} fichier(s)
++          </p>
++        )}
++      </div>
++      {/* Lot 22 — option payante à l'usage : l'IA lit chaque document déposé et propose des tags */}
++      <label className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer border-t border-teal-100 pt-3">
++        <input type="checkbox" checked={!!info.ai_tags} onChange={(e) => toggleAiTags(e.target.checked)}
++          className="mt-0.5" data-testid="r2-storage-ai-tags" />
++        <span>
++          <strong>Suggestions de tags par l'IA</strong> — à chaque dépôt (PDF, image, .txt, .csv jusqu'à 10 Mo),
++          Claude Haiku 4.5 lit le document et propose des tags (type, fournisseur, mois/année) et une description,
++          que l'utilisateur ajoute d'un clic. Aussi disponible à la demande sur les fichiers existants.
++          <span className="block text-[11px] text-slate-500">Désactivé par défaut. Coût : quelques FCFA par document, selon sa taille.</span>
++        </span>
++      </label>
++    </div>
++  );
++}
+diff --git a/frontend/src/pages/admin/AdminTrackedUsers.jsx b/frontend/src/pages/admin/AdminTrackedUsers.jsx
+index eaf0469..e2ae197 100644
+--- a/frontend/src/pages/admin/AdminTrackedUsers.jsx
++++ b/frontend/src/pages/admin/AdminTrackedUsers.jsx
+@@ -1,6 +1,6 @@
+ import React, { useEffect, useMemo, useState } from "react";
+ import { apiClient } from "@/lib/api";
+-import { Plus, Trash2, Edit, X, KeyRound, ShieldCheck, ShieldOff, Copy } from "lucide-react";
++import { Plus, Trash2, Edit, X, KeyRound, ShieldCheck, ShieldOff, Copy, HardDriveUpload } from "lucide-react";
+ import { toast } from "sonner";
+ import PasswordInput from "@/components/PasswordInput";
+ 
+@@ -21,6 +21,8 @@ export default function AdminTrackedUsers() {
+   const [editing, setEditing] = useState(null);
+   const [form, setForm] = useState(empty);
+   const [pwdDialog, setPwdDialog] = useState(null); // tracked user being password-managed
++  // Lot 20 — utilisateur suivi dont on règle le droit de dépôt R2 (Gestion de Stocks)
++  const [r2Dialog, setR2Dialog] = useState(null);
+   // Iter35g — bulk transfer state
+   const [selectedIds, setSelectedIds] = useState(new Set());
+   const [transferTarget, setTransferTarget] = useState("");
+@@ -283,6 +285,15 @@ export default function AdminTrackedUsers() {
+                         <ShieldOff className="h-4 w-4 inline" />
+                       </button>
+                     )}
++                    {/* Lot 20 — droit de dépôt de fichiers sur R2 (Gestion de Stocks) ; vert si autorisé */}
++                    <button
++                      onClick={() => setR2Dialog(u)}
++                      className={`mr-3 ${u.r2_upload_allowed ? "text-emerald-600" : "text-slate-500"} hover:text-sawali-blue`}
++                      title={u.r2_upload_allowed ? `Dépôt R2 autorisé (${u.r2_upload_max_mb ?? 1.5} Mo max par fichier)` : "Dépôt R2 (Gestion de Stocks) : non autorisé"}
++                      data-testid={`r2-rights-${u.id}`}
++                    >
++                      <HardDriveUpload className="h-4 w-4 inline" />
++                    </button>
+                     <button onClick={() => open(u)} className="text-slate-500 hover:text-sawali-blue mr-3" title="Modifier"><Edit className="h-4 w-4 inline" /></button>
+                     <button onClick={() => del(u.id)} className="text-slate-500 hover:text-rose-600" title="Supprimer"><Trash2 className="h-4 w-4 inline" /></button>
+                   </td>
+@@ -450,6 +461,14 @@ export default function AdminTrackedUsers() {
+         </div>
+       )}
+ 
++      {r2Dialog && (
++        <R2UploadRightsDialog
++          user={r2Dialog}
++          onClose={() => setR2Dialog(null)}
++          onSaved={async () => { setR2Dialog(null); await load(); }}
++        />
++      )}
++
+       {pwdDialog && (
+         <PasswordDialog
+           user={pwdDialog}
+@@ -461,6 +480,78 @@ export default function AdminTrackedUsers() {
+   );
+ }
+ 
++// ====================================================================
++// Lot 20 — Droit de dépôt sur R2 (Gestion de Stocks) d'un utilisateur suivi
++// Autorisation + taille maximale par fichier (1,5 Mo par défaut). Le serveur
++// refuse, avec le motif, tout fichier plus gros ou dépassant l'espace alloué
++// au client (réglé dans SMART Communications du client).
++// ====================================================================
++function R2UploadRightsDialog({ user, onClose, onSaved }) {
++  const [allowed, setAllowed] = useState(false);
++  const [maxMb, setMaxMb] = useState("1.5");
++  const [loading, setLoading] = useState(true);
++  const [busy, setBusy] = useState(false);
++
++  useEffect(() => {
++    apiClient.get(`/admin/gestion-stocks/tracked-users/${user.id}/upload-rights`)
++      .then((r) => { setAllowed(!!r.data.allowed); setMaxMb(String(r.data.max_mb ?? r.data.default_max_mb ?? 1.5)); })
++      .catch((err) => toast.error(err?.response?.data?.detail || "Erreur de chargement"))
++      .finally(() => setLoading(false));
++  }, [user.id]);
++
++  const save = async () => {
++    const value = parseFloat(String(maxMb).replace(",", "."));
++    if (!(value > 0)) { toast.error("Indiquez une taille maximale supérieure à 0 Mo"); return; }
++    setBusy(true);
++    try {
++      await apiClient.put(`/admin/gestion-stocks/tracked-users/${user.id}/upload-rights`, { allowed, max_mb: value });
++      toast.success("Droit de dépôt enregistré");
++      onSaved();
++    } catch (err) {
++      toast.error(err?.response?.data?.detail || "Erreur");
++    } finally {
++      setBusy(false);
++    }
++  };
++
++  return (
++    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
++      <div className="bg-white rounded-xl w-full max-w-md" onClick={(e) => e.stopPropagation()} data-testid="r2-rights-dialog">
++        <div className="flex items-center justify-between p-4 border-b">
++          <h3 className="font-display font-semibold inline-flex items-center gap-2">
++            <HardDriveUpload className="h-4 w-4 text-sawali-blue" /> Dépôt de fichiers R2 — {user.name}
++          </h3>
++          <button onClick={onClose}><X className="h-4 w-4" /></button>
++        </div>
++        {loading ? <p className="p-4 text-sm text-slate-500">Chargement…</p> : (
++          <div className="p-4 space-y-4">
++            <p className="text-xs text-slate-500">
++              Autorise cet utilisateur suivi à déposer des fichiers dans les dossiers « Gestion de Stocks » de son
++              client (Explorateur Stockage R2). Seuls les utilisateurs suivis de rôle Pharmacien ont accès à ce module.
++            </p>
++            <label className="flex items-center gap-2 text-sm">
++              <input type="checkbox" checked={allowed} onChange={(e) => setAllowed(e.target.checked)} data-testid="r2-rights-allowed" />
++              Autoriser les dépôts
++            </label>
++            <label className="block">
++              <span className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Taille maximale par fichier (Mo)</span>
++              <input type="number" min="0.1" step="0.1" value={maxMb} onChange={(e) => setMaxMb(e.target.value)} disabled={!allowed}
++                className="mt-1 w-full text-sm rounded-lg ring-1 ring-slate-300 px-3 py-2 disabled:bg-slate-100" data-testid="r2-rights-max-mb" />
++              <span className="text-[11px] text-slate-400">1,5 Mo par défaut. Un fichier plus gros est refusé avec le motif.</span>
++            </label>
++            <div className="flex justify-end gap-2">
++              <button onClick={onClose} className="px-3 py-2 text-sm rounded-lg ring-1 ring-slate-300">Annuler</button>
++              <button onClick={save} disabled={busy} className="px-3 py-2 text-sm rounded-lg bg-sawali-blue text-white disabled:opacity-60" data-testid="r2-rights-save">
++                {busy ? "Enregistrement…" : "Enregistrer"}
++              </button>
++            </div>
++          </div>
++        )}
++      </div>
++    </div>
++  );
++}
++
+ // ====================================================================
+ // Password dialog — set or reset password for a tracked user
+ // ====================================================================
+diff --git a/frontend/src/pages/admin/sections/LiluvineSystemPromptSection.jsx b/frontend/src/pages/admin/sections/LiluvineSystemPromptSection.jsx
+index 20a1796..98318cd 100644
+--- a/frontend/src/pages/admin/sections/LiluvineSystemPromptSection.jsx
++++ b/frontend/src/pages/admin/sections/LiluvineSystemPromptSection.jsx
+@@ -59,6 +59,9 @@ const LiluvineSystemPromptSection = () => {
+           <h3 className="font-display font-bold text-slate-900">Liluvine PRO — Prompt système (assistant)</h3>
+           <p className="text-xs text-slate-500 mt-0.5">
+             Personnalisez le ton, le rôle et les règles de Liluvine pour votre entreprise. La règle d'escalade vers un humain est ajoutée automatiquement côté serveur (token <code className="rounded bg-slate-100 px-1">[ESCALATION_HUMAINE]</code>).
++            {/* Lot 21 — ce prompt ne s'applique plus aux prospects WhatsApp */}
++            {" "}Sur WhatsApp, ce prompt sert aux <strong>clients</strong> ; les <strong>prospects</strong> (numéros inconnus) ont
++            leur propre prompt dans « Liluvine PRO — Auto-réponse WhatsApp ».
+           </p>
+         </div>
+       </header>
+diff --git a/frontend/src/pages/admin/sections/LiluvineWaAutoreplySection.jsx b/frontend/src/pages/admin/sections/LiluvineWaAutoreplySection.jsx
+index 2eca35c..9d5d9c1 100644
+--- a/frontend/src/pages/admin/sections/LiluvineWaAutoreplySection.jsx
++++ b/frontend/src/pages/admin/sections/LiluvineWaAutoreplySection.jsx
+@@ -2,7 +2,7 @@
+ // Iter38r-fix9a — Liluvine PRO : Auto-réponse WhatsApp native
+ // =====================================================================
+ import React, { useCallback, useEffect, useState } from "react";
+-import { Sparkles, MessageCircle, Save, Copy, History, AlertCircle } from "lucide-react";
++import { Sparkles, MessageCircle, Save, Copy, History, AlertCircle, UserPlus, RotateCcw } from "lucide-react";
+ import { toast } from "sonner";
+ import { apiClient } from "@/lib/api";
+ 
+@@ -43,6 +43,10 @@ export default function LiluvineWaAutoreplySection() {
+         brand_longitude: r.data.brand_longitude == null ? "" : String(r.data.brand_longitude),
+         brand_hours: r.data.brand_hours || "",
+         brand_maps_url: r.data.brand_maps_url || "",
++        // Lot 21 — Prospects (expéditeurs non contractuels) + consignes « Mode WhatsApp »
++        prospect_enabled: r.data.prospect_enabled !== false,
++        prospect_system_prompt: r.data.prospect_system_prompt || "",
++        mode_instructions: r.data.mode_instructions || "",
+       });
+     } catch (e) {
+       toast.error("Erreur chargement config auto-réponse");
+@@ -76,6 +80,10 @@ export default function LiluvineWaAutoreplySection() {
+         brand_location_hint: form.brand_location_hint || "",
+         brand_hours: form.brand_hours || "",
+         brand_maps_url: form.brand_maps_url || "",
++        // Lot 21
++        prospect_enabled: !!form.prospect_enabled,
++        prospect_system_prompt: form.prospect_system_prompt || "",
++        mode_instructions: form.mode_instructions || "",
+       };
+       const latStr = (form.brand_latitude ?? "").toString().trim();
+       const lonStr = (form.brand_longitude ?? "").toString().trim();
+@@ -137,7 +145,8 @@ export default function LiluvineWaAutoreplySection() {
+ 
+       <p className="text-xs text-slate-600 leading-relaxed">
+         Quand cette option est activée, Liluvine PRO répond automatiquement aux messages WhatsApp entrants (sans passer par n8n).
+-        Le contexte de votre CRM est injecté via le RAG (contacts, tickets, paiements, RDV, notes).
++        Pour vos clients, le contexte de votre CRM est injecté via le RAG (contacts, tickets, paiements, RDV, notes) ;
++        les prospects, eux, n'en reçoivent rien (voir « Prospects » ci-dessous).
+         Un anti-flood limite à <strong>1 réponse / {form.cooldown_seconds || 60}s par numéro</strong>.
+       </p>
+ 
+@@ -250,6 +259,81 @@ export default function LiluvineWaAutoreplySection() {
+         <p className="text-[10px] text-slate-500 mt-1">Laissez vide pour conserver la valeur par défaut. Sera ajoutée à la fin de chaque réponse pour transparence.</p>
+       </div>
+ 
++      {/* Lot 21 — Prospects : expéditeurs non contractuels (numéro inconnu ou contact étiqueté « prospect ») */}
++      <div className="rounded-lg ring-1 ring-violet-200 bg-violet-50/40 p-3 space-y-2" data-testid="liluvine-prospect-section">
++        <h3 className="text-xs font-semibold text-violet-900 inline-flex items-center gap-1.5">
++          <UserPlus className="h-3.5 w-3.5" /> Prospects — expéditeurs non contractuels
++        </h3>
++        <p className="text-[10px] text-violet-900/80 leading-relaxed">
++          Un <strong>prospect</strong> est un numéro inconnu (absent du carnet de contacts et des comptes) ou un contact
++          portant l'étiquette <code>prospect</code>. Liluvine lui répond avec le prompt ci-dessous
++          (et non le prompt système de votre compte), en s'appuyant uniquement sur la base de connaissance :
++          <strong> aucune donnée de votre CRM</strong> (contacts, paiements, tickets…) ne lui est transmise.
++        </p>
++        <label className="flex items-center gap-2 text-[11px] text-violet-900 cursor-pointer">
++          <input
++            type="checkbox"
++            checked={!!form.prospect_enabled}
++            onChange={(e) => setForm({ ...form, prospect_enabled: e.target.checked })}
++            data-testid="liluvine-prospect-enabled"
++          />
++          <strong>Répondre automatiquement aux prospects</strong>
++        </label>
++        <div className="flex items-center justify-between">
++          <span className="text-[10px] uppercase tracking-wider font-semibold text-violet-900">Prompt système des prospects</span>
++          {/* Pré-remplit la zone avec le texte par défaut, pour le modifier plutôt que partir de zéro */}
++          <button
++            type="button"
++            onClick={() => setForm({ ...form, prospect_system_prompt: cfg.default_prospect_system_prompt || "" })}
++            className="text-[10px] inline-flex items-center gap-1 text-violet-700 hover:underline"
++            data-testid="liluvine-prospect-load-default"
++          >
++            <Copy className="h-3 w-3" /> Partir du texte par défaut
++          </button>
++        </div>
++        <textarea
++          value={form.prospect_system_prompt}
++          onChange={(e) => setForm({ ...form, prospect_system_prompt: e.target.value })}
++          rows={8}
++          maxLength={20000}
++          placeholder={cfg.default_prospect_system_prompt || ""}
++          className="w-full text-xs rounded-lg border border-violet-300 px-3 py-2 bg-white font-mono leading-relaxed"
++          data-testid="liluvine-prospect-prompt"
++        />
++        <p className="text-[10px] text-violet-900/70">Vide = texte par défaut (affiché en grisé).</p>
++      </div>
++
++      {/* Lot 21 — Consignes ajoutées à TOUTE réponse WhatsApp (clients et prospects) */}
++      <div className="rounded-lg ring-1 ring-sky-200 bg-sky-50/40 p-3 space-y-2" data-testid="liluvine-mode-section">
++        <div className="flex items-center justify-between">
++          <h3 className="text-xs font-semibold text-sky-900 inline-flex items-center gap-1.5">
++            <MessageCircle className="h-3.5 w-3.5" /> Consignes du mode WhatsApp (toutes les réponses)
++          </h3>
++          {/* Vider la zone = retour au texte d'origine */}
++          <button
++            type="button"
++            onClick={() => setForm({ ...form, mode_instructions: "" })}
++            className="text-[10px] inline-flex items-center gap-1 text-sky-700 hover:underline"
++            data-testid="liluvine-mode-reset"
++          >
++            <RotateCcw className="h-3 w-3" /> Texte d'origine
++          </button>
++        </div>
++        <p className="text-[10px] text-sky-900/80">
++          Ajoutées après le prompt système (du compte ou des prospects), sous l'en-tête
++          « [IMPORTANT — Mode auto-réponse WhatsApp] » : longueur, ton, renvoi vers un humain…
++        </p>
++        <textarea
++          value={form.mode_instructions}
++          onChange={(e) => setForm({ ...form, mode_instructions: e.target.value })}
++          rows={4}
++          maxLength={4000}
++          placeholder={cfg.default_mode_instructions || ""}
++          className="w-full text-xs rounded-lg border border-sky-300 px-3 py-2 bg-white font-mono leading-relaxed"
++          data-testid="liluvine-mode-instructions"
++        />
++      </div>
++
+       {/* Iter43-fix24h — Catch-all "…" pour commandes inconnues */}
+       <div className="rounded-lg ring-1 ring-orange-200 bg-orange-50/40 p-3 space-y-2" data-testid="liluvine-unknown-cmd-section">
+         <h3 className="text-xs font-semibold text-orange-900 inline-flex items-center gap-1.5">
+@@ -481,6 +565,8 @@ export default function LiluvineWaAutoreplySection() {
+                     <p className="text-xs text-slate-700 whitespace-pre-wrap">{m.content}</p>
+                     <div className="text-[10px] text-slate-400 mt-2 flex gap-2 flex-wrap">
+                       {m.context_injected && <span className="rounded-full bg-sky-50 ring-1 ring-sky-200 px-1.5 py-0.5 text-sky-700">RAG actif</span>}
++                      {/* Lot 21 — réponse faite avec le prompt des prospects */}
++                      {m.prospect && <span className="rounded-full bg-violet-50 ring-1 ring-violet-200 px-1.5 py-0.5 text-violet-700">Prospect</span>}
+                       {m.tokens && <span>~{m.tokens} tokens</span>}
+                       {m.wa_message_id_out && <span className="font-mono">wa: {m.wa_message_id_out.slice(-12)}</span>}
+                     </div>
+diff --git a/frontend/src/pages/portal/Contacts.jsx b/frontend/src/pages/portal/Contacts.jsx
+index 6441863..e1a5944 100644
+--- a/frontend/src/pages/portal/Contacts.jsx
++++ b/frontend/src/pages/portal/Contacts.jsx
+@@ -303,7 +303,10 @@ export default function Contacts() {
+   }, [items, companyFilter, filter, unread]);
+ 
+   return (
+-    <div className="max-w-6xl space-y-5" data-testid="contacts-page">
++    // Lot 20 — pleine largeur : l'ancien plafond max-w-6xl (1152 px) laissait
++    // un grand vide à droite sur les écrans larges et forçait le défilement
++    // horizontal du tableau des contacts.
++    <div className="w-full max-w-full space-y-5" data-testid="contacts-page">
+       <div className="flex items-center justify-between gap-4 flex-wrap">
+         <div className="min-w-0">
+           <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Communication</p>
+diff --git a/frontend/src/pages/portal/Dashboard.jsx b/frontend/src/pages/portal/Dashboard.jsx
+index 9b4893b..8379459 100644
+--- a/frontend/src/pages/portal/Dashboard.jsx
++++ b/frontend/src/pages/portal/Dashboard.jsx
+@@ -6,6 +6,7 @@ import { Calendar, Wrench, FileText, ArrowRight, CheckCircle2, Clock, ClipboardL
+ import { useAuth } from "@/contexts/AuthContext";
+ import BrochuresWidget from "@/components/BrochuresWidget";
+ import WeatherWidget from "@/components/WeatherWidget";
++import R2StorageGauge from "@/components/R2StorageGauge";
+ 
+ const StatCard = ({ icon: Icon, label, value, hint, testid }) => (
+   <div className="rounded-xl border border-slate-200 bg-white p-5" data-testid={testid}>
+@@ -44,6 +45,9 @@ const NoteCard = ({ to, label, accent, count, lastUpdated, icon: Icon, testid })
+ );
+ 
+ export default function ClientDashboard() {
++  // Lot 20 — jauge d'espace Gestion de Stocks pour le Pharmacien suivi.
++  const { user } = useAuth();
++  const isPharmacienTracked = (user?.tracked_role || "") === "Pharmacien";
+   const [data, setData] = useState(null);
+   const [notes, setNotes] = useState({
+     reports: { count: 0, last_updated: null },
+@@ -149,6 +153,8 @@ export default function ClientDashboard() {
+           </ul>
+         </div>
+       </div>
++      {/* Lot 20 — espace occupé par les fichiers de la pharmacie / espace alloué */}
++      {isPharmacienTracked && <R2StorageGauge />}
+       {/* Iter35o — Tickets en attente */}
+       <TicketsPendingCard />
+       {/* Iter38c — Carte dépenses non justifiées (utilisateurs suivis avec accès Caisse) */}
+diff --git a/frontend/src/pages/portal/GestionStocks.jsx b/frontend/src/pages/portal/GestionStocks.jsx
+index b3a9eac..eca8fa9 100644
+--- a/frontend/src/pages/portal/GestionStocks.jsx
++++ b/frontend/src/pages/portal/GestionStocks.jsx
+@@ -1,10 +1,14 @@
+-import React, { useEffect, useState } from "react";
++import React, { useEffect, useRef, useState } from "react";
+ import { apiClient } from "@/lib/api";
+ import { toast } from "sonner";
+ import { useAuth } from "@/contexts/AuthContext";
+ import {
+-  Database, Folder, FileText, Upload, RefreshCw, ArrowLeft, Send, Loader2,
++  Database, Folder, Upload, RefreshCw, ArrowLeft, Send, Loader2,
++  ChevronRight, CheckCircle2, AlertCircle, HardDrive, Search, X, Tag,
+ } from "lucide-react";
++import R2StorageGauge from "@/components/R2StorageGauge";
++// Lot 22 — lignes de fichiers avec tags (édition, suggestions IA) et pastilles de filtre.
++import { R2FileRow, TagChip } from "@/components/R2FileTags";
+ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip } from "recharts";
+ 
+ /*
+@@ -53,39 +57,52 @@ function extractChartItems(data) {
+ // des dossiers vient de l'API (`/gestion-stocks/context`).
+ const FOLDER_ICON_COLOR = "text-amber-500";
+ 
+-function formatSize(bytes) {
+-  if (bytes == null) return "";
+-  if (bytes < 1024) return `${bytes} o`;
+-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
+-  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+-}
+-
+-function formatDate(iso) {
+-  if (!iso) return "";
+-  try {
+-    return new Date(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
+-  } catch {
+-    return iso;
+-  }
+-}
+-
+ export default function GestionStocks() {
+   const { user } = useAuth();
+   const isAdmin = user?.role === "admin" || user?.role === "superviseur";
++  // Lot 20 — droit de dépôt renvoyé par le serveur (/gestion-stocks/context) :
++  // admin et superviseur toujours ; utilisateur suivi seulement si
++  // l'administrateur l'a autorisé (avec sa propre taille max par fichier).
++  const [canUpload, setCanUpload] = useState(false);
++  const gaugeRef = useRef(null);
+ 
+   const [loadingContext, setLoadingContext] = useState(true);
+   const [folders, setFolders] = useState([]);
+   const [clientCode, setClientCode] = useState(null);
+   const [r2Configured, setR2Configured] = useState(true);
++  // Lot 20 — nom du compartiment R2 (fil d'Ariane) et taille max d'un fichier.
++  const [bucket, setBucket] = useState(null);
++  const [maxUploadMb, setMaxUploadMb] = useState(25);
+ 
+   // Admin uniquement : liste des clients pour choisir lequel parcourir.
+   const [adminClients, setAdminClients] = useState([]);
+   const [adminSelectedCode, setAdminSelectedCode] = useState("");
+ 
+   const [selectedFolder, setSelectedFolder] = useState(null);
++  // Lot 22 — dossier ouvert à l'instant T (lu par le rafraîchissement différé après un dépôt).
++  const selectedFolderRef = useRef(null);
++  useEffect(() => { selectedFolderRef.current = selectedFolder; }, [selectedFolder]);
+   const [files, setFiles] = useState([]);
+   const [loadingFiles, setLoadingFiles] = useState(false);
+   const [uploading, setUploading] = useState(false);
++  // Lot 20 — dépôt depuis l'ordinateur : file d'envoi (un fichier à la fois,
++  // avec progression) et survol de la zone de glisser-déposer.
++  const [uploadQueue, setUploadQueue] = useState([]);
++  // Lot 20 — contenu réel du compartiment pour le client affiché : sous-dossiers
++  // présents en plus des 6 standard, et fichiers posés à la racine du code client.
++  const [extraFolders, setExtraFolders] = useState([]);
++  const [rootFiles, setRootFiles] = useState(0);
++  const [dragOver, setDragOver] = useState(false);
++
++  // Lot 22 — tags et recherche des documents R2.
++  const [knownTags, setKnownTags] = useState([]);           // tags du client [{tag, count}]
++  const [aiTagsEnabled, setAiTagsEnabled] = useState(false); // suggestions IA activées pour ce client
++  const [uploadTags, setUploadTags] = useState("");          // tags appliqués aux fichiers du prochain dépôt
++  const [uploadDescription, setUploadDescription] = useState("");
++  const [searchQ, setSearchQ] = useState("");                // texte recherché (nom, tags, description)
++  const [searchTags, setSearchTags] = useState([]);          // pastilles de tags sélectionnées
++  const [searchResults, setSearchResults] = useState([]);
++  const [searching, setSearching] = useState(false);
+ 
+   // Explorateur BD MongoDB Atlas
+   const [promptText, setPromptText] = useState("");
+@@ -134,6 +151,9 @@ export default function GestionStocks() {
+       setFolders(r.data?.folders || []);
+       setClientCode(r.data?.client_code || null);
+       setR2Configured(!!r.data?.r2_configured);
++      setBucket(r.data?.bucket || null);
++      setCanUpload(!!r.data?.can_upload);
++      if (r.data?.upload_max_mb) setMaxUploadMb(r.data.upload_max_mb);
+       if (r.data?.is_admin) {
+         const rc = await apiClient.get("/admin/gestion-stocks/clients");
+         setAdminClients(rc.data || []);
+@@ -163,6 +183,66 @@ export default function GestionStocks() {
+     }
+   };
+ 
++  // Pseudo-dossier « racine » (fichiers hors de tout sous-dossier) — voir backend ROOT_FOLDER.
++  const ROOT_FOLDER = "_racine";
++  const folderLabel = (f) => (f === ROOT_FOLDER ? "Racine (hors dossier)" : f);
++
++  // Dossiers réellement présents dans R2 pour le client affiché.
++  useEffect(() => {
++    if (!effectiveClientCode || !r2Configured) { setExtraFolders([]); setRootFiles(0); return; }
++    apiClient.get("/gestion-stocks/folders", { params: isAdmin ? { client_code: effectiveClientCode } : {} })
++      .then((r) => {
++        if (r.data?.folders?.length) setFolders(r.data.folders);
++        setExtraFolders(r.data?.extra_folders || []);
++        setRootFiles(r.data?.root_files || 0);
++        setAiTagsEnabled(!!r.data?.ai_tags_enabled);
++      })
++      .catch(() => { setExtraFolders([]); setRootFiles(0); setAiTagsEnabled(false); });
++  }, [effectiveClientCode, r2Configured, isAdmin]);
++
++  // Lot 22 — tags déjà utilisés par le client (suggestions de saisie + pastilles de filtre).
++  const clientParams = isAdmin ? { client_code: effectiveClientCode } : {};
++  const loadKnownTags = () => {
++    if (!effectiveClientCode || !r2Configured) { setKnownTags([]); return; }
++    apiClient.get("/gestion-stocks/tags", { params: clientParams })
++      .then((r) => setKnownTags(r.data?.tags || []))
++      .catch(() => setKnownTags([]));
++  };
++  useEffect(() => {
++    loadKnownTags();
++    setSearchQ(""); setSearchTags([]); setSearchResults([]);
++    /* eslint-disable-next-line */
++  }, [effectiveClientCode, r2Configured, isAdmin]);
++
++  // Lot 22 — recherche dans tous les dossiers du client (400 ms après la dernière frappe).
++  const searchActive = searchQ.trim().length > 0 || searchTags.length > 0;
++  const runSearch = () => {
++    if (!effectiveClientCode || !searchActive) { setSearchResults([]); return; }
++    setSearching(true);
++    apiClient.get("/gestion-stocks/search", { params: { ...clientParams, q: searchQ.trim(), tags: searchTags.join(",") } })
++      .then((r) => setSearchResults(r.data?.results || []))
++      .catch((err) => { toast.error(err?.response?.data?.detail || "Erreur de recherche"); setSearchResults([]); })
++      .finally(() => setSearching(false));
++  };
++  useEffect(() => {
++    const t = setTimeout(runSearch, 400);
++    return () => clearTimeout(t);
++    /* eslint-disable-next-line */
++  }, [searchQ, searchTags, effectiveClientCode]);
++
++  // Active/désactive une pastille de tag dans le filtre.
++  const toggleSearchTag = (tag) => setSearchTags((cur) => (cur.includes(tag) ? cur.filter((t) => t !== tag) : [...cur, tag]));
++  const clearSearch = () => { setSearchQ(""); setSearchTags([]); setSearchResults([]); };
++
++  // Après modification des tags d'un fichier : mise à jour de la ligne
++  // (dossier ouvert et résultats de recherche) et des tags connus.
++  const handleFileChanged = (updated, opts = {}) => {
++    const merge = (list) => list.map((f) => (f.key === updated.key ? { ...f, ...updated } : f));
++    setFiles(merge);
++    setSearchResults(merge);
++    if (!opts.keepEditing) loadKnownTags();
++  };
++
+   const openFile = async (file) => {
+     try {
+       const r = await apiClient.get("/gestion-stocks/files/view-url", { params: { key: file.key } });
+@@ -172,28 +252,95 @@ export default function GestionStocks() {
+     }
+   };
+ 
+-  const handleUpload = async (e) => {
+-    const file = e.target.files?.[0];
+-    e.target.value = "";
+-    if (!file || !selectedFolder || !effectiveClientCode) return;
++  // Lot 20 — dépôt (admin) d'un ou plusieurs fichiers depuis l'ordinateur,
++  // via le bouton « Déposer des fichiers » ou par glisser-déposer. Les fichiers
++  // partent un par un sur la route existante (un fichier par requête), avec
++  // la progression de chacun ; un fichier trop gros est refusé avant l'envoi.
++  const uploadFiles = async (fileList) => {
++    const list = Array.from(fileList || []);
++    if (!list.length || !selectedFolder || !effectiveClientCode || uploading) return;
++    const maxBytes = maxUploadMb * 1024 * 1024;
++    const queue = list.map((f, idx) => ({
++      id: `${Date.now()}-${idx}`, name: f.name, size: f.size, progress: 0,
++      status: f.size > maxBytes ? "error" : "pending",
++      error: f.size > maxBytes
++        ? `Refusé : ${(f.size / 1048576).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} Mo, au-delà de la taille maximale autorisée (${Number(maxUploadMb).toLocaleString("fr-FR")} Mo par fichier)`
++        : null,
++    }));
++    setUploadQueue(queue);
+     setUploading(true);
+-    const form = new FormData();
+-    form.append("file", file);
+-    try {
+-      await apiClient.post(
+-        `/admin/gestion-stocks/${encodeURIComponent(effectiveClientCode)}/${encodeURIComponent(selectedFolder)}/upload`,
+-        form,
+-        { headers: { "Content-Type": "multipart/form-data" } },
+-      );
+-      toast.success("Document envoyé.");
++    const update = (id, patch) => setUploadQueue((q) => q.map((it) => (it.id === id ? { ...it, ...patch } : it)));
++    let sent = 0;
++    let aiStarted = false;
++    for (let idx = 0; idx < list.length; idx += 1) {
++      const item = queue[idx];
++      if (item.status === "error") continue;
++      update(item.id, { status: "uploading" });
++      const form = new FormData();
++      form.append("file", list[idx]);
++      // Lot 22 — tags et description saisis avant le dépôt (appliqués à chaque fichier du lot).
++      if (uploadTags.trim()) form.append("tags", uploadTags);
++      if (uploadDescription.trim()) form.append("description", uploadDescription);
++      try {
++        // Administration : route admin (client choisi) ; utilisateur suivi :
++        // route portail (son tenant est résolu par le serveur, jamais transmis).
++        const url = isAdmin
++          ? `/admin/gestion-stocks/${encodeURIComponent(effectiveClientCode)}/${encodeURIComponent(selectedFolder)}/upload`
++          : `/gestion-stocks/folders/${encodeURIComponent(selectedFolder)}/upload`;
++        const res = await apiClient.post(
++          url,
++          form,
++          {
++            headers: { "Content-Type": "multipart/form-data" },
++            onUploadProgress: (ev) => {
++              if (ev.total) update(item.id, { progress: Math.round((ev.loaded * 100) / ev.total) });
++            },
++          },
++        );
++        update(item.id, { status: "done", progress: 100 });
++        sent += 1;
++        if (res?.data?.ai_tags_started) aiStarted = true;
++      } catch (err) {
++        update(item.id, { status: "error", error: err?.response?.data?.detail || "Échec de l'envoi" });
++      }
++    }
++    setUploading(false);
++    gaugeRef.current?.reload();
++    if (sent) {
++      toast.success(`${sent} document${sent > 1 ? "s" : ""} déposé${sent > 1 ? "s" : ""} dans ${selectedFolder}.`);
+       openFolder(selectedFolder);
+-    } catch (err) {
+-      toast.error(err?.response?.data?.detail || "Échec de l'envoi");
+-    } finally {
+-      setUploading(false);
++      loadKnownTags();
++      setUploadTags(""); setUploadDescription("");
++      // Lot 22 — l'IA propose des tags en arrière-plan : on relit le dossier un peu plus tard.
++      if (aiStarted) {
++        toast.info("L'IA prépare des suggestions de tags : elles apparaîtront dans quelques secondes.");
++        const folderAtUpload = selectedFolder;
++        // Seulement si l'utilisateur est toujours dans ce dossier (sinon on ne le ramène pas en arrière).
++        setTimeout(() => { if (selectedFolderRef.current === folderAtUpload) openFolder(folderAtUpload); }, 8000);
++      }
+     }
+   };
+ 
++  const handleUpload = (e) => {
++    const picked = e.target.files;
++    uploadFiles(picked).finally(() => { e.target.value = ""; });
++  };
++
++  const handleDrop = (e) => {
++    e.preventDefault();
++    setDragOver(false);
++    if (canUpload && selectedFolder !== ROOT_FOLDER) uploadFiles(e.dataTransfer?.files);
++  };
++
++  // Libellé du client affiché dans le fil d'Ariane (admin : code + nom).
++  const clientLabel = (() => {
++    if (!effectiveClientCode) return null;
++    const c = adminClients.find((x) => x.client_code === effectiveClientCode);
++    return c?.label ? `${effectiveClientCode} — ${c.label}` : effectiveClientCode;
++  })();
++
++  const backToFolders = () => { setSelectedFolder(null); setFiles([]); setUploadQueue([]); };
++
+   return (
+     <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6" data-testid="gestion-stocks-page">
+       <h1 className="text-xl font-display font-bold text-slate-800 flex items-center gap-2">
+@@ -307,7 +454,7 @@ export default function GestionStocks() {
+             {isAdmin && (
+               <select
+                 value={adminSelectedCode}
+-                onChange={(e) => { setAdminSelectedCode(e.target.value); setSelectedFolder(null); setFiles([]); }}
++                onChange={(e) => { setAdminSelectedCode(e.target.value); setSelectedFolder(null); setFiles([]); setUploadQueue([]); clearSearch(); }}
+                 className="w-full sm:w-72 px-3 py-2 rounded-lg ring-1 ring-slate-300 text-sm bg-white"
+                 data-testid="gestion-stocks-admin-client-select"
+               >
+@@ -318,8 +465,101 @@ export default function GestionStocks() {
+               </select>
+             )}
+ 
+-            {effectiveClientCode && !selectedFolder && (
++            {/* Lot 20 — fil d'Ariane : compartiment R2 › client › dossier ouvert */}
++            {effectiveClientCode && (
++              <nav className="flex items-center flex-wrap gap-1 text-sm bg-white rounded-lg ring-1 ring-teal-200 px-3 py-2"
++                aria-label="Emplacement" data-testid="gestion-stocks-breadcrumb">
++                <HardDrive className="w-4 h-4 text-teal-600 shrink-0" />
++                <span className="text-slate-500">Compartiment</span>
++                <button type="button" onClick={backToFolders} className="font-mono font-semibold text-teal-800 hover:underline"
++                  data-testid="gestion-stocks-breadcrumb-bucket">
++                  {bucket || "—"}
++                </button>
++                <ChevronRight className="w-4 h-4 text-slate-400" />
++                <button type="button" onClick={backToFolders}
++                  className={`hover:underline ${selectedFolder ? "text-teal-800" : "font-semibold text-slate-800"}`}
++                  data-testid="gestion-stocks-breadcrumb-client">
++                  {clientLabel}
++                </button>
++                {selectedFolder && (
++                  <>
++                    <ChevronRight className="w-4 h-4 text-slate-400" />
++                    <span className="font-semibold text-slate-800" data-testid="gestion-stocks-breadcrumb-folder">{folderLabel(selectedFolder)}</span>
++                  </>
++                )}
++              </nav>
++            )}
++
++            {/* Lot 20 — espace occupé par les fichiers du tenant / espace alloué */}
++            {effectiveClientCode && (
++              <R2StorageGauge key={effectiveClientCode} ref={gaugeRef} compact clientCode={isAdmin ? effectiveClientCode : null} />
++            )}
++
++            {/* Lot 22 — recherche par nom, tag ou description, dans tous les dossiers du client */}
++            {effectiveClientCode && (
++              <div className="space-y-2" data-testid="gestion-stocks-search">
++                <div className="relative">
++                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
++                  <input value={searchQ} onChange={(e) => setSearchQ(e.target.value)}
++                    placeholder="Rechercher un document (nom, tag, description) dans tous les dossiers…"
++                    className="w-full pl-9 pr-9 py-2 rounded-lg ring-1 ring-slate-300 text-sm bg-white"
++                    data-testid="gestion-stocks-search-input" />
++                  {searchActive && (
++                    <button type="button" onClick={clearSearch} title="Effacer la recherche"
++                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
++                      data-testid="gestion-stocks-search-clear">
++                      <X className="w-4 h-4" />
++                    </button>
++                  )}
++                </div>
++                {knownTags.length > 0 && (
++                  <div className="flex flex-wrap items-center gap-1" data-testid="gestion-stocks-tag-filter">
++                    <span className="text-[11px] text-slate-500 inline-flex items-center gap-1 mr-1"><Tag className="w-3 h-3" /> Filtrer :</span>
++                    {knownTags.slice(0, 20).map((k) => (
++                      <TagChip key={k.tag} tag={`${k.tag} (${k.count})`} active={searchTags.includes(k.tag)}
++                        onClick={() => toggleSearchTag(k.tag)} />
++                    ))}
++                  </div>
++                )}
++              </div>
++            )}
++
++            {effectiveClientCode && searchActive && (
++              <div className="space-y-2" data-testid="gestion-stocks-search-results">
++                <p className="text-xs text-slate-600">
++                  {searching ? "Recherche…" : `${searchResults.length} document${searchResults.length > 1 ? "s" : ""} trouvé${searchResults.length > 1 ? "s" : ""}`}
++                  {searchTags.length > 0 && <> avec {searchTags.length > 1 ? "les tags" : "le tag"} <strong>{searchTags.join(", ")}</strong></>}
++                </p>
++                {!searching && searchResults.length > 0 && (
++                  <ul className="divide-y divide-slate-200 bg-white rounded-lg ring-1 ring-slate-200">
++                    {searchResults.map((file) => (
++                      <R2FileRow key={file.key} file={file} onOpen={openFile} onChanged={handleFileChanged}
++                        knownTags={knownTags} aiEnabled={aiTagsEnabled} showFolder folderLabel={folderLabel} />
++                    ))}
++                  </ul>
++                )}
++              </div>
++            )}
++
++            {effectiveClientCode && !searchActive && !selectedFolder && canUpload && (
++              <p className="text-xs text-slate-500">Ouvrez un dossier pour consulter ou déposer des documents.</p>
++            )}
++
++            {effectiveClientCode && !searchActive && !selectedFolder && (
+               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4" data-testid="gestion-stocks-folder-grid">
++                {rootFiles > 0 && (
++                  <button
++                    type="button"
++                    onClick={() => openFolder(ROOT_FOLDER)}
++                    className="flex flex-col items-center gap-1 p-3 rounded-lg hover:bg-white/70 transition"
++                    title="Fichiers posés directement à la racine du code client, hors de tout dossier"
++                    data-testid="gestion-stocks-folder-racine"
++                  >
++                    <Folder className="w-12 h-12 text-slate-400 fill-slate-100" strokeWidth={1.5} />
++                    <span className="text-xs font-medium text-slate-700 text-center">Racine (hors dossier)</span>
++                    <span className="text-[10px] text-slate-400">{rootFiles} fichier{rootFiles > 1 ? "s" : ""}</span>
++                  </button>
++                )}
+                 {folders.map((f) => (
+                   <button
+                     key={f}
+@@ -328,52 +568,110 @@ export default function GestionStocks() {
+                     className="flex flex-col items-center gap-1 p-3 rounded-lg hover:bg-white/70 transition"
+                     data-testid={`gestion-stocks-folder-${f.replace(/\s+/g, "-").toLowerCase()}`}
+                   >
+-                    <Folder className={`w-12 h-12 ${FOLDER_ICON_COLOR} fill-amber-100`} strokeWidth={1.5} />
++                    <Folder className={`w-12 h-12 ${extraFolders.includes(f) ? "text-sky-500 fill-sky-100" : `${FOLDER_ICON_COLOR} fill-amber-100`}`} strokeWidth={1.5} />
+                     <span className="text-xs font-medium text-slate-700 text-center">{f}</span>
+                   </button>
+                 ))}
+               </div>
+             )}
+ 
+-            {effectiveClientCode && selectedFolder && (
+-              <div className="space-y-2" data-testid="gestion-stocks-file-list">
+-                <div className="flex items-center justify-between">
++            {/* Lot 20 — légende des couleurs de dossiers (grille des dossiers) */}
++            {effectiveClientCode && !searchActive && !selectedFolder && (
++              <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-teal-100 pt-2 text-[11px] text-slate-500"
++                data-testid="gestion-stocks-folder-legend">
++                <span className="font-semibold text-slate-600">Légende :</span>
++                <span className="inline-flex items-center gap-1">
++                  <Folder className={`w-4 h-4 ${FOLDER_ICON_COLOR} fill-amber-100`} strokeWidth={1.5} />
++                  Dossier standard (créé automatiquement dans le compartiment pour chaque client)
++                </span>
++                <span className="inline-flex items-center gap-1">
++                  <Folder className="w-4 h-4 text-sky-500 fill-sky-100" strokeWidth={1.5} />
++                  Autre dossier présent dans le compartiment (créé par exemple depuis Cloudflare)
++                </span>
++                <span className="inline-flex items-center gap-1">
++                  <Folder className="w-4 h-4 text-slate-400 fill-slate-100" strokeWidth={1.5} />
++                  Racine : fichiers posés directement sous le code client, hors dossier (consultation seule)
++                </span>
++              </div>
++            )}
++
++            {effectiveClientCode && !searchActive && selectedFolder && (
++              <div className="space-y-2" data-testid="gestion-stocks-file-list"
++                onDragOver={(e) => { if (canUpload && selectedFolder !== ROOT_FOLDER) { e.preventDefault(); setDragOver(true); } }}
++                onDragLeave={() => setDragOver(false)}
++                onDrop={handleDrop}>
++                <div className="flex items-center justify-between gap-2 flex-wrap">
+                   <button
+                     type="button"
+-                    onClick={() => { setSelectedFolder(null); setFiles([]); }}
++                    onClick={backToFolders}
+                     className="text-xs text-slate-600 inline-flex items-center gap-1 hover:underline"
+                   >
+                     <ArrowLeft className="w-3.5 h-3.5" /> Retour aux dossiers
+                   </button>
+-                  <span className="text-xs font-semibold text-slate-500">{selectedFolder}</span>
+-                  {isAdmin && (
+-                    <label className="text-xs text-teal-700 inline-flex items-center gap-1 cursor-pointer hover:underline">
+-                      <Upload className="w-3.5 h-3.5" /> {uploading ? "Envoi…" : "Ajouter un document"}
+-                      <input type="file" className="hidden" disabled={uploading} onChange={handleUpload} />
++                  {canUpload && selectedFolder !== ROOT_FOLDER && (
++                    <label className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-white ${uploading ? "bg-teal-400 cursor-wait" : "bg-teal-600 hover:bg-teal-700 cursor-pointer"}`}
++                      data-testid="gestion-stocks-upload-btn">
++                      {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
++                      {uploading ? "Envoi en cours…" : "Déposer des fichiers"}
++                      <input type="file" multiple className="hidden" disabled={uploading} onChange={handleUpload}
++                        data-testid="gestion-stocks-upload-input" />
+                     </label>
+                   )}
+                 </div>
++
++                {/* Lot 22 — tags et description appliqués aux fichiers du prochain dépôt */}
++                {canUpload && selectedFolder !== ROOT_FOLDER && (
++                  <div className="grid sm:grid-cols-2 gap-2" data-testid="gestion-stocks-upload-meta">
++                    <input value={uploadTags} onChange={(e) => setUploadTags(e.target.value)} list="gestion-stocks-known-tags"
++                      placeholder="Tags du dépôt, séparés par des virgules (facultatif)"
++                      className="px-3 py-1.5 rounded-lg ring-1 ring-slate-300 text-xs bg-white" data-testid="gestion-stocks-upload-tags" />
++                    <datalist id="gestion-stocks-known-tags">{knownTags.map((k) => <option key={k.tag} value={k.tag} />)}</datalist>
++                    <input value={uploadDescription} onChange={(e) => setUploadDescription(e.target.value)} maxLength={500}
++                      placeholder="Description (facultative)"
++                      className="px-3 py-1.5 rounded-lg ring-1 ring-slate-300 text-xs bg-white" data-testid="gestion-stocks-upload-description" />
++                  </div>
++                )}
++
++                {/* Zone de glisser-déposer (admin) : même envoi que le bouton */}
++                {canUpload && selectedFolder !== ROOT_FOLDER && (
++                  <div className={`rounded-lg border-2 border-dashed px-3 py-4 text-center text-xs transition ${dragOver ? "border-teal-500 bg-teal-50 text-teal-800" : "border-slate-300 text-slate-500"}`}
++                    data-testid="gestion-stocks-dropzone">
++                    Glissez-déposez ici des fichiers depuis votre ordinateur (plusieurs à la fois, {Number(maxUploadMb).toLocaleString("fr-FR")} Mo max par fichier)
++                    — ils seront rangés dans <strong>{selectedFolder}</strong>.
++                  </div>
++                )}
++
++                {/* Suivi de l'envoi, fichier par fichier */}
++                {uploadQueue.length > 0 && (
++                  <ul className="space-y-1" data-testid="gestion-stocks-upload-queue">
++                    {uploadQueue.map((it) => (
++                      <li key={it.id} className="flex items-center gap-2 text-xs bg-white rounded ring-1 ring-slate-200 px-2 py-1.5">
++                        {it.status === "done" ? <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
++                          : it.status === "error" ? <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
++                          : <Loader2 className={`w-4 h-4 text-slate-400 shrink-0 ${it.status === "uploading" ? "animate-spin" : ""}`} />}
++                        <span className="truncate flex-1 text-slate-700">{it.name}</span>
++                        {it.status === "error" ? (
++                          <span className="text-rose-600">{it.error}</span>
++                        ) : (
++                          <span className="w-28 h-1.5 bg-slate-100 rounded overflow-hidden shrink-0">
++                            <span className="block h-full bg-teal-500 transition-all" style={{ width: `${it.progress}%` }} />
++                          </span>
++                        )}
++                      </li>
++                    ))}
++                  </ul>
++                )}
++
+                 {loadingFiles ? (
+                   <p className="text-sm text-slate-500">Chargement…</p>
+                 ) : files.length === 0 ? (
+                   <p className="text-sm text-slate-500 italic">Aucun document dans ce dossier pour l'instant.</p>
+                 ) : (
+                   <ul className="divide-y divide-slate-200 bg-white rounded-lg ring-1 ring-slate-200">
++                    {/* Lot 22 — chaque ligne affiche ses tags et, si autorisé, un éditeur en ligne */}
+                     {files.map((file) => (
+-                      <li
+-                        key={file.key}
+-                        onDoubleClick={() => openFile(file)}
+-                        className="flex items-center justify-between gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50"
+-                        title="Double-cliquer pour afficher"
+-                        data-testid="gestion-stocks-file-row"
+-                      >
+-                        <span className="flex items-center gap-2 text-sm text-slate-700 truncate">
+-                          <FileText className="w-4 h-4 text-slate-400 shrink-0" /> {file.name}
+-                        </span>
+-                        <span className="text-[11px] text-slate-400 shrink-0">
+-                          {formatSize(file.size)} · {formatDate(file.last_modified)}
+-                        </span>
+-                      </li>
++                      <R2FileRow key={file.key} file={file} onOpen={openFile} onChanged={handleFileChanged}
++                        knownTags={knownTags} aiEnabled={aiTagsEnabled} />
+                     ))}
+                   </ul>
+                 )}
+-- 
+2.43.0
+

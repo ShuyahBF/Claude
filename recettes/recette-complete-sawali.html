@@ -1,0 +1,3298 @@
+<title>Recette complète Sawali</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+  /* Palette : vert du cabinet Albarka, neutres légèrement teintés de vert */
+  :root {
+    --bg: #F3F5F9; --surface: #FFFFFF; --ink: #141A26; --muted: #5D6679; --line: #DDE2EC;
+    --accent: #1D4ED8; --accent-soft: #E3EAFB; --gold: #A86B14; --gold-soft: #F7EBD8;
+    --bad: #B03A2A; --bad-soft: #F8E5E1; --focus: #1D4ED8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0D111A; --surface: #151B27; --ink: #E5E9F2; --muted: #96A0B5; --line: #262E40;
+      --accent: #7AA2F7; --accent-soft: #18223F; --gold: #E5A24B; --gold-soft: #33260F;
+      --bad: #E47D69; --bad-soft: #3A1D18; --focus: #7AA2F7;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0D111A; --surface: #151B27; --ink: #E5E9F2; --muted: #96A0B5; --line: #262E40;
+    --accent: #7AA2F7; --accent-soft: #18223F; --gold: #E5A24B; --gold-soft: #33260F;
+    --bad: #E47D69; --bad-soft: #3A1D18; --focus: #7AA2F7;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.55 "IBM Plex Sans", system-ui, sans-serif; padding-inline: 16px; padding-block: 28px 64px; }
+  .wrap { max-width: 880px; margin: 0 auto; display: grid; gap: 22px; }
+  h1, h2 { font-family: "Newsreader", Georgia, serif; font-weight: 600; text-wrap: balance; margin: 0; }
+  h1 { font-size: 34px; line-height: 1.1; }
+  h2 { font-size: 21px; }
+  .eyebrow { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  .lead { color: var(--muted); max-width: 64ch; margin: 6px 0 0; }
+  code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .88em; }
+  /* Barre de progression globale */
+  .summary { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center; }
+  .bar { flex: 1 1 260px; height: 10px; border-radius: 99px; background: var(--line); overflow: hidden; display: flex; }
+  .bar i { display: block; height: 100%; }
+  .bar .ok { background: var(--accent); } .bar .ko { background: var(--bad); }
+  .counts { display: flex; gap: 16px; font-variant-numeric: tabular-nums; font-size: 14px; color: var(--muted); }
+  .counts b { color: var(--ink); font-weight: 600; }
+  .sync { font-size: 12px; color: var(--muted); }
+  /* Filtres */
+  .tools { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); }
+  .chip { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 99px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .spacer { flex: 1; }
+  .btn { border: 1px solid var(--accent); background: transparent; color: var(--accent); border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+  button:focus-visible, textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  /* Comptes à préparer */
+  details.prep { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; }
+  details.prep summary { cursor: pointer; font-weight: 600; }
+  .table-scroll { overflow-x: auto; margin-top: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  /* Sections et points de contrôle */
+  section { display: grid; gap: 8px; }
+  .sec-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .sec-head .who { font-size: 13px; color: var(--muted); }
+  .sec-head .prog { margin-left: auto; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  ul.items { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  li.item { padding: 12px 14px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto; gap: 6px 14px; }
+  li.item:last-child { border-bottom: 0; }
+  li.item[data-status="ok"] { box-shadow: inset 3px 0 0 var(--accent); }
+  li.item[data-status="ko"] { box-shadow: inset 3px 0 0 var(--bad); background: var(--bad-soft); }
+  .do { font-weight: 500; }
+  .expect { color: var(--muted); font-size: 14px; margin-top: 2px; }
+  .expect li { margin: 2px 0; }
+  .expect ul { margin: 4px 0 0; padding-left: 18px; }
+  .acts { display: flex; gap: 6px; align-self: start; }
+  .st { border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 8px; padding: 5px 10px; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+  .st.ok[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .st.ko[aria-pressed="true"] { background: var(--bad); border-color: var(--bad); color: #fff; }
+  .st:disabled { cursor: default; opacity: .55; }
+  .meta { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
+  .note { grid-column: 1 / -1; display: grid; gap: 6px; }
+  .note textarea { width: 100%; min-height: 64px; border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; font-size: 14px; background: var(--surface); color: var(--ink); resize: vertical; }
+  .note .row { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+  .banner { background: var(--gold-soft); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; font-size: 14px; }
+  .empty { padding: 18px; color: var(--muted); text-align: center; background: var(--surface); border: 1px dashed var(--line); border-radius: 10px; }
+  .toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 13px; }
+  @media (max-width: 560px) {
+    li.item { grid-template-columns: 1fr; }
+    .acts { justify-self: start; }
+    h1 { font-size: 28px; }
+  }
+  @media (prefers-reduced-motion: no-preference) { .bar i { transition: width .3s ease; } }
+
+  .sec-prep { font-size: 13px; background: var(--gold-soft); border-radius: 8px; padding: 6px 10px; }
+  .toc { display: flex; flex-wrap: wrap; gap: 6px; font-size: 13px; }
+  .toc a { color: var(--accent); text-decoration: none; border: 1px solid var(--line); border-radius: 99px; padding: 3px 10px; background: var(--surface); }
+  .partchips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .warn { background: var(--bad-soft); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; font-size: 14px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Sawali Smart Systems · sawalismartsystems.com · lot 25</div>
+    <h1>Recette complète Sawali</h1>
+    <p class="lead">Tous les modules de la plateforme : l'administration (/admin) et l'espace client (/portal), avec les variantes de menu par métier (pharmacie, fabricant, caisse, GRH…). Pour chaque point : faites l'action, puis cochez <b>OK</b> ou <b>Problème</b> (avec le compte utilisé et le message exact). Toute l'équipe voit les coches en direct. Cette liste sert de référence avant chaque mise en production.</p>
+  </header>
+  <div class="warn">Recette faite <b>en production</b> : travaillez sur un tenant de test, nommez vos données « TEST-RECETTE » et envoyez les SMS / WhatsApp de test uniquement vers vos propres numéros. Ne jamais cliquer « Purger TOUT » ou « Réinitialiser tout », ni bloquer votre propre adresse IP dans la Blacklist (vous perdriez l'accès).</div>
+  <div class="summary">
+    <div class="bar" aria-hidden="true"><i class="ok" id="barOk"></i><i class="ko" id="barKo"></i></div>
+    <div class="counts" id="counts"></div>
+    <div class="sync" id="sync">Connexion à la liste partagée…</div>
+  </div>
+  <div class="banner" id="offline" hidden>La liste partagée n'est pas disponible dans cette vue : vous pouvez lire les points, mais les coches ne sont pas enregistrées.</div>
+  <details class="prep">
+    <summary>Avant de commencer : comptes à préparer</summary>
+    <div class="table-scroll"><table><thead><tr><th>Compte</th><th>Pour tester</th></tr></thead><tbody><tr><td>Super-admin</td><td>admin@sawalismartsystems.com : voit tout, dont Traces API, Santé applicative, Explorateur DB, Liens cryptés</td></tr><tr><td>Admin (client)</td><td>Rôle système « admin » : toute l&#x27;administration sauf les 4 liens du super-admin</td></tr><tr><td>Tenant de test</td><td>Un client standard, un client avec « Rôle Caissier » coché, un Superviseur</td></tr><tr><td>Rôles système</td><td>Pharmacien, Médecin, Régulateur (AMM), Éditeur VIDAL, Modérateur (Admin → Clients)</td></tr><tr><td>Tenant Fabricant</td><td>« Profil d&#x27;entreprise » = Fabricant, avec un compte Superviseur</td></tr><tr><td>Utilisateurs suivis</td><td>Moderation, Comptable, Caissier, Médecin, Secrétaire médicale, Pharmacien, Traducteur, Consultation (Admin → Utilisateurs suivis → mot de passe par l&#x27;icône clé)</td></tr><tr><td>Fonctionnalités du tenant</td><td>Admin → Clients → bouclier « SMART Communications » : WhatsApp, SMS, IA, Meta, image/vidéo/voix, Liluvine PRO, tickets, VIDAL</td></tr><tr><td>Numéros</td><td>Votre WhatsApp et votre téléphone SMS pour les envois de test</td></tr></tbody></table></div>
+  </details>
+  <details class="prep">
+    <summary>Aller à un module</summary>
+    <div class="toc" id="toc" style="margin-top:10px"></div>
+  </details>
+  <div class="tools" role="toolbar" aria-label="Filtres">
+    <button class="chip" data-part="" aria-pressed="true">Toutes les parties</button><button class="chip" data-part="Administration" aria-pressed="false">Administration</button><button class="chip" data-part="Espace client" aria-pressed="false">Espace client</button>
+    <span class="spacer"></span>
+    <button class="chip" data-filter="all" aria-pressed="true">Tout</button>
+    <button class="chip" data-filter="todo" aria-pressed="false">À tester</button>
+    <button class="chip" data-filter="ko" aria-pressed="false">Problèmes</button>
+    <button class="chip" data-filter="ok" aria-pressed="false">Validés</button>
+    <button class="btn" id="copyKo">Copier les problèmes</button>
+  </div>
+  <main id="list" class="wrap" style="gap:26px"></main>
+</div>
+<div class="toast" id="toast" hidden></div>
+<script>
+// ---------------------------------------------------------------- contenu de la recette
+const SECTIONS = [
+{
+"id": "a-dashboard",
+"title": "Tableau de bord",
+"who": "Admin → Tableau de bord (/admin) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "",
+"items": [
+{
+"id": "a-dashboard-1",
+"do": "Connectez-vous avec le compte super-admin puis cliquez sur « Tableau de bord » dans la barre latérale.",
+"expect": [
+"Le titre « Tableau de bord » s'affiche.",
+"Cinq cartes chiffrées sont visibles : Clients, RDV, Documents, Interventions, Messages.",
+"Les chiffres correspondent à peu près au nombre de lignes des pages Clients, Rendez-vous, Documents, Interventions et Messages reçus."
+]
+},
+{
+"id": "a-dashboard-2",
+"do": "Cliquez sur la carte « Mes rapports » (ou « Mes suivis ») si elle est affichée.",
+"expect": [
+"La page des notes (rapports ou suivis) s'ouvre sous /admin/notes/…",
+"Le nombre affiché sur la carte correspond au nombre de notes de la liste."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-clients",
+"title": "Clients",
+"who": "Admin → Clients (/admin/clients) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production). Prévoir une adresse e-mail de test que vous contrôlez.",
+"items": [
+{
+"id": "a-clients-1",
+"do": "Cliquez sur « Nouveau client », remplissez « Nom complet * » (TEST-RECETTE Client), « Email * », « Mot de passe * », laissez le « Rôle » sur « Client » puis cliquez sur « Enregistrer ».",
+"expect": [
+"Le client apparaît dans la liste, dans le groupe « Clients ».",
+"Le compteur du filtre « Tous » augmente de 1."
+]
+},
+{
+"id": "a-clients-2",
+"do": "Utilisez les filtres en haut (« Tous », « Admins clients », « Superviseurs », « Modérateurs »…, « 📱 WhatsApp OTP ») et le bouton de tri « ↑ Asc / ↓ Desc ».",
+"expect": [
+"La liste se filtre selon le rôle choisi et le compteur du bouton correspond au nombre de lignes affichées.",
+"L'ordre de la liste s'inverse au clic sur le bouton de tri."
+]
+},
+{
+"id": "a-clients-3",
+"do": "Sur la ligne du client de test, ouvrez successivement les icônes « Timeline CRM », « SMART Communications », « Consommation WhatsApp » et « Paiements / historique règlements » ; dans Paiements cliquez « Nouveau paiement », saisissez une date et une « Référence facture » TEST puis « Enregistrer ».",
+"expect": [
+"Chaque icône ouvre la bonne page ou fenêtre (timeline, fonctionnalités, statistiques WhatsApp, paiements).",
+"Le paiement de test apparaît dans l'historique ; l'icône corbeille demande « Supprimer ce paiement ? » et le retire."
+]
+},
+{
+"id": "a-clients-4",
+"do": "Cliquez sur l'icône corbeille du client de test.",
+"expect": [
+"Une confirmation « Supprimer ce client ? » s'affiche.",
+"Après validation, le client disparaît de la liste.",
+"ATTENTION : ne jamais choisir le rôle « Admin (client) » pour un compte de test : ce rôle donne l'accès complet à l'administration."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-usage",
+"title": "Usage & Facturation",
+"who": "Admin → Usage & Facturation (/admin/usage) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Ne JAMAIS valider « Mettre à 0 » ni « Purger TOUT » en production : se limiter à ouvrir puis « Annuler ».",
+"items": [
+{
+"id": "a-usage-1",
+"do": "Ouvrez la page et changez la période (« 7 j », « 30 j », « 90 j », « 6 mois »), puis cliquez « Actualiser ».",
+"expect": [
+"Le titre « Tableau de bord — Usage & Facturation » s'affiche.",
+"Les blocs « Efficacité de campagne », « Activité quotidienne » et « Détails par client » se mettent à jour selon la période."
+]
+},
+{
+"id": "a-usage-2",
+"do": "Cliquez sur « CSV ».",
+"expect": [
+"Un fichier CSV est téléchargé et s'ouvre dans un tableur avec une ligne par client."
+]
+},
+{
+"id": "a-usage-3",
+"do": "Dans « Connexions & pages visitées », changez la période (« Aujourd'hui », « 7 jours », « 30 jours »…).",
+"expect": [
+"La liste des connexions et la carte de chaleur changent selon la période."
+]
+},
+{
+"id": "a-usage-4",
+"do": "Cliquez sur « Réinitialiser », cochez « Purge complète » sans valider, puis cliquez « Annuler ».",
+"expect": [
+"La fenêtre « Réinitialiser le compteur d'usage » s'ouvre et le bouton passe de « Mettre à 0 » à « Purger TOUT » quand la case est cochée.",
+"Après « Annuler », aucun chiffre n'a changé."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-appointments",
+"title": "Rendez-vous",
+"who": "Admin → Rendez-vous (/admin/appointments) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Avoir au moins un RDV existant (ou en créer un depuis le site public avec le sujet TEST-RECETTE).",
+"items": [
+{
+"id": "a-appointments-1",
+"do": "Ouvrez la page puis cliquez « Actualiser ».",
+"expect": [
+"Le texte « Toutes les demandes de RDV (publiques et clients). » s'affiche.",
+"La liste montre Date, Client, Sujet, Durée, Statut."
+]
+},
+{
+"id": "a-appointments-2",
+"do": "Sur le RDV de test cliquez « Modifier », changez la « Durée (min) » et ajoutez un participant via « Rechercher un contact (nom ou téléphone)… », puis « Enregistrer ».",
+"expect": [
+"La fenêtre « Modifier le rendez-vous » se ferme.",
+"La nouvelle durée apparaît dans la liste."
+]
+},
+{
+"id": "a-appointments-3",
+"do": "Cliquez « Supprimer » sur le RDV de test.",
+"expect": [
+"Une confirmation « Supprimer ce RDV ? » apparaît.",
+"Après validation le RDV disparaît."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-interventions",
+"title": "Interventions",
+"who": "Admin → Interventions (/admin/interventions) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production).",
+"items": [
+{
+"id": "a-interventions-1",
+"do": "Cliquez « Nouvelle intervention », choisissez un « Client * », saisissez « Titre * » (TEST-RECETTE), « Date * », « Durée (h) », « Technicien », puis « Enregistrer ».",
+"expect": [
+"L'intervention apparaît dans la liste avec le bon client et le bon statut.",
+"Le badge de la barre latérale (tickets en attente) reste cohérent."
+]
+},
+{
+"id": "a-interventions-2",
+"do": "Modifiez l'intervention (icône crayon), changez le statut, enregistrez.",
+"expect": [
+"Le nouveau statut et la colonne « Mis à jour » sont actualisés."
+]
+},
+{
+"id": "a-interventions-3",
+"do": "Supprimez l'intervention (icône corbeille rouge).",
+"expect": [
+"Une confirmation « Supprimer ? » apparaît.",
+"L'intervention disparaît de la liste."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-documents",
+"title": "Documents",
+"who": "Admin → Documents (/admin/documents) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production). Prévoir un petit PDF.",
+"items": [
+{
+"id": "a-documents-1",
+"do": "Cliquez « Nouveau document », saisissez « Titre * », joignez un « Fichier (PDF / image) », choisissez la « Visibilité » (Public ou Client spécifique), puis « Enregistrer ».",
+"expect": [
+"Le document apparaît dans la liste avec la bonne visibilité.",
+"S'il est lié à un client, ce client le voit dans son portail ; les autres non."
+]
+},
+{
+"id": "a-documents-2",
+"do": "Cliquez « Historique » sur le document.",
+"expect": [
+"La fenêtre « Historique du document » liste les téléversements / téléchargements (ou « Aucun événement. »)."
+]
+},
+{
+"id": "a-documents-3",
+"do": "Cliquez « Catégories », ajoutez une catégorie TEST avec « Ajouter », puis supprimez-la.",
+"expect": [
+"La catégorie apparaît puis disparaît après confirmation."
+]
+},
+{
+"id": "a-documents-4",
+"do": "Cliquez « Supprimer » sur le document de test.",
+"expect": [
+"Confirmation « Supprimer ? » puis le document disparaît."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-forms",
+"title": "Formulaires",
+"who": "Admin → Formulaires (/admin/forms) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production).",
+"items": [
+{
+"id": "a-forms-1",
+"do": "Cliquez « Nouveau formulaire », donnez un « Titre du formulaire » (TEST-RECETTE) et cliquez « Créer ».",
+"expect": [
+"L'éditeur du formulaire s'ouvre.",
+"À noter : l'adresse passe en /portal/forms/… et la barre latérale devient celle du portail client (comportement actuel)."
+]
+},
+{
+"id": "a-forms-2",
+"do": "Revenez sur Admin → Formulaires, cliquez « Remplir » puis « Stats » sur le formulaire de test.",
+"expect": [
+"Le formulaire peut être rempli et envoyé.",
+"La page de statistiques affiche la saisie."
+]
+},
+{
+"id": "a-forms-3",
+"do": "Cliquez « Gérer » (catégories), créez une catégorie puis supprimez-la ; enfin supprimez le formulaire de test.",
+"expect": [
+"La catégorie apparaît dans les filtres puis disparaît.",
+"La suppression du formulaire demande « Supprimer ce formulaire et toutes ses saisies ? »."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-messaging",
+"title": "Messagerie WhatsApp",
+"who": "Admin → Messagerie WhatsApp (/admin/messaging) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Envoi réel et facturé : utiliser UNIQUEMENT un destinataire de test (votre propre numéro WhatsApp) et un template approuvé.",
+"items": [
+{
+"id": "a-messaging-1",
+"do": "Ouvrez la page et cliquez « Rafraîchir ».",
+"expect": [
+"La liste des destinataires, l'« Historique des envois (200 derniers) » et les « Envois programmés » s'affichent.",
+"Si WhatsApp n'est pas configuré, le message « WhatsApp Business API non configurée. » s'affiche."
+]
+},
+{
+"id": "a-messaging-2",
+"do": "Choisissez un template dans « — Sélectionner un template approuvé — », cochez UN seul destinataire (vous-même), cliquez « Aperçu » puis « Envoyer à 1 » et confirmez.",
+"expect": [
+"Le bouton indique bien « Envoyer à 1 » (jamais plus).",
+"Le message arrive sur votre WhatsApp.",
+"L'envoi apparaît dans l'historique avec son statut."
+]
+},
+{
+"id": "a-messaging-3",
+"do": "Dans « Planifier un envoi », planifiez le même envoi dans 1 heure puis cliquez « Planifier » ; ensuite supprimez la planification.",
+"expect": [
+"La planification apparaît dans « Envois programmés ».",
+"La suppression demande « Annuler / supprimer cette planification ? » et la retire."
+]
+},
+{
+"id": "a-messaging-4",
+"do": "Point sensible : vérifiez le bouton « Tout sélectionner (avec tél.) » SANS envoyer.",
+"expect": [
+"Le compteur du bouton d'envoi affiche le nombre total de destinataires ; décochez tout avant de quitter."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-whatsapp-templates",
+"title": "Templates WhatsApp",
+"who": "Admin → Templates WhatsApp (/admin/whatsapp-templates) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Ne pas soumettre de template à Meta sauf besoin réel ; ne pas supprimer un template utilisé.",
+"items": [
+{
+"id": "a-whatsapp-templates-1",
+"do": "Ouvrez la page et cliquez « Rafraîchir ».",
+"expect": [
+"La liste des templates Meta s'affiche avec leur statut et des filtres par statut avec compteurs."
+]
+},
+{
+"id": "a-whatsapp-templates-2",
+"do": "Sur un template, cliquez « Cliquez pour ajouter une note… », saisissez une note et validez avec « OK ».",
+"expect": [
+"La note s'affiche sous le template et reste après rechargement de la page."
+]
+},
+{
+"id": "a-whatsapp-templates-3",
+"do": "Cliquez « Nouveau template », regardez le formulaire puis « Annuler ».",
+"expect": [
+"La fenêtre « Nouveau template Meta » s'ouvre avec le bouton « Soumettre à Meta ».",
+"« Annuler » ferme sans rien créer."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-automations",
+"title": "Automations",
+"who": "Admin → Automations (/admin/automations) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production).",
+"items": [
+{
+"id": "a-automations-1",
+"do": "Cliquez « Nouvelle automation », choisissez un événement et un template, puis « Créer ».",
+"expect": [
+"L'automation apparaît dans la liste « Automations WhatsApp »."
+]
+},
+{
+"id": "a-automations-2",
+"do": "Cliquez sur le bouton « ON / OFF » de l'automation de test.",
+"expect": [
+"L'état bascule entre ON et OFF et reste après rechargement."
+]
+},
+{
+"id": "a-automations-3",
+"do": "Supprimez l'automation de test.",
+"expect": [
+"Confirmation « Supprimer cette automation ? » puis elle disparaît."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-liluvine-history",
+"title": "Liluvine PRO — Historique",
+"who": "Admin → Liluvine PRO — Historique (/admin/liluvine-history) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "",
+"items": [
+{
+"id": "a-liluvine-history-1",
+"do": "Ouvrez la page, cliquez « Actualiser » et filtrez par canal (« Tous canaux », « Web », « WhatsApp », « Facebook », « SMS »).",
+"expect": [
+"Les conversations Liluvine s'affichent avec un compteur par canal.",
+"Le filtre ne garde que le canal choisi."
+]
+},
+{
+"id": "a-liluvine-history-2",
+"do": "Cliquez « Voir » sur une conversation.",
+"expect": [
+"Le détail des messages de la conversation s'ouvre ; « Fermer » le referme."
+]
+},
+{
+"id": "a-liluvine-history-3",
+"do": "Sur une conversation de test, cliquez « Reprendre », confirmez, puis « Libérer ».",
+"expect": [
+"Après « Reprendre », un compteur « reprise(s) » apparaît et Liluvine arrête de répondre automatiquement.",
+"Après « Libérer », la conversation redevient automatique."
+]
+},
+{
+"id": "a-liluvine-history-4",
+"do": "Cliquez l'onglet « Captures & Analytics ».",
+"expect": [
+"Les statistiques s'affichent sans erreur."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-suggestions",
+"title": "Suggestions",
+"who": "Admin → Suggestions (/admin/suggestions) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) ») (libellé complet : « Suggestions (registre S###) »)",
+"prep": "",
+"items": [
+{
+"id": "a-suggestions-1",
+"do": "Ouvrez la page et cliquez « Rafraîchir ».",
+"expect": [
+"Le titre « Registre des suggestions (SUGGESTIONS.md) » s'affiche avec la liste des suggestions S###."
+]
+},
+{
+"id": "a-suggestions-2",
+"do": "Tapez un mot dans la recherche puis cliquez « Effacer » ; cliquez « Copier MD ».",
+"expect": [
+"La liste se filtre puis revient complète.",
+"Un message confirme la copie dans le presse-papiers."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-suggestions-history",
+"title": "Historique des suggestions",
+"who": "Admin → Historique des suggestions (/admin/suggestions-history) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "",
+"items": [
+{
+"id": "a-suggestions-history-1",
+"do": "Ouvrez la page et cliquez sur les filtres de statut (« Toutes », « IMPLÉMENTÉE », « ACCEPTÉE », « PROPOSÉE », « DIFFÉRÉE », « REFUSÉE »).",
+"expect": [
+"Chaque filtre affiche son compteur et ne montre que les suggestions du statut choisi."
+]
+},
+{
+"id": "a-suggestions-history-2",
+"do": "Sur une suggestion, changez son statut puis cliquez « Voter ».",
+"expect": [
+"Le statut est enregistré et le compteur du filtre change.",
+"Le retrait d'un statut demande une confirmation."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-download-audit",
+"title": "Téléchargements — Audit",
+"who": "Admin → Téléchargements — Audit (/admin/download-audit) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) ») (libellé complet : « Téléchargements — Audit (S029) »)",
+"prep": "",
+"items": [
+{
+"id": "a-download-audit-1",
+"do": "Ouvrez la page et cliquez « Rafraîchir ».",
+"expect": [
+"Le titre « Journal d'audit — Téléchargements » s'affiche.",
+"Les demandes sont listées avec leur statut : En attente, Autorisé, Refusé, Expiré, Annulé."
+]
+},
+{
+"id": "a-download-audit-2",
+"do": "Cliquez sur un statut (ex. « Refusé ») puis sur « Tout (…) » ; utilisez « Filtrer ».",
+"expect": [
+"La liste ne montre que le statut choisi, puis tout revient.",
+"Les compteurs correspondent au nombre de lignes."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-i18n",
+"title": "Régionalisation",
+"who": "Admin → Régionalisation (/admin/i18n) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) ») — et, prévu par conception, les utilisateurs suivis au rôle « Traducteur » (voir section Droits)",
+"prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production).",
+"items": [
+{
+"id": "a-i18n-1",
+"do": "Ouvrez la page ; cliquez « Nouvelle clé », créez la clé test.recette avec un texte FR et cliquez « Save ».",
+"expect": [
+"La clé apparaît dans le tableau des traductions."
+]
+},
+{
+"id": "a-i18n-2",
+"do": "Sur la clé de test, cliquez « ✨ IA » dans une langue vide.",
+"expect": [
+"Une proposition de traduction apparaît dans la cellule ; « Save » l'enregistre."
+]
+},
+{
+"id": "a-i18n-3",
+"do": "Cliquez « Exporter CSV ».",
+"expect": [
+"Un fichier CSV des traductions est téléchargé."
+]
+},
+{
+"id": "a-i18n-4",
+"do": "Supprimez la clé de test (icône corbeille). Ne pas lancer « Traduire toutes les cellules vides » (coût IA).",
+"expect": [
+"Confirmation « Supprimer la traduction « test.recette » ? Cette action est irréversible. » puis la clé disparaît."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-policies",
+"title": "Politiques publiques",
+"who": "Admin → Politiques publiques (/admin/policies) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Prévoir un PDF de moins de 15 Mo. Attention : les PDF sont publics (Google / Facebook) ; remettre l'original après le test.",
+"items": [
+{
+"id": "a-policies-1",
+"do": "Ouvrez la page.",
+"expect": [
+"Trois cartes s'affichent : « Politique de confidentialité (RGPD) », « Politique de services », « Politique de suppression »."
+]
+},
+{
+"id": "a-policies-2",
+"do": "Sur une carte, cliquez l'icône « Copier le lien » puis ouvrez ce lien dans un nouvel onglet.",
+"expect": [
+"Le PDF public s'ouvre (ou une erreur si aucun PDF n'est chargé)."
+]
+},
+{
+"id": "a-policies-3",
+"do": "Cliquez « Remplacer le PDF » (ou « Charger le PDF ») et choisissez le fichier.",
+"expect": [
+"Le message « Envoi en cours… » apparaît puis la carte affiche la nouvelle date et l'auteur.",
+"Un fichier non-PDF ou de plus de 15 Mo est refusé."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-formations",
+"title": "Formations",
+"who": "Admin → Formations (/admin/formations) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production).",
+"items": [
+{
+"id": "a-formations-1",
+"do": "Cliquez « Nouvelle formation », remplissez le titre et cliquez « Enregistrer ».",
+"expect": [
+"La formation apparaît dans « Formations Spécialisées »."
+]
+},
+{
+"id": "a-formations-2",
+"do": "Cliquez « Modules » sur la formation, puis « Nouveau module », enregistrez.",
+"expect": [
+"La fenêtre « Gestion de la formation » montre « Modules (1) ».",
+"L'onglet « Inscrits (…) » liste les inscrits."
+]
+},
+{
+"id": "a-formations-3",
+"do": "Supprimez la formation de test.",
+"expect": [
+"Confirmation « Supprimer cette formation et tous ses modules ? » puis elle disparaît."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-contents",
+"title": "Contenus du site",
+"who": "Admin → Contenus du site (/admin/contents) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Modifie le site public en direct : noter le texte d'origine avant de tester.",
+"items": [
+{
+"id": "a-contents-1",
+"do": "Choisissez la section « Notre Mission », modifiez un mot, cliquez « Enregistrer ».",
+"expect": [
+"Le message de succès s'affiche.",
+"Le changement est visible sur sawalismartsystems.com (page d'accueil) après rechargement."
+]
+},
+{
+"id": "a-contents-2",
+"do": "Remettez le texte d'origine et « Enregistrer ».",
+"expect": [
+"Le site public affiche de nouveau le texte d'origine."
+]
+},
+{
+"id": "a-contents-3",
+"do": "Cliquez sur une langue (ex. EN) puis sur « Par défaut (FR base) ».",
+"expect": [
+"Le contenu affiché change selon la langue ; les langues déjà surchargées sont marquées d'un indicateur."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-case-studies",
+"title": "Études de cas",
+"who": "Admin → Études de cas (/admin/case-studies) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production).",
+"items": [
+{
+"id": "a-case-studies-1",
+"do": "Cliquez « Nouvelle étude », remplissez le titre et cliquez « Créer l'étude de cas ».",
+"expect": [
+"L'étude apparaît dans la liste, non publiée."
+]
+},
+{
+"id": "a-case-studies-2",
+"do": "Cliquez « Publier » puis « Dépublier ».",
+"expect": [
+"Une fois publiée, elle est visible sur la page Études de cas du site public ; dépubliée, elle disparaît du site."
+]
+},
+{
+"id": "a-case-studies-3",
+"do": "Cliquez « Supprimer ».",
+"expect": [
+"Confirmation « Supprimer cette étude ? » puis elle disparaît."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-blog",
+"title": "Blog",
+"who": "Admin → Blog (/admin/blog) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production).",
+"items": [
+{
+"id": "a-blog-1",
+"do": "Cliquez « Nouvel article », renseignez titre et introduction, puis « Créer l'article ».",
+"expect": [
+"L'article apparaît dans « Blog technique », non publié."
+]
+},
+{
+"id": "a-blog-2",
+"do": "Cliquez « Publier », vérifiez le blog public, puis « Dépublier ».",
+"expect": [
+"L'article apparaît puis disparaît du blog public."
+]
+},
+{
+"id": "a-blog-3",
+"do": "Cliquez « Supprimer ».",
+"expect": [
+"Confirmation « Supprimer cet article ? » puis il disparaît."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-subscriptions",
+"title": "Abonnements",
+"who": "Admin → Abonnements (/admin/subscriptions) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production). Ne pas modifier les formules réelles (prix affichés aux clients).",
+"items": [
+{
+"id": "a-subscriptions-1",
+"do": "Parcourez les onglets « Formules », « Catégories », « Souscriptions ».",
+"expect": [
+"Chaque onglet affiche sa liste sans erreur ; « Souscriptions » liste les commandes clients."
+]
+},
+{
+"id": "a-subscriptions-2",
+"do": "Dans « Formules », cliquez « Nouvelle formule », créez une formule TEST et « Enregistrer », puis « Supprimer ».",
+"expect": [
+"La formule apparaît puis disparaît après la confirmation « Supprimer TEST… ? »."
+]
+},
+{
+"id": "a-subscriptions-3",
+"do": "Dans « Catégories », créez puis supprimez une catégorie TEST.",
+"expect": [
+"La confirmation précise que les formules seront détachées (non supprimées)."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-newsletter",
+"title": "Newsletter",
+"who": "Admin → Newsletter (/admin/newsletter) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "S'inscrire à la newsletter depuis le site public avec une adresse de test.",
+"items": [
+{
+"id": "a-newsletter-1",
+"do": "Ouvrez la page et cherchez votre adresse dans « Rechercher email ou prénom... ».",
+"expect": [
+"L'abonné de test apparaît ; les cartes Total, Abonnés actifs, Désabonnés sont cohérentes."
+]
+},
+{
+"id": "a-newsletter-2",
+"do": "Cliquez « Exporter CSV ».",
+"expect": [
+"Un fichier CSV des abonnés est téléchargé."
+]
+},
+{
+"id": "a-newsletter-3",
+"do": "Supprimez l'abonné de test.",
+"expect": [
+"Confirmation « Supprimer cet abonné ? » puis il disparaît."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-visits",
+"title": "Trafic & Visites",
+"who": "Admin → Trafic & Visites (/admin/visits) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "",
+"items": [
+{
+"id": "a-visits-1",
+"do": "Visitez 2-3 pages du site public dans une fenêtre privée, puis ouvrez Trafic & Visites.",
+"expect": [
+"Les cartes « Visites totales » et « Pays uniques » s'affichent.",
+"Vos visites récentes apparaissent dans la liste (Date / Heure, Page, Pays / Ville, Référent).",
+"« Pages les plus consultées » et « Top pays » sont remplis."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-deployments",
+"title": "Déploiements",
+"who": "Admin → Déploiements (/admin/deployments) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Cette liste alimente le site public : supprimer la ligne de test aussitôt.",
+"items": [
+{
+"id": "a-deployments-1",
+"do": "Cliquez « Nouveau déploiement », saisissez « Solution / Logiciel * » (TEST-RECETTE), « Pays * », « Nombre d'installations * », puis « Enregistrer ».",
+"expect": [
+"La ligne apparaît ; les cartes « Solutions distribuées », « Pays couverts », « Installations totales » augmentent."
+]
+},
+{
+"id": "a-deployments-2",
+"do": "Supprimez la ligne de test.",
+"expect": [
+"Confirmation « Supprimer ce déploiement ? » puis les totaux reviennent à leur valeur."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-blacklist",
+"title": "Blacklist IP",
+"who": "Admin → Blacklist IP (/admin/blacklist) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "SÉCURITÉ : ne JAMAIS bloquer votre propre adresse IP ni une plage large (ex. 0.0.0.0/0) : cela coupe l'accès à tout le portail. Utiliser l'adresse de test 203.0.113.7.",
+"items": [
+{
+"id": "a-blacklist-1",
+"do": "Dans « IP ou CIDR * » saisissez 203.0.113.7, dans « Motif (optionnel) » TEST-RECETTE, cliquez « Bloquer ».",
+"expect": [
+"Message « IP ajoutée à la blacklist ».",
+"La ligne apparaît avec IP / CIDR, Motif et « Ajouté le »."
+]
+},
+{
+"id": "a-blacklist-2",
+"do": "Saisissez de nouveau 203.0.113.7 et cliquez « Bloquer ».",
+"expect": [
+"Un message d'erreur « Cette entrée existe déjà » s'affiche."
+]
+},
+{
+"id": "a-blacklist-3",
+"do": "Saisissez 999.1.1.1 et cliquez « Bloquer ».",
+"expect": [
+"Un message d'erreur « IP/CIDR invalide … » s'affiche ; rien n'est ajouté."
+]
+},
+{
+"id": "a-blacklist-4",
+"do": "Retirez 203.0.113.7 (icône corbeille).",
+"expect": [
+"Confirmation « Retirer 203.0.113.7 de la blacklist ? » puis « IP retirée » ; la liste est revenue à l'état initial."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-access-logs",
+"title": "Logs d'accès",
+"who": "Admin → Logs d'accès (/admin/access-logs) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Se connecter au préalable avec un compte client de test et ouvrir 2 pages du portail.",
+"items": [
+{
+"id": "a-access-logs-1",
+"do": "Ouvrez « Logs d'accès » et cliquez « Actualiser ».",
+"expect": [
+"Le titre « Logs d'accès portail » s'affiche avec les cartes « Événements », « Utilisateurs uniques » et « Top modules ».",
+"Les pages visitées par le compte de test apparaissent (Date, Utilisateur, Rôle, Module, Page)."
+]
+},
+{
+"id": "a-access-logs-2",
+"do": "Tapez l'e-mail du compte de test dans « Rechercher par email, nom, module ou page… » puis « Rechercher ».",
+"expect": [
+"Seules les lignes de ce compte restent affichées."
+]
+},
+{
+"id": "a-access-logs-3",
+"do": "Cliquez « Exporter CSV ».",
+"expect": [
+"Un fichier CSV est téléchargé (colonnes date, email, nom, rôle, module, page, IP)."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-api-traces",
+"title": "Traces API",
+"who": "Admin → Traces API (/admin/api-traces) — visible par : UNIQUEMENT le super-administrateur admin@sawalismartsystems.com (libellé complet : « Traces API (debug) »)",
+"prep": "Ne pas cliquer « Effacer » en production sauf décision explicite (efface toutes les traces).",
+"items": [
+{
+"id": "a-api-traces-1",
+"do": "Avec le super-admin, ouvrez la page et cliquez « Actualiser ».",
+"expect": [
+"Le titre « Traces API (Debug) » s'affiche avec les cartes Événements, Utilisateurs, Erreurs (≥400), Durée moy."
+]
+},
+{
+"id": "a-api-traces-2",
+"do": "Choisissez une méthode (ex. « POST »), tapez un e-mail dans « Rechercher email, URL, body… » puis « Filtrer » ; ouvrez une ligne.",
+"expect": [
+"La liste est filtrée.",
+"Le détail montre « Corps de la requête » et « Réponse » ; les mots de passe / jetons sont masqués ([REDACTED])."
+]
+},
+{
+"id": "a-api-traces-3",
+"do": "Cliquez « Export CSV ».",
+"expect": [
+"Un fichier CSV est téléchargé."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-sms-dashboard",
+"title": "Tableau de bord SMS",
+"who": "Admin → Tableau de bord SMS (/admin/sms-dashboard) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "",
+"items": [
+{
+"id": "a-sms-dashboard-1",
+"do": "Ouvrez la page, changez la période (30 j, 90 j, 365 j) puis cliquez « Actualiser ».",
+"expect": [
+"Les cartes « Envoyés OK », « Échecs », « Taux succès », « Coût estimé » se mettent à jour.",
+"« Détail par opérateur » et « Top des erreurs » s'affichent (ou « Aucun envoi sur la période. »)."
+]
+},
+{
+"id": "a-sms-dashboard-2",
+"do": "Regardez le bloc « Budget mensuel SMS ».",
+"expect": [
+"Il indique « Sous contrôle », « ⚠ Bientôt épuisé » ou « DÉPASSEMENT » selon la consommation."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-health",
+"title": "Santé applicative",
+"who": "Admin → Santé applicative (/admin/health) — visible par : UNIQUEMENT le super-administrateur admin@sawalismartsystems.com",
+"prep": "",
+"items": [
+{
+"id": "a-health-1",
+"do": "Avec le super-admin, ouvrez la page et changez la fenêtre « 24 h » / « 14 j ».",
+"expect": [
+"Les cartes « Taux d'erreur », « Erreurs ≥ 400 », « Durée moyenne » et le graphique « Activité par heure » s'affichent."
+]
+},
+{
+"id": "a-health-2",
+"do": "Cliquez « Vérifier maintenant » (Auth Checker).",
+"expect": [
+"Un nouveau contrôle apparaît dans « 24 derniers contrôles » avec son résultat (étapes en erreur listées le cas échéant)."
+]
+},
+{
+"id": "a-health-3",
+"do": "Cliquez « Test alerte ».",
+"expect": [
+"Un message confirme l'envoi et l'e-mail d'alerte de test arrive chez le destinataire configuré."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-db-explorer",
+"title": "Explorateur DB",
+"who": "Admin → Explorateur DB (/admin/db-explorer) — visible par : UNIQUEMENT le super-administrateur admin@sawalismartsystems.com",
+"prep": "Consultation seule : aucune modification possible depuis cette page.",
+"items": [
+{
+"id": "a-db-explorer-1",
+"do": "Avec le super-admin, choisissez la « Collection » users, une « Limite » de 20, puis « Exécuter ».",
+"expect": [
+"Les documents s'affichent en tableau.",
+"Les champs sensibles (mot de passe, jetons) apparaissent masqués « [REDACTED] » ou absents."
+]
+},
+{
+"id": "a-db-explorer-2",
+"do": "Ajoutez un filtre avec « + ajouter » (champ role, valeur admin), puis « Exécuter » ; cliquez sur un en-tête de colonne.",
+"expect": [
+"Seuls les comptes admin s'affichent.",
+"Le tri change au clic sur l'en-tête."
+]
+},
+{
+"id": "a-db-explorer-3",
+"do": "Cliquez « Export CSV » puis « JSON ».",
+"expect": [
+"Les deux fichiers sont téléchargés."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-integration-links",
+"title": "Liens cryptés",
+"who": "Admin → Liens cryptés (/admin/integration-links) — visible par : UNIQUEMENT le super-administrateur admin@sawalismartsystems.com",
+"prep": "",
+"items": [
+{
+"id": "a-integration-links-1",
+"do": "Avec le super-admin, choisissez l'« Action » « Connexion au portail », une « Durée de validité » « 5 minutes », saisissez l'e-mail d'un compte de test, cliquez « Générer le lien ».",
+"expect": [
+"Le bloc « Lien généré avec succès » apparaît avec l'URL (…/launch?t=…) et la date d'expiration.",
+"« Copier » affiche « Lien copié »."
+]
+},
+{
+"id": "a-integration-links-2",
+"do": "Ouvrez le lien dans une fenêtre privée.",
+"expect": [
+"Le texte « Validation du lien sécurisé… » puis « Redirection en cours » s'affichent et la page cible s'ouvre."
+]
+},
+{
+"id": "a-integration-links-3",
+"do": "Attendez plus de 5 minutes et rouvrez le lien ; modifiez aussi un caractère du lien.",
+"expect": [
+"Lien expiré : « Lien expiré — Ce lien a expiré. Demandez à votre administrateur de le régénérer. »",
+"Lien modifié : « Lien invalide — Le lien est mal formé ou altéré. »"
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-contacts",
+"title": "Messages reçus",
+"who": "Admin → Messages reçus (/admin/contacts) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Envoyer un message via le formulaire de contact du site public (nom TEST-RECETTE).",
+"items": [
+{
+"id": "a-contacts-1",
+"do": "Ouvrez la page.",
+"expect": [
+"Le message de test apparaît avec Nom, Email, Société, Téléphone.",
+"Le badge de la barre latérale diminue après ouverture de la page."
+]
+},
+{
+"id": "a-contacts-2",
+"do": "Cliquez « Enregistrer » sur le message, choisissez un « Client * » et un « Rôle * » dans « Enregistrer comme utilisateur suivi », puis « Enregistrer ».",
+"expect": [
+"L'expéditeur apparaît ensuite dans Admin → Utilisateurs suivis pour ce client (à supprimer après le test)."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-testimonials",
+"title": "Témoignages NPS",
+"who": "Admin → Témoignages NPS (/admin/testimonials) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production).",
+"items": [
+{
+"id": "a-testimonials-1",
+"do": "Cliquez « Nouveau témoignage », remplissez-le puis « Créer le témoignage ».",
+"expect": [
+"Le témoignage apparaît dans « Témoignages clients »."
+]
+},
+{
+"id": "a-testimonials-2",
+"do": "Cliquez « Publier », vérifiez le site public, puis « Masquer » et « Mettre en modération ».",
+"expect": [
+"Publié : visible sur le site ; masqué / en modération : invisible."
+]
+},
+{
+"id": "a-testimonials-3",
+"do": "Dans « Demander un avis NPS automatique », choisissez un RDV, cliquez « Générer le lien » puis « Copier le lien ».",
+"expect": [
+"Un lien d'avis est généré et copié ; ouvert en fenêtre privée, il affiche le formulaire NPS."
+]
+},
+{
+"id": "a-testimonials-4",
+"do": "Supprimez le témoignage de test.",
+"expect": [
+"Confirmation « Supprimer ? » puis il disparaît."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-tracked-users",
+"title": "Utilisateurs suivis",
+"who": "Admin → Utilisateurs suivis (/admin/tracked-users) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production). Ces comptes servent aussi à la section Droits (Modération, Traducteur…).",
+"items": [
+{
+"id": "a-tracked-users-1",
+"do": "Cliquez « Nouvel utilisateur », choisissez « Client * », « Rôle * » (ex. Consultation), un e-mail de test, puis « Enregistrer ».",
+"expect": [
+"L'utilisateur apparaît dans « Utilisateurs suivis (par client) » avec son rôle et son statut."
+]
+},
+{
+"id": "a-tracked-users-2",
+"do": "Cliquez l'icône clé « Définir un mot de passe », saisissez 8 caractères minimum (ou « Générer ») puis « Activer l'accès ».",
+"expect": [
+"Message « Accès portail activé ».",
+"L'utilisateur peut se connecter sur /login avec cet e-mail (code OTP envoyé par e-mail).",
+"L'icône « Révoquer l'accès portail » apparaît."
+]
+},
+{
+"id": "a-tracked-users-3",
+"do": "Cliquez « Révoquer l'accès portail » et confirmez.",
+"expect": [
+"L'utilisateur ne peut plus se connecter."
+]
+},
+{
+"id": "a-tracked-users-4",
+"do": "Supprimez l'utilisateur de test (corbeille).",
+"expect": [
+"Confirmation « Supprimer ? » puis il disparaît."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-brochures",
+"title": "Brochures & Guide",
+"who": "Admin → Brochures & Guide (/admin/brochures) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production).",
+"items": [
+{
+"id": "a-brochures-1",
+"do": "Ouvrez la page.",
+"expect": [
+"Le titre « Brochures, Guides & Médias » s'affiche avec « Bibliothèque médias » et « Téléchargez nos brochures »."
+]
+},
+{
+"id": "a-brochures-2",
+"do": "Cliquez « Téléverser un média », choisissez une petite image, puis basculez « Privé / Public ».",
+"expect": [
+"Le média apparaît dans la bibliothèque et son état Public / Privé change."
+]
+},
+{
+"id": "a-brochures-3",
+"do": "Supprimez le média de test.",
+"expect": [
+"Confirmation « Supprimer « … » ? » puis il disparaît."
+]
+},
+{
+"id": "a-brochures-4",
+"do": "Cliquez sur une brochure PDF de la liste.",
+"expect": [
+"Le PDF s'ouvre ou se télécharge (ne pas cliquer « Régénérer le PDF » sauf besoin)."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-voice-notifications",
+"title": "Notifications vocales",
+"who": "Admin → Notifications vocales (/admin/voice-notifications) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) ») (libellé complet : « Notifications vocales (HA) »)",
+"prep": "Nécessite un Home Assistant / Voice Monkey configuré ; sinon vérifier seulement l'affichage.",
+"items": [
+{
+"id": "a-voice-notifications-1",
+"do": "Ouvrez la page.",
+"expect": [
+"Les blocs « Configuration de la passerelle vocale », « Catalogue des actions » et « Journal des envois » s'affichent."
+]
+},
+{
+"id": "a-voice-notifications-2",
+"do": "Cliquez « Tester ».",
+"expect": [
+"Une annonce est lue par l'enceinte et une ligne apparaît dans « Journal des envois » avec le statut HA."
+]
+},
+{
+"id": "a-voice-notifications-3",
+"do": "Cliquez « Évènement perso », créez la clé test_recette, puis supprimez-la.",
+"expect": [
+"L'évènement apparaît dans le catalogue puis disparaît après confirmation."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-ad-banners",
+"title": "Régie publicitaire",
+"who": "Admin → Régie publicitaire (/admin/ad-banners) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production). Laisser la bannière de test inactive pour qu'elle ne soit pas diffusée.",
+"items": [
+{
+"id": "a-ad-banners-1",
+"do": "Cliquez « Nouvelle bannière », chargez une image (« Choisir un fichier »), décochez « Active (diffusée) », puis « Créer ».",
+"expect": [
+"La bannière apparaît dans la liste avec l'état « Inactive » et l'« Aperçu en direct » était visible dans le formulaire."
+]
+},
+{
+"id": "a-ad-banners-2",
+"do": "Cliquez l'icône « Statistiques » de la bannière.",
+"expect": [
+"La fenêtre « Statistiques de la bannière » montre Affichages, Clics / CTR et l'historique quotidien."
+]
+},
+{
+"id": "a-ad-banners-3",
+"do": "Cliquez « Copier le lien public pour l'annonceur » puis « Régénérer le lien public ».",
+"expect": [
+"Le lien est copié ; après régénération (confirmation), l'ancien lien ne fonctionne plus."
+]
+},
+{
+"id": "a-ad-banners-4",
+"do": "Supprimez la bannière de test.",
+"expect": [
+"Confirmation « Supprimer la bannière « … » ? » puis elle disparaît."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-officines-registry",
+"title": "Officines",
+"who": "Admin → Officines (/admin/officines-registry) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) ») ; lien GRISÉ si le module VIDAL n'est pas activé pour votre compte (message « Fonctionnalité … non activée ») ; accessible aussi aux non-admin délégués (Paramètres → « Délégation menu Officines »)",
+"prep": "Nommez toutes les données de test « TEST-RECETTE » pour les retrouver et les supprimer à la fin (environnement de production).",
+"items": [
+{
+"id": "a-officines-registry-1",
+"do": "Ouvrez la page (libellé complet : « Officines (validation) »).",
+"expect": [
+"Le « Registre des Officines » s'affiche avec filtres et pagination « ‹ Préc. / Suiv. › »."
+]
+},
+{
+"id": "a-officines-registry-2",
+"do": "Cliquez « Nouvelle officine », remplissez puis « Créer l'officine ».",
+"expect": [
+"L'officine de test apparaît dans le registre."
+]
+},
+{
+"id": "a-officines-registry-3",
+"do": "Sur l'officine de test cliquez « Suspendre » puis « Réactiver ».",
+"expect": [
+"Une confirmation « Confirmer : … ? » s'affiche et le statut change à chaque fois."
+]
+},
+{
+"id": "a-officines-registry-4",
+"do": "Cliquez « Voir les produits » puis fermez ; ne pas lancer « 🌍 Résoudre géoloc » (coût).",
+"expect": [
+"La fenêtre « Produits de l'officine » s'ouvre et se ferme avec « Fermer »."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-ocr-pieces",
+"title": "OCR sur Pièces",
+"who": "Admin → OCR sur Pièces (/admin/ocr-pieces) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Prévoir une facture fournisseur scannée (PDF ou photo) de test. Chaque analyse a un coût IA.",
+"items": [
+{
+"id": "a-ocr-pieces-1",
+"do": "Onglet « Pièces » : choisissez le type, une pharmacie, un « Modèle d'IA », joignez le fichier et cliquez « Déposer et analyser ».",
+"expect": [
+"La pièce apparaît avec « L'analyse de cette pièce est en cours… » puis « Type reconnu : … »."
+]
+},
+{
+"id": "a-ocr-pieces-2",
+"do": "Dépliez la pièce, corrigez un champ dans « Champs extraits (corrigez ce qui est faux) » et donnez une note dans « Votre note : » (étoiles).",
+"expect": [
+"La note est enregistrée (la pièce n'est plus « non évaluée »)."
+]
+},
+{
+"id": "a-ocr-pieces-3",
+"do": "Onglet « Tableau de bord OCR ».",
+"expect": [
+"« Comparaison des modèles » affiche par modèle : Pièces, Coût cumulé, Coût moyen, Note moyenne, Précision réelle."
+]
+},
+{
+"id": "a-ocr-pieces-4",
+"do": "Supprimez la pièce de test (icône « Supprimer »).",
+"expect": [
+"Confirmation « Supprimer la pièce « … » et ses analyses ? » puis elle disparaît."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-garde-planning",
+"title": "Planning des gardes",
+"who": "Admin → Planning des gardes (/admin/garde-planning) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) ») (réservé admin/superviseur, mais les superviseurs n'entrent pas dans /admin)",
+"prep": "Modifie le planning réel des pharmacies de garde : ne pas utiliser « Réinitialiser tout » ni « Générer rotation séquentielle » sur l'année en cours.",
+"items": [
+{
+"id": "a-garde-planning-1",
+"do": "Ouvrez la page, choisissez l'année et cliquez « Rafraîchir ».",
+"expect": [
+"Le tableau Semaine / Début / Groupe / Statut s'affiche ; la semaine courante est marquée « en cours »."
+]
+},
+{
+"id": "a-garde-planning-2",
+"do": "Sur une semaine future, changez le groupe manuellement puis cliquez « Réinitialiser » sur cette semaine.",
+"expect": [
+"La semaine passe en « manuel », puis revient en « auto » après la confirmation « Réinitialiser la semaine … en mode automatique ? »."
+]
+},
+{
+"id": "a-garde-planning-3",
+"do": "Regardez le « Cycle de rotation des groupes » (« Samedi 12h00 » / « Lundi 00h00 (legacy) »).",
+"expect": [
+"Le mode actif porte la mention « (actif) »."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-liluvine-wa-requests",
+"title": "Exclamations Reçues",
+"who": "Admin → Exclamations Reçues (/admin/liluvine-wa-requests) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Envoyer au préalable une commande WhatsApp comme « !Meteo » au numéro Liluvine.",
+"items": [
+{
+"id": "a-liluvine-wa-requests-1",
+"do": "Ouvrez la page et cliquez « Rafraîchir ».",
+"expect": [
+"Votre commande apparaît avec Numéro WA, Identité affichée, Commandes, Requêtes, Dernier message.",
+"La carte « Numéros distincts » est cohérente."
+]
+},
+{
+"id": "a-liluvine-wa-requests-2",
+"do": "Cochez votre ligne et cliquez « Imprimer PDF (1) ».",
+"expect": [
+"Un PDF de la sélection est généré."
+]
+},
+{
+"id": "a-liluvine-wa-requests-3",
+"do": "Cochez votre ligne et cliquez « Importer 1 → Contacts » puis confirmez.",
+"expect": [
+"Le contact est ajouté au groupe « Interrogations WA » du répertoire."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-handler-suggestions",
+"title": "Handlers IA",
+"who": "Admin → Handlers IA (/admin/handler-suggestions) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "",
+"items": [
+{
+"id": "a-handler-suggestions-1",
+"do": "Ouvrez la page, cliquez « Rafraîchir » et filtrez « ⏳ En attente » / « ✅ Appliqués ».",
+"expect": [
+"Le titre « Suggestions Handlers IA » s'affiche avec Commande, Modèle, Générée le, Statut."
+]
+},
+{
+"id": "a-handler-suggestions-2",
+"do": "Cliquez « Voir le code » sur une suggestion, puis « Tester ce handler en dry-run (sandbox) » et « Exécuter le dry-run ».",
+"expect": [
+"Le code s'affiche ; « Copier » le copie.",
+"Le dry-run renvoie un résultat sans écrire en base."
+]
+},
+{
+"id": "a-handler-suggestions-3",
+"do": "Cliquez sur le statut d'une suggestion pour le basculer, puis ajoutez une note.",
+"expect": [
+"Le statut bascule entre « En attente » et « Appliqué » ; la note est conservée."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-bird-cost",
+"title": "Coût SMS Bird",
+"who": "Admin → Coût SMS Bird (/admin/bird-cost) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "",
+"items": [
+{
+"id": "a-bird-cost-1",
+"do": "Ouvrez la page et cliquez « Rafraîchir ».",
+"expect": [
+"Les cartes « Aujourd'hui », « Hier », « 7 derniers jours », « 30 derniers jours », « Total » et le « Coût unitaire » s'affichent."
+]
+},
+{
+"id": "a-bird-cost-2",
+"do": "Changez la fenêtre de « Évolution journalière » (7, 14, 30, 90 jours).",
+"expect": [
+"Le graphique se met à jour (ou « Aucun SMS Bird envoyé sur cette période. »)."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-story-studio",
+"title": "Story Studio",
+"who": "Admin → Story Studio (/admin/story-studio) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) ») (libellé complet : « Story Studio (AI) »)",
+"prep": "Génération IA payante et publication réelle sur les réseaux : utiliser « 📝 Enregistrer brouillon » et un compte de test.",
+"items": [
+{
+"id": "a-story-studio-1",
+"do": "Parcourez les onglets « Créer », « Bibliothèque », « Comptes Meta », « Historique », « Facturation », « Paramètres ».",
+"expect": [
+"Chaque onglet s'affiche sans erreur."
+]
+},
+{
+"id": "a-story-studio-2",
+"do": "Onglet « Créer » : choisissez « Image », saisissez une consigne courte et cliquez « Générer la image ».",
+"expect": [
+"Le message « Génération en cours… » puis l'image générée apparaissent ; elle figure dans « Bibliothèque » avec « Télécharger »."
+]
+},
+{
+"id": "a-story-studio-3",
+"do": "Onglet « Facturation » → « Tenants » → « Détails → ».",
+"expect": [
+"Le détail du tenant (factures mensuelles, journal) s'affiche ; « ← Retour à la liste » revient à la liste."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-vidal-logs",
+"title": "Suivi des logs VIDAL",
+"who": "Admin → Suivi des logs VIDAL (/admin/vidal-logs) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "",
+"items": [
+{
+"id": "a-vidal-logs-1",
+"do": "Ouvrez la page et cliquez « Filtrer ».",
+"expect": [
+"Le titre « Suivi des logs VIDAL » s'affiche avec la liste des appels API VIDAL et le journal de synchronisation."
+]
+},
+{
+"id": "a-vidal-logs-2",
+"do": "Cliquez « Imprimer ».",
+"expect": [
+"La fenêtre d'impression du navigateur s'ouvre avec le tableau."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-settings",
+"title": "Paramètres",
+"who": "Admin → Paramètres (/admin/settings) — visible par : tout compte au rôle système « admin » (super-administrateur admin@sawalismartsystems.com et comptes créés avec le rôle « Admin (client) »)",
+"prep": "Toute modification s'applique à TOUTE la plateforme : noter la valeur d'origine et la remettre après chaque test. Le bouton bleu « Enregistrer les paramètres généraux » (en bas) ne sauvegarde que les paramètres généraux ; certaines sections ont leur propre bouton « Enregistrer ».",
+"items": [
+{
+"id": "a-settings-1",
+"do": "Onglets : cliquez successivement « Tous », « Sécurité & Auth », « Liluvine PRO », « META (FB / WA) », « IA & Universal Key », « Paiements & Caisse », « Communications », « GRH & Personnel », « Modules & Bonus », « Météo », « Diagnostics & Logs » ; puis tapez « WhatsApp » dans « Rechercher un paramètre par son titre… ».",
+"expect": [
+"Chaque onglet n'affiche que ses sections et son compteur correspond au nombre de blocs.",
+"La recherche affiche « N paramètre(s) trouvé(s) pour « WhatsApp » » ; « Aller à un paramètre… » fait défiler jusqu'à la section choisie."
+]
+},
+{
+"id": "a-settings-2",
+"do": "Sécurité & Auth — section « Sécurité — Déconnexion automatique par inactivité » : saisissez 1 dans « Personnalisé : … min », cliquez « Enregistrer les paramètres généraux », déconnectez-vous puis reconnectez-vous et ne touchez plus à la souris ni au clavier.",
+"expect": [
+"Après environ 30 secondes, la fenêtre « Session bientôt fermée » s'affiche avec un compte à rebours et les boutons « Rester connecté(e) » / « Se déconnecter maintenant ».",
+"« Rester connecté(e) » ferme la fenêtre et relance le délai.",
+"Sans action, retour à /login avec le message « Session expirée par inactivité — merci de vous reconnecter. » — ensuite remettre la valeur d'origine (ou « Désactivé ») et enregistrer."
+]
+},
+{
+"id": "a-settings-3",
+"do": "META (FB / WA) — section « WhatsApp Business API (Meta Cloud) » : cliquez « Tester la connexion Meta » ; Communications — section « SMS — Opérateurs Burkina Faso » : envoyez « 🧪 Envoyer le SMS test » à votre propre numéro.",
+"expect": [
+"Le test Meta affiche un résultat clair (succès ou erreur détaillée).",
+"Le SMS de test arrive sur votre téléphone."
+]
+},
+{
+"id": "a-settings-4",
+"do": "Modules & Bonus — section « Demandes de modification de profil (utilisateurs) » : passez de « En attente » à « Traitées » ; Diagnostics & Logs — ouvrez « Historique des modifications de clés ».",
+"expect": [
+"Les demandes s'affichent (ou « Aucune demande en attente — tout est à jour 🎉 ») et le badge Paramètres de la barre latérale est cohérent.",
+"L'historique indique qui a changé quelle clé et quand, sans jamais afficher la valeur."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-lot25",
+"title": "Corrections de droits (lot 25)",
+"who": "Plusieurs écrans — visible par : selon le rôle",
+"prep": "Comptes : Traducteur (suivi), Modérateur (rôle système), client standard, admin autre que le super-admin, Comptable suivi sans droit Caisse, suivi d'un client Fabricant.",
+"items": [
+{
+"id": "a-lot25-1",
+"do": "Se connecter en Traducteur (utilisateur suivi).",
+"expect": [
+"Arrivée sur Régionalisation (/portal/i18n) ; une traduction de sa langue s'enregistre."
+]
+},
+{
+"id": "a-lot25-2",
+"do": "Se connecter avec un compte au rôle système Modérateur.",
+"expect": [
+"Brochures & Guides, Liluvine PRO — Historique et Registre des erreurs visibles et accessibles."
+]
+},
+{
+"id": "a-lot25-3",
+"do": "Se connecter avec un client standard.",
+"expect": [
+"Plus de lien « Registre des erreurs »."
+]
+},
+{
+"id": "a-lot25-4",
+"do": "Admin → Clients → choisir le rôle « Administrateur plateforme (accès complet) ».",
+"expect": [
+"Confirmation demandée, puis encadré d'avertissement."
+]
+},
+{
+"id": "a-lot25-5",
+"do": "Avec un admin qui n'est pas le super-admin, créer un lien crypté.",
+"expect": [
+"Refus « réservée au super-administrateur » ; le super-admin, lui, y arrive."
+]
+},
+{
+"id": "a-lot25-6",
+"do": "Comptable suivi sans droit Caisse ; suivi d'un client Fabricant.",
+"expect": [
+"Comptable : pas de lien Caisse/Facturation (GRH reste).",
+"Suivi Fabricant : menu Fabricant."
+]
+},
+{
+"id": "a-lot25-7",
+"do": "Blacklist IP : ajouter sa propre adresse IP.",
+"expect": [
+"Ajout refusé avec le message « cette entrée contient votre propre adresse IP »."
+]
+},
+{
+"id": "a-lot25-8",
+"do": "Désactiver « Génération vocale IA » d'un client ; ouvrir Story Studio.",
+"expect": [
+"Voice Studio grisé pour ce client.",
+"Bouton « Générer l'image »."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-droits",
+"title": "Droits d'accès par rôle",
+"who": "Admin → tous les liens — l'espace /admin n'est ouvert qu'aux comptes au rôle système « admin » ; les autres rôles sont renvoyés vers /portal",
+"prep": "Préparer un compte par rôle (Admin → Clients pour les rôles système, Admin → Utilisateurs suivis pour Modération / Traducteur), chacun avec une adresse de test. Tester chaque compte dans une fenêtre privée.",
+"items": [
+{
+"id": "a-droits-1",
+"do": "Se connecter avec le super-administrateur admin@sawalismartsystems.com.",
+"expect": [
+"Arrivée sur /admin ; la barre latérale affiche TOUS les liens admin, y compris « Traces API », « Santé applicative », « Explorateur DB » et « Liens cryptés ».",
+"« Officines » est cliquable si le module VIDAL est activé, sinon grisé."
+]
+},
+{
+"id": "a-droits-2",
+"do": "Se connecter avec un autre compte au rôle « Admin (client) » (rôle système admin), puis taper directement /admin/health et /admin/db-explorer dans la barre d'adresse.",
+"expect": [
+"Tous les liens admin sont présents SAUF « Traces API », « Santé applicative », « Explorateur DB » et « Liens cryptés ».",
+"En tapant l'adresse, la page s'ouvre mais ne montre aucune donnée (accès refusé côté serveur, message d'erreur ou « Réservé au superviseur principal »)."
+]
+},
+{
+"id": "a-droits-3",
+"do": "Se connecter avec un compte au rôle « Superviseur » (rôle système), puis taper /admin dans la barre d'adresse.",
+"expect": [
+"Arrivée sur /portal (portail client), pas sur /admin.",
+"En tapant /admin, retour automatique sur /portal : aucun lien admin n'est visible (y compris « Planning des gardes », « Exclamations Reçues », « Suivi des logs VIDAL »)."
+]
+},
+{
+"id": "a-droits-4",
+"do": "Se connecter avec un utilisateur suivi au rôle « Moderation », puis avec un compte au rôle système « Modérateur » ; taper /admin.",
+"expect": [
+"Les deux comptes arrivent sur /portal et /admin les renvoie vers /portal.",
+"Le compte suivi « Moderation » voit dans le portail « Liluvine PRO — Historique » et « Brochures & Guides » ; le compte au rôle système « Modérateur » ne les voit pas (à signaler si attendu)."
+]
+},
+{
+"id": "a-droits-5",
+"do": "Se connecter avec un utilisateur suivi au rôle « Traducteur ».",
+"expect": [
+"Attendu par conception : arrivée sur Régionalisation (/admin/i18n) avec ce seul lien dans la barre latérale.",
+"Résultat probable actuel : renvoi vers /portal avec une barre latérale vide ou presque (anomalie connue à signaler)."
+]
+},
+{
+"id": "a-droits-6",
+"do": "Se connecter avec un compte « Client » standard, puis taper /admin et /admin/blacklist dans la barre d'adresse.",
+"expect": [
+"Arrivée sur /portal ; chaque adresse /admin renvoie vers /portal.",
+"Aucun lien admin n'est visible."
+]
+},
+{
+"id": "a-droits-7",
+"do": "Se déconnecter puis taper /admin/settings dans la barre d'adresse.",
+"expect": [
+"Renvoi vers la page /login."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "p-dashboard",
+"title": "Tableau de bord",
+"who": "Client → Tableau de bord (/portal) — visible par : tous les comptes client, sauf profils à menu réduit (Comptable, Médecin suivi, Pharmacien suivi, Secrétaire médicale, Fabricant, Traducteur) si « Visibilité personnalisée » n'impose pas « Toujours afficher »",
+"prep": "Compte client standard + compte Superviseur. Pour la synthèse IA : cocher « Génération IA » (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer »).",
+"items": [
+{
+"id": "p-dashboard-1",
+"do": "Se connecter avec un compte client standard et ouvrir « Tableau de bord ».",
+"expect": [
+"Le titre « Bonjour, … » et la phrase « Voici l'état de votre compte aujourd'hui. » s'affichent.",
+"Quatre cartes : « Rendez-vous », « Interventions », « Documents », « Statut » (valeur « Actif »).",
+"Les cartes « notes » et « tâches » et le bloc « Médias WhatsApp reçus » sont visibles."
+]
+},
+{
+"id": "p-dashboard-2",
+"do": "Cliquer sur « Demander un rendez-vous ».",
+"expect": [
+"La page « Mes rendez-vous » s'ouvre."
+]
+},
+{
+"id": "p-dashboard-3",
+"do": "Avec « Génération IA » désactivée pour le client, survoler puis cliquer « Synthèse IA ».",
+"expect": [
+"Le bouton est grisé et n'ouvre rien.",
+"L'infobulle indique « Fonctionnalité Génération IA non activée — contactez votre administrateur »."
+]
+},
+{
+"id": "p-dashboard-4",
+"do": "Activer « Génération IA », recharger, cliquer « Synthèse IA », choisir une période puis « Générer la synthèse ».",
+"expect": [
+"La fenêtre « Synthèse IA des conversations WhatsApp » s'ouvre avec les onglets « Générer » et « Mes synthèses ».",
+"Un message « Synthèse générée via … » apparaît et le texte s'affiche (ou « Aucun message dans la fenêtre sélectionnée »).",
+"La synthèse apparaît ensuite dans l'onglet « Mes synthèses »."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-rendez-vous",
+"title": "Mes rendez-vous",
+"who": "Client → Mes rendez-vous (/portal/appointments) — visible par : tous les comptes client (hors menus réduits)",
+"prep": "Des créneaux doivent être ouverts dans le planning global (Admin → Rendez-vous). Pour « Synchroniser », Google Agenda doit être configuré côté admin.",
+"items": [
+{
+"id": "p-rendez-vous-1",
+"do": "Cliquer « Nouveau rendez-vous », choisir un jour, un créneau, saisir un « Sujet * », un numéro WhatsApp dans « Participants », un rappel « 1 heure avant », puis « Confirmer ».",
+"expect": [
+"Le message « Rendez-vous demandé » s'affiche.",
+"Le rendez-vous apparaît dans le tableau (Sujet, Date, Statut).",
+"Le participant reçoit une invitation WhatsApp."
+]
+},
+{
+"id": "p-rendez-vous-2",
+"do": "Cliquer « Confirmer » sans avoir choisi de créneau.",
+"expect": [
+"Le message « Choisissez un créneau » s'affiche et rien n'est créé."
+]
+},
+{
+"id": "p-rendez-vous-3",
+"do": "Cliquer « Supprimer » sur le rendez-vous créé.",
+"expect": [
+"Le message « Supprimé » s'affiche et la ligne disparaît."
+]
+},
+{
+"id": "p-rendez-vous-4",
+"do": "Cliquer « Synchroniser ».",
+"expect": [
+"Soit « Synchronisation réussie : x ajout(s)… », soit un message d'erreur clair « Google Calendar non configuré »."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-documentation",
+"title": "Documentation",
+"who": "Client → Documentation (/portal/documents) — visible par : tous les comptes client, MAIS le lien est masqué si aucun document n'est accessible au client (sauf Admin/Superviseur)",
+"prep": "Préparer au moins un document pour le client (Admin → Documents). Création réservée au Superviseur et aux suivis Moderation / Administrateur / Superviseur ; suppression réservée au Superviseur et aux suivis Administrateur / Superviseur.",
+"items": [
+{
+"id": "p-documentation-1",
+"do": "Se connecter en client standard et ouvrir « Documentation ».",
+"expect": [
+"Le titre « Documentation des logiciels » s'affiche avec la liste des documents.",
+"Le bouton « Nouveau document » n'apparaît pas.",
+"« Aperçu » ouvre le document ; l'icône permet de le télécharger."
+]
+},
+{
+"id": "p-documentation-2",
+"do": "Se connecter en Superviseur, cliquer « Nouveau document », saisir un « Titre * », choisir la catégorie « Catalogue », joindre un PDF, puis « Créer ».",
+"expect": [
+"Le message « Document créé » s'affiche.",
+"Le document apparaît dans la liste avec son fichier."
+]
+},
+{
+"id": "p-documentation-3",
+"do": "Cliquer « Créer » sans titre.",
+"expect": [
+"Le message « Le titre est requis » s'affiche."
+]
+},
+{
+"id": "p-documentation-4",
+"do": "En Superviseur, supprimer le document de test.",
+"expect": [
+"Le message « Document supprimé » s'affiche."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-interventions",
+"title": "Historique interventions",
+"who": "Client → Historique interventions (/portal/interventions) — visible par : tous les comptes client (hors menus réduits)",
+"prep": "Création réservée au Superviseur et aux suivis Moderation / Administrateur / Superviseur. Impression PDF et facturation : Superviseur ou suivi Administrateur / Superviseur. Renseigner un taux horaire sur la fiche client (Admin → Clients).",
+"items": [
+{
+"id": "p-interventions-1",
+"do": "En Superviseur, cliquer « Nouvelle intervention », remplir « Titre * », « Date * », le rapporteur, le statut « Terminée », une durée, puis « Créer ».",
+"expect": [
+"Le message « Intervention créée » s'affiche.",
+"La ligne apparaît avec une Référence, la durée (h) et le statut."
+]
+},
+{
+"id": "p-interventions-2",
+"do": "Utiliser les filtres « Du », « Au », « Statut », puis « Réinitialiser ».",
+"expect": [
+"La liste et le « Total affiché » changent selon les filtres.",
+"« Réinitialiser » remet la liste complète."
+]
+},
+{
+"id": "p-interventions-3",
+"do": "Cocher deux interventions terminées, cliquer « Générer facture(s) (2) ».",
+"expect": [
+"Le message « 1 facture(s) générée(s) — téléchargement… » s'affiche et un PDF se télécharge.",
+"La facture apparaît dans le bloc « Factures émises » avec le « Total (XOF) » = durée × taux horaire."
+]
+},
+{
+"id": "p-interventions-4",
+"do": "Cliquer « Imprimer (PDF) », puis se reconnecter en client standard.",
+"expect": [
+"Un PDF avec colonne coût et total cumulé est produit.",
+"En client standard, les boutons « Nouvelle intervention », « Imprimer (PDF) » et « Générer facture(s) » sont absents."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-suivi-utilisateurs",
+"title": "Suivi utilisateurs",
+"who": "Client → Suivi utilisateurs (/portal/users) — visible par : tous les comptes client (hors menus réduits)",
+"prep": "Avoir déclaré des utilisateurs pour le client.",
+"items": [
+{
+"id": "p-suivi-utilisateurs-1",
+"do": "Ouvrir « Suivi utilisateurs ».",
+"expect": [
+"Le titre « Suivi de vos utilisateurs » s'affiche.",
+"La carte de présence du mois et le tableau (Nom, Email, Rôle, Service, Dernière activité, Statut) sont visibles.",
+"Sans donnée : « Aucun utilisateur enregistré. »"
+]
+},
+{
+"id": "p-suivi-utilisateurs-2",
+"do": "Vérifier qu'on ne voit que les utilisateurs de son propre client.",
+"expect": [
+"Aucun utilisateur d'une autre société n'apparaît."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-formations",
+"title": "Formations Spécialisées",
+"who": "Client → Formations Spécialisées (/portal/formations) — visible par : utilisateurs suivis uniquement, et seulement si au moins une formation est accessible au client",
+"prep": "Créer une formation gratuite et une payante (Admin → Formations) ouvertes au client ; un utilisateur suivi avec mot de passe (Admin → Utilisateurs suivis → icône clé « Définir un mot de passe »).",
+"items": [
+{
+"id": "p-formations-1",
+"do": "Se connecter avec un utilisateur suivi et ouvrir « Formations Spécialisées ».",
+"expect": [
+"Le catalogue des formations s'affiche avec « libre » ou le prix en XOF.",
+"Un compte client non suivi ne voit pas ce lien."
+]
+},
+{
+"id": "p-formations-2",
+"do": "Sur une formation gratuite, cliquer « M'inscrire ».",
+"expect": [
+"Le message « Inscription enregistrée » s'affiche.",
+"Le bouton devient « Continuer » et l'état d'avancement (modules, crédits) apparaît."
+]
+},
+{
+"id": "p-formations-3",
+"do": "Cliquer « Continuer », choisir un module, poser une question et cliquer « Envoyer ».",
+"expect": [
+"Le contenu du module s'affiche.",
+"Une réponse apparaît sous la question."
+]
+},
+{
+"id": "p-formations-4",
+"do": "Sur une formation payante, cliquer « Acheter (… XOF) ».",
+"expect": [
+"La page de paiement sécurisé s'ouvre, ou « Lien de paiement non disponible » si le paiement n'est pas configuré."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-rapports",
+"title": "Mes rapports",
+"who": "Client → Mes rapports (/portal/notes/reports) — visible par : tous les comptes client (hors menus réduits)",
+"prep": "Création réservée au Superviseur et aux suivis Moderation / Administrateur / Superviseur. Pour « Note Service », le client doit avoir des utilisateurs suivis avec un numéro WhatsApp.",
+"items": [
+{
+"id": "p-rapports-1",
+"do": "En client standard, ouvrir « Mes rapports ».",
+"expect": [
+"Le titre « Mes Rapports » s'affiche.",
+"Pas de bouton « Nouveau rapport » ; un encadré indique que la création est réservée aux rôles Modération, Administrateur ou Superviseur."
+]
+},
+{
+"id": "p-rapports-2",
+"do": "En Superviseur, cliquer « Nouveau rapport », saisir un titre et un contenu, puis « Enregistrer ».",
+"expect": [
+"Le message « Enregistré » s'affiche.",
+"Le rapport apparaît avec un numéro automatique et la date."
+]
+},
+{
+"id": "p-rapports-3",
+"do": "Utiliser les filtres « Tous », « Les miens », « 📥 Partagés avec moi ».",
+"expect": [
+"La liste change selon le filtre choisi."
+]
+},
+{
+"id": "p-rapports-4",
+"do": "Sur un rapport public numéroté, cliquer « Note Service » puis « Envoyer ».",
+"expect": [
+"Le message « Note de Service … envoyée à x/y suivi(s) » s'affiche.",
+"Les utilisateurs suivis reçoivent le WhatsApp."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-suivis",
+"title": "Mes suivis",
+"who": "Client → Mes suivis (/portal/notes/suivis) — visible par : tous les comptes client (hors menus réduits)",
+"prep": "Mêmes droits que « Mes rapports ». Avoir au moins un client lié.",
+"items": [
+{
+"id": "p-suivis-1",
+"do": "En Superviseur, cliquer « Nouveau suivi » et « Enregistrer » sans choisir de client.",
+"expect": [
+"Le message « Client requis pour un suivi » s'affiche."
+]
+},
+{
+"id": "p-suivis-2",
+"do": "Choisir un client, sans date d'événement, puis « Enregistrer ».",
+"expect": [
+"Le message « Date de l'événement requise pour un suivi » s'affiche."
+]
+},
+{
+"id": "p-suivis-3",
+"do": "Compléter titre, client et date, puis « Enregistrer ».",
+"expect": [
+"Le message « Enregistré » s'affiche.",
+"Le suivi apparaît avec un numéro automatique ; le filtre par client le retrouve."
+]
+},
+{
+"id": "p-suivis-4",
+"do": "Donner 4 étoiles au suivi.",
+"expect": [
+"Le message « Note 4/5 enregistrée » s'affiche."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-formulaires",
+"title": "Formulaires",
+"who": "Client → Formulaires (/portal/forms) — visible par : tous les comptes client (hors menus réduits), si au moins un formulaire est accessible (du client ou public)",
+"prep": "Aucune fonctionnalité à activer.",
+"items": [
+{
+"id": "p-formulaires-1",
+"do": "Cliquer « Nouveau formulaire », saisir un titre, puis « Créer ».",
+"expect": [
+"Le message « Formulaire F… créé » s'affiche et l'éditeur s'ouvre."
+]
+},
+{
+"id": "p-formulaires-2",
+"do": "Dans l'éditeur, cliquer « Ajouter un champ » deux fois, cocher « Public », puis « Sauvegarder ».",
+"expect": [
+"Le message « Formulaire sauvegardé » s'affiche.",
+"La mention « Public — importable par les autres clients » apparaît."
+]
+},
+{
+"id": "p-formulaires-3",
+"do": "Revenir à la liste, cliquer « Remplir », saisir des valeurs, puis « Sauvegarder » et « Exporter CSV ».",
+"expect": [
+"Le message « Saisie enregistrée » s'affiche.",
+"Un fichier CSV se télécharge.",
+"Dans la liste, le compteur « soumission(s) reçue(s) » augmente."
+]
+},
+{
+"id": "p-formulaires-4",
+"do": "Avec un autre client, onglet « Formulaires publics », cliquer « Importer ».",
+"expect": [
+"Le message « Importé sous F… » s'affiche et la copie apparaît dans « Mes formulaires »."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-messagerie",
+"title": "Centre de Messagerie",
+"who": "Client → Centre de Messagerie (/portal/contacts) — visible par : tous les comptes client (hors menus réduits)",
+"prep": "Cocher « Messages WhatsApp » et « Messages SMS » (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer »). WhatsApp Business et templates configurés côté admin. Bouton « Doublons » : compte Superviseur.",
+"items": [
+{
+"id": "p-messagerie-1",
+"do": "Cliquer « Nouveau contact », saisir nom, WhatsApp et téléphone, puis « Enregistrer ».",
+"expect": [
+"Le contact apparaît dans le répertoire.",
+"Les icônes WhatsApp, SMS, planification et historique sont actives."
+]
+},
+{
+"id": "p-messagerie-2",
+"do": "Désactiver « Messages WhatsApp » pour le client, recharger et survoler l'icône WhatsApp.",
+"expect": [
+"L'icône est inactive avec l'infobulle « Fonctionnalité WhatsApp non activée — contactez votre administrateur »."
+]
+},
+{
+"id": "p-messagerie-3",
+"do": "Réactiver, cliquer l'icône WhatsApp, choisir un « Template » puis « Envoyer ».",
+"expect": [
+"La fenêtre « Envoyer un WhatsApp » affiche « Envoyé ! ».",
+"Le message apparaît dans la conversation (icône « Voir les messages échangés »)."
+]
+},
+{
+"id": "p-messagerie-4",
+"do": "Cliquer « Exporter » → « CSV (Excel) », puis dans la conversation « Générer un ticket ».",
+"expect": [
+"Le message « Export CSV téléchargé » s'affiche.",
+"Un ticket est créé et visible dans « Tickets ».",
+"Le badge rouge du lien = nombre de messages non lus (identique à la cloche)."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-groupes-contacts",
+"title": "Groupes de contacts",
+"who": "Client → Groupes de contacts (/portal/contact-groups) — visible par : tous les comptes client (hors menus réduits)",
+"prep": "Avoir quelques contacts dans le Centre de Messagerie.",
+"items": [
+{
+"id": "p-groupes-contacts-1",
+"do": "Cliquer « Nouveau groupe », saisir un nom, puis « Enregistrer ».",
+"expect": [
+"Le message « Groupe créé » s'affiche et la carte du groupe apparaît."
+]
+},
+{
+"id": "p-groupes-contacts-2",
+"do": "Cliquer « Ajouter » sur le groupe, cocher 2 contacts, valider.",
+"expect": [
+"Le message « 2 ajouté(s) · 2 au total » s'affiche.",
+"Les contacts apparaissent dans la carte."
+]
+},
+{
+"id": "p-groupes-contacts-3",
+"do": "Supprimer le groupe.",
+"expect": [
+"Le message « Groupe supprimé » s'affiche.",
+"Le groupe est proposé dans « SMS — Masse & Planif. » avant suppression."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-registre-erreurs",
+"title": "Registre des erreurs",
+"who": "Client → Registre des erreurs (/portal/error-registry) — lien visible par tous, mais données accessibles seulement aux rôles Superviseur, Admin et Modérateur (rôle système)",
+"prep": "Compte Superviseur + compte client standard. Des erreurs doivent avoir été envoyées par un logiciel via le webhook (POST /api/errors/ingest).",
+"items": [
+{
+"id": "p-registre-erreurs-1",
+"do": "En client standard, ouvrir « Registre des erreurs ».",
+"expect": [
+"Un message d'erreur « Accès réservé Modérateur/Admin/Superviseur » s'affiche et la liste reste vide (point à signaler : le lien ne devrait pas être visible)."
+]
+},
+{
+"id": "p-registre-erreurs-2",
+"do": "En Superviseur, ouvrir la page et filtrer par sévérité « 🔴 Critical » et « 7 jours ».",
+"expect": [
+"Le titre « Registre des erreurs » s'affiche.",
+"La liste se filtre ; les pastilles orange/rouges du lien indiquent les erreurs non lues."
+]
+},
+{
+"id": "p-registre-erreurs-3",
+"do": "Cocher 2 erreurs puis « Marquer la sélection comme lue ».",
+"expect": [
+"Le message « 2 erreur(s) marquée(s) comme lue(s) » s'affiche.",
+"Les pastilles du menu diminuent."
+]
+},
+{
+"id": "p-registre-erreurs-4",
+"do": "Cliquer « Purger par date », choisir une période, puis « Confirmer la purge ».",
+"expect": [
+"Le message « x erreur(s) purgée(s) » s'affiche.",
+"Ce bouton n'existe que pour le Superviseur."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-inbox",
+"title": "Inbox unifiée",
+"who": "Client → Inbox unifiée (/portal/inbox) — visible par : tous les comptes client (hors menus réduits)",
+"prep": "WhatsApp activé (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer ») ; Messenger nécessite « Meta — Messenger ». Avoir reçu au moins un message.",
+"items": [
+{
+"id": "p-inbox-1",
+"do": "Ouvrir « Inbox unifiée ».",
+"expect": [
+"Le titre « Inbox unifiée » s'affiche.",
+"Les conversations sont listées avec une étiquette WA, SMS, SMS Bird ou MSG (sinon « Aucune conversation. »)."
+]
+},
+{
+"id": "p-inbox-2",
+"do": "Ouvrir une conversation WhatsApp, taper une réponse, cliquer « Envoyer ».",
+"expect": [
+"Le message « Message envoyé » s'affiche et le message apparaît dans le fil.",
+"Le contact le reçoit sur WhatsApp."
+]
+},
+{
+"id": "p-inbox-3",
+"do": "Dans les 15 minutes, cliquer l'icône de rappel sur ce message et confirmer.",
+"expect": [
+"Le message « Message rappelé » s'affiche et le message est marqué « Message rappelé »."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-sms",
+"title": "SMS — Masse & Planif.",
+"who": "Client → SMS — Masse & Planif. (/portal/sms) — visible par : tous les comptes client (hors menus réduits)",
+"prep": "Cocher « Messages SMS » (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer ») ; au moins un fournisseur SMS actif côté admin.",
+"items": [
+{
+"id": "p-sms-1",
+"do": "Avec SMS désactivé, ouvrir la page.",
+"expect": [
+"L'encadré « La fonctionnalité SMS n'est pas activée pour votre compte. » s'affiche.",
+"Le bouton d'envoi est grisé."
+]
+},
+{
+"id": "p-sms-2",
+"do": "SMS activé : cocher 2 contacts (ou un groupe), écrire un message avec une variable, cliquer « Envoyer maintenant (2) ».",
+"expect": [
+"Le message « 2 envoyés, 0 échoués » s'affiche.",
+"Les destinataires reçoivent le SMS avec la variable remplacée."
+]
+},
+{
+"id": "p-sms-3",
+"do": "Choisir une date future puis « Planifier l'envoi (2 contacts) ».",
+"expect": [
+"Le message « Planifié pour … (2 destinataires) » s'affiche.",
+"La planification apparaît « En attente » dans la liste."
+]
+},
+{
+"id": "p-sms-4",
+"do": "Cliquer « Annuler » sur la planification.",
+"expect": [
+"Le message « Planification annulée » s'affiche et le statut passe à « Annulé »."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-whatsapp-masse",
+"title": "WhatsApp — Masse & Planif.",
+"who": "Client → WhatsApp — Masse & Planif. (/portal/whatsapp-bulk) — visible par : tous les comptes client (hors menus réduits)",
+"prep": "Cocher « Messages WhatsApp » (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer ») ; templates WhatsApp approuvés configurés côté admin. Pour le secours SMS : « Messages SMS » aussi.",
+"items": [
+{
+"id": "p-whatsapp-masse-1",
+"do": "Avec WhatsApp désactivé, ouvrir la page.",
+"expect": [
+"L'encadré « La fonctionnalité WhatsApp n'est pas activée pour votre compte. Contactez votre administrateur. » s'affiche."
+]
+},
+{
+"id": "p-whatsapp-masse-2",
+"do": "WhatsApp activé : cocher des contacts sans choisir de template et cliquer sur envoyer.",
+"expect": [
+"Le bouton reste grisé ou le message « Choisissez un template » s'affiche."
+]
+},
+{
+"id": "p-whatsapp-masse-3",
+"do": "Choisir un template, remplir ses variables, cliquer « Envoyer maintenant (n) ».",
+"expect": [
+"Le message « n envoyé(s), 0 échec(s) » s'affiche.",
+"Les destinataires reçoivent le WhatsApp."
+]
+},
+{
+"id": "p-whatsapp-masse-4",
+"do": "Planifier un envoi à une date future.",
+"expect": [
+"Le message « Planifié pour … » s'affiche et la ligne apparaît « En attente » ; l'option SMS de secours affiche « (SMS non activé) » si SMS est coupé."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-caisse",
+"title": "Caisse/Facturation",
+"who": "Client → Caisse/Facturation (/portal/cash) — visible par : Superviseur, comptes avec « Rôle Caissier » coché, et suivis Comptable",
+"prep": "Admin → Clients → fiche du compte → cocher « 💰 Rôle Caissier ». Côté Superviseur, créer au moins un « Client en compte » et un « Mode de paiement » (onglets de la page).",
+"items": [
+{
+"id": "p-caisse-1",
+"do": "Avec un compte caissier, cliquer « Nouveau reçu », choisir le client en compte, « Montant (FCFA) * », « Mode de paiement * », « Motif * », puis « Encaisser & imprimer ».",
+"expect": [
+"Le message « Reçu R… créé » s'affiche et la page d'impression du reçu s'ouvre.",
+"Le reçu apparaît dans la liste avec le bon montant."
+]
+},
+{
+"id": "p-caisse-2",
+"do": "Onglet « Facturation » : « Nouvelle », type « Proforma », 2 lignes (Qté, P.U. HT, TVA %), une remise en %, puis « Créer & imprimer ».",
+"expect": [
+"« Sous-total HT », « TVA », « Total TTC » et « Net à payer » sont justes.",
+"Le message « Proforma … créée » s'affiche."
+]
+},
+{
+"id": "p-caisse-3",
+"do": "Sur la proforma, cliquer « Convertir en facture », puis « Marquer réglée ».",
+"expect": [
+"« Convertie en … » puis « Réglée — reçu … généré ».",
+"Un reçu correspondant apparaît dans l'onglet « Caisse »."
+]
+},
+{
+"id": "p-caisse-4",
+"do": "Cliquer « CSV » puis « PDF » ; puis se connecter avec un compte client sans rôle caissier.",
+"expect": [
+"Les fichiers factures.csv et factures.pdf se téléchargent.",
+"Le compte sans rôle caissier ne voit pas le lien.",
+"Seul le Superviseur voit les onglets « Catalogue », « Clients en compte », « Modes de paiement », « Relance auto »."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-catalogue",
+"title": "Catalogue",
+"who": "Client → Catalogue (/portal/catalog) — visible par : Superviseur uniquement (et Admin)",
+"prep": "Compte Superviseur. Créer au moins une catégorie dans l'onglet « Catégories produits ».",
+"items": [
+{
+"id": "p-catalogue-1",
+"do": "Ouvrir « Catalogue », créer un produit : nom en minuscules, « Prix unitaire HT », « TVA % » 18, puis enregistrer.",
+"expect": [
+"Le produit apparaît avec une référence (SKU) générée.",
+"Le nom est passé en MAJUSCULES."
+]
+},
+{
+"id": "p-catalogue-2",
+"do": "Créer une facture dans « Facturation » et choisir ce produit sur une ligne.",
+"expect": [
+"Désignation, prix et TVA se remplissent automatiquement."
+]
+},
+{
+"id": "p-catalogue-3",
+"do": "Se connecter avec un compte caissier non Superviseur.",
+"expect": [
+"Le lien « Catalogue » est absent."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-grh",
+"title": "GRH — Ressources Humaines",
+"who": "Client → GRH — Ressources Humaines (/portal/hr) — visible par : Superviseur et suivis Comptable",
+"prep": "Compte Superviseur et un utilisateur suivi « Comptable » avec mot de passe.",
+"items": [
+{
+"id": "p-grh-1",
+"do": "Onglet « Personnel » : « Ajouter un employé », choisir un utilisateur, valider.",
+"expect": [
+"Le message « Employé ajouté » s'affiche et l'employé apparaît dans la liste."
+]
+},
+{
+"id": "p-grh-2",
+"do": "Onglet « Avances » : « Nouvelle avance » pour cet employé.",
+"expect": [
+"L'avance apparaît avec « Montant », « Remboursé », « Restant »."
+]
+},
+{
+"id": "p-grh-3",
+"do": "Onglet « Paie » : choisir l'employé et le mois.",
+"expect": [
+"Le détail « Gains », « Retenues », « Avances déduites » et « Net à payer » s'affiche.",
+"« Télécharger PDF » produit le bulletin."
+]
+},
+{
+"id": "p-grh-4",
+"do": "Se connecter avec le suivi Comptable.",
+"expect": [
+"Le menu ne montre que « Caisse/Facturation » et « GRH — Ressources Humaines ».",
+"La GRH est pleinement utilisable."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-production",
+"title": "Production",
+"who": "Client → Production (/portal/production) — visible par : Superviseur d'un client au profil Fabricant",
+"prep": "Admin → Clients → fiche → « Profil d'entreprise » = « Fabricant — Caisse + GRH + Officines (consultation) + Catalogue + Production », sur un compte de rôle « Superviseur ».",
+"items": [
+{
+"id": "p-production-1",
+"do": "Ouvrir « Production », onglet « Intrants (0) », cliquer « Nouvel intrant », remplir et « Enregistrer ».",
+"expect": [
+"L'intrant apparaît ; le compteur de l'onglet augmente."
+]
+},
+{
+"id": "p-production-2",
+"do": "Onglet « Recettes » : « Nouvelle recette », « Nom du produit », dosage, cocher des intrants, puis « Enregistrer ».",
+"expect": [
+"Le message « Recette enregistrée » s'affiche.",
+"Prix de revient, marge et prix public sont calculés."
+]
+},
+{
+"id": "p-production-3",
+"do": "Enregistrer sans cocher d'intrant, puis sans dosage.",
+"expect": [
+"« Cochez au moins un intrant » puis « Le dosage doit être supérieur à 0 »."
+]
+},
+{
+"id": "p-production-4",
+"do": "Onglet « Paramètres » : changer la marge par défaut puis « Enregistrer » ; cliquer « Exporter tout (PDF) ».",
+"expect": [
+"Le message « Marge par défaut enregistrée » s'affiche.",
+"Un PDF des recettes se télécharge."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-planning",
+"title": "Planning consultations",
+"who": "Client → Planning consultations (/portal/planning) — visible par : tous les comptes client ; seul lien pour Médecin suivi (avec VIDAL) et Secrétaire médicale suivie",
+"prep": "Utilisateurs suivis « Médecin » et « Secrétaire médicale » avec mot de passe. Webhook de RDV configuré côté admin pour recevoir de vrais RDV.",
+"items": [
+{
+"id": "p-planning-1",
+"do": "Ouvrir « Planning consultations », choisir un médecin, naviguer avec les flèches puis « Aujourd'hui ».",
+"expect": [
+"Le titre « Planning des consultations » s'affiche.",
+"Les RDV du jour s'affichent (sinon « Aucun rendez-vous »)."
+]
+},
+{
+"id": "p-planning-2",
+"do": "En Secrétaire médicale, cliquer « Walk-in », saisir le patient, puis « Créer ».",
+"expect": [
+"La fenêtre « Nouveau walk-in (sans RDV) » se ferme et le patient apparaît dans la liste du jour.",
+"Le badge vert du lien augmente de 1."
+]
+},
+{
+"id": "p-planning-3",
+"do": "Rouvrir le walk-in (icône « Modifier ce walk-in »), changer le motif, « Enregistrer », puis « Supprimer ».",
+"expect": [
+"La modification est visible, puis le walk-in disparaît."
+]
+},
+{
+"id": "p-planning-4",
+"do": "En client standard sans rôle médical.",
+"expect": [
+"Le bouton « Walk-in » est absent."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-meta",
+"title": "Meta",
+"who": "Client → Meta (/portal/meta) — visible par : clients ayant au moins une fonctionnalité Meta, et Superviseur",
+"prep": "Cocher « Meta — Pages Facebook », « Meta — Messenger » et/ou « Meta — Ads Manager » (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer »). L'application Meta doit être configurée dans Admin → Paramètres.",
+"items": [
+{
+"id": "p-meta-1",
+"do": "Client sans fonctionnalité Meta : vérifier le menu.",
+"expect": [
+"Le lien « Meta » est absent."
+]
+},
+{
+"id": "p-meta-2",
+"do": "Activer « Meta — Pages Facebook », ouvrir « Meta », cliquer « Connecter Facebook » et autoriser.",
+"expect": [
+"Retour sur la page avec « Connexion Meta réussie ! n Page(s)… ».",
+"Les onglets correspondant aux fonctionnalités activées apparaissent (« Pages », « Messenger », « Ads »)."
+]
+},
+{
+"id": "p-meta-3",
+"do": "Onglet « Pages » : écrire un texte puis « Publier ».",
+"expect": [
+"Le message « Post publié » s'affiche et le post apparaît sur la Page Facebook."
+]
+},
+{
+"id": "p-meta-4",
+"do": "Cliquer « Déconnecter ».",
+"expect": [
+"Le message « Compte Meta déconnecté » s'affiche."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-tickets",
+"title": "Tickets",
+"who": "Client → Tickets (/portal/tickets) — visible par : tous les comptes client (hors menus réduits)",
+"prep": "Pour la bulle flottante : cocher « Bulle « Nouveau ticket » (flottante) » (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer »). Sinon créer un ticket depuis une conversation du Centre de Messagerie (« Générer un ticket »).",
+"items": [
+{
+"id": "p-tickets-1",
+"do": "Créer un ticket via la bulle « Nouveau ticket d'intervention » : « Client lié * », « Motif * », un numéro, « Date/heure incident * », puis « Créer le ticket ».",
+"expect": [
+"Le ticket apparaît dans « Tickets » avec un numéro CLIENT-année-NNNN.",
+"Le badge jaune du lien « Tickets » augmente."
+]
+},
+{
+"id": "p-tickets-2",
+"do": "Cliquer « → En cours » puis « ⏸ Suspendre ».",
+"expect": [
+"Le message « Statut mis à jour » s'affiche à chaque fois ; le ticket passe dans le filtre « Suspendus »."
+]
+},
+{
+"id": "p-tickets-3",
+"do": "Cliquer « Clôturer (Terminé) » et confirmer « Clôturer comme TERMINÉ ? ».",
+"expect": [
+"Le message « Ticket clôturé » s'affiche ; le badge jaune diminue.",
+"Le contact reçoit le WhatsApp de clôture."
+]
+},
+{
+"id": "p-tickets-4",
+"do": "Sur le ticket terminé, cliquer « Rouvrir (créer un ticket lié) ».",
+"expect": [
+"Le message « Ticket rouvert : … » s'affiche avec un nouveau numéro."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-mediatheque",
+"title": "Bibliothèque de médias",
+"who": "Client → Bibliothèque de médias (/portal/media-library) — visible par : tous les comptes client (hors menus réduits)",
+"prep": "",
+"items": [
+{
+"id": "p-mediatheque-1",
+"do": "Cliquer « Ajouter un média » et choisir une image.",
+"expect": [
+"L'image apparaît dans la grille."
+]
+},
+{
+"id": "p-mediatheque-2",
+"do": "Cliquer « URL » sur le média.",
+"expect": [
+"Le message « URL copiée » s'affiche ; l'URL collée ouvre l'image."
+]
+},
+{
+"id": "p-mediatheque-3",
+"do": "Filtrer par « Images » puis rechercher par nom ; supprimer le média.",
+"expect": [
+"Le filtre et la recherche réduisent la liste.",
+"Le message « Supprimé » s'affiche."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-generateur-medias",
+"title": "Générateur d'Images et Vidéos",
+"who": "Client → Générateur d'Images et Vidéos (/portal/media-generator) — visible par : tous les comptes client (hors menus réduits)",
+"prep": "Cocher « Génération d'Image IA (Nano Banana) » et/ou « Génération de Vidéo IA (Sora 2) » (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer »). Attention : crédits IA payants.",
+"items": [
+{
+"id": "p-generateur-medias-1",
+"do": "Sans ces fonctionnalités, ouvrir la page.",
+"expect": [
+"Le message « Génération IA désactivée pour ce client. » s'affiche."
+]
+},
+{
+"id": "p-generateur-medias-2",
+"do": "Activer l'image, saisir une description, cliquer « Générer l'image ».",
+"expect": [
+"Le bouton affiche « Génération… (5-10 s) » puis « Image générée ! ».",
+"L'image apparaît dans l'historique."
+]
+},
+{
+"id": "p-generateur-medias-3",
+"do": "Activer la vidéo, onglet « Vidéo (Sora 2) », choisir une durée, « Générer la vidéo ».",
+"expect": [
+"Le bouton affiche « Génération vidéo… (2-5 min) » puis « Vidéo générée ! »."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-voice-studio",
+"title": "Voice Studio",
+"who": "Client → Voice Studio (/portal/voice-studio) — visible par : tous les comptes client (hors menus réduits)",
+"prep": "Cocher « Génération de Voix / Son (ElevenLabs) » (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer »). Préparer un enregistrement audio de 30 s à 1 min (10 Mo max).",
+"items": [
+{
+"id": "p-voice-studio-1",
+"do": "Sans la fonctionnalité, tenter « Cloner la voix ».",
+"expect": [
+"Un message d'erreur indique que la génération vocale IA n'est pas activée (le lien reste pourtant visible)."
+]
+},
+{
+"id": "p-voice-studio-2",
+"do": "Fonctionnalité active : saisir un nom, joindre l'audio, cliquer « Cloner la voix ».",
+"expect": [
+"Le message « Voix « … » créée » s'affiche et la voix apparaît dans la liste."
+]
+},
+{
+"id": "p-voice-studio-3",
+"do": "Dans « Générer un audio », choisir la voix, taper un texte, cliquer « Générer ».",
+"expect": [
+"Le message « Audio généré (… Ko) » s'affiche et l'audio peut être écouté."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-stats-catalogue",
+"title": "Statistiques catalogue",
+"who": "Client → Statistiques catalogue (/portal/catalog-stats) — visible par : Superviseur et utilisateurs suivis",
+"prep": "Avoir des produits publics consultés ou partagés (catalogue public).",
+"items": [
+{
+"id": "p-stats-catalogue-1",
+"do": "Ouvrir la page et changer la période.",
+"expect": [
+"Le titre « Statistiques catalogue » s'affiche.",
+"Les indicateurs « Aperçus produits », « Partages », « Devis demandés » se mettent à jour."
+]
+},
+{
+"id": "p-stats-catalogue-2",
+"do": "Télécharger les événements en CSV.",
+"expect": [
+"Un fichier CSV se télécharge."
+]
+},
+{
+"id": "p-stats-catalogue-3",
+"do": "S'il y a une alerte de devis non traités, cliquer « Marquer traitées ».",
+"expect": [
+"Le message « Demandes marquées comme traitées » s'affiche."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-liluvine",
+"title": "Liluvine PRO",
+"who": "Client → Liluvine PRO (/portal/liluvine) — visible par : tous les comptes client et le Régulateur ; grisé avec « OFF » si non activé",
+"prep": "Cocher « Liluvine PRO (Assistant IA interne) » (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer »).",
+"items": [
+{
+"id": "p-liluvine-1",
+"do": "Sans la fonctionnalité, cliquer sur le lien grisé.",
+"expect": [
+"Le badge « OFF » est visible.",
+"Le message « Fonctionnalité « Liluvine PRO » non activée — contactez votre administrateur SAWALI. » s'affiche."
+]
+},
+{
+"id": "p-liluvine-2",
+"do": "Fonctionnalité active : poser une question et appuyer sur Entrée.",
+"expect": [
+"La réponse de l'assistant s'affiche.",
+"La conversation apparaît dans la liste à gauche."
+]
+},
+{
+"id": "p-liluvine-3",
+"do": "Joindre une capture d'écran (JPEG/PNG) et envoyer ; puis cliquer « Nouvelle ».",
+"expect": [
+"L'image est prise en compte dans la réponse.",
+"Une nouvelle conversation vide s'ouvre."
+]
+},
+{
+"id": "p-liluvine-4",
+"do": "Cliquer « Demander de l'aide », décrire le besoin, envoyer.",
+"expect": [
+"Le message « Demande envoyée à l'administrateur via WhatsApp. » s'affiche."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-vidal",
+"title": "VIDAL France et Numéros AMM",
+"who": "Client → VIDAL France (/portal/vidal) et Numéros AMM (/portal/amm) — visibles par : Superviseur, Pharmacien, Médecin, Éditeur VIDAL ; Régulateur : Numéros AMM seulement ; grisés « OFF » si VIDAL non activé",
+"prep": "1) Admin → Paramètres → section VIDAL : activer et saisir les identifiants. 2) Cocher « Module VIDAL France (médicaments) » (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer »). Comptes de rôle Pharmacien, Régulateur (AMM) et Éditeur VIDAL (lecture).",
+"items": [
+{
+"id": "p-vidal-1",
+"do": "Client sans VIDAL : cliquer sur « VIDAL France ».",
+"expect": [
+"Le lien est grisé avec « OFF » et un message « Fonctionnalité … non activée » s'affiche."
+]
+},
+{
+"id": "p-vidal-2",
+"do": "En Pharmacien, onglet « Recherche », taper « amoxicilline », cliquer « Rechercher », puis « Voir la fiche → ».",
+"expect": [
+"Une liste de médicaments s'affiche.",
+"La fiche montre les « Informations produit » et le « Statut réglementaire »."
+]
+},
+{
+"id": "p-vidal-3",
+"do": "Ajouter le produit aux favoris puis ouvrir l'onglet « Favoris ».",
+"expect": [
+"Le message « ⭐ Ajouté aux favoris » s'affiche et le produit est dans « Favoris »."
+]
+},
+{
+"id": "p-vidal-4",
+"do": "Numéros AMM : en Régulateur, « Nouvelle AMM » puis « Enregistrer » ; en Éditeur VIDAL, ouvrir la même page.",
+"expect": [
+"La nouvelle AMM apparaît dans la liste.",
+"Le Régulateur ne voit que « Numéros AMM » et « Liluvine PRO » dans son menu.",
+"L'Éditeur VIDAL voit « Vous êtes en lecture seule » et aucun bouton de modification."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-vidal-clinique",
+"title": "Fiche produit VIDAL, Posologie, Sécurisation",
+"who": "Client → Fiche produit VIDAL (/portal/vidal-fiche), Posologie (/portal/vidal-posologie), Sécurisation (/portal/vidal-securisation) — visibles par : Superviseur, Pharmacien, Médecin, Éditeur VIDAL, Médecin suivi (les 3) et Pharmacien suivi (Fiche + Posologie)",
+"prep": "Mêmes activations que VIDAL France. Utilisateurs suivis « Médecin » et « Pharmacien » avec mot de passe.",
+"items": [
+{
+"id": "p-vidal-clinique-1",
+"do": "Fiche produit VIDAL : rechercher « Efferalgan 500 », ouvrir le produit, cliquer « Voir les équivalents (même DCI + dosage) ».",
+"expect": [
+"Voies d'administration et documents s'affichent (ou « Aucun document renvoyé par VIDAL pour ce produit. »).",
+"La liste des équivalents apparaît (ou « Aucun produit équivalent trouvé. »)."
+]
+},
+{
+"id": "p-vidal-clinique-2",
+"do": "Posologie : cliquer le profil « Enceinte », choisir un médicament, cliquer « Rechercher la posologie indiquée ».",
+"expect": [
+"Le profil patient se remplit (genre, poids…).",
+"Un « Résultat (expérimental) » s'affiche."
+]
+},
+{
+"id": "p-vidal-clinique-3",
+"do": "Sécurisation : remplir le « Profil du patient », « Ajouter un médicament » (2 lignes à risque), cliquer « Sécuriser ».",
+"expect": [
+"Le bloc « Résultat de l'analyse VIDAL » liste des alertes classées (Critique, Élevée…) ou « Aucune alerte détectée ».",
+"L'analyse est visible dans « Historique »."
+]
+},
+{
+"id": "p-vidal-clinique-4",
+"do": "Cliquer « Imprimer Ordonnance » puis « Envoi WA » (numéro WhatsApp patient renseigné).",
+"expect": [
+"L'ordonnance s'ouvre pour impression.",
+"Le message « Ordonnance envoyée sur WhatsApp. » s'affiche."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-pv-reunions",
+"title": "PV de réunions",
+"who": "Client → PV de réunions (/portal/meetings) — visible par : tous les comptes client (hors menus réduits)",
+"prep": "",
+"items": [
+{
+"id": "p-pv-reunions-1",
+"do": "Cliquer « Nouveau PV », saisir un titre, des participants et le contenu, puis enregistrer.",
+"expect": [
+"Le message « PV … créé » s'affiche avec un numéro automatique."
+]
+},
+{
+"id": "p-pv-reunions-2",
+"do": "Enregistrer un PV sans titre.",
+"expect": [
+"Le message « Donnez un titre au PV. » s'affiche."
+]
+},
+{
+"id": "p-pv-reunions-3",
+"do": "Ouvrir le PV, cliquer « Valider et signer ».",
+"expect": [
+"Le message « PV signé par … » s'affiche.",
+"Le PV n'est plus modifiable."
+]
+},
+{
+"id": "p-pv-reunions-4",
+"do": "Cliquer « Voir PDF » puis « Imprimer ».",
+"expect": [
+"Le PDF du PV s'ouvre ; l'impression propose le document."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-liluvine-historique",
+"title": "Liluvine PRO — Historique",
+"who": "Client → Liluvine PRO — Historique (/portal/liluvine-history) — visible par : Superviseur et utilisateurs suivis « Moderation »",
+"prep": "Liluvine PRO activé et quelques conversations existantes (web ou WhatsApp).",
+"items": [
+{
+"id": "p-liluvine-historique-1",
+"do": "Ouvrir la page, filtrer « WhatsApp » et une période.",
+"expect": [
+"Le titre « Liluvine PRO — Historique » s'affiche.",
+"Seules les conversations du canal et de la période choisis apparaissent."
+]
+},
+{
+"id": "p-liluvine-historique-2",
+"do": "Ouvrir une conversation et « reprendre » la main, puis la libérer.",
+"expect": [
+"« Conversation reprise — Liluvine se tait, à vous de répondre 👋 » puis « Conversation libérée — Liluvine PRO reprend la main »."
+]
+},
+{
+"id": "p-liluvine-historique-3",
+"do": "Se connecter en client standard.",
+"expect": [
+"Le lien est absent."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-brochures",
+"title": "Brochures & Guides",
+"who": "Client → Brochures & Guides (/portal/brochures) — visible par : Superviseur et utilisateurs suivis « Moderation »",
+"prep": "Des brochures publiées côté admin.",
+"items": [
+{
+"id": "p-brochures-1",
+"do": "Ouvrir « Brochures & Guides » et cliquer « Consulter en ligne » sur une brochure.",
+"expect": [
+"La visionneuse PDF interne s'ouvre.",
+"« Retour à la liste » ramène à la liste."
+]
+},
+{
+"id": "p-brochures-2",
+"do": "Se connecter en client standard.",
+"expect": [
+"Le lien est absent."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-ocr-pieces",
+"title": "OCR sur Pièces",
+"who": "Client → OCR sur Pièces (/portal/ocr-pieces) — visible par : rôle Pharmacien, Pharmacien suivi, Superviseur",
+"prep": "Compte de rôle Pharmacien (ou Pharmacien suivi) ; une facture fournisseur en PDF ou photo (20 Mo max).",
+"items": [
+{
+"id": "p-ocr-pieces-1",
+"do": "En pharmacien, choisir le fichier, le type « Facture », cliquer « Déposer et analyser ».",
+"expect": [
+"Le message « Pièce déposée — analyse en cours… » s'affiche.",
+"La pièce passe de « Analyse en cours » à « Analysée » avec le « Type reconnu »."
+]
+},
+{
+"id": "p-ocr-pieces-2",
+"do": "Télécharger puis supprimer la pièce.",
+"expect": [
+"Le fichier se télécharge ; la pièce disparaît de la liste."
+]
+},
+{
+"id": "p-ocr-pieces-3",
+"do": "En Superviseur : choisir une pharmacie et un « Modèle d'IA » avant dépôt, puis ouvrir « Tableau de bord OCR ».",
+"expect": [
+"Sans pharmacie choisie : « Choisissez la pharmacie concernée ».",
+"Le filtre « Toutes les pharmacies » et le tableau de bord sont visibles (pas pour le pharmacien)."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-gestion-stocks",
+"title": "Gestion de Stocks",
+"who": "Client → Gestion de Stocks (/portal/gestion-stocks) — visible par : utilisateurs suivis « Pharmacien » uniquement",
+"prep": "Le client de rattachement doit avoir un « code client » (Admin → Clients → fiche). Pharmacien suivi avec mot de passe.",
+"items": [
+{
+"id": "p-gestion-stocks-1",
+"do": "Ouvrir « Gestion de Stocks », cliquer « Nouveau dossier », saisir un nom, « Créer ».",
+"expect": [
+"Le message « Dossier « … » créé » s'affiche."
+]
+},
+{
+"id": "p-gestion-stocks-2",
+"do": "Ouvrir le dossier, cliquer « Déposer des fichiers » et choisir 2 fichiers.",
+"expect": [
+"La progression s'affiche puis les fichiers apparaissent dans le dossier."
+]
+},
+{
+"id": "p-gestion-stocks-3",
+"do": "Utiliser la recherche de documents, puis poser une question dans l'« Explorateur BD MongoDB Atlas » (ex. « Analyseur Ruptures »).",
+"expect": [
+"Les documents correspondants sont listés.",
+"Une réponse fondée sur les stocks du seul client s'affiche."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-officines",
+"title": "Officines",
+"who": "Client → Officines (/admin/officines-registry) — visible par : comptes délégués (emails listés côté admin) ; affiché grisé « N/A » pour le profil Fabricant",
+"prep": "Admin → Paramètres → « 🏥 Délégation menu Officines (comptes autorisés) » → ajouter l'email du compte test → enregistrer.",
+"items": [
+{
+"id": "p-officines-1",
+"do": "Se connecter avec le compte délégué et cliquer « Officines ».",
+"expect": [
+"Le registre des officines s'ouvre sans renvoi vers le portail."
+]
+},
+{
+"id": "p-officines-2",
+"do": "Modifier une officine existante.",
+"expect": [
+"Seuls intitulé, téléphone, WhatsApp, géolocalisation, indication de localisation et activité principale sont modifiables ; le reste est grisé."
+]
+},
+{
+"id": "p-officines-3",
+"do": "Avec un Superviseur Fabricant, cliquer « Officines ».",
+"expect": [
+"Le lien est grisé avec « N/A » et le message « Non disponible pour votre profil Fabricant » s'affiche."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-compte",
+"title": "Bas du menu : Mon compte, Alerte WhatsApp, Réglages",
+"who": "Client → bloc « Connecté en tant que » (/portal/my-account) et réglages du bas du menu — visible par : tous les comptes client",
+"prep": "",
+"items": [
+{
+"id": "p-compte-1",
+"do": "Cliquer sur « Connecté en tant que … → Voir mon compte ».",
+"expect": [
+"La page « Mon compte » affiche les informations en lecture seule."
+]
+},
+{
+"id": "p-compte-2",
+"do": "Dans « Demande de modification », décrire un changement et cliquer « Envoyer à l'admin » ; puis « Exporter mes données (RGPD) ».",
+"expect": [
+"Le message « Demande envoyée à l'administrateur » s'affiche.",
+"Le message « Export téléchargé » s'affiche et un fichier se télécharge."
+]
+},
+{
+"id": "p-compte-3",
+"do": "Dans « Réglages », basculer « Mode sombre » ; en Superviseur, vérifier « Notes VIDAL (admin) ».",
+"expect": [
+"L'interface passe en sombre puis revient en clair.",
+"« Notes VIDAL (admin) » n'apparaît que pour le Superviseur."
+]
+},
+{
+"id": "p-compte-4",
+"do": "Dans « Alerte WhatsApp », basculer « Notif » / « Son », puis « Se déconnecter ».",
+"expect": [
+"Les boutons changent d'état (« Off », « Muet » ou « Bloqué » si l'admin a coupé le son).",
+"La déconnexion ramène à l'accueil."
+]
+}
+],
+"part": "Espace client"
+},
+{
+"id": "p-roles",
+"title": "Variantes du menu par profil",
+"who": "Client → menu latéral selon le profil du compte",
+"prep": "Préparer un compte par profil ci-dessous (Admin → Clients pour les rôles système et le profil Fabricant ; Admin → Utilisateurs suivis → « Nouvel utilisateur » + icône clé « Définir un mot de passe » pour les suivis).",
+"items": [
+{
+"id": "p-roles-1",
+"do": "Se connecter avec un compte client standard (rôle Client, sans caisse).",
+"expect": [
+"Liens : Tableau de bord, Mes rendez-vous, Historique interventions, Suivi utilisateurs, Mes rapports, Mes suivis, Centre de Messagerie, Groupes de contacts, Registre des erreurs, Inbox unifiée, SMS, WhatsApp, Planning consultations, Tickets, Bibliothèque de médias, Générateur, Voice Studio, Liluvine PRO, PV de réunions (+ Documentation / Formulaires si du contenu existe).",
+"Absents : Caisse, Catalogue, GRH, Production, Meta (sauf activé), VIDAL, Statistiques catalogue, Brochures, OCR."
+]
+},
+{
+"id": "p-roles-2",
+"do": "Se connecter avec un compte Superviseur.",
+"expect": [
+"Tous les liens standard + Caisse/Facturation, Catalogue, GRH, Meta, Statistiques catalogue, les 5 liens VIDAL, Liluvine PRO — Historique, Brochures & Guides, OCR sur Pièces.",
+"« Notes VIDAL (admin) » apparaît dans « Réglages »."
+]
+},
+{
+"id": "p-roles-3",
+"do": "Se connecter avec un compte « Rôle Caissier » coché (rôle Client).",
+"expect": [
+"Le lien « Caisse/Facturation » apparaît en plus du menu standard ; « Catalogue » reste absent."
+]
+},
+{
+"id": "p-roles-4",
+"do": "Se connecter avec un utilisateur suivi « Comptable ».",
+"expect": [
+"Uniquement « Caisse/Facturation » et « GRH — Ressources Humaines » (pas de Tableau de bord par défaut).",
+"À vérifier : la page Caisse peut afficher « Vous n'avez pas les permissions pour accéder à la caisse » si le rôle caissier n'est pas coché."
+]
+},
+{
+"id": "p-roles-5",
+"do": "Se connecter avec un Superviseur au profil Fabricant.",
+"expect": [
+"Arrivée directe sur « Caisse/Facturation » (pas de Tableau de bord ni de message de bienvenue).",
+"Liens : Caisse/Facturation, Catalogue, GRH, Production, et « Officines » grisé « N/A »."
+]
+},
+{
+"id": "p-roles-6",
+"do": "Se connecter avec un compte de rôle Pharmacien (non suivi).",
+"expect": [
+"Menu standard + les 5 liens VIDAL + « OCR sur Pièces »."
+]
+},
+{
+"id": "p-roles-7",
+"do": "Se connecter avec un utilisateur suivi « Pharmacien ».",
+"expect": [
+"Arrivée sur « Posologie ».",
+"Liens : Posologie, Fiche produit VIDAL, Gestion de Stocks, OCR sur Pièces (les liens VIDAL sont « OFF » si VIDAL n'est pas activé)."
+]
+},
+{
+"id": "p-roles-8",
+"do": "Se connecter avec un compte de rôle Médecin (non suivi).",
+"expect": [
+"Menu standard + les 5 liens VIDAL (pas d'OCR)."
+]
+},
+{
+"id": "p-roles-9",
+"do": "Se connecter avec un utilisateur suivi « Médecin ».",
+"expect": [
+"Arrivée sur « Planning consultations » avec badge vert des walk-ins du jour.",
+"Liens : Planning consultations, Sécurisation, Fiche produit VIDAL, Posologie."
+]
+},
+{
+"id": "p-roles-10",
+"do": "Se connecter avec un utilisateur suivi « Secrétaire médicale ».",
+"expect": [
+"Un seul lien : « Planning consultations », avec le bouton « Walk-in »."
+]
+},
+{
+"id": "p-roles-11",
+"do": "Se connecter avec un compte Régulateur (AMM) puis un Éditeur VIDAL.",
+"expect": [
+"Régulateur : « Numéros AMM » et « Liluvine PRO » seulement.",
+"Éditeur VIDAL : VIDAL France, Numéros AMM, Fiche produit VIDAL, Posologie, Sécurisation, Liluvine PRO (AMM en lecture seule)."
+]
+},
+{
+"id": "p-roles-12",
+"do": "Se connecter avec un utilisateur suivi « Moderation ».",
+"expect": [
+"Menu standard + Formations Spécialisées (si formations), Statistiques catalogue, Liluvine PRO — Historique, Brochures & Guides.",
+"À noter : « Registre des erreurs » renvoie une erreur d'accès pour ce profil."
+]
+},
+{
+"id": "p-roles-13",
+"do": "Se connecter avec un utilisateur suivi « Traducteur ».",
+"expect": [
+"Attendu : arrivée sur « Régionalisation » avec ce seul lien.",
+"À vérifier en priorité : risque de renvoi en boucle vers le portail (voir rapport)."
+]
+},
+{
+"id": "p-roles-14",
+"do": "Pour un utilisateur suivi, régler « Visibilité personnalisée » → Tableau de bord « Toujours afficher » (Admin → Utilisateurs suivis → Modifier), puis se reconnecter.",
+"expect": [
+"Le lien « Tableau de bord » apparaît même pour un profil à menu réduit (ex. Médecin suivi)."
+]
+}
+],
+"part": "Espace client"
+}
+];
+const ALL = SECTIONS.flatMap((s) => s.items.map((i) => ({ ...i, section: s })));
+
+// ---------------------------------------------------------------- état
+let checks = {};          // id → {status, note, by, at} (base partagée)
+let db = null, userApi = null, myId = null, canWrite = true;
+let filter = "all";
+let part = "";  // partie affichée ("" = toutes)
+let pendingRender = false;  // mise à jour reçue pendant la saisie d'une note
+const drafts = {};        // notes en cours de saisie, par point
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmtWhen = (iso) => { try { return new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 2200); }
+
+// ---------------------------------------------------------------- affichage
+async function render() {
+  const statusOf = (id) => checks[id]?.status || null;
+  const ok = ALL.filter((i) => statusOf(i.id) === "ok").length;
+  const ko = ALL.filter((i) => statusOf(i.id) === "ko").length;
+  const total = ALL.length;
+  $("barOk").style.width = (ok / total * 100) + "%";
+  $("barKo").style.width = (ko / total * 100) + "%";
+  $("counts").innerHTML = `<span><b>${ok}</b> validés</span><span><b>${ko}</b> problèmes</span><span><b>${total - ok - ko}</b> à tester</span>`;
+
+  // Qui a coché : noms résolus à l'affichage, seuls les identifiants sont stockés
+  const ids = [...new Set(Object.values(checks).map((c) => c.by).filter(Boolean))];
+  const people = userApi && ids.length ? await userApi.profiles(ids) : {};
+
+  const keep = (i) => filter === "all" || (filter === "todo" ? !statusOf(i.id) : statusOf(i.id) === filter);
+  const html = SECTIONS.map((s) => {
+    if (part && s.part !== part) return "";
+    const shown = s.items.filter(keep);
+    if (!shown.length) return "";
+    const done = s.items.filter((i) => statusOf(i.id)).length;
+    return `<section aria-labelledby="h-${s.id}">
+      <div class="sec-head"><h2 id="h-${s.id}">${esc(s.title)}</h2><span class="who">${esc(s.who)}</span><span class="prog">${done} / ${s.items.length}</span></div>
+      ${s.prep ? `<div class="sec-prep">À préparer : ${esc(s.prep)}</div>` : ""}
+      <ul class="items">${shown.map((i) => itemHtml(i, people)).join("")}</ul>
+    </section>`;
+  }).join("");
+  $("list").innerHTML = html || `<div class="empty">Aucun point dans ce filtre.</div>`;
+}
+
+function itemHtml(i, people) {
+  const c = checks[i.id] || {};
+  const who = c.by ? (people[c.by]?.name || "Quelqu'un") : "";
+  const dis = canWrite && db ? "" : "disabled";
+  const note = drafts[i.id] ?? c.note ?? "";
+  return `<li class="item" data-status="${c.status || ""}" data-id="${i.id}">
+    <div>
+      <div class="do">${esc(i.do)}</div>
+      <div class="expect"><ul>${i.expect.map((e) => `<li>${esc(e)}</li>`).join("")}</ul></div>
+    </div>
+    <div class="acts">
+      <button class="st ok" data-act="ok" aria-pressed="${c.status === "ok"}" ${dis}>OK</button>
+      <button class="st ko" data-act="ko" aria-pressed="${c.status === "ko"}" ${dis}>Problème</button>
+    </div>
+    ${c.status ? `<div class="meta">${c.status === "ok" ? "Validé" : "Problème signalé"}${who ? " par " + esc(who) : ""}${c.at ? " · " + fmtWhen(c.at) : ""}</div>` : ""}
+    ${c.status === "ko" ? `<div class="note">
+      <textarea id="note-${i.id}" data-note="${i.id}" placeholder="Compte utilisé, étapes, message exact affiché…" ${dis}>${esc(note)}</textarea>
+      <div class="row"><button class="btn" data-save="${i.id}" ${dis}>Enregistrer la note</button><span>${c.note ? "Note enregistrée" : "Pas encore de note"}</span></div>
+    </div>` : ""}
+  </li>`;
+}
+
+// ---------------------------------------------------------------- actions
+async function setStatus(id, status) {
+  if (!db || !canWrite) return;
+  const cur = checks[id] || {};
+  const next = cur.status === status ? null : status;  // recliquer annule la coche
+  const body = { status: next, note: next === "ko" ? (cur.note || "") : "", by: myId, at: new Date().toISOString() };
+  checks = { ...checks, [id]: body };
+  render();
+  try { await db.doc("checks/" + id).set(body); }
+  catch (e) { handleWriteError(e); }
+}
+
+async function saveNote(id) {
+  if (!db || !canWrite) return;
+  const text = (drafts[id] ?? "").trim();
+  const cur = checks[id] || {};
+  const body = { ...cur, status: "ko", note: text, by: myId, at: new Date().toISOString() };
+  checks = { ...checks, [id]: body };
+  delete drafts[id];
+  render();
+  try { await db.doc("checks/" + id).set(body); toast("Note enregistrée"); }
+  catch (e) { handleWriteError(e); }
+}
+
+function handleWriteError(e) {
+  if (e?.code === "invalid_argument") { canWrite = false; $("sync").textContent = "Lecture seule : vous ne pouvez pas cocher dans cette liste."; render(); }
+  else toast("Enregistrement impossible, réessayez.");
+}
+
+$("list").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button");
+  if (!b) return;
+  const li = b.closest("li.item");
+  if (b.dataset.act) setStatus(li.dataset.id, b.dataset.act);
+  if (b.dataset.save) saveNote(b.dataset.save);
+});
+$("list").addEventListener("focusout", (ev) => {
+  if (ev.target.dataset?.note && pendingRender) { pendingRender = false; setTimeout(render, 150); }
+});
+$("list").addEventListener("input", (ev) => { if (ev.target.dataset.note) drafts[ev.target.dataset.note] = ev.target.value; });
+
+document.querySelectorAll(".chip[data-filter]").forEach((c) => c.addEventListener("click", () => {
+  filter = c.dataset.filter;
+  document.querySelectorAll(".chip[data-filter]").forEach((x) => x.setAttribute("aria-pressed", String(x === c)));
+  render();
+}));
+
+// Filtre par partie (ex. Admin / Portail)
+document.querySelectorAll(".chip[data-part]").forEach((c) => c.addEventListener("click", () => {
+  part = c.dataset.part;
+  document.querySelectorAll(".chip[data-part]").forEach((x) => x.setAttribute("aria-pressed", String(x === c)));
+  render();
+}));
+// Sommaire : un lien par module (affiche toutes les parties puis fait défiler)
+$("toc").innerHTML = SECTIONS.map((s) => `<a href="#h-${s.id}" data-goto="${s.id}">${esc(s.title)}</a>`).join("");
+$("toc").addEventListener("click", (ev) => {
+  const a = ev.target.closest("a"); if (!a) return;
+  ev.preventDefault(); part = ""; filter = "all";
+  document.querySelectorAll(".chip[data-part]").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.part === "")));
+  document.querySelectorAll(".chip[data-filter]").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.filter === "all")));
+  render().then(() => document.getElementById("h-" + a.dataset.goto)?.scrollIntoView({ block: "start" }));
+});
+
+// Résumé des problèmes à coller dans un message (pour la correction)
+$("copyKo").addEventListener("click", async () => {
+  const kos = ALL.filter((i) => checks[i.id]?.status === "ko");
+  if (!kos.length) { toast("Aucun problème signalé"); return; }
+  const txt = "Recette compl\u00e8te Sawali \u2014 probl\u00e8mes\n\n" + kos.map((i) =>
+    `• [${i.section.part}] ${i.section.title} — ${i.do}\n  Attendu : ${i.expect.join(" ; ")}\n  Constat : ${checks[i.id].note || "(pas de note)"}`).join("\n\n");
+  try { await navigator.clipboard.writeText(txt); toast("Problèmes copiés"); }
+  catch { toast("Copie refusée par le navigateur"); }
+});
+
+// ---------------------------------------------------------------- base partagée
+render();
+(async () => {
+  const use = window.claude?.use;
+  db = use ? await window.claude.use("db") : null;
+  userApi = use ? await window.claude.use("user") : null;
+  if (!db) { $("offline").hidden = false; $("sync").textContent = "Hors ligne"; render(); return; }
+  myId = userApi ? await userApi.id() : null;
+  const w = userApi ? await userApi.can("data.write") : null;
+  if (w === false) { canWrite = false; $("sync").textContent = "Lecture seule : vous ne pouvez pas cocher dans cette liste."; }
+  // Un seul abonnement : toutes les coches, mises à jour en direct
+  db.collection("checks").onSnapshot((snap) => {
+    const m = {};
+    snap.docs.forEach((d) => { m[d.id] = d.data(); });
+    checks = m;
+    if (canWrite) $("sync").textContent = "Liste partagée · mise à jour en direct";
+    // Ne pas redessiner pendant qu'on écrit une note : on le fera en quittant le champ
+    if (document.activeElement?.dataset?.note) pendingRender = true; else render();
+  }, () => { $("sync").textContent = "Mise à jour en direct interrompue, rechargez la page."; });
+})();
+</script>

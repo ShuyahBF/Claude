@@ -1,0 +1,2092 @@
+From 689830c05d64ef729dec194714700f2dae019098 Mon Sep 17 00:00:00 2001
+From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
+Date: Fri, 25 Sep 2026 20:23:06 +0000
+Subject: [PATCH] =?UTF-8?q?feat:=20lot=2023=20=E2=80=94=20explorateur=20R2?=
+ =?UTF-8?q?=20(suppression,=20dossiers,=20tags,=20texte=20int=C3=A9gral),?=
+ =?UTF-8?q?=20Liluvine=20prospects,=20Centre=20de=20Messagerie=20fiable?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Explorateur Stockage R2 (Gestion de Stocks) :
+- suppression d'un fichier depuis l'écran : admin et superviseur tout
+  fichier, Pharmacien suivi autorisé à déposer ses propres fichiers
+  (DELETE /gestion-stocks/files) ;
+- création d'un dossier depuis la page (marqueur vide dans R2, comme
+  Cloudflare), pour l'administration et les comptes autorisés à déposer
+  (POST /gestion-stocks/folders) ;
+- renommage / fusion / retrait d'un tag sur tous les fichiers d'un client,
+  réservé à l'administration (PUT /gestion-stocks/tags/rename) ;
+- recherche dans le texte intégral des documents (PDF avec texte, Word,
+  Excel, PowerPoint, .txt, .csv — sans IA ni coût), avec l'extrait
+  correspondant ; texte lu par l'IA cherchable pour les scans ; fichiers
+  anciens indexés en arrière-plan à l'ouverture de leur dossier ou via
+  « Indexer le contenu des fichiers existants » (POST /gestion-stocks/reindex).
+
+Liluvine :
+- bouton « Prospect » sur chaque contact du Centre de Messagerie (pose ou
+  retire l'étiquette `prospect`) ;
+- base de connaissance par public (tous / clients seulement / prospects
+  seulement) : un prospect WhatsApp ne reçoit que « tous » + « prospects »,
+  sans la recherche sémantique Qdrant ; clients et chat interne ne reçoivent
+  jamais les entrées réservées aux prospects.
+
+Centre de Messagerie :
+- un seul calcul des non-lus (_wa_unread_summary) pour le badge de la
+  sidebar, les pastilles des contacts et la cloche, sur le périmètre visible
+  de l'utilisateur (admin compris), en ne comptant que les messages qu'une
+  conversation permet de marquer comme lus ; recompte immédiat après lecture ;
+- messages rattachés au contact par les 8 derniers chiffres du numéro
+  (contacts saisis sans indicatif) ;
+- « dernière interaction » limitée au tenant, hors envois en masse, sur la
+  date posée par Sawali, avec le sens du dernier échange ; date/heure
+  affichée sous chaque contact ; liste réordonnée dès qu'un message arrive ;
+- conversation ouverte actualisée automatiquement (toutes les 8 s), nouveaux
+  messages marqués lus, bouton « Nouveau message » si l'on est remonté ;
+  la conversation charge les 1000 messages les plus récents ;
+- coller une image (Ctrl+V ou bouton) ou un texte du presse-papiers dans
+  une conversation ;
+- correctif du bouton « notifications bureau » (état devenu une Promise).
+---
+ backend/routes/gestion_stocks.py              |  98 ++++++++
+ backend/routes/gestion_stocks_tags.py         | 154 ++++++++++++-
+ backend/routes/liluvine_kb.py                 |  36 ++-
+ backend/routes/liluvine_wa_autoreply.py       |   4 +-
+ backend/server.py                             | 191 ++++++++++------
+ backend/tests/test_gestion_stocks_lot23.py    | 160 +++++++++++++
+ .../tests/test_liluvine_kb_audience_lot23.py  |  70 ++++++
+ .../tests/test_liluvine_wa_prospects_lot21.py |   8 +-
+ backend/tests/test_messaging_center_lot23.py  | 172 ++++++++++++++
+ frontend/src/components/PortalLayout.jsx      |   7 +-
+ frontend/src/components/R2FileTags.jsx        |  34 ++-
+ frontend/src/hooks/useWhatsAppNotifier.js     |  15 +-
+ .../sections/LiluvineKnowledgeBaseSection.jsx |  45 +++-
+ frontend/src/pages/portal/Contacts.jsx        | 214 ++++++++++++++++--
+ frontend/src/pages/portal/GestionStocks.jsx   | 137 ++++++++++-
+ frontend/src/pages/portal/UnifiedInbox.jsx    |   2 +
+ 16 files changed, 1225 insertions(+), 122 deletions(-)
+ create mode 100644 backend/tests/test_gestion_stocks_lot23.py
+ create mode 100644 backend/tests/test_liluvine_kb_audience_lot23.py
+ create mode 100644 backend/tests/test_messaging_center_lot23.py
+
+diff --git a/backend/routes/gestion_stocks.py b/backend/routes/gestion_stocks.py
+index c1add85..52f960e 100644
+--- a/backend/routes/gestion_stocks.py
++++ b/backend/routes/gestion_stocks.py
+@@ -546,6 +546,12 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+         doc = await gt.index_upload(db, code=code, key=key, size=len(data),
+                                     content_type=content_type or "application/octet-stream",
+                                     user=user, tags=tags, description=description)
++        # Lot 23 — texte intégral du document (PDF texte, Word, Excel, .txt…) : cherchable immédiatement.
++        try:
++            await gt.index_content(db, key=key, data=data, name=doc.get("name") or key.rsplit("/", 1)[-1],
++                                   content_type=content_type or "")
++        except Exception:  # noqa: BLE001 — le dépôt est réussi quoi qu'il arrive à l'indexation
++            logger.exception("[gestion_stocks] indexation du texte échouée key=%s", key)
+         ai_started = False
+         try:
+             ai_started = await gt.maybe_schedule_after_upload(db, code=code, key=key, data=data,
+@@ -781,10 +787,19 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+         from routes import gestion_stocks_tags as gt
+         docs = await gt.ensure_docs(db, code, files)
+         upload_allowed = is_admin or (await _tracked_upload_rights(db, user))["allowed"]
++        queued = 0
+         for f in files:
+             doc = docs.get(f["key"])
+             f.update(gt.public_meta(doc))
+             f["can_edit"] = gt.can_edit(user, doc, is_staff=is_admin, upload_allowed=upload_allowed)
++            # Lot 23 — même règle pour supprimer que pour taguer.
++            f["can_delete"] = f["can_edit"]
++            # Lot 23 — fichiers jamais indexés (déposés avant ce lot ou depuis Cloudflare) :
++            # texte extrait en arrière-plan, 20 par ouverture de dossier au plus.
++            if doc is not None and not doc.get("text_indexed_at") and queued < 20:
++                if gt.schedule_index_content(db, key=f["key"], name=doc.get("name") or f["name"],
++                                             content_type=doc.get("content_type") or "", size=f.get("size")):
++                    queued += 1
+         return {"client_code": code, "folder": folder, "files": files}
+ 
+     @api.get("/gestion-stocks/files/view-url", tags=["Portail — Gestion Stocks"])
+@@ -1038,6 +1053,7 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+         upload_allowed = _is_staff(user) or (await _tracked_upload_rights(db, user))["allowed"]
+         for r in results:
+             r["can_edit"] = gt.can_edit(user, docs.get(r["key"]), is_staff=_is_staff(user), upload_allowed=upload_allowed)
++            r["can_delete"] = r["can_edit"]  # Lot 23
+         return {"client_code": code, "q": q, "tags": gt.clean_tags(tags), "results": results,
+                 "truncated": len(results) >= gt.MAX_SEARCH_RESULTS}
+ 
+@@ -1086,6 +1102,88 @@ def attach_gestion_stocks_routes(*, api, db, get_current_user, get_current_admin
+         doc = await db.stock_files.find_one({"key": key}, {"_id": 0})
+         return {"key": key, **gt.public_meta(doc), "cost_xof": out["cost_xof"]}
+ 
++    # ------------------------------------------------------------------
++    # Lot 23 — suppression, création de dossier, renommage de tag, indexation
++    # ------------------------------------------------------------------
++    @api.delete("/gestion-stocks/files", tags=["Portail — Gestion Stocks"])
++    async def gestion_stocks_delete_file(key: str = Query(...), user: dict = Depends(get_current_user)):
++        """Supprime un fichier : admin/superviseur tout fichier ; Pharmacien
++        suivi autorisé à déposer, seulement ses propres fichiers (même règle
++        que pour les tags). La fiche (tags) part avec le fichier."""
++        from r2_stocks_client import delete_object, is_configured
++        await _editable_doc(user, key)  # 403 si pas le droit, 404 si le fichier n'existe pas
++        if not is_configured():
++            raise HTTPException(status_code=503, detail="Stockage R2 Gestion Stocks non configuré.")
++        try:
++            await asyncio.to_thread(delete_object, key)
++        except Exception:
++            logger.exception("[gestion_stocks] delete failed key=%s", key)
++            raise HTTPException(status_code=502, detail="Échec de la suppression.")
++        await db.stock_files.delete_one({"key": key})
++        return {"ok": True, "key": key}
++
++    @api.post("/gestion-stocks/folders", tags=["Portail — Gestion Stocks"])
++    async def gestion_stocks_create_folder(payload: Dict[str, Any] = Body(...), user: dict = Depends(get_current_user)):
++        """Crée un dossier (objet marqueur vide `<code>/<nom>/`, comme Cloudflare) :
++        admin/superviseur, ou utilisateur suivi autorisé à déposer (dans son tenant)."""
++        from routes import gestion_stocks_tags as gt
++        from r2_stocks_client import is_configured, list_folder_markers, list_objects, put_bytes
++        code = await _code_for(user, payload.get("client_code"))
++        if not _is_staff(user) and not (await _tracked_upload_rights(db, user))["allowed"]:
++            raise HTTPException(status_code=403, detail="Création de dossier réservée aux comptes autorisés à déposer des fichiers.")
++        if _is_staff(user) and not await _tenant_by_code(db, code):
++            raise HTTPException(status_code=404, detail="Aucun client ne porte ce code client.")
++        name = gt.clean_folder_name(payload.get("name"))
++        if not name or name == ROOT_FOLDER:
++            raise HTTPException(status_code=400, detail="Nom de dossier invalide (lettres, chiffres, espaces, - _ . ( ) ; 60 caractères au plus).")
++        if not is_configured():
++            raise HTTPException(status_code=503, detail="Stockage R2 Gestion Stocks non configuré.")
++        prefix = f"{code}/{name}/"
++        existing = await asyncio.to_thread(list_folder_markers, prefix) or await asyncio.to_thread(list_objects, prefix)
++        if existing or name.lower() in (f.lower() for f in DEFAULT_FOLDERS):
++            raise HTTPException(status_code=409, detail=f"Le dossier « {name} » existe déjà.")
++        try:
++            await asyncio.to_thread(put_bytes, prefix, b"", "application/x-directory")
++        except Exception:
++            logger.exception("[gestion_stocks] folder creation failed %s", prefix)
++            raise HTTPException(status_code=502, detail="Échec de la création du dossier dans R2.")
++        return {"ok": True, "client_code": code, "folder": name}
++
++    @api.put("/gestion-stocks/tags/rename", tags=["Portail — Gestion Stocks"])
++    async def gestion_stocks_rename_tag(payload: Dict[str, Any] = Body(...), user: dict = Depends(staff_user)):
++        """Renomme (ou fusionne, si le nouveau nom existe déjà) un tag pour tous
++        les fichiers d'un client. `to` vide = retirer le tag partout."""
++        from routes import gestion_stocks_tags as gt
++        code = await _code_for(user, payload.get("client_code"))
++        old = str(payload.get("from") or "").strip()
++        new = str(payload.get("to") or "").strip()
++        if not old:
++            raise HTTPException(status_code=400, detail="Tag à renommer manquant.")
++        if new and not gt.clean_tags([new]):
++            raise HTTPException(status_code=400, detail="Nouveau nom de tag invalide.")
++        changed = await gt.rename_tag(db, code, old, new)
++        return {"ok": True, "client_code": code, "files_changed": changed, "tags": await gt.tag_counts(db, code)}
++
++    @api.post("/gestion-stocks/reindex", tags=["Portail — Gestion Stocks"])
++    async def gestion_stocks_reindex(payload: Dict[str, Any] = Body(...), user: dict = Depends(staff_user)):
++        """Indexe en arrière-plan le texte de tous les fichiers du client qui ne
++        l'ont pas encore été (fichiers déposés avant le lot 23 ou depuis Cloudflare)."""
++        from routes import gestion_stocks_tags as gt
++        from r2_stocks_client import is_configured, list_objects
++        code = await _code_for(user, payload.get("client_code"))
++        if not is_configured():
++            raise HTTPException(status_code=503, detail="Stockage R2 Gestion Stocks non configuré.")
++        objects = await asyncio.to_thread(list_objects, f"{code}/")
++        files = [{"key": o["key"], "size": o.get("size"), "name": gt.split_key(code, o["key"])["name"]} for o in objects]
++        docs = await gt.ensure_docs(db, code, files)
++        queued = 0
++        for f in files:
++            doc = docs[f["key"]]
++            if not doc.get("text_indexed_at") and gt.schedule_index_content(
++                    db, key=f["key"], name=doc.get("name") or f["name"], content_type=doc.get("content_type") or "", size=f["size"]):
++                queued += 1
++        return {"ok": True, "client_code": code, "queued": queued, "files": len(files)}
++
+     logger.info("[gestion_stocks] routes mounted under /api/gestion-stocks and /api/admin/gestion-stocks")
+ 
+ 
+diff --git a/backend/routes/gestion_stocks_tags.py b/backend/routes/gestion_stocks_tags.py
+index e939b91..7d99c57 100644
+--- a/backend/routes/gestion_stocks_tags.py
++++ b/backend/routes/gestion_stocks_tags.py
+@@ -34,6 +34,8 @@ import mimetypes
+ import re
+ import unicodedata
+ import uuid
++import zipfile
++from io import BytesIO
+ from typing import Any, Dict, Iterable, List, Optional
+ 
+ from routes.gestion_stocks import ROOT_FOLDER, _now
+@@ -45,6 +47,19 @@ MAX_TAG_LEN = 40           # caractères par tag
+ MAX_DESCRIPTION = 500      # caractères de description
+ MAX_SEARCH_RESULTS = 200
+ 
++# Lot 23 — recherche dans le texte intégral : texte extrait des documents
++# (PDF avec couche texte, Word, Excel, PowerPoint, .txt, .csv), sans IA ni
++# coût. Pour un scan ou une photo, c'est le texte lu par l'IA (si l'option est
++# activée) qui est cherchable.
++MAX_CONTENT_CHARS = 20000
++TEXT_EXTRACT_MAX_BYTES = 15 * 1024 * 1024
++TEXT_PDF_MAX_PAGES = 50
++_OFFICE_XML = {  # fichier Office → parties XML qui portent le texte
++    "docx": ("word/document.xml", "word/header", "word/footer"),
++    "xlsx": ("xl/sharedStrings.xml", "xl/worksheets/sheet"),
++    "pptx": ("ppt/slides/slide",),
++}
++
+ # Suggestions IA : modèle le moins cher du catalogue ocr_core, fichiers
+ # lisibles par ocr_core uniquement, et pas au-delà de 10 Mo.
+ AI_TAGS_MODEL = "claude-haiku-4-5-20251001"
+@@ -127,6 +142,122 @@ def guess_content_type(name: str) -> str:
+     return mimetypes.guess_type(name)[0] or "application/octet-stream"
+ 
+ 
++# ----------------------------------------------------------------------
++# Lot 23 — extraction du texte intégral (sans IA)
++# ----------------------------------------------------------------------
++def _xml_text(xml: bytes) -> str:
++    """Texte d'une partie XML Office : balises retirées, entités de base décodées."""
++    txt = re.sub(r"<(w:p|a:p|row)[ >/]", "\n<", xml.decode("utf-8", errors="ignore"))  # fins de paragraphe/ligne
++    txt = re.sub(r"<[^>]+>", " ", txt)
++    for ent, ch in (("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", '"'), ("&apos;", "'")):
++        txt = txt.replace(ent, ch)
++    return txt
++
++
++def extract_text(data: bytes, name: str, content_type: str = "") -> str:
++    """Texte intégral d'un document (20 000 caractères au plus), ou "" si le
++    format n'en porte pas (image, PDF scanné…). Ne lève jamais."""
++    if not data or len(data) > TEXT_EXTRACT_MAX_BYTES:
++        return ""
++    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
++    try:
++        if ext == "pdf" or content_type == "application/pdf":
++            import fitz  # PyMuPDF, déjà utilisé par ocr_core
++            with fitz.open(stream=data, filetype="pdf") as pdf:
++                text = "\n".join(pdf[i].get_text() for i in range(min(len(pdf), TEXT_PDF_MAX_PAGES)))
++        elif ext in ("txt", "csv", "tsv", "md", "json", "xml") or content_type.startswith("text/"):
++            text = data.decode("utf-8", errors="ignore")
++        elif ext in _OFFICE_XML:
++            parts = []
++            with zipfile.ZipFile(BytesIO(data)) as z:
++                for member in sorted(z.namelist()):
++                    if member.startswith(_OFFICE_XML[ext]) and member.endswith(".xml"):
++                        parts.append(_xml_text(z.read(member)))
++            text = "\n".join(parts)
++        else:
++            return ""
++    except Exception:  # noqa: BLE001 — fichier corrompu/protégé : pas de texte, pas d'erreur
++        logger.info("[gestion_stocks.tags] extraction de texte impossible pour %s", name)
++        return ""
++    text = re.sub(r"[ \t\r\f\v]+", " ", text)
++    return re.sub(r"\n\s*\n+", "\n", text).strip()[:MAX_CONTENT_CHARS]
++
++
++async def index_content(db, *, key: str, data: bytes, name: str, content_type: str = "") -> int:
++    """Extrait le texte d'un fichier et l'enregistre sur sa fiche
++    (`content_text`, `text_indexed_at`). Renvoie le nombre de caractères."""
++    text = await asyncio.to_thread(extract_text, data, name, content_type)
++    await db.stock_files.update_one({"key": key}, {"$set": {"content_text": text, "text_indexed_at": _now()}})
++    return len(text)
++
++
++def schedule_index_content(db, *, key: str, name: str, content_type: str = "", size: Optional[int] = None) -> bool:
++    """Indexe en arrière-plan un fichier déjà présent dans R2 (lu depuis R2).
++    Renvoie False si le fichier est trop gros ou d'un format sans texte."""
++    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
++    if (size or 0) > TEXT_EXTRACT_MAX_BYTES or ext not in ({"pdf", "txt", "csv", "tsv", "md", "json", "xml"} | set(_OFFICE_XML)):
++        return False
++
++    async def _run():
++        try:
++            from r2_stocks_client import get_bytes
++            data = await asyncio.to_thread(get_bytes, key)
++            await index_content(db, key=key, data=data, name=name, content_type=content_type)
++        except Exception:  # noqa: BLE001
++            logger.exception("[gestion_stocks.tags] indexation en arrière-plan échouée pour %s", key)
++    task = asyncio.get_event_loop().create_task(_run())
++    _PENDING.add(task)
++    task.add_done_callback(_PENDING.discard)
++    return True
++
++
++def snippet(text: str, words: List[str], width: int = 70) -> str:
++    """Extrait du texte autour du premier mot trouvé (« …les 12 boîtes de DOLIPRANE… »)."""
++    if not text or not words:
++        return ""
++    norm = norm_text(text)
++    pos = -1
++    for w in words:
++        pos = norm.find(w)
++        if pos >= 0:
++            break
++    if pos < 0:
++        return ""
++    # norm_text ne change pas la longueur à ±quelques caractères près (accents
++    # retirés, espaces réduits) : l'extrait est pris sur le texte d'origine réduit.
++    flat = re.sub(r"\s+", " ", text).strip()
++    start = max(0, pos - width)
++    return ("…" if start else "") + flat[start:pos + width].strip() + ("…" if pos + width < len(flat) else "")
++
++
++def clean_folder_name(raw: Any) -> str:
++    """Nom de dossier créé depuis la page : lettres, chiffres, espaces, - _ . ( ),
++    60 caractères au plus, jamais « . », « .. », ni commençant par un point."""
++    name = re.sub(r"[^\w\s\-.()]", "", str(raw or ""), flags=re.UNICODE)
++    name = re.sub(r"\s+", " ", name).strip()[:60].strip()
++    if not name or name.startswith(".") or name in (".", ".."):
++        return ""
++    return name
++
++
++async def rename_tag(db, code: str, old: str, new: str) -> int:
++    """Renomme un tag pour tous les fichiers du client (fusion si le nouveau
++    tag existe déjà sur un fichier ; `new` vide = retirer le tag partout).
++    Renvoie le nombre de fichiers modifiés."""
++    old_norm = norm_text(old)
++    new_tag = (clean_tags([new]) or [""])[0]
++    changed = 0
++    async for d in db.stock_files.find({"client_code": code, "tags.0": {"$exists": True}}, {"_id": 0, "key": 1, "tags": 1}):
++        tags = d.get("tags") or []
++        if not any(norm_text(t) == old_norm for t in tags):
++            continue
++        replaced = [new_tag if norm_text(t) == old_norm else t for t in tags]
++        await db.stock_files.update_one({"key": d["key"]}, {"$set": {"tags": clean_tags([t for t in replaced if t]),
++                                                                     "updated_at": _now()}})
++        changed += 1
++    return changed
++
++
+ # ----------------------------------------------------------------------
+ # Tags déduits de l'analyse ocr_core
+ # ----------------------------------------------------------------------
+@@ -250,8 +381,9 @@ async def tag_counts(db, code: str) -> List[Dict[str, Any]]:
+ def search(objects: List[Dict[str, Any]], docs: Dict[str, Dict[str, Any]], code: str,
+            q: str = "", tags: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+     """Recherche dans TOUS les dossiers du client : chaque mot de `q` doit
+-    figurer dans le nom, les tags ou la description (sans tenir compte des
+-    accents ni des majuscules) ; chaque tag de `tags` doit être posé sur le fichier.
++    figurer dans le nom, les tags, la description ou (lot 23) le texte intégral
++    du document (sans tenir compte des accents ni des majuscules) ; chaque tag
++    de `tags` doit être posé sur le fichier.
+     `objects` = contenu réel de R2 (source de vérité), `docs` = fiches Mongo."""
+     words = norm_text(q).split()
+     wanted = [norm_text(t) for t in (tags or [])]
+@@ -263,12 +395,19 @@ def search(objects: List[Dict[str, Any]], docs: Dict[str, Dict[str, Any]], code:
+         norm_tags = [norm_text(t) for t in file_tags]
+         if any(t not in norm_tags for t in wanted):
+             continue
++        match_snippet = ""
+         if words:
+-            hay = norm_text(" ".join([parts["name"], parts["folder"], *file_tags, doc.get("description") or ""]))
++            meta_hay = norm_text(" ".join([parts["name"], parts["folder"], *file_tags, doc.get("description") or ""]))
++            content = " ".join([doc.get("content_text") or "", doc.get("ai_text") or ""])
++            hay = meta_hay + " " + norm_text(content)
+             if any(w not in hay for w in words):
+                 continue
++            # Lot 23 — trouvé grâce au contenu : on montre l'extrait correspondant.
++            if any(w not in meta_hay for w in words):
++                match_snippet = snippet(content, [w for w in words if w not in meta_hay])
+         out.append({"key": o["key"], "name": parts["name"], "folder": parts["folder"],
+-                    "size": o.get("size"), "last_modified": o.get("last_modified"), **public_meta(doc)})
++                    "size": o.get("size"), "last_modified": o.get("last_modified"), **public_meta(doc),
++                    "match_snippet": match_snippet})
+     out.sort(key=lambda f: f.get("last_modified") or "", reverse=True)
+     return out[:MAX_SEARCH_RESULTS]
+ 
+@@ -291,7 +430,10 @@ async def suggest_tags(db, *, code: str, key: str, data: bytes, content_type: st
+     cost = float(result.get("cost_xof") or 0.0)
+     await db.stock_files.update_one({"key": key}, {
+         "$set": {"ai_suggested_tags": suggested, "ai_suggested_description": description,
+-                 "ai_model": result.get("model") or AI_TAGS_MODEL, "ai_at": _now(), "ai_error": error},
++                 "ai_model": result.get("model") or AI_TAGS_MODEL, "ai_at": _now(), "ai_error": error,
++                 # Lot 23 — ce que l'IA a lu (synthèse + champs) est cherchable, utile pour les scans.
++                 "ai_text": " ".join([description, *[f"{k} {v}" for k, v in (result.get("extracted_fields") or {}).items()
++                                                     if isinstance(v, (str, int, float))]])[:MAX_CONTENT_CHARS]},
+         "$inc": {"ai_cost_xof": cost},
+     })
+     logger.info("[gestion_stocks.tags] IA %s : %d tag(s), %.2f FCFA", key, len(suggested), cost)
+@@ -327,4 +469,6 @@ __all__ = [
+     "AI_TAGS_MODEL", "MAX_TAGS", "can_edit", "clean_description", "clean_tags", "ensure_docs",
+     "index_upload", "is_ai_taggable", "maybe_schedule_after_upload", "norm_text", "public_meta",
+     "search", "split_key", "suggest_tags", "tag_counts", "tags_from_ocr", "tenant_ai_enabled",
++    # Lot 23
++    "clean_folder_name", "extract_text", "index_content", "rename_tag", "schedule_index_content", "snippet",
+ ]
+diff --git a/backend/routes/liluvine_kb.py b/backend/routes/liluvine_kb.py
+index 6f8f3ca..3b86c59 100644
+--- a/backend/routes/liluvine_kb.py
++++ b/backend/routes/liluvine_kb.py
+@@ -41,14 +41,22 @@ DEFAULT_CONTEXT_BUDGET = 6000
+ 
+ # Iter38r-fix9t — In-memory cache for build_kb_context (per-process)
+ # Key = max_chars, Value = (timestamp, rendered_context)
+-_KB_CONTEXT_CACHE: Dict[int, tuple] = {}
++_KB_CONTEXT_CACHE: Dict[tuple, tuple] = {}  # Lot 23 — clé (budget, public)
+ _KB_CONTEXT_TTL = 60.0  # seconds
+ 
+ 
++# Lot 23 — public visé par une entrée de la base de connaissance :
++#   "all"       : tout le monde (défaut, et valeur des entrées existantes) ;
++#   "clients"   : clients sous contrat et usage interne uniquement ;
++#   "prospects" : prospects WhatsApp uniquement (infos commerciales, tarifs publics…).
++KB_AUDIENCES = ("all", "clients", "prospects")
++
++
+ class KbEntryCreate(BaseModel):
+     title: str = Field(..., min_length=1, max_length=200)
+     content: str = Field(..., min_length=1, max_length=MAX_ENTRY_CHARS)
+     tags: Optional[List[str]] = None
++    audience: Optional[str] = Field(None, pattern="^(all|clients|prospects)$")  # Lot 23
+ 
+ 
+ class KbEntryUpdate(BaseModel):
+@@ -56,6 +64,7 @@ class KbEntryUpdate(BaseModel):
+     content: Optional[str] = Field(None, min_length=1, max_length=MAX_ENTRY_CHARS)
+     tags: Optional[List[str]] = None
+     enabled: Optional[bool] = None
++    audience: Optional[str] = Field(None, pattern="^(all|clients|prospects)$")  # Lot 23
+ 
+ 
+ def _now_iso() -> str:
+@@ -194,9 +203,16 @@ async def _ocr_pdf_with_claude_vision(raw: bytes, settings_doc: Dict[str, Any])
+     return "\n\n".join(chunks), used
+ 
+ 
+-async def build_kb_context(db, *, max_chars: int = DEFAULT_CONTEXT_BUDGET, query: Optional[str] = None) -> str:
++async def build_kb_context(db, *, max_chars: int = DEFAULT_CONTEXT_BUDGET, query: Optional[str] = None,
++                           audience: str = "clients") -> str:
+     """Aggregate enabled KB entries into a compact context string.
+ 
++    Lot 23 — `audience` : "clients" (défaut : chat interne, SMS, WhatsApp des
++    clients) exclut les entrées réservées aux prospects ; "prospects"
++    (auto-réponse WhatsApp aux expéditeurs non contractuels) n'utilise que les
++    entrées « tous » et « prospects », et PAS la recherche sémantique Qdrant
++    (ses collections peuvent contenir des documents internes).
++
+     S038 — When `query` is provided AND `settings.qdrant_enabled` is True,
+     we run a semantic search (RAG) across all Qdrant collections flagged
+     `enabled_for_liluvine` and concatenate the results. The RAG block
+@@ -207,7 +223,7 @@ async def build_kb_context(db, *, max_chars: int = DEFAULT_CONTEXT_BUDGET, query
+     # ---- S038 — RAG semantic block (uses query when available) ----
+     rag_block = ""
+     rag_budget = 0
+-    if query and (query or "").strip():
++    if query and (query or "").strip() and audience != "prospects":
+         try:
+             from routes.qdrant_rag import build_rag_context
+             rag_budget = int(max_chars * 0.6)
+@@ -217,12 +233,15 @@ async def build_kb_context(db, *, max_chars: int = DEFAULT_CONTEXT_BUDGET, query
+     remaining = max_chars - len(rag_block)
+     # Cache lookup (legacy MongoDB KB only — keyed by remaining budget)
+     now = time.time()
+-    cached = _KB_CONTEXT_CACHE.get(remaining)
++    cache_key = (remaining, audience)  # Lot 23 — un contexte par public
++    cached = _KB_CONTEXT_CACHE.get(cache_key)
+     if cached and (now - cached[0] < _KB_CONTEXT_TTL):
+         mongo_block = cached[1]
+     else:
++        audience_q = ({"audience": {"$in": [None, "all", "prospects"]}} if audience == "prospects"
++                      else {"audience": {"$ne": "prospects"}})
+         cur = db.liluvine_knowledge.find(
+-            {"enabled": True, "is_deleted": {"$ne": True}},
++            {"enabled": True, "is_deleted": {"$ne": True}, **audience_q},
+             {"_id": 0, "title": 1, "content": 1, "kind": 1, "tags": 1},
+         ).sort([("priority", -1), ("updated_at", -1)])
+         items = await cur.to_list(50)
+@@ -245,7 +264,7 @@ async def build_kb_context(db, *, max_chars: int = DEFAULT_CONTEXT_BUDGET, query
+                 parts.append(block)
+                 used += len(block)
+             mongo_block = "".join(parts)
+-        _KB_CONTEXT_CACHE[remaining] = (now, mongo_block)
++        _KB_CONTEXT_CACHE[cache_key] = (now, mongo_block)
+     # Concatenate (RAG first for higher LLM attention)
+     if rag_block and mongo_block:
+         return rag_block + "\n\n" + mongo_block
+@@ -298,6 +317,7 @@ def setup_liluvine_kb_routes(app, db, get_current_user):
+             "kind": "text",
+             "enabled": True,
+             "priority": 0,
++            "audience": payload.audience or "all",  # Lot 23
+             "char_count": len(payload.content),
+             "created_at": _now_iso(),
+             "updated_at": _now_iso(),
+@@ -320,6 +340,8 @@ def setup_liluvine_kb_routes(app, db, get_current_user):
+             update["tags"] = [t.strip().lower() for t in payload.tags if t.strip()]
+         if payload.enabled is not None:
+             update["enabled"] = bool(payload.enabled)
++        if payload.audience is not None:
++            update["audience"] = payload.audience  # Lot 23
+         if not update:
+             raise HTTPException(status_code=400, detail="Aucun champ à mettre à jour")
+         update["updated_at"] = _now_iso()
+@@ -393,6 +415,7 @@ def setup_liluvine_kb_routes(app, db, get_current_user):
+         file: UploadFile = File(...),
+         title: str = Form(...),
+         force_ocr: Optional[str] = Form(default=None),
++        audience: Optional[str] = Form(default=None),  # Lot 23 — all | clients | prospects
+         user: dict = Depends(get_current_user),
+     ):
+         """Iter38r-fix9i — `force_ocr` (form, optional) :
+@@ -519,6 +542,7 @@ def setup_liluvine_kb_routes(app, db, get_current_user):
+                 "kind": kind,
+                 "enabled": True,
+                 "priority": 0,
++                "audience": audience if audience in KB_AUDIENCES else "all",  # Lot 23
+                 "char_count": len(chunk),
+                 "source_filename": file.filename,
+                 "upload_batch": upload_batch,
+diff --git a/backend/routes/liluvine_wa_autoreply.py b/backend/routes/liluvine_wa_autoreply.py
+index 549a4d9..01d747d 100644
+--- a/backend/routes/liluvine_wa_autoreply.py
++++ b/backend/routes/liluvine_wa_autoreply.py
+@@ -933,7 +933,9 @@ async def autoreply_to_inbound(
+     # Iter38r-fix9c — Also inject the Knowledge Base for WhatsApp auto-reply
+     try:
+         from routes.liluvine_kb import build_kb_context
+-        kb = await build_kb_context(db, max_chars=4000, query=text)  # smaller budget for WA
++        # Lot 23 — un prospect ne reçoit que les entrées « tous » et « prospects » de la base.
++        kb = await build_kb_context(db, max_chars=4000, query=text,
++                                    audience="prospects" if is_prospect else "clients")  # smaller budget for WA
+     except Exception:
+         kb = ""
+     contact_tag = ""
+diff --git a/backend/server.py b/backend/server.py
+index e54fe01..2aa02e6 100644
+--- a/backend/server.py
++++ b/backend/server.py
+@@ -13891,11 +13891,12 @@ async def me_notifications_counts(user: dict = Depends(get_current_user)):
+     for key, spec in MODULE_COUNT_QUERIES.items():
+         counts[key] = await _count(key, spec)
+     # Special: WhatsApp inbound unread (not based on last_visited_at — uses read_by_us_at).
++    # Lot 23 — MÊME calcul que les pastilles du Centre de Messagerie
++    # (_wa_unread_summary) : avant, le badge comptait sur un autre périmètre
++    # (un seul client_id, ou tous les tenants pour l'admin) et incluait des
++    # messages qu'aucune conversation ne permettait de marquer comme lus.
+     try:
+-        wa_q: Dict[str, Any] = {"direction": "inbound", "read_by_us_at": None}
+-        if not is_admin:
+-            wa_q["client_id"] = client_scope
+-        counts["contacts_unread"] = await db.whatsapp_messages.count_documents(wa_q)
++        counts["contacts_unread"] = (await _wa_unread_summary(user))["total"]
+     except Exception:
+         counts["contacts_unread"] = 0
+     # Iter34l — Admin-only: pending profile-update requests (status-driven, not visit-driven)
+@@ -14306,57 +14307,59 @@ async def me_list_contacts(user: dict = Depends(get_current_user)):
+     if any(flags.values()):
+         items = [_apply_anon_to_contact(c, flags) for c in items]
+ 
+-    # Iter43-fix5 — Calcule last_interaction_at via match digits10 sur WA/SMS
+-    import re as _re_li
+-
+-    def _digits10(s: Optional[str]) -> str:
+-        d = _re_li.sub(r"\D", "", s or "")
+-        return d[-10:] if len(d) >= 10 else d
+-
++    # Iter43-fix5 — Calcule last_interaction_at (WA + SMS) pour le tri par date d'interaction
++    # Lot 23 — clé = 8 derniers chiffres (_phone_suffix), comme le comptage des
++    # non-lus : un contact saisi sans indicatif (« 70 11 11 11 ») retrouve ses
++    # échanges avec « 22670111111 » (avec 10 chiffres, il n'avait jamais de date).
+     phone_map: Dict[str, List[Dict[str, Any]]] = {}
+     for c in items:
+-        d10 = _digits10(c.get("whatsapp") or c.get("phone"))
+-        if d10:
++        d10 = _phone_suffix(c.get("whatsapp") or c.get("phone"))
++        if len(d10) >= 6:
+             phone_map.setdefault(d10, []).append(c)
+ 
+     if phone_map:
+-        last_by_phone: Dict[str, str] = {}
++        # Lot 23 — « dernière interaction » fiable :
++        #   - uniquement les messages de CE tenant (avant : tous les tenants,
++        #     donc un message d'un autre client au même numéro remontait le contact) ;
++        #   - hors envois en masse (`bulk`) : une campagne ne rend pas « récents »
++        #     des contacts qui n'ont rien écrit ;
++        #   - date = `created_at` (toujours ISO, posé par Sawali) — avant, le champ
++        #     `timestamp` de Meta (secondes Unix) était parfois comparé à des dates
++        #     ISO, ce qui faussait l'ordre ;
++        #   - le sens du dernier échange est renvoyé (reçu / envoyé).
++        last_by_phone: Dict[str, Tuple[str, str]] = {}
++
++        def _note(msg: Dict[str, Any], direction: str) -> None:
++            ts = str(msg.get("created_at") or "")
++            if not ts:
++                return
++            for k in ("phone_digits", "from", "to"):
++                d10 = _phone_suffix(msg.get(k))
++                if d10 in phone_map:
++                    if d10 not in last_by_phone or ts > last_by_phone[d10][0]:
++                        last_by_phone[d10] = (ts, direction)
++                    break
++
++        tenant_q = {"client_id": {"$in": client_ids}, "bulk": {"$ne": True}}
+         try:
+-            # Iter43-fix7 — collection réelle = `whatsapp_messages` (PAS wa_messages).
+-            # Projection ciblée + sort sur index timestamp/created_at pour scan rapide.
+             async for msg in db.whatsapp_messages.find(
+-                {}, {"_id": 0, "from": 1, "to": 1, "timestamp": 1, "created_at": 1, "received_at": 1, "sent_at": 1},
+-            ).sort("created_at", -1).limit(10000):
+-                ts = msg.get("timestamp") or msg.get("received_at") or msg.get("sent_at") or msg.get("created_at")
+-                if not ts:
+-                    continue
+-                for k in ("from", "to"):
+-                    d10 = _digits10(msg.get(k))
+-                    if d10 in phone_map:
+-                        s = str(ts)
+-                        if d10 not in last_by_phone or s > last_by_phone[d10]:
+-                            last_by_phone[d10] = s
++                tenant_q, {"_id": 0, "phone_digits": 1, "from": 1, "to": 1, "created_at": 1, "direction": 1},
++            ).sort("created_at", -1).limit(20000):
++                _note(msg, "in" if msg.get("direction") == "inbound" else "out")
+         except Exception:
+             pass
+         try:
+             async for msg in db.sms_messages.find(
+-                {}, {"_id": 0, "to": 1, "from": 1, "sent_at": 1, "created_at": 1, "received_at": 1},
+-            ).sort("created_at", -1).limit(10000):
+-                ts = msg.get("sent_at") or msg.get("received_at") or msg.get("created_at")
+-                if not ts:
+-                    continue
+-                for k in ("from", "to"):
+-                    d10 = _digits10(msg.get(k))
+-                    if d10 in phone_map:
+-                        s = str(ts)
+-                        if d10 not in last_by_phone or s > last_by_phone[d10]:
+-                            last_by_phone[d10] = s
++                tenant_q, {"_id": 0, "phone_digits": 1, "to": 1, "from": 1, "created_at": 1, "direction": 1},
++            ).sort("created_at", -1).limit(20000):
++                _note(msg, "in" if msg.get("direction") == "inbound" else "out")
+         except Exception:
+             pass
+         for d10, contacts in phone_map.items():
+-            ts = last_by_phone.get(d10)
++            ts, direction = last_by_phone.get(d10, (None, None))
+             for c in contacts:
+                 c["last_interaction_at"] = ts
++                c["last_interaction_direction"] = direction
+     return items
+ 
+ 
+@@ -15601,30 +15604,77 @@ async def me_whatsapp_recall_message(
+ 
+ 
+ # ---------- Unread inbound counters + mark-read ----------
+-@api.get("/me/whatsapp/unread", tags=["Portail Client"])
+-async def me_whatsapp_unread(user: dict = Depends(get_current_user)):
+-    """Renvoie les compteurs de non-lus par contact + un total global des messages WA entrants
+-    where `read_by_us_at` is null. Used by the sidebar badge and per-contact pastille.
++# Lot 23 — rapprochement message ↔ contact par les 8 derniers chiffres du
++# numéro : un contact enregistré sans indicatif (« 70 12 34 56 ») retrouve
++# les messages reçus de « 22670123456 ».
++WA_PHONE_SUFFIX_LEN = 8
++
++
++def _phone_suffix(raw: Optional[str]) -> str:
++    digits = "".join(ch for ch in (raw or "") if ch.isdigit())
++    return digits[-WA_PHONE_SUFFIX_LEN:] if len(digits) >= WA_PHONE_SUFFIX_LEN else digits
+ 
+-    Iter34p — Uses _resolve_visible_client_ids so pastilles stay accurate
+-    after a realignment (the contact_ids reported here match the ones the
+-    user sees through /me/contacts)."""
++
++def _contact_phone_clauses(contact: Dict[str, Any]) -> List[Dict[str, Any]]:
++    """Critères Mongo « message de ce contact » : son id, ou son numéro
++    (WhatsApp ou téléphone) reconnu sur ses 8 derniers chiffres."""
++    clauses: List[Dict[str, Any]] = [{"contact_id": contact.get("id")}]
++    seen = set()
++    for raw in (contact.get("whatsapp") or "", contact.get("phone") or ""):
++        suffix = _phone_suffix(raw)
++        if len(suffix) >= 6 and suffix not in seen:
++            seen.add(suffix)
++            clauses.append({"phone_digits": {"$regex": f"{re.escape(suffix)}$"}})
++    return clauses
++
++
++async def _wa_unread_summary(user: dict) -> Dict[str, Any]:
++    """Non-lus WhatsApp du Centre de Messagerie — SOURCE UNIQUE pour la
++    pastille de chaque contact, le total du badge de la sidebar et la cloche.
++
++    - périmètre : _resolve_visible_client_ids (celui de /me/contacts et de
++      mark-read), pour TOUS les rôles, admin compris ;
++    - un message sans contact_id est rattaché au contact dont le numéro
++      correspond (8 derniers chiffres) ;
++    - seuls comptent les messages rattachés à un contact VISIBLE (donc
++      qu'on peut ouvrir et marquer comme lus) ; les autres (expéditeurs
++      inconnus) sont renvoyés à part dans `unknown`, sans gonfler le total."""
+     visible_scope = await _resolve_visible_client_ids(user)
+-    base_q: Dict[str, Any] = {"direction": "inbound", "read_by_us_at": None}
+-    if user.get("role") != "admin":
+-        base_q["client_id"] = {"$in": visible_scope}
++    contacts = await db.directory_contacts.find(
++        {"client_id": {"$in": visible_scope}}, {"_id": 0, "id": 1, "whatsapp": 1, "phone": 1},
++    ).to_list(5000)
++    ids = {c["id"] for c in contacts if c.get("id")}
++    by_suffix: Dict[str, str] = {}
++    for c in contacts:
++        for raw in (c.get("whatsapp"), c.get("phone")):
++            suffix = _phone_suffix(raw)
++            if len(suffix) >= 6:
++                by_suffix.setdefault(suffix, c["id"])
++    by_contact: Dict[str, int] = {}
++    unknown = 0
+     pipeline = [
+-        {"$match": base_q},
+-        {"$group": {"_id": "$contact_id", "n": {"$sum": 1}}},
++        {"$match": {"direction": "inbound", "read_by_us_at": None, "client_id": {"$in": visible_scope}}},
++        {"$group": {"_id": {"c": "$contact_id", "p": "$phone_digits"}, "n": {"$sum": 1}}},
+     ]
+-    by_contact: Dict[str, int] = {}
+-    total = 0
+     async for row in db.whatsapp_messages.aggregate(pipeline):
+-        cid = row.get("_id") or "_unknown"
++        key = row.get("_id") or {}
+         n = int(row.get("n") or 0)
+-        by_contact[cid] = n
+-        total += n
+-    return {"total": total, "by_contact": by_contact}
++        cid = key.get("c") if key.get("c") in ids else by_suffix.get(_phone_suffix(key.get("p")))
++        if cid:
++            by_contact[cid] = by_contact.get(cid, 0) + n
++        else:
++            unknown += n
++    return {"total": sum(by_contact.values()), "by_contact": by_contact, "unknown": unknown}
++
++
++@api.get("/me/whatsapp/unread", tags=["Portail Client"])
++async def me_whatsapp_unread(user: dict = Depends(get_current_user)):
++    """Compteurs de non-lus par contact + total (pastilles, cloche, badge).
++
++    Lot 23 — calcul partagé avec le badge de la sidebar (_wa_unread_summary) :
++    les deux nombres sont désormais toujours identiques. `unknown` = messages
++    d'expéditeurs absents du carnet (visibles dans l'Inbox unifiée)."""
++    return await _wa_unread_summary(user)
+ 
+ 
+ @api.post("/me/contacts/{cid}/messages/mark-read", tags=["Portail Client"])
+@@ -15639,14 +15689,8 @@ async def me_contact_messages_mark_read(cid: str, user: dict = Depends(get_curre
+     )
+     if not contact:
+         raise HTTPException(status_code=404, detail="Contact introuvable")
+-    norm_phones: List[str] = []
+-    for raw in (contact.get("whatsapp") or "", contact.get("phone") or ""):
+-        clean = "".join(ch for ch in (raw or "") if ch.isdigit())
+-        if clean:
+-            norm_phones.append(clean)
+-    or_clauses: List[Dict[str, Any]] = [{"contact_id": cid}]
+-    if norm_phones:
+-        or_clauses.append({"phone_digits": {"$in": norm_phones}})
++    # Lot 23 — mêmes critères que le comptage (id du contact OU 8 derniers chiffres du numéro).
++    or_clauses = _contact_phone_clauses(contact)
+     res = await db.whatsapp_messages.update_many(
+         {"client_id": {"$in": visible_scope}, "direction": "inbound", "read_by_us_at": None, "$or": or_clauses},
+         {"$set": {"read_by_us_at": _now(), "read_by_us_id": user["id"]}},
+@@ -16967,19 +17011,16 @@ async def me_contact_messages(cid: str, user: dict = Depends(get_current_user)):
+     )
+     if not contact:
+         raise HTTPException(status_code=404, detail="Contact introuvable")
+-    # Match by contact_id OR by exact phone number (covers inbound messages from unknown senders)
+-    norm_phones = []
+-    for raw in (contact.get("whatsapp") or "", contact.get("phone") or ""):
+-        clean = "".join(ch for ch in (raw or "") if ch.isdigit())
+-        if clean:
+-            norm_phones.append(clean)
+-    or_clauses = [{"contact_id": cid}]
+-    if norm_phones:
+-        or_clauses.append({"phone_digits": {"$in": norm_phones}})
++    # Match by contact_id OR by phone number (covers inbound messages from unknown senders).
++    # Lot 23 — numéro reconnu sur ses 8 derniers chiffres (comme le comptage des non-lus).
++    or_clauses = _contact_phone_clauses(contact)
++    # Lot 23 — les 1000 messages les PLUS RÉCENTS, remis dans l'ordre chronologique
++    # (avant : les 1000 plus anciens, donc les nouveaux disparaissaient d'une longue conversation).
+     items = await db.whatsapp_messages.find(
+         {"client_id": {"$in": visible_scope}, "$or": or_clauses},
+         {"_id": 0},
+-    ).sort("created_at", 1).to_list(1000)
++    ).sort("created_at", -1).limit(1000).to_list(1000)
++    items.reverse()
+     # Iter34u — When anon_communications is ON, restrict to messages
+     # exchanged by the current user only (sender_id or owner_id match).
+     restrictions = await _resolve_content_restrictions(user)
+diff --git a/backend/tests/test_gestion_stocks_lot23.py b/backend/tests/test_gestion_stocks_lot23.py
+new file mode 100644
+index 0000000..40af81c
+--- /dev/null
++++ b/backend/tests/test_gestion_stocks_lot23.py
+@@ -0,0 +1,160 @@
++"""Lot 23 — Explorateur Stockage R2 : suppression depuis l'écran, création de
++dossier, renommage/fusion de tag, recherche dans le texte intégral.
++
++Réutilise l'environnement simulé du lot 22 (MongoDB, R2 et IA simulés).
++Lancer : cd backend && python -m pytest tests/test_gestion_stocks_lot23.py -q
++"""
++from __future__ import annotations
++
++import io
++import sys
++import zipfile
++from pathlib import Path
++
++import pytest
++
++sys.path.insert(0, str(Path(__file__).resolve().parent))
++from test_gestion_stocks_tags_lot22 import _drain, _files, _h, _upload, env  # noqa: E402,F401 — fixture réutilisée
++
++
++def _pdf_bytes(text: str) -> bytes:
++    """Petit PDF avec couche texte (PyMuPDF)."""
++    fitz = pytest.importorskip("fitz")
++    doc = fitz.open()
++    doc.new_page().insert_text((72, 72), text)
++    data = doc.tobytes()
++    doc.close()
++    return data
++
++
++def _docx_bytes(text: str) -> bytes:
++    """Petit .docx minimal (seule la partie texte compte pour l'extraction)."""
++    buf = io.BytesIO()
++    with zipfile.ZipFile(buf, "w") as z:
++        z.writestr("word/document.xml",
++                   f'<w:document><w:body><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:body></w:document>')
++    return buf.getvalue()
++
++
++def _post(env, name, data, ctype, folder="Factures", who="suivi"):
++    url = (f"/api/gestion-stocks/folders/{folder}/upload" if who == "suivi"
++           else f"/api/admin/gestion-stocks/PDP/{folder}/upload")
++    return env.client.post(url, headers=_h(who), files={"file": (name, data, ctype)})
++
++
++def _search(env, q, who="suivi"):
++    params = {"q": q} if who == "suivi" else {"q": q, "client_code": "PDP"}
++    return env.client.get("/api/gestion-stocks/search", headers=_h(who), params=params).json()["results"]
++
++
++# ---------------------------------------------------------------- 1. suppression
++def test_tracked_user_deletes_only_own_files(env):
++    _upload(env, name="a-moi.pdf")
++    key = "PDP/Factures/a-moi.pdf"
++    files = {f["name"]: f for f in _files(env, "Factures")}
++    assert files["a-moi.pdf"]["can_delete"] is True
++    assert _files(env, "Inventaires")[0]["can_delete"] is False  # ancien.xlsx, déposé hors Sawali
++    # Pas le fichier d'un autre, ni hors de son tenant, ni sans autorisation de dépôt.
++    assert env.client.delete("/api/gestion-stocks/files", headers=_h("suivi"),
++                             params={"key": "PDP/Inventaires/ancien.xlsx"}).status_code == 403
++    assert env.client.delete("/api/gestion-stocks/files", headers=_h("suivi"),
++                             params={"key": "AUTRE/Factures/secret.pdf"}).status_code == 403
++    assert env.client.delete("/api/gestion-stocks/files", headers=_h("lecteur"), params={"key": key}).status_code == 403
++    r = env.client.delete("/api/gestion-stocks/files", headers=_h("suivi"), params={"key": key})
++    assert r.status_code == 200 and key not in env.objects
++    assert env.client.portal.call(env.db.stock_files.find_one, {"key": key}) is None
++
++
++def test_staff_deletes_any_file_and_missing_file_is_404(env):
++    assert env.client.delete("/api/gestion-stocks/files", headers=_h("sup"),
++                             params={"key": "PDP/Inventaires/ancien.xlsx"}).status_code == 200
++    assert "PDP/Inventaires/ancien.xlsx" not in env.objects
++    assert env.client.delete("/api/gestion-stocks/files", headers=_h("sup"),
++                             params={"key": "PDP/Inventaires/inexistant.pdf"}).status_code == 404
++
++
++# ---------------------------------------------------------------- 2. création de dossier
++def test_create_folder(env):
++    r = env.client.post("/api/gestion-stocks/folders", headers=_h("suivi"), json={"name": "  Bons de commande 2025 "})
++    assert r.status_code == 200 and r.json()["folder"] == "Bons de commande 2025"
++    assert env.objects["PDP/Bons de commande 2025/"] == b""
++    got = env.client.get("/api/gestion-stocks/folders", headers=_h("suivi")).json()
++    assert "Bons de commande 2025" in got["extra_folders"]
++    # Doublon, dossier standard, nom invalide, compte non autorisé
++    assert env.client.post("/api/gestion-stocks/folders", headers=_h("suivi"), json={"name": "Bons de commande 2025"}).status_code == 409
++    assert env.client.post("/api/gestion-stocks/folders", headers=_h("suivi"), json={"name": "factures"}).status_code == 409
++    assert env.client.post("/api/gestion-stocks/folders", headers=_h("suivi"), json={"name": "../.."}).status_code == 400
++    assert env.client.post("/api/gestion-stocks/folders", headers=_h("lecteur"), json={"name": "X"}).status_code == 403
++    # L'administration choisit le client ; un code inconnu est refusé.
++    assert env.client.post("/api/gestion-stocks/folders", headers=_h("admin"),
++                           json={"name": "Audit", "client_code": "PDP"}).status_code == 200
++    assert env.client.post("/api/gestion-stocks/folders", headers=_h("admin"),
++                           json={"name": "Audit", "client_code": "XYZ"}).status_code == 404
++    # Un dossier créé accepte ensuite les dépôts.
++    assert _upload(env, name="bc.pdf", folder="Bons de commande 2025").status_code == 200
++
++
++# ---------------------------------------------------------------- 3. renommer / fusionner un tag
++def test_rename_and_merge_tags(env):
++    _upload(env, name="a.pdf", tags="factures, copharmed")
++    _upload(env, name="b.pdf", tags="facture")
++    _upload(env, name="c.pdf", tags="factures, facture")
++    # Réservé à l'administration
++    assert env.client.put("/api/gestion-stocks/tags/rename", headers=_h("suivi"),
++                          json={"from": "factures", "to": "facture"}).status_code == 403
++    r = env.client.put("/api/gestion-stocks/tags/rename", headers=_h("sup"),
++                       json={"from": "Factures", "to": "facture", "client_code": "PDP"})
++    assert r.status_code == 200 and r.json()["files_changed"] == 2
++    assert r.json()["tags"] == [{"tag": "facture", "count": 3}, {"tag": "copharmed", "count": 1}]
++    doc = env.client.portal.call(env.db.stock_files.find_one, {"key": "PDP/Factures/c.pdf"})
++    assert doc["tags"] == ["facture"]  # fusion sans doublon
++    # `to` vide : le tag est retiré partout
++    r = env.client.put("/api/gestion-stocks/tags/rename", headers=_h("admin"),
++                       json={"from": "copharmed", "to": "", "client_code": "PDP"})
++    assert r.json()["files_changed"] == 1 and r.json()["tags"] == [{"tag": "facture", "count": 3}]
++
++
++# ---------------------------------------------------------------- 4. texte intégral
++def test_full_text_search_pdf_and_docx(env):
++    assert _post(env, "livraison.pdf", _pdf_bytes("Bon de livraison DOLIPRANE 1000 mg lot 45871"), "application/pdf").status_code == 200
++    assert _post(env, "note.docx", _docx_bytes("Rappel : controle de temperature du frigo"),
++                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document").status_code == 200
++    res = _search(env, "doliprane 45871")
++    assert [r["name"] for r in res] == ["livraison.pdf"]
++    assert "DOLIPRANE" in res[0]["match_snippet"]
++    # Accents ignorés : « température » trouve « temperature »
++    assert [r["name"] for r in _search(env, "température frigo")] == ["note.docx"]
++    # Trouvé par le nom : pas d'extrait
++    assert _search(env, "livraison")[0]["match_snippet"] == ""
++
++
++def test_old_files_are_indexed_in_background_and_reindex(env):
++    env.objects["PDP/Rapports/ancien.txt"] = "Inventaire annuel : 12 boites de paracetamol".encode()
++    _files(env, "Rapports")  # ouverture du dossier → indexation en arrière-plan
++    _drain(env)
++    assert [r["name"] for r in _search(env, "paracetamol")] == ["ancien.txt"]
++    # Réindexation par l'administration (fichiers jamais indexés du client)
++    env.objects["PDP/Autres/memo.csv"] = "produit;quantite\nAMOXICILLINE;40".encode()
++    r = env.client.post("/api/gestion-stocks/reindex", headers=_h("admin"), json={"client_code": "PDP"})
++    assert r.status_code == 200 and r.json()["queued"] >= 1
++    _drain(env)
++    assert [x["name"] for x in _search(env, "amoxicilline")] == ["memo.csv"]
++    assert env.client.post("/api/gestion-stocks/reindex", headers=_h("suivi"), json={}).status_code == 403
++
++
++def test_ai_text_makes_scans_searchable(env):
++    env.client.put("/api/admin/gestion-stocks/tenants/t-pdp/storage", headers=_h("admin"), json={"ai_tags": True})
++    _upload(env, name="scan.pdf")  # contenu non textuel ; l'IA simulée lit « COPHARMED »
++    _drain(env)
++    res = _search(env, "copharmed")
++    assert [r["name"] for r in res] == ["scan.pdf"] and "COPHARMED" in res[0]["match_snippet"]
++
++
++def test_extract_text_helpers():
++    from routes.gestion_stocks_tags import clean_folder_name, extract_text, snippet
++    assert extract_text(b"\x89PNG....", "photo.png", "image/png") == ""
++    assert extract_text(b"not a zip", "x.docx") == ""  # fichier corrompu : pas d'erreur
++    assert "AMOXICILLINE" in extract_text(_docx_bytes("AMOXICILLINE 500"), "a.docx")
++    assert snippet("aaa " * 40 + "Le lot DOLIPRANE est arrivé", ["doliprane"]).startswith("…")
++    assert clean_folder_name(" Bons/de:commande ") == "Bonsdecommande"
++    assert clean_folder_name("..") == "" and clean_folder_name(".cache") == ""
+diff --git a/backend/tests/test_liluvine_kb_audience_lot23.py b/backend/tests/test_liluvine_kb_audience_lot23.py
+new file mode 100644
+index 0000000..081e44c
+--- /dev/null
++++ b/backend/tests/test_liluvine_kb_audience_lot23.py
+@@ -0,0 +1,70 @@
++"""Lot 23 — Base de connaissance Liluvine par public : « tous », « clients »,
++« prospects ». Un prospect WhatsApp ne reçoit que « tous » + « prospects »
++(et pas la recherche sémantique Qdrant) ; les clients et le chat interne ne
++reçoivent jamais les entrées réservées aux prospects.
++Lancer : cd backend && python -m pytest tests/test_liluvine_kb_audience_lot23.py -q
++"""
++from __future__ import annotations
++
++import asyncio
++import sys
++from pathlib import Path
++
++import pytest
++
++pytest.importorskip("mongomock_motor")
++from mongomock_motor import AsyncMongoMockClient  # noqa: E402
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++
++@pytest.fixture()
++def kb(monkeypatch):
++    from routes import liluvine_kb
++    liluvine_kb.invalidate_kb_cache()
++    db = AsyncMongoMockClient()["sawali_kb_lot23"]
++    loop = asyncio.new_event_loop()
++    loop.run_until_complete(db.liluvine_knowledge.insert_many([
++        {"id": "a", "title": "Horaires", "content": "Ouvert de 8h à 18h", "enabled": True},            # ancienne entrée (sans audience)
++        {"id": "b", "title": "Procédure interne", "content": "Code coffre 1234", "enabled": True, "audience": "clients"},
++        {"id": "c", "title": "Offre découverte", "content": "Essai gratuit 30 jours", "enabled": True, "audience": "prospects"},
++        {"id": "d", "title": "Tarifs publics", "content": "À partir de 25 000 FCFA", "enabled": True, "audience": "all"},
++    ]))
++    # La recherche sémantique Qdrant ne doit jamais être appelée pour un prospect.
++    calls = []
++
++    async def fake_rag(db, query, max_chars):
++        calls.append(query)
++        return "[RAG interne]"
++    import types
++    monkeypatch.setitem(sys.modules, "routes.qdrant_rag", types.SimpleNamespace(build_rag_context=fake_rag))
++    yield liluvine_kb, db, loop, calls
++    liluvine_kb.invalidate_kb_cache()
++    loop.close()
++
++
++def test_prospects_get_only_all_and_prospect_entries(kb):
++    mod, db, loop, calls = kb
++    ctx = loop.run_until_complete(mod.build_kb_context(db, query="prix ?", audience="prospects"))
++    assert "Essai gratuit" in ctx and "Tarifs publics" in ctx and "Ouvert de 8h" in ctx
++    assert "Code coffre" not in ctx and "[RAG interne]" not in ctx and calls == []
++
++
++def test_clients_never_get_prospect_entries(kb):
++    mod, db, loop, calls = kb
++    ctx = loop.run_until_complete(mod.build_kb_context(db, query="prix ?"))  # défaut = clients
++    assert "Code coffre" in ctx and "Tarifs publics" in ctx and "Ouvert de 8h" in ctx
++    assert "Essai gratuit" not in ctx
++    assert ctx.startswith("[RAG interne]") and calls == ["prix ?"]
++    # Le cache est distinct par public : pas de fuite d'un contexte à l'autre.
++    ctx_p = loop.run_until_complete(mod.build_kb_context(db, audience="prospects"))
++    assert "Code coffre" not in ctx_p
++
++
++def test_payload_validates_audience():
++    from pydantic import ValidationError
++    from routes.liluvine_kb import KbEntryCreate, KbEntryUpdate
++    assert KbEntryCreate(title="t", content="c", audience="prospects").audience == "prospects"
++    assert KbEntryUpdate(audience="clients").audience == "clients"
++    with pytest.raises(ValidationError):
++        KbEntryCreate(title="t", content="c", audience="tout-le-monde")
+diff --git a/backend/tests/test_liluvine_wa_prospects_lot21.py b/backend/tests/test_liluvine_wa_prospects_lot21.py
+index e157e9f..b7b33e7 100644
+--- a/backend/tests/test_liluvine_wa_prospects_lot21.py
++++ b/backend/tests/test_liluvine_wa_prospects_lot21.py
+@@ -59,8 +59,9 @@ def env(monkeypatch):
+     _stub(monkeypatch, "emergentintegrations.llm")
+     _stub(monkeypatch, "emergentintegrations.llm.chat", LlmChat=_FakeChat, UserMessage=lambda text: text)
+ 
+-    async def _kb(db, max_chars=0, query=""):
+-        return "BASE_DE_CONNAISSANCE"
++    async def _kb(db, max_chars=0, query="", audience="clients"):
++        # Lot 23 — le public demandé est inscrit dans le contexte, pour le vérifier.
++        return f"BASE_DE_CONNAISSANCE[{audience}]"
+ 
+     async def _biz(db, phone_digits="", query=""):
+         return "DONNEES_METIER_ACL"
+@@ -145,6 +146,8 @@ def test_unknown_sender_gets_default_prospect_prompt_without_crm_data(env):
+     # Aucune donnée du CRM, seulement la base de connaissance.
+     assert "DONNEES_CRM_DU_TENANT" not in system and "DONNEES_METIER_ACL" not in system
+     assert "BASE_DE_CONNAISSANCE" in system
++    # Lot 23 — base de connaissance « prospects » (entrées « tous » + « prospects »)
++    assert "BASE_DE_CONNAISSANCE[prospects]" in system
+     # Consignes « Mode WhatsApp » d'origine
+     assert env.liluvine_pro.DEFAULT_WA_MODE_INSTRUCTIONS in system
+     # Traçabilité : message assistant marqué « prospect »
+@@ -177,6 +180,7 @@ def test_known_client_keeps_tenant_prompt_and_crm_context(env):
+     system = _FakeChat.last_system
+     assert system.startswith("PROMPT_DE_LA_PHARMACIE") and "MON_PROMPT_PROSPECT" not in system
+     assert "DONNEES_CRM_DU_TENANT" in system and "DONNEES_METIER_ACL" in system
++    assert "BASE_DE_CONNAISSANCE[clients]" in system  # Lot 23 — pas les entrées réservées aux prospects
+     # Les consignes « Mode WhatsApp » s'appliquent aussi aux clients.
+     assert "MES_CONSIGNES_WA" in system
+ 
+diff --git a/backend/tests/test_messaging_center_lot23.py b/backend/tests/test_messaging_center_lot23.py
+new file mode 100644
+index 0000000..3e67a56
+--- /dev/null
++++ b/backend/tests/test_messaging_center_lot23.py
+@@ -0,0 +1,172 @@
++"""Lot 23 — Centre de Messagerie : compteur de non-lus unique (badge de la
++sidebar = pastilles = cloche), rapprochement message ↔ contact par les 8
++derniers chiffres du numéro, « dernière interaction » limitée au tenant et
++hors envois en masse, conversation = les 1000 messages les plus récents.
++
++server.py ne s'importe pas hors de son environnement complet (nombreuses
++dépendances) : les fonctions concernées sont EXTRAITES du fichier (ast) et
++exécutées avec un MongoDB simulé (mongomock-motor). Aucun serveur, aucun réseau.
++Lancer : cd backend && python -m pytest tests/test_messaging_center_lot23.py -q
++"""
++from __future__ import annotations
++
++import ast
++import asyncio
++import re
++from datetime import datetime, timedelta, timezone
++from pathlib import Path
++from typing import Any, Dict, List, Optional, Tuple
++
++import pytest
++
++pytest.importorskip("mongomock_motor")
++from mongomock_motor import AsyncMongoMockClient  # noqa: E402
++
++SERVER = Path(__file__).resolve().parents[1] / "server.py"
++FUNCS = {"_phone_suffix", "_contact_phone_clauses", "_wa_unread_summary", "me_whatsapp_unread",
++         "me_contact_messages_mark_read", "me_contact_messages", "me_list_contacts"}
++SCOPE = ["t-pdp", "t-pdp-peer"]  # périmètre visible de l'utilisateur (tenant + pair de la même société)
++
++
++class _HTTPException(Exception):
++    def __init__(self, status_code, detail=""):
++        super().__init__(detail)
++        self.status_code = status_code
++
++
++def _load(db) -> Dict[str, Any]:
++    """Extrait de server.py les fonctions du lot 23 (sans leurs décorateurs de
++    route) et les exécute dans un espace de noms minimal."""
++    tree = ast.parse(SERVER.read_text())
++    nodes = []
++    for node in tree.body:
++        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in FUNCS:
++            node.decorator_list = []
++            nodes.append(node)
++        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == "WA_PHONE_SUFFIX_LEN" for t in node.targets):
++            nodes.append(node)
++    assert {getattr(n, "name", None) for n in nodes} >= FUNCS
++    ns: Dict[str, Any] = {
++        "db": db, "re": re, "Optional": Optional, "List": List, "Dict": Dict, "Any": Any, "Tuple": Tuple,
++        "Depends": lambda x: None, "get_current_user": None, "HTTPException": _HTTPException,
++        "datetime": datetime, "timedelta": timedelta, "timezone": timezone,
++        "_now": lambda: datetime.now(timezone.utc).isoformat(),
++        "WA_24H_WINDOW_SECONDS": 86400, "_wa_window_open": lambda ts: bool(ts),
++    }
++
++    async def _visible(user):
++        return list(SCOPE)
++
++    async def _flags(user):
++        return {}
++
++    async def _restrictions(user):
++        return {}
++    ns.update(_resolve_visible_client_ids=_visible, _resolve_anon_flags=_flags,
++              _apply_anon_to_contact=lambda c, f: c, _resolve_content_restrictions=_restrictions)
++    exec(compile(ast.Module(body=nodes, type_ignores=[]), str(SERVER), "exec"), ns)  # noqa: S102
++    return ns
++
++
++def _ts(minutes_ago: int) -> str:
++    return (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
++
++
++@pytest.fixture()
++def env():
++    db = AsyncMongoMockClient()["sawali_msg_lot23"]
++    loop = asyncio.new_event_loop()
++    run = loop.run_until_complete
++    run(db.directory_contacts.insert_many([
++        # Enregistré SANS indicatif : doit retrouver les messages de 22670111111
++        {"id": "c-awa", "client_id": "t-pdp", "name": "Awa", "whatsapp": "70 11 11 11"},
++        {"id": "c-ben", "client_id": "t-pdp-peer", "name": "Ben", "whatsapp": "+226 70 22 22 22"},
++        {"id": "c-old", "client_id": "t-pdp", "name": "Ancien", "whatsapp": "+226 70 33 33 33"},
++        {"id": "c-autre", "client_id": "t-autre", "name": "Autre tenant", "whatsapp": "+226 70 44 44 44"},
++    ]))
++    msgs = [
++        # Awa : 2 non lus sans contact_id (rapprochés par le numéro), 1 lu
++        {"id": "m1", "client_id": "t-pdp", "direction": "inbound", "phone_digits": "22670111111", "contact_id": None,
++         "read_by_us_at": None, "created_at": _ts(5)},
++        {"id": "m2", "client_id": "t-pdp", "direction": "inbound", "phone_digits": "22670111111", "contact_id": None,
++         "read_by_us_at": None, "created_at": _ts(4)},
++        {"id": "m3", "client_id": "t-pdp", "direction": "inbound", "phone_digits": "22670111111", "contact_id": "c-awa",
++         "read_by_us_at": _ts(60), "created_at": _ts(90)},
++        # Ben : 1 non lu avec contact_id, chez le pair de la même société
++        {"id": "m4", "client_id": "t-pdp-peer", "direction": "inbound", "phone_digits": "22670222222", "contact_id": "c-ben",
++         "read_by_us_at": None, "created_at": _ts(30)},
++        # Expéditeur inconnu : ne gonfle pas le total
++        {"id": "m5", "client_id": "t-pdp", "direction": "inbound", "phone_digits": "22699999999", "contact_id": None,
++         "read_by_us_at": None, "created_at": _ts(2)},
++        # Autre tenant : jamais compté
++        {"id": "m6", "client_id": "t-autre", "direction": "inbound", "phone_digits": "22670444444", "contact_id": "c-autre",
++         "read_by_us_at": None, "created_at": _ts(1)},
++        # « Ancien » : campagne en masse récente (ne compte pas), vrai échange il y a 30 jours
++        {"id": "m7", "client_id": "t-pdp", "direction": "outbound", "phone_digits": "22670333333", "bulk": True, "created_at": _ts(1)},
++        {"id": "m8", "client_id": "t-pdp", "direction": "inbound", "phone_digits": "22670333333", "read_by_us_at": _ts(1),
++         "created_at": _ts(60 * 24 * 30)},
++        # Message d'un AUTRE tenant au numéro d'Awa : ne doit pas la faire remonter
++        {"id": "m9", "client_id": "t-autre", "direction": "outbound", "phone_digits": "22670111111", "created_at": _ts(0)},
++    ]
++    run(db.whatsapp_messages.insert_many(msgs))
++    ns = _load(db)
++    yield type("Env", (), {"db": db, "run": staticmethod(run), "ns": ns})
++    loop.close()
++
++
++USER = {"id": "u1", "role": "client"}
++
++
++def test_unread_summary_single_source(env):
++    got = env.run(env.ns["_wa_unread_summary"](USER))
++    assert got["by_contact"] == {"c-awa": 2, "c-ben": 1}
++    assert got["total"] == 3 and got["unknown"] == 1
++    # La route des pastilles renvoie exactement le même calcul (badge = pastilles = cloche).
++    assert env.run(env.ns["me_whatsapp_unread"](user=USER)) == got
++
++
++def test_admin_is_scoped_like_everyone(env):
++    got = env.run(env.ns["_wa_unread_summary"]({"id": "adm", "role": "admin"}))
++    assert got["total"] == 3  # plus de comptage « tous tenants » pour l'admin
++
++
++def test_mark_read_matches_phone_suffix_and_clears_badge(env):
++    res = env.run(env.ns["me_contact_messages_mark_read"]("c-awa", user=USER))
++    assert res["updated"] == 2  # les 2 messages sans contact_id, reconnus par « 70111111 »
++    got = env.run(env.ns["_wa_unread_summary"](USER))
++    assert got["by_contact"] == {"c-ben": 1} and got["total"] == 1
++
++
++def test_conversation_returns_most_recent_messages_in_order(env):
++    # 1005 messages : la conversation doit contenir les plus récents, dans l'ordre chronologique.
++    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
++    env.run(env.db.whatsapp_messages.insert_many([
++        {"id": f"x{i}", "client_id": "t-pdp", "direction": "inbound", "phone_digits": "22670222222", "contact_id": "c-ben",
++         "created_at": (base + timedelta(minutes=i)).isoformat()} for i in range(1005)
++    ]))
++    out = env.run(env.ns["me_contact_messages"]("c-ben", user=USER))
++    ids = [m["id"] for m in out["messages"]]
++    assert len(ids) == 1000 and ids[-1] == "m4"          # le plus récent (il y a 30 min) est bien là
++    assert "x0" not in ids and ids[0] == "x6"             # les plus anciens sont ceux qui sautent
++    created = [m["created_at"] for m in out["messages"]]
++    assert created == sorted(created)
++
++
++def test_last_interaction_is_tenant_scoped_and_ignores_bulk(env):
++    items = env.run(env.ns["me_list_contacts"](user=USER))
++    by_id = {c["id"]: c for c in items}
++    # Awa : dernier échange = son message d'il y a 4 min (pas le message de l'autre tenant d'il y a 0 min)
++    assert by_id["c-awa"]["last_interaction_at"] == env.run(env.db.whatsapp_messages.find_one({"id": "m2"}))["created_at"]
++    assert by_id["c-awa"]["last_interaction_direction"] == "in"
++    # Ancien : la campagne d'il y a 1 min est ignorée → dernier vrai échange il y a 30 jours
++    assert by_id["c-old"]["last_interaction_at"] == env.run(env.db.whatsapp_messages.find_one({"id": "m8"}))["created_at"]
++    # Ordre attendu par l'écran (tri décroissant sur la date) : Awa, Ben, Ancien
++    order = sorted([c for c in items if c.get("last_interaction_at")], key=lambda c: c["last_interaction_at"], reverse=True)
++    assert [c["id"] for c in order] == ["c-awa", "c-ben", "c-old"]
++
++
++def test_phone_suffix_helpers(env):
++    assert env.ns["_phone_suffix"]("+226 70 11 11 11") == "70111111"
++    assert env.ns["_phone_suffix"]("123") == "123"
++    clauses = env.ns["_contact_phone_clauses"]({"id": "c", "whatsapp": "70111111", "phone": "+22670111111"})
++    assert clauses[0] == {"contact_id": "c"} and len(clauses) == 2  # même suffixe : une seule clause
+diff --git a/frontend/src/components/PortalLayout.jsx b/frontend/src/components/PortalLayout.jsx
+index 971a9ce..b2ae9c7 100644
+--- a/frontend/src/components/PortalLayout.jsx
++++ b/frontend/src/components/PortalLayout.jsx
+@@ -578,7 +578,12 @@ function PortalLayoutInner({ admin = false }) {
+       </div>
+       <nav className="space-y-1">
+         {links.map(({ to, label, tKey, icon: Icon, end, module, soon, badgeKey, featureGate, showBadges, disabled, disabledReason }) => {
+-          const rawCount = module ? (badges[module] || 0) : 0;
++          // Lot 23 — le badge du Centre de Messagerie affiche le MÊME nombre que la cloche
++          // et que les pastilles des contacts (/me/whatsapp/unread, relu toutes les 15 s
++          // et dès qu'une conversation est lue), au lieu d'un second compteur relu toutes les 90 s.
++          const rawCount = module === "contacts_unread"
++            ? (waNotifier.unread || 0)
++            : module ? (badges[module] || 0) : 0;
+           // 2026-02 fork (P4) — Masque le badge WA non lu sur "Centre de
+           // Messagerie" quand show_messaging_notifs=false.
+           const count = (!p4ShowMsgNotifs && module === "contacts_unread") ? 0 : rawCount;
+diff --git a/frontend/src/components/R2FileTags.jsx b/frontend/src/components/R2FileTags.jsx
+index 2dbeaba..139c9e7 100644
+--- a/frontend/src/components/R2FileTags.jsx
++++ b/frontend/src/components/R2FileTags.jsx
+@@ -1,6 +1,6 @@
+ import React, { useState } from "react";
+ import { toast } from "sonner";
+-import { FileText, Tag, X, Plus, Sparkles, Loader2, Check, Folder } from "lucide-react";
++import { FileText, Tag, X, Plus, Sparkles, Loader2, Check, Folder, Trash2 } from "lucide-react";
+ import { apiClient } from "@/lib/api";
+ 
+ /*
+@@ -55,7 +55,7 @@ export function parseTags(text) {
+   return (text || "").split(/[,;\n]/).map((t) => t.trim().toLowerCase()).filter(Boolean);
+ }
+ 
+-export function R2FileRow({ file, onOpen, onChanged, knownTags = [], aiEnabled = false, showFolder = false, folderLabel = (f) => f }) {
++export function R2FileRow({ file, onOpen, onChanged, onDeleted, knownTags = [], aiEnabled = false, showFolder = false, folderLabel = (f) => f }) {
+   const [editing, setEditing] = useState(false);
+   const [tags, setTags] = useState(file.tags || []);
+   const [draft, setDraft] = useState("");
+@@ -113,6 +113,22 @@ export function R2FileRow({ file, onOpen, onChanged, knownTags = [], aiEnabled =
+     }
+   };
+ 
++  // Lot 23 — suppression (admin/superviseur, ou Pharmacien suivi sur ses propres fichiers).
++  const [deleting, setDeleting] = useState(false);
++  const remove = async (e) => {
++    e.stopPropagation();
++    if (!window.confirm(`Supprimer définitivement « ${file.name} » du compartiment R2 ?`)) return;
++    setDeleting(true);
++    try {
++      await apiClient.delete("/gestion-stocks/files", { params: { key: file.key } });
++      toast.success(`« ${file.name} » supprimé`);
++      onDeleted?.(file);
++    } catch (err) {
++      toast.error(err?.response?.data?.detail || "Échec de la suppression");
++      setDeleting(false);
++    }
++  };
++
+   const pendingAi = aiTags.filter((t) => !tags.includes(t));
+   const listId = `r2-known-tags-${file.key}`;
+ 
+@@ -138,9 +154,23 @@ export function R2FileRow({ file, onOpen, onChanged, knownTags = [], aiEnabled =
+               <Tag className="w-3.5 h-3.5" /> Tags
+             </button>
+           )}
++          {/* Lot 23 — bouton de suppression (droit calculé par le serveur) */}
++          {file.can_delete && !editing && (
++            <button type="button" onClick={remove} disabled={deleting} title="Supprimer ce fichier"
++              className="text-slate-400 hover:text-rose-600 disabled:opacity-50" data-testid="r2-file-delete">
++              {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
++            </button>
++          )}
+         </span>
+       </div>
+ 
++      {/* Lot 23 — résultat trouvé dans le texte du document : extrait correspondant */}
++      {file.match_snippet && (
++        <p className="mt-1 ml-6 text-[11px] text-slate-600 italic bg-amber-50 rounded px-2 py-1" data-testid="r2-file-snippet">
++          « {file.match_snippet} »
++        </p>
++      )}
++
+       {/* Lecture : tags, description, suggestions IA en attente */}
+       {!editing && (file.tags?.length > 0 || file.description || file.ai_suggested_tags?.length > 0) && (
+         <div className="mt-1 ml-6 space-y-1">
+diff --git a/frontend/src/hooks/useWhatsAppNotifier.js b/frontend/src/hooks/useWhatsAppNotifier.js
+index 1867e2d..c7290c2 100644
+--- a/frontend/src/hooks/useWhatsAppNotifier.js
++++ b/frontend/src/hooks/useWhatsAppNotifier.js
+@@ -152,8 +152,13 @@ export function useWhatsAppNotifier({ enabled = true } = {}) {
+     }
+     tick();
+     intervalRef.current = setInterval(tick, POLL_MS);
++    // Lot 23 — une conversation vient d'être lue (Centre de Messagerie, Inbox) :
++    // on recompte tout de suite au lieu d'attendre le prochain passage (15 s).
++    const onRead = () => tick();
++    window.addEventListener("sawali:wa-messages-read", onRead);
+     return () => {
+       clearInterval(intervalRef.current);
++      window.removeEventListener("sawali:wa-messages-read", onRead);
+       setFaviconBadge(false);
+     };
+   }, [tick, enabled]);
+@@ -177,14 +182,16 @@ export function useWhatsAppNotifier({ enabled = true } = {}) {
+       setSoundConfig(getEffectiveConfig(soundAdminDefaults));
+     },
+     toggleSound: () => setSoundOn((s) => { const v = !s; persist(v, desktopOn); return v; }),
+-    toggleDesktop: () => setDesktopOn(async (d) => {
+-      const v = !d;
++    // Lot 23 — correctif : on calcule la nouvelle valeur AVANT de mettre l'état à jour
++    // (avant, setDesktopOn recevait une fonction async et l'état devenait une Promise).
++    toggleDesktop: async () => {
++      const v = !desktopOn;
+       if (v && typeof Notification !== "undefined" && Notification.permission === "default") {
+         const r = await Notification.requestPermission();
+         setPermission(r);
+       }
++      setDesktopOn(v);
+       persist(soundOn, v);
+-      return v;
+-    }),
++    },
+   };
+ }
+diff --git a/frontend/src/pages/admin/sections/LiluvineKnowledgeBaseSection.jsx b/frontend/src/pages/admin/sections/LiluvineKnowledgeBaseSection.jsx
+index 7609821..8ea919e 100644
+--- a/frontend/src/pages/admin/sections/LiluvineKnowledgeBaseSection.jsx
++++ b/frontend/src/pages/admin/sections/LiluvineKnowledgeBaseSection.jsx
+@@ -8,6 +8,18 @@ import { apiClient } from "@/lib/api";
+ 
+ const MAX_CHAR_PREVIEW = 280;
+ 
++// Lot 23 — public visé par une entrée : tous, clients seulement, prospects seulement.
++const AUDIENCE_LABELS = {
++  all: "Tous",
++  clients: "Clients seulement",
++  prospects: "Prospects seulement",
++};
++const AUDIENCE_STYLES = {
++  all: "bg-slate-100 text-slate-600 ring-slate-200",
++  clients: "bg-sky-50 text-sky-700 ring-sky-200",
++  prospects: "bg-violet-100 text-violet-800 ring-violet-200",
++};
++
+ export default function LiluvineKnowledgeBaseSection() {
+   const [items, setItems] = useState([]);
+   const [stats, setStats] = useState({ total: 0, enabled: 0, total_chars: 0, context_budget_chars: 6000 });
+@@ -50,11 +62,14 @@ export default function LiluvineKnowledgeBaseSection() {
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, []);
+ 
+-  const openCreate = () => setEditing({ title: "", content: "", tags: "" });
++  const openCreate = () => setEditing({ title: "", content: "", tags: "", audience: "all" });
+   const openEdit = (it) => setEditing({
+     id: it.id, title: it.title || "", content: it.content || "",
+     tags: (it.tags || []).join(", "), enabled: it.enabled !== false,
++    audience: it.audience || "all",  // Lot 23
+   });
++  // Lot 23 — public appliqué aux documents importés (PDF, TXT, capture).
++  const [uploadAudience, setUploadAudience] = useState("all");
+   const closeEditor = () => setEditing(null);
+ 
+   const save = async () => {
+@@ -66,6 +81,7 @@ export default function LiluvineKnowledgeBaseSection() {
+       title: editing.title.trim(),
+       content: editing.content,
+       tags: (editing.tags || "").split(",").map((s) => s.trim()).filter(Boolean),
++      audience: editing.audience || "all",  // Lot 23
+     };
+     try {
+       if (editing.id) {
+@@ -121,6 +137,7 @@ export default function LiluvineKnowledgeBaseSection() {
+       fd.append("file", file);
+       fd.append("title", title.trim());
+       if (ocr) fd.append("force_ocr", "true");
++      fd.append("audience", uploadAudience);  // Lot 23
+       const r = await apiClient.post("/admin/liluvine-pro/kb/upload", fd, {
+         headers: { "Content-Type": "multipart/form-data" },
+       });
+@@ -144,6 +161,13 @@ export default function LiluvineKnowledgeBaseSection() {
+           <Brain className="h-5 w-5 text-violet-600" /> Liluvine PRO — Base de connaissance
+         </h2>
+         <div className="flex items-center gap-2 flex-wrap">
++          {/* Lot 23 — public des documents importés */}
++          <select value={uploadAudience} onChange={(e) => setUploadAudience(e.target.value)} title="Public des documents importés"
++            className="text-xs rounded-lg ring-1 ring-slate-300 px-2 py-1.5 bg-white" data-testid="liluvine-kb-upload-audience">
++            <option value="all">Import : pour tous</option>
++            <option value="clients">Import : clients seulement</option>
++            <option value="prospects">Import : prospects seulement</option>
++          </select>
+           <label className="inline-flex items-center gap-1 cursor-pointer rounded-lg ring-1 ring-violet-300 hover:bg-violet-50 text-violet-700 px-2.5 py-1.5 text-xs font-medium" data-testid="liluvine-kb-upload" title="PDF/TXT — extraction texte native, pas d'OCR">
+             <Upload className="h-3.5 w-3.5" /> {uploading ? "Upload…" : "Importer PDF / TXT"}
+             <input type="file" accept=".pdf,.txt,application/pdf,text/plain" className="hidden"
+@@ -211,6 +235,11 @@ export default function LiluvineKnowledgeBaseSection() {
+                                        <BookOpen className="h-4 w-4 text-violet-500" />}
+                   <p className="text-sm font-semibold text-slate-800 truncate">{it.title}</p>
+                   <span className="text-[10px] rounded-full bg-slate-100 ring-1 ring-slate-200 text-slate-600 px-1.5 py-0.5">{it.char_count || (it.content || "").length} car.</span>
++                  {/* Lot 23 — public visé */}
++                  <span className={`text-[10px] rounded-full ring-1 px-1.5 py-0.5 ${AUDIENCE_STYLES[it.audience || "all"]}`}
++                    data-testid={`liluvine-kb-audience-${it.id}`}>
++                    {AUDIENCE_LABELS[it.audience || "all"]}
++                  </span>
+                 </div>
+                 <p className="text-xs text-slate-600 mt-1 line-clamp-2">{(it.content || "").slice(0, MAX_CHAR_PREVIEW)}{(it.content || "").length > MAX_CHAR_PREVIEW ? "…" : ""}</p>
+                 {it.tags?.length > 0 && (
+@@ -270,6 +299,20 @@ export default function LiluvineKnowledgeBaseSection() {
+                   className="w-full text-sm rounded-lg border border-slate-300 px-3 py-2"
+                   data-testid="liluvine-kb-editor-tags" />
+               </div>
++              {/* Lot 23 — à qui Liluvine peut transmettre cette entrée */}
++              <div>
++                <label className="block text-xs font-medium text-slate-700 mb-1">Public visé</label>
++                <select value={editing.audience || "all"} onChange={(e) => setEditing({ ...editing, audience: e.target.value })}
++                  className="w-full text-sm rounded-lg border border-slate-300 px-3 py-2 bg-white" data-testid="liluvine-kb-editor-audience">
++                  <option value="all">Tous (clients et prospects)</option>
++                  <option value="clients">Clients seulement (et usage interne)</option>
++                  <option value="prospects">Prospects seulement (auto-réponse WhatsApp aux numéros inconnus)</option>
++                </select>
++                <p className="text-[10px] text-slate-500 mt-1">
++                  Les prospects ne reçoivent que les entrées « Tous » et « Prospects seulement » ; une entrée « Clients seulement »
++                  ne leur est jamais transmise.
++                </p>
++              </div>
+               {editing.id && (
+                 <label className="flex items-center gap-2 cursor-pointer">
+                   <input type="checkbox" checked={!!editing.enabled}
+diff --git a/frontend/src/pages/portal/Contacts.jsx b/frontend/src/pages/portal/Contacts.jsx
+index e1a5944..2ca7f42 100644
+--- a/frontend/src/pages/portal/Contacts.jsx
++++ b/frontend/src/pages/portal/Contacts.jsx
+@@ -9,7 +9,7 @@ import {
+   Upload, Image as ImageIcon, FileText as FileTextIcon, Video, Info,
+   CalendarClock, Trash, Link2, CreditCard, UserPlus, Inbox, Building2, Download,
+   Paperclip, Mic, Play, BookmarkPlus, Ticket, CornerUpLeft, FolderOpen, ShoppingBag, FileEdit,
+-  Sparkles, Loader2,
++  Sparkles, Loader2, ClipboardPaste, ArrowDown,
+ } from "lucide-react";
+ import { parseTemplate, buildComponentsPayload, validateTemplateValues, renderPreview } from "@/lib/waTemplate";
+ import { useAuth } from "@/contexts/AuthContext";
+@@ -163,8 +163,10 @@ export default function Contacts() {
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, []);
+ 
+-  const load = async () => {
+-    setLoading(true);
++  // Lot 23 — `silent` : relecture en arrière-plan (sans « Chargement… ») pour
++  // remettre la liste dans l'ordre de la dernière interaction.
++  const load = async (silent = false) => {
++    if (!silent) setLoading(true);
+     try {
+       const [contactsRes, clientsRes] = await Promise.all([
+         apiClient.get("/me/contacts"),
+@@ -173,16 +175,22 @@ export default function Contacts() {
+       setItems(Array.isArray(contactsRes.data) ? contactsRes.data : []);
+       setClients(clientsRes.data || []);
+     } catch (err) {
+-      toast.error(err?.response?.data?.detail || "Erreur de chargement");
++      if (!silent) toast.error(err?.response?.data?.detail || "Erreur de chargement");
+     } finally {
+-      setLoading(false);
++      if (!silent) setLoading(false);
+     }
+   };
+ 
++  // Lot 23 — quand un nouveau message arrive (total des non-lus en hausse),
++  // la liste est relue pour que ce contact remonte en tête avec sa date.
++  const lastUnreadTotalRef = React.useRef(null);
+   const loadUnread = async () => {
+     try {
+       const r = await apiClient.get("/me/whatsapp/unread");
+-      setUnread({ total: r.data?.total || 0, by_contact: r.data?.by_contact || {} });
++      const total = r.data?.total || 0;
++      setUnread({ total, by_contact: r.data?.by_contact || {} });
++      if (lastUnreadTotalRef.current != null && total > lastUnreadTotalRef.current) load(true);
++      lastUnreadTotalRef.current = total;
+     } catch { /* noop */ }
+   };
+ 
+@@ -202,8 +210,12 @@ export default function Contacts() {
+     apiClient.get("/me/account-detail").then((r) => setAccountInfo(r.data)).catch(() => {});
+   }, []);
+   useEffect(() => {
+-    const t = setInterval(() => { loadUnread(); loadPending(); }, 30000);
+-    return () => clearInterval(t);
++    // Lot 23 — non-lus toutes les 15 s (même rythme que le badge de la sidebar),
++    // liste complète relue en silence toutes les 2 min (messages envoyés ailleurs).
++    const t = setInterval(() => { loadUnread(); loadPending(); }, 15000);
++    const t2 = setInterval(() => load(true), 120000);
++    return () => { clearInterval(t); clearInterval(t2); };
++    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+   }, []);
+ 
+   const del = async (id) => {
+@@ -484,7 +496,7 @@ export default function Contacts() {
+       {modal?.type === "history" && (
+         <ConversationModal
+           contact={modal.contact}
+-          onClose={() => { setModal(null); loadUnread(); }}
++          onClose={() => { setModal(null); loadUnread(); load(true); /* Lot 23 — réordonne après l'échange */ }}
+           onMessagesRead={loadUnread}
+         />
+       )}
+@@ -498,12 +510,47 @@ export default function Contacts() {
+   );
+ }
+ 
++// Lot 23 — date/heure de la dernière interaction, lisible d'un coup d'œil :
++// « Aujourd'hui 14:32 », « Hier 09:10 », sinon « 12/09/2026 16:05 ».
++function formatLastInteraction(iso) {
++  if (!iso) return "";
++  const d = new Date(iso);
++  if (Number.isNaN(d.getTime())) return "";
++  const time = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
++  const today = new Date();
++  const yesterday = new Date(); yesterday.setDate(today.getDate() - 1);
++  if (d.toDateString() === today.toDateString()) return `Aujourd'hui ${time}`;
++  if (d.toDateString() === yesterday.toDateString()) return `Hier ${time}`;
++  return `${d.toLocaleDateString("fr-FR")} ${time}`;
++}
++
+ // --- Contact row with inline WhatsApp edit ---
+ const ContactRow = ({ c, onReload, onEdit, onWa, onSms, onSchedule, onHistory, onLiluvine, onDelete, waEnabled = true, smsEnabled = true, unreadCount = 0 }) => {
+   const [editingWa, setEditingWa] = useState(false);
+   const [waValue, setWaValue] = useState(c.whatsapp || "");
+   const [saving, setSaving] = useState(false);
+ 
++  // Lot 23 — « Marquer comme prospect » : pose/retire l'étiquette `prospect`.
++  // Liluvine répond alors à ce contact avec le prompt et la base de
++  // connaissance des prospects (Paramètres → Auto-réponse WhatsApp).
++  const isProspect = (c.tags || []).some((t) => (t || "").trim().toLowerCase() === "prospect");
++  const [togglingProspect, setTogglingProspect] = useState(false);
++  const toggleProspect = async () => {
++    const tags = isProspect
++      ? (c.tags || []).filter((t) => (t || "").trim().toLowerCase() !== "prospect")
++      : [...(c.tags || []), "prospect"];
++    setTogglingProspect(true);
++    try {
++      await apiClient.put(`/me/contacts/${c.id}`, { tags });
++      toast.success(isProspect ? `${c.name} n'est plus marqué comme prospect` : `${c.name} est marqué comme prospect`);
++      await onReload();
++    } catch (err) {
++      toast.error(err?.response?.data?.detail || "Erreur");
++    } finally {
++      setTogglingProspect(false);
++    }
++  };
++
+   const saveWa = async () => {
+     const trimmed = (waValue || "").trim();
+     if (trimmed === (c.whatsapp || "")) { setEditingWa(false); return; }
+@@ -543,6 +590,21 @@ const ContactRow = ({ c, onReload, onEdit, onWa, onSms, onSchedule, onHistory, o
+                 </span>
+               )}
+             </button>
++            {/* Lot 23 — date/heure et sens du dernier échange (WhatsApp/SMS de ce tenant, hors envois en masse) */}
++            <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1" data-testid={`contact-last-interaction-${c.id}`}>
++              {c.last_interaction_at ? (
++                <>
++                  {c.last_interaction_direction === "in"
++                    ? <ArrowDownLeft className="h-3 w-3 text-emerald-600" aria-label="reçu" />
++                    : <ArrowUpRight className="h-3 w-3 text-sky-600" aria-label="envoyé" />}
++                  <span title={c.last_interaction_direction === "in" ? "Dernier message reçu" : "Dernier message envoyé"}>
++                    {formatLastInteraction(c.last_interaction_at)}
++                  </span>
++                </>
++              ) : (
++                <span className="italic text-slate-400">Aucun échange</span>
++              )}
++            </div>
+             {c.unique_code && (
+               <div
+                 className="text-[11px] text-sky-600 font-mono font-bold mt-0.5 inline-flex items-center gap-1"
+@@ -560,7 +622,8 @@ const ContactRow = ({ c, onReload, onEdit, onWa, onSms, onSchedule, onHistory, o
+             {c.tags?.length > 0 && (
+               <div className="flex flex-wrap gap-1 mt-1">
+                 {c.tags.map((t) => (
+-                  <span key={t} className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded inline-flex items-center gap-1">
++                  <span key={t}
++                    className={`text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 ${(t || "").toLowerCase() === "prospect" ? "bg-violet-100 text-violet-800 font-semibold" : "bg-slate-100"}`}>
+                     <Tag className="h-2.5 w-2.5" /> {t}
+                   </span>
+                 ))}
+@@ -631,6 +694,18 @@ const ContactRow = ({ c, onReload, onEdit, onWa, onSms, onSchedule, onHistory, o
+       </td>
+       <td className="px-2 py-2 text-right whitespace-nowrap">
+         <div className="inline-flex gap-1 items-center">
++          {/* Lot 23 — marquer / démarquer comme prospect (auto-réponse Liluvine dédiée) */}
++          <button
++            onClick={toggleProspect}
++            disabled={togglingProspect}
++            title={isProspect
++              ? "Prospect : Liluvine lui répond avec le prompt des prospects — cliquer pour le repasser en client"
++              : "Marquer comme prospect (Liluvine lui répondra avec le prompt et la base de connaissance des prospects)"}
++            className={`inline-flex items-center gap-1 text-[11px] rounded px-2 py-1 ring-1 disabled:opacity-40 ${isProspect ? "bg-violet-600 text-white ring-violet-600 hover:bg-violet-700" : "bg-white text-violet-700 ring-violet-300 hover:bg-violet-50"}`}
++            data-testid={`contact-prospect-${c.id}`}
++          >
++            <UserPlus className="h-3 w-3" /> <span className="hidden xl:inline">{isProspect ? "Prospect" : "Prospect ?"}</span>
++          </button>
+           <button
+             onClick={onWa}
+             disabled={!c.whatsapp || !waEnabled}
+@@ -1491,15 +1566,25 @@ const ConversationModal = ({ contact, onClose, onMessagesRead }) => {
+   const [convTab, setConvTab] = useState("discussion");
+   const [groupCount, setGroupCount] = useState(0);
+ 
+-  const load = async () => {
+-    setLoading(true);
++  // Lot 23 — `silent` : relecture périodique sans remplacer la conversation par
++  // « Chargement… » (sinon l'écran clignoterait toutes les 8 s).
++  const load = async (silent = false) => {
++    if (!silent) setLoading(true);
+     try {
+       const r = await apiClient.get(`/me/contacts/${contact.id}/messages`);
+-      setData(r.data || { messages: [] });
++      const next = r.data || { messages: [] };
++      if (silent) {
++        // Nouveau message reçu pendant que la conversation est ouverte :
++        // on le marque comme lu (il est sous les yeux de l'utilisateur).
++        const prevIds = new Set((dataRef.current.messages || []).map((m) => m.id));
++        const newInbound = (next.messages || []).some((m) => m.direction === "inbound" && !prevIds.has(m.id));
++        if (newInbound) markRead();
++      }
++      setData(next);
+     } catch (err) {
+-      toast.error(err?.response?.data?.detail || "Erreur");
++      if (!silent) toast.error(err?.response?.data?.detail || "Erreur");
+     } finally {
+-      setLoading(false);
++      if (!silent) setLoading(false);
+     }
+   };
+ 
+@@ -1507,6 +1592,8 @@ const ConversationModal = ({ contact, onClose, onMessagesRead }) => {
+     try {
+       await apiClient.post(`/me/contacts/${contact.id}/messages/mark-read`);
+       onMessagesRead && onMessagesRead();
++      // Lot 23 — prévient la sidebar et la cloche : elles recomptent tout de suite.
++      window.dispatchEvent(new Event("sawali:wa-messages-read"));
+     } catch { /* noop */ }
+   };
+ 
+@@ -1516,6 +1603,18 @@ const ConversationModal = ({ contact, onClose, onMessagesRead }) => {
+     /* eslint-disable-next-line */
+   }, [contact.id]);
+ 
++  // Lot 23 — la conversation ouverte se met à jour toute seule (toutes les 8 s,
++  // seulement quand l'onglet est visible).
++  const dataRef = React.useRef(data);
++  dataRef.current = data;
++  useEffect(() => {
++    const t = setInterval(() => {
++      if (document.visibilityState === "visible") load(true);
++    }, 8000);
++    return () => clearInterval(t);
++    /* eslint-disable-next-line */
++  }, [contact.id]);
++
+   const sendFreeText = async () => {
+     const body = (text || "").trim();
+     if (!body && !pendingFile) { toast.error("Le message est vide"); return; }
+@@ -1663,6 +1762,50 @@ const ConversationModal = ({ contact, onClose, onMessagesRead }) => {
+     e.target.value = ""; // allow re-picking the same file
+   };
+ 
++  // Lot 23 — pièce jointe venant du presse-papiers (capture d'écran, image copiée) :
++  // même préparation qu'un fichier choisi avec le trombone.
++  const attachBlob = (blob, fallbackName) => {
++    if (!blob) return false;
++    if (blob.size > 16 * 1024 * 1024) { toast.error("Image trop volumineuse (max 16 Mo)"); return true; }
++    const ext = (blob.type.split("/")[1] || "png").replace("jpeg", "jpg");
++    const file = blob instanceof File && blob.name ? blob : new File([blob], `${fallbackName}.${ext}`, { type: blob.type });
++    setPendingFile({ file, kind: "image", previewUrl: URL.createObjectURL(file) });
++    toast.success("Image du presse-papiers jointe — ajoutez une légende si besoin, puis Envoyer.");
++    return true;
++  };
++
++  // Ctrl+V dans la zone de saisie : une image est jointe ; du texte se colle normalement.
++  const onPasteComposer = (e) => {
++    const items = Array.from(e.clipboardData?.items || []);
++    const img = items.find((it) => it.kind === "file" && (it.type || "").startsWith("image/"));
++    if (img && !pendingFile) {
++      e.preventDefault();
++      attachBlob(img.getAsFile(), `capture-${Date.now()}`);
++    }
++  };
++
++  // Bouton « Coller » : lit le presse-papiers (image en priorité, sinon texte).
++  const pasteFromClipboard = async () => {
++    try {
++      if (navigator.clipboard?.read) {
++        const entries = await navigator.clipboard.read();
++        for (const entry of entries) {
++          const type = entry.types.find((t) => t.startsWith("image/"));
++          if (type) { attachBlob(await entry.getType(type), `capture-${Date.now()}`); return; }
++        }
++      }
++      const clip = navigator.clipboard?.readText ? await navigator.clipboard.readText() : "";
++      if (clip) {
++        setText((cur) => (cur ? `${cur}${cur.endsWith("\n") ? "" : "\n"}${clip}` : clip).slice(0, 4096));
++        toast.success("Texte du presse-papiers collé");
++      } else {
++        toast.info("Le presse-papiers est vide.");
++      }
++    } catch {
++      toast.error("Accès au presse-papiers refusé par le navigateur — utilisez Ctrl+V dans la zone de saisie.");
++    }
++  };
++
+   const clearPendingFile = () => {
+     if (pendingFile?.previewUrl) {
+       try { URL.revokeObjectURL(pendingFile.previewUrl); } catch { /* noop */ }
+@@ -1869,9 +2012,24 @@ const ConversationModal = ({ contact, onClose, onMessagesRead }) => {
+   // exchange is always in view. We use `behavior:"auto"` for the very
+   // first render and "smooth" once the user is already in the modal.
+   const initialScrollDone = React.useRef(false);
++  // Lot 23 — si l'utilisateur est remonté lire l'historique, un message arrivé
++  // par l'actualisation automatique ne le fait pas redescendre : un bouton
++  // « Nouveau message » apparaît à la place.
++  const [newBelow, setNewBelow] = useState(false);
++  const nearBottom = () => {
++    const el = scrollContainerRef.current;
++    return !el || el.scrollHeight - el.scrollTop - el.clientHeight < 160;
++  };
++  const scrollToBottom = () => {
++    const el = scrollContainerRef.current;
++    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
++    setNewBelow(false);
++  };
+   useEffect(() => {
+     if (!scrollContainerRef.current || loading) return;
+     const el = scrollContainerRef.current;
++    const lastOutbound = (messages[messages.length - 1] || {}).direction !== "inbound";
++    if (initialScrollDone.current && !nearBottom() && !lastOutbound) { setNewBelow(true); return; }
+     const behavior = initialScrollDone.current ? "smooth" : "auto";
+     // Use a microtask so React has committed message bubbles before we
+     // measure scrollHeight.
+@@ -1883,6 +2041,8 @@ const ConversationModal = ({ contact, onClose, onMessagesRead }) => {
+       }
+       initialScrollDone.current = true;
+     });
++    // Relancé seulement quand le NOMBRE de messages change (pas à chaque relecture identique).
++    // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [messages.length, loading]);
+ 
+   return (
+@@ -1891,7 +2051,7 @@ const ConversationModal = ({ contact, onClose, onMessagesRead }) => {
+       onClick={(e) => e.target === e.currentTarget && onClose()}
+       data-testid="conversation-modal"
+     >
+-      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl flex flex-col max-h-[85vh]">
++      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl flex flex-col max-h-[85vh] relative">
+         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+           <div className="flex items-center gap-3 min-w-0">
+             <ContactAvatar contact={contact} size={40} />
+@@ -2306,7 +2466,14 @@ const ConversationModal = ({ contact, onClose, onMessagesRead }) => {
+             </div>
+           </div>
+         )}
+-        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-5 space-y-3 bg-slate-50/50" data-testid="conversation-scroll">
++        {newBelow && (
++          <button onClick={scrollToBottom} data-testid="conversation-new-below"
++            className="absolute left-1/2 -translate-x-1/2 bottom-40 z-10 inline-flex items-center gap-1 rounded-full bg-emerald-600 text-white text-xs px-3 py-1.5 shadow-lg hover:bg-emerald-700">
++            <ArrowDown className="h-3.5 w-3.5" /> Nouveau message
++          </button>
++        )}
++        <div ref={scrollContainerRef} onScroll={() => { if (newBelow && nearBottom()) setNewBelow(false); }}
++          className="flex-1 overflow-y-auto p-5 space-y-3 bg-slate-50/50" data-testid="conversation-scroll">
+           {loading ? (
+             <p className="text-center text-slate-500 text-sm">Chargement…</p>
+           ) : messages.length === 0 ? (
+@@ -2460,13 +2627,24 @@ const ConversationModal = ({ contact, onClose, onMessagesRead }) => {
+                 >
+                   <Mic className="h-4 w-4" />
+                 </button>
++                {/* Lot 23 — coller une image ou un texte du presse-papiers */}
++                <button
++                  onClick={pasteFromClipboard}
++                  disabled={sending || !!pendingFile || recState !== "idle"}
++                  className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 px-2.5 py-2 text-sm text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
++                  data-testid="conversation-paste-btn"
++                  title="Coller depuis le presse-papiers (image ou texte) — ou Ctrl+V dans la zone de saisie"
++                >
++                  <ClipboardPaste className="h-4 w-4" />
++                </button>
+                 <textarea
+                   value={text}
+                   onChange={(e) => setText(e.target.value)}
++                  onPaste={onPasteComposer}
+                   onKeyDown={(e) => {
+                     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendFreeText(); }
+                   }}
+-                  placeholder={pendingFile ? "Légende (optionnelle)…" : "Tapez votre réponse… (Cmd/Ctrl + Entrée pour envoyer)"}
++                  placeholder={pendingFile ? "Légende (optionnelle)…" : "Tapez votre réponse… (Cmd/Ctrl + Entrée pour envoyer, Ctrl+V pour coller une image)"}
+                   rows={2}
+                   maxLength={4096}
+                   className="flex-1 resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sawali-blue focus:ring-1 focus:ring-sawali-blue outline-none"
+diff --git a/frontend/src/pages/portal/GestionStocks.jsx b/frontend/src/pages/portal/GestionStocks.jsx
+index eca8fa9..59376c2 100644
+--- a/frontend/src/pages/portal/GestionStocks.jsx
++++ b/frontend/src/pages/portal/GestionStocks.jsx
+@@ -4,7 +4,7 @@ import { toast } from "sonner";
+ import { useAuth } from "@/contexts/AuthContext";
+ import {
+   Database, Folder, Upload, RefreshCw, ArrowLeft, Send, Loader2,
+-  ChevronRight, CheckCircle2, AlertCircle, HardDrive, Search, X, Tag,
++  ChevronRight, CheckCircle2, AlertCircle, HardDrive, Search, X, Tag, FolderPlus, Settings2, ScanText,
+ } from "lucide-react";
+ import R2StorageGauge from "@/components/R2StorageGauge";
+ // Lot 22 — lignes de fichiers avec tags (édition, suggestions IA) et pastilles de filtre.
+@@ -103,6 +103,12 @@ export default function GestionStocks() {
+   const [searchTags, setSearchTags] = useState([]);          // pastilles de tags sélectionnées
+   const [searchResults, setSearchResults] = useState([]);
+   const [searching, setSearching] = useState(false);
++  // Lot 23 — création de dossier et gestion des tags (administration).
++  const [newFolderOpen, setNewFolderOpen] = useState(false);
++  const [newFolderName, setNewFolderName] = useState("");
++  const [tagAdminOpen, setTagAdminOpen] = useState(false);
++  const [renameFrom, setRenameFrom] = useState("");
++  const [renameTo, setRenameTo] = useState("");
+ 
+   // Explorateur BD MongoDB Atlas
+   const [promptText, setPromptText] = useState("");
+@@ -187,7 +193,9 @@ export default function GestionStocks() {
+   const ROOT_FOLDER = "_racine";
+   const folderLabel = (f) => (f === ROOT_FOLDER ? "Racine (hors dossier)" : f);
+ 
+-  // Dossiers réellement présents dans R2 pour le client affiché.
++  // Dossiers réellement présents dans R2 pour le client affiché
++  // (Lot 23 : `foldersVersion` relance la lecture après la création d'un dossier).
++  const [foldersVersion, setFoldersVersion] = useState(0);
+   useEffect(() => {
+     if (!effectiveClientCode || !r2Configured) { setExtraFolders([]); setRootFiles(0); return; }
+     apiClient.get("/gestion-stocks/folders", { params: isAdmin ? { client_code: effectiveClientCode } : {} })
+@@ -198,7 +206,7 @@ export default function GestionStocks() {
+         setAiTagsEnabled(!!r.data?.ai_tags_enabled);
+       })
+       .catch(() => { setExtraFolders([]); setRootFiles(0); setAiTagsEnabled(false); });
+-  }, [effectiveClientCode, r2Configured, isAdmin]);
++  }, [effectiveClientCode, r2Configured, isAdmin, foldersVersion]);
+ 
+   // Lot 22 — tags déjà utilisés par le client (suggestions de saisie + pastilles de filtre).
+   const clientParams = isAdmin ? { client_code: effectiveClientCode } : {};
+@@ -243,6 +251,60 @@ export default function GestionStocks() {
+     if (!opts.keepEditing) loadKnownTags();
+   };
+ 
++  // Lot 23 — fichier supprimé : retiré des listes, jauge et tags rafraîchis.
++  const handleFileDeleted = (deleted) => {
++    const drop = (list) => list.filter((f) => f.key !== deleted.key);
++    setFiles(drop);
++    setSearchResults(drop);
++    gaugeRef.current?.reload();
++    loadKnownTags();
++    if (deleted.folder === ROOT_FOLDER || selectedFolder === ROOT_FOLDER) setFoldersVersion((v) => v + 1);
++  };
++
++  // Lot 23 — création d'un dossier (marqueur vide dans R2, comme Cloudflare).
++  const createFolder = async () => {
++    const name = newFolderName.trim();
++    if (!name) return;
++    try {
++      const r = await apiClient.post("/gestion-stocks/folders", { name, ...clientParams });
++      toast.success(`Dossier « ${r.data.folder} » créé`);
++      setNewFolderName(""); setNewFolderOpen(false);
++      setFoldersVersion((v) => v + 1);
++    } catch (err) {
++      toast.error(err?.response?.data?.detail || "Création du dossier impossible");
++    }
++  };
++
++  // Lot 23 — renommer / fusionner / retirer un tag pour tous les fichiers du client.
++  const renameTag = async () => {
++    if (!renameFrom) return;
++    const target = renameTo.trim();
++    const msg = target
++      ? `Renommer le tag « ${renameFrom} » en « ${target} » sur tous les fichiers de ce client ?`
++      : `Retirer le tag « ${renameFrom} » de tous les fichiers de ce client ?`;
++    if (!window.confirm(msg)) return;
++    try {
++      const r = await apiClient.put("/gestion-stocks/tags/rename", { from: renameFrom, to: target, ...clientParams });
++      setKnownTags(r.data?.tags || []);
++      toast.success(`${r.data?.files_changed || 0} fichier(s) mis à jour`);
++      setRenameFrom(""); setRenameTo("");
++      setSearchTags((cur) => cur.filter((t) => t !== renameFrom));
++      if (selectedFolder) openFolder(selectedFolder);
++    } catch (err) {
++      toast.error(err?.response?.data?.detail || "Renommage impossible");
++    }
++  };
++
++  // Lot 23 — indexation du texte des fichiers anciens (déposés avant ce lot ou via Cloudflare).
++  const reindex = async () => {
++    try {
++      const r = await apiClient.post("/gestion-stocks/reindex", { ...clientParams });
++      toast.success(`${r.data?.queued || 0} fichier(s) en cours d'indexation sur ${r.data?.files || 0} — la recherche dans leur contenu sera disponible dans quelques instants.`);
++    } catch (err) {
++      toast.error(err?.response?.data?.detail || "Indexation impossible");
++    }
++  };
++
+   const openFile = async (file) => {
+     try {
+       const r = await apiClient.get("/gestion-stocks/files/view-url", { params: { key: file.key } });
+@@ -501,7 +563,7 @@ export default function GestionStocks() {
+                 <div className="relative">
+                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                   <input value={searchQ} onChange={(e) => setSearchQ(e.target.value)}
+-                    placeholder="Rechercher un document (nom, tag, description) dans tous les dossiers…"
++                    placeholder="Rechercher un document (nom, tag, description ou texte du document) dans tous les dossiers…"
+                     className="w-full pl-9 pr-9 py-2 rounded-lg ring-1 ring-slate-300 text-sm bg-white"
+                     data-testid="gestion-stocks-search-input" />
+                   {searchActive && (
+@@ -512,6 +574,45 @@ export default function GestionStocks() {
+                     </button>
+                   )}
+                 </div>
++                {/* Lot 23 — outils de l'administration : renommer/fusionner un tag, indexer le contenu */}
++                {isAdmin && (
++                  <div className="flex flex-wrap items-center gap-3 text-[11px]">
++                    <button type="button" onClick={() => setTagAdminOpen((v) => !v)} className="inline-flex items-center gap-1 text-teal-700 hover:underline"
++                      data-testid="gestion-stocks-tag-admin-toggle">
++                      <Settings2 className="w-3.5 h-3.5" /> Gérer les tags
++                    </button>
++                    <button type="button" onClick={reindex} className="inline-flex items-center gap-1 text-teal-700 hover:underline"
++                      title="Extraire le texte des fichiers déjà présents pour pouvoir chercher dans leur contenu"
++                      data-testid="gestion-stocks-reindex">
++                      <ScanText className="w-3.5 h-3.5" /> Indexer le contenu des fichiers existants
++                    </button>
++                  </div>
++                )}
++                {isAdmin && tagAdminOpen && (
++                  <div className="rounded-lg ring-1 ring-teal-200 bg-white p-3 space-y-2" data-testid="gestion-stocks-tag-admin">
++                    <p className="text-[11px] text-slate-600">
++                      Renommer un tag sur <strong>tous les fichiers de ce client</strong>. Si le nouveau nom existe déjà, les deux
++                      tags sont fusionnés. Laisser le nouveau nom vide retire le tag partout.
++                    </p>
++                    <div className="flex flex-wrap gap-2 items-center">
++                      <select value={renameFrom} onChange={(e) => setRenameFrom(e.target.value)}
++                        className="px-2 py-1.5 rounded ring-1 ring-slate-300 text-xs bg-white" data-testid="gestion-stocks-rename-from">
++                        <option value="">— Tag à renommer —</option>
++                        {knownTags.map((k) => <option key={k.tag} value={k.tag}>{k.tag} ({k.count})</option>)}
++                      </select>
++                      <span className="text-xs text-slate-400">→</span>
++                      <input value={renameTo} onChange={(e) => setRenameTo(e.target.value)} list="gestion-stocks-known-tags-admin"
++                        placeholder="Nouveau nom (vide = retirer)" className="px-2 py-1.5 rounded ring-1 ring-slate-300 text-xs"
++                        data-testid="gestion-stocks-rename-to" />
++                      <datalist id="gestion-stocks-known-tags-admin">{knownTags.map((k) => <option key={k.tag} value={k.tag} />)}</datalist>
++                      <button type="button" onClick={renameTag} disabled={!renameFrom}
++                        className="px-3 py-1.5 rounded text-xs font-medium text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50"
++                        data-testid="gestion-stocks-rename-apply">
++                        Appliquer
++                      </button>
++                    </div>
++                  </div>
++                )}
+                 {knownTags.length > 0 && (
+                   <div className="flex flex-wrap items-center gap-1" data-testid="gestion-stocks-tag-filter">
+                     <span className="text-[11px] text-slate-500 inline-flex items-center gap-1 mr-1"><Tag className="w-3 h-3" /> Filtrer :</span>
+@@ -533,7 +634,7 @@ export default function GestionStocks() {
+                 {!searching && searchResults.length > 0 && (
+                   <ul className="divide-y divide-slate-200 bg-white rounded-lg ring-1 ring-slate-200">
+                     {searchResults.map((file) => (
+-                      <R2FileRow key={file.key} file={file} onOpen={openFile} onChanged={handleFileChanged}
++                      <R2FileRow key={file.key} file={file} onOpen={openFile} onChanged={handleFileChanged} onDeleted={handleFileDeleted}
+                         knownTags={knownTags} aiEnabled={aiTagsEnabled} showFolder folderLabel={folderLabel} />
+                     ))}
+                   </ul>
+@@ -545,6 +646,28 @@ export default function GestionStocks() {
+               <p className="text-xs text-slate-500">Ouvrez un dossier pour consulter ou déposer des documents.</p>
+             )}
+ 
++            {/* Lot 23 — création d'un dossier (administration, ou compte autorisé à déposer) */}
++            {effectiveClientCode && !searchActive && !selectedFolder && canUpload && (
++              <div className="flex flex-wrap items-center gap-2" data-testid="gestion-stocks-new-folder">
++                {newFolderOpen ? (
++                  <>
++                    <input autoFocus value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} maxLength={60}
++                      onKeyDown={(e) => { if (e.key === "Enter") createFolder(); if (e.key === "Escape") setNewFolderOpen(false); }}
++                      placeholder="Nom du nouveau dossier" className="px-3 py-1.5 rounded-lg ring-1 ring-slate-300 text-sm bg-white"
++                      data-testid="gestion-stocks-new-folder-input" />
++                    <button type="button" onClick={createFolder} className="px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-teal-600 hover:bg-teal-700"
++                      data-testid="gestion-stocks-new-folder-create">Créer</button>
++                    <button type="button" onClick={() => setNewFolderOpen(false)} className="text-xs text-slate-500 hover:underline">Annuler</button>
++                  </>
++                ) : (
++                  <button type="button" onClick={() => setNewFolderOpen(true)}
++                    className="inline-flex items-center gap-1 text-xs text-teal-700 hover:underline" data-testid="gestion-stocks-new-folder-btn">
++                    <FolderPlus className="w-4 h-4" /> Nouveau dossier
++                  </button>
++                )}
++              </div>
++            )}
++
+             {effectiveClientCode && !searchActive && !selectedFolder && (
+               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4" data-testid="gestion-stocks-folder-grid">
+                 {rootFiles > 0 && (
+@@ -586,7 +709,7 @@ export default function GestionStocks() {
+                 </span>
+                 <span className="inline-flex items-center gap-1">
+                   <Folder className="w-4 h-4 text-sky-500 fill-sky-100" strokeWidth={1.5} />
+-                  Autre dossier présent dans le compartiment (créé par exemple depuis Cloudflare)
++                  Autre dossier présent dans le compartiment (créé avec « Nouveau dossier » ou depuis Cloudflare)
+                 </span>
+                 <span className="inline-flex items-center gap-1">
+                   <Folder className="w-4 h-4 text-slate-400 fill-slate-100" strokeWidth={1.5} />
+@@ -670,7 +793,7 @@ export default function GestionStocks() {
+                   <ul className="divide-y divide-slate-200 bg-white rounded-lg ring-1 ring-slate-200">
+                     {/* Lot 22 — chaque ligne affiche ses tags et, si autorisé, un éditeur en ligne */}
+                     {files.map((file) => (
+-                      <R2FileRow key={file.key} file={file} onOpen={openFile} onChanged={handleFileChanged}
++                      <R2FileRow key={file.key} file={file} onOpen={openFile} onChanged={handleFileChanged} onDeleted={handleFileDeleted}
+                         knownTags={knownTags} aiEnabled={aiTagsEnabled} />
+                     ))}
+                   </ul>
+diff --git a/frontend/src/pages/portal/UnifiedInbox.jsx b/frontend/src/pages/portal/UnifiedInbox.jsx
+index 8fb2b49..a16c62f 100644
+--- a/frontend/src/pages/portal/UnifiedInbox.jsx
++++ b/frontend/src/pages/portal/UnifiedInbox.jsx
+@@ -84,6 +84,8 @@ export default function UnifiedInbox() {
+         try {
+           await apiClient.post(`/me/inbox/mark-read/${t.channel}/${encodeURIComponent(t.peer_id)}${q}`);
+           load();
++          // Lot 23 — la sidebar et la cloche recomptent tout de suite les non-lus.
++          window.dispatchEvent(new Event("sawali:wa-messages-read"));
+         } catch { /* noop */ }
+       }
+     } catch (err) {
+-- 
+2.43.0
+

@@ -109,6 +109,43 @@ Concrètement :
   Claude via `EMERGENT_LLM_KEY`") — jamais une attribution du travail de
   rédaction ou de préparation du patch lui-même.
 
+## 7. Après chaque implémentation : résumé + où cliquer + recette
+
+Demandé explicitement par l'utilisateur (2026-09-26, Albarka lot 3). Après
+chaque nouvelle implémentation livrée (dans ma réponse, en français, en plus
+du patch + prompt), toujours donner :
+
+1. **Le résumé** des modules ajoutés ou modifiés, module par module : ce que
+   ça fait, qui y a accès, ce qui change pour l'utilisateur.
+2. **Le lien de la sidebar** où cliquer pour chaque module (nom exact du menu
+   et chemin, ex. « Cabinet → Formulaires (`/admin/forms`) »), côté
+   personnel et côté client.
+3. **La recette des lots concernés** : pour chaque module, qui se connecte
+   (quel compte de test), comment faire (étapes), et ce qu'il faut vérifier.
+   Commencer par les comptes à préparer, finir par la non-régression et
+   « si quelque chose ne marche pas ». Proposer ensuite la checklist à cocher
+   partagée (Artifact avec `db`), comme pour le lot 3 Albarka.
+
+## 8. Vocabulaire des rôles (Albarka)
+
+Fixé par l'utilisateur le 2026-09-26 :
+- **« admin »** = le compte `admin@sawalismartsystems.com`, super-utilisateur
+  de la plateforme. Quand l'utilisateur dit « admin », c'est ce compte, pas
+  le rôle `administrateur`. Réservé à admin : donner/retirer le rôle
+  Superviseur, supprimer un client, supprimer un superviseur.
+- **Superviseur** = rôle qui a tous les droits dans le portail (passe-droit
+  de `require_roles`), attribuable par admin seulement.
+- **Administrateur** = rôle métier ordinaire, règle d'origine.
+
+## 9. Informations promises par l'utilisateur : RAPPEL RÉGULIER
+
+L'utilisateur a demandé (2026-09-26) qu'on lui **rappelle régulièrement**
+les informations qu'il doit fournir. Liste tenue à jour dans
+`EN_ATTENTE_UTILISATEUR.md`. Tant qu'un point y est ouvert, **chaque message
+de fin de tâche** (livraison, vérification de publication) se termine par un
+court encadré « À me fournir quand tu peux » listant les points ouverts. On
+retire un point de la liste dès que l'information est reçue et utilisée.
+
 ## Origine de ces règles
 
 Établies le 2026-09 sur `Site-SawaliSmartSystems` (sawali-emergent),
