@@ -105,7 +105,11 @@ concerné.
   invitations personnelles par client, lien public + QR, réponses, stats par
   question, export CSV), copié par `forms-core/sync.sh` ; 10 tests.
 - **Albarka lot 3 — Formulaires + Caissier + administrateur réservé + espace
-  client** — **livré, en attente de publication** (base `b545832` de
+  client** — **publié et déployé en production le 2026-09-26** (commit
+  Emergent `2e0a021` + `3d6b60a`, arbre identique au patch hors `.emergent/` et
+  une ligne `.gitignore` ; albarka-bf.com : `/api/forms`, `/api/client-space/*`,
+  `/api/me/space` en 403 sans session au lieu de 404, bundle `main.d39a709b.js`)
+  (base `b545832` de
   `conflict_030926_0658` ; `albarka-portal-livraisons/albarka-portal-corrections_3_49aecac.patch`
   + `albarka-portal-prompt_3.md`, remplace 7387b59 et 7a62fdf non publiés ;
   dev `claude/forms-lot3` 9e9bb41 dans `ShuyahBF/albarka-portal`).
