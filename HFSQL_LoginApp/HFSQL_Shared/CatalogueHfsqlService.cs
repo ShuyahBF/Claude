@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Data.Odbc;
+using System.Data.Common;
 using System.IO;
 using System.Text.Json;
 using HFSQL_Shared.Modeles;
@@ -9,10 +9,18 @@ using HFSQL_Shared.Modeles;
 namespace HFSQL_Shared
 {
     /// <summary>
-    /// Parcourt le catalogue ODBC d'une connexion HFSQL déjà ouverte pour construire la liste
+    /// Parcourt le catalogue d'une connexion HFSQL déjà ouverte pour construire la liste
     /// des tables et de leurs colonnes, et permet de sauvegarder/recharger ce catalogue en JSON.
-    /// Partagé entre HFSQL_LoginApp (mise en cache du schéma au démarrage) et
-    /// HFSQL_SchemaExplorer (export en ligne de commande).
+    /// Partagé entre HFSQL_LoginApp (mise en cache du schéma au démarrage, connexion ODBC) et
+    /// HFSQL_SchemaExplorer (export en ligne de commande, connexion OLE-DB — voir
+    /// § demande utilisateur (24/09) : "crée la chaîne de connexion par rapport à ce que tu
+    /// sais déjà de Loois pour une connexion OLEDB").
+    ///
+    /// § GÉNÉRALISÉ (24/09) : `OdbcConnection` -> `System.Data.Common.DbConnection`, la
+    /// classe de BASE commune à `OdbcConnection` ET `OleDbConnection` — ce service n'utilise
+    /// que `GetSchema(...)`, disponible sur cette classe de base, donc AUCUN changement
+    /// nécessaire ici pour fonctionner avec les deux types de connexion, et AUCUN impact sur
+    /// HFSQL_LoginApp (qui continue de passer un OdbcConnection, valide par upcast implicite).
     /// </summary>
     public static class CatalogueHfsqlService
     {
@@ -24,7 +32,7 @@ namespace HFSQL_Shared
         /// <summary>
         /// Parcourt toutes les tables de la base et charge leurs colonnes.
         /// </summary>
-        public static List<InfoTable> ChargerCatalogueComplet(OdbcConnection connexionOuverte)
+        public static List<InfoTable> ChargerCatalogueComplet(DbConnection connexionOuverte)
         {
             var catalogue = new List<InfoTable>();
 
@@ -48,7 +56,7 @@ namespace HFSQL_Shared
         /// <summary>
         /// Charge la description des colonnes d'une table, triées dans leur ordre réel.
         /// </summary>
-        public static List<InfoColonne> ChargerColonnes(OdbcConnection connexionOuverte, string nomTable)
+        public static List<InfoColonne> ChargerColonnes(DbConnection connexionOuverte, string nomTable)
         {
             var colonnes = new List<InfoColonne>();
 

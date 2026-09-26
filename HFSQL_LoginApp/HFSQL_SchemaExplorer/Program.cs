@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Data.Odbc;
+using System.Data.OleDb;
 using System.IO;
 using System.Text.Json;
 using HFSQL_Shared;
@@ -10,13 +10,21 @@ using HFSQL_Shared.Modeles;
 namespace HFSQL_SchemaExplorer
 {
     /// <summary>
-    /// Petit outil console qui se connecte à un serveur HFSQL via ODBC (le même pilote et
-    /// la même chaîne de connexion que HFSQL_LoginApp) et permet d'explorer le catalogue :
-    /// lister les tables, lister les colonnes d'une table, et prévisualiser quelques lignes.
+    /// Petit outil console qui se connecte à un serveur HFSQL via OLE-DB (MÊME fournisseur
+    /// "HFSQLOLEDB" et MÊME format de chaîne de connexion que Loois — voir
+    /// ParametresApp.ChaineConnexionHFSQLPour dans le dépôt ShuyahBF/Loois) et permet
+    /// d'explorer le catalogue : lister les tables, lister les colonnes d'une table, et
+    /// prévisualiser quelques lignes.
+    ///
+    /// § demande utilisateur (24/09) : "crée la chaîne de connexion par rapport à ce que
+    /// tu sais déjà de Loois pour une connexion OLEDB" — REMPLACE la version précédente
+    /// (ODBC, System.Data.Odbc) — utilisé notamment pour découvrir la structure réelle
+    /// d'un espace de travail encore non pris en charge par Loois (ex. Aizenta), avant
+    /// d'écrire le moindre code dessus.
     ///
     /// Utile lorsqu'on n'a pas d'outil d'export (Centre de Contrôle HFSQL, etc.) sous la main
-    /// mais qu'on a un accès ODBC au serveur : ça permet de retrouver les vrais noms de table
-    /// et de colonnes à mettre dans appsettings.json de HFSQL_LoginApp.
+    /// mais qu'on a un accès réseau au serveur : ça permet de retrouver les vrais noms de
+    /// table et de colonnes.
     ///
     /// Exemples :
     ///   HFSQL_SchemaExplorer.exe
@@ -56,10 +64,9 @@ namespace HFSQL_SchemaExplorer
 
             try
             {
-                using var connexion = new OdbcConnection(chaineConnexion);
-                connexion.ConnectionTimeout = options.TimeoutSecondes;
+                using var connexion = new OleDbConnection(chaineConnexion);
 
-                Console.WriteLine($"Connexion à {options.Serveur}:{options.Port} (base \"{options.Base}\", pilote \"{options.Pilote}\")...");
+                Console.WriteLine($"Connexion à {options.Serveur}:{options.Port} (base \"{options.Base}\", fournisseur OLE-DB \"{options.ProviderOleDb}\")...");
                 connexion.Open();
                 Console.WriteLine("Connexion réussie.");
                 Console.WriteLine();
@@ -94,7 +101,7 @@ namespace HFSQL_SchemaExplorer
             }
         }
 
-        private static void ListerTables(OdbcConnection connexion)
+        private static void ListerTables(OleDbConnection connexion)
         {
             DataTable tables = connexion.GetSchema("Tables");
 
@@ -111,7 +118,7 @@ namespace HFSQL_SchemaExplorer
             }
         }
 
-        private static void ListerColonnes(OdbcConnection connexion, string table)
+        private static void ListerColonnes(OleDbConnection connexion, string table)
         {
             List<InfoColonne> colonnes = CatalogueHfsqlService.ChargerColonnes(connexion, table);
 
@@ -133,7 +140,7 @@ namespace HFSQL_SchemaExplorer
             }
         }
 
-        private static void ExporterCatalogueComplet(OdbcConnection connexion, string chemin)
+        private static void ExporterCatalogueComplet(OleDbConnection connexion, string chemin)
         {
             Console.WriteLine("Parcours de toutes les tables de la base...");
             List<InfoTable> catalogue = CatalogueHfsqlService.ChargerCatalogueComplet(connexion);
@@ -141,13 +148,15 @@ namespace HFSQL_SchemaExplorer
             Console.WriteLine($"{catalogue.Count} table(s) exportée(s) vers \"{chemin}\".");
         }
 
-        private static void AfficherExemple(OdbcConnection connexion, string table, int nombreLignes)
+        private static void AfficherExemple(OleDbConnection connexion, string table, int nombreLignes)
         {
             Console.WriteLine($"Exemple ({nombreLignes} ligne(s) max, colonnes sensibles masquées) :");
             Console.WriteLine();
 
-            using var commande = new OdbcCommand($"SELECT * FROM {table}", connexion);
-            using OdbcDataReader lecteur = commande.ExecuteReader();
+            // § noms de colonnes potentiellement avec espace/accents (voir les pièges HFSQL
+            // déjà rencontrés sur Loois) — crochets pour rester sûr, MÊME table entre crochets.
+            using var commande = new OleDbCommand($"SELECT * FROM [{table}]", connexion);
+            using OleDbDataReader lecteur = commande.ExecuteReader();
 
             var nomsColonnes = new string[lecteur.FieldCount];
             var colonneSensible = new bool[lecteur.FieldCount];
@@ -196,7 +205,8 @@ namespace HFSQL_SchemaExplorer
         private static void AfficherAide()
         {
             Console.WriteLine("""
-                HFSQL_SchemaExplorer - explore le catalogue d'un serveur HFSQL via ODBC.
+                HFSQL_SchemaExplorer - explore le catalogue d'un serveur HFSQL via OLE-DB
+                (même fournisseur et même format de chaîne de connexion que Loois).
 
                 Usage :
                   HFSQL_SchemaExplorer [--table <nom>] [--sample <n>] [--export <fichier>] [options de connexion]
@@ -212,10 +222,14 @@ namespace HFSQL_SchemaExplorer
                   --server <serveur>      Nom ou IP du serveur HFSQL
                   --port <port>           Port du serveur HFSQL (ex: 4900)
                   --database <nom>        Nom de la base HFSQL
-                  --driver <nom>          Nom du pilote ODBC (tel qu'il apparaît dans odbcad32.exe)
+                  --driver <nom>          Nom du fournisseur OLE-DB (ex: HFSQLOLEDB — le même que Loois)
                   --user <utilisateur>    Utilisateur de connexion
                   --password <mot de passe>
-                  --timeout <secondes>
+                  --file-password <mot de passe>
+                                          Mot de passe de PROTECTION DES FICHIERS (si vos fichiers
+                                          HFSQL sont protégés individuellement — optionnel, laissez
+                                          vide si vos fichiers n'ont pas de mot de passe séparé).
+                  --timeout <secondes>    Délai d'attente de connexion (par défaut 10s)
                   --help                  Affiche cette aide
 
                 Par défaut, les paramètres de connexion sont lus dans appsettings.json
@@ -233,9 +247,25 @@ namespace HFSQL_SchemaExplorer
         public string Serveur { get; set; } = "localhost";
         public int Port { get; set; } = 4900;
         public string Base { get; set; } = "MaBase";
-        public string Pilote { get; set; } = "HFSQL";
+
+        // § demande utilisateur (24/09) : "connexion OLEDB" — ce champ représentait le nom
+        // du PILOTE ODBC ; il représente désormais le nom du FOURNISSEUR OLE-DB, MÊME
+        // valeur par défaut que Loois (voir ParametresApp.NomProviderOleDb, "HFSQLOLEDB").
+        // Le nom de propriété et le nom de l'option "--driver" sont conservés tels quels
+        // (compatibilité avec des scripts existants), seul leur SENS change.
+        public string ProviderOleDb { get; set; } = "HFSQLOLEDB";
         public string Utilisateur { get; set; } = "admin";
         public string MotDePasse { get; set; } = "";
+
+        // § mot de passe de PROTECTION DES FICHIERS HFSQL (distinct du mot de passe de
+        // connexion ci-dessus) — MÊME "Extended Properties" que Loois
+        // (ChaineConnexionHFSQLPour), optionnel : laissé vide si non utilisé.
+        public string MotDePasseFichiers { get; set; } = "";
+
+        // § CORRECTIF : `OleDbConnection.ConnectionTimeout` est en LECTURE SEULE
+        // (contrairement à `OdbcConnection.ConnectionTimeout`, modifiable après
+        // construction dans la version précédente de cet outil) — le délai se règle
+        // désormais via la chaîne de connexion elle-même ("Connect Timeout=...").
         public int TimeoutSecondes { get; set; } = 10;
 
         public string? Table { get; set; }
@@ -243,13 +273,31 @@ namespace HFSQL_SchemaExplorer
         public string? CheminExport { get; set; }
         public bool AfficherAide { get; set; }
 
-        public string ConstruireChaineConnexion() =>
-            $"Driver={{{Pilote}}};" +
-            $"Server Name={Serveur};" +
-            $"Server Port={Port};" +
-            $"Database Name={Base};" +
-            $"UID={Utilisateur};" +
-            $"PWD={MotDePasse};";
+        /// <summary>
+        /// § MÊME format EXACT que Loois (ParametresApp.ChaineConnexionHFSQLPour) — voir
+        /// ShuyahBF/Loois, Loois/Configuration/ParametresApp.cs. Le mot de passe de
+        /// protection des fichiers utilise le joker "*" (s'applique à TOUS les fichiers de
+        /// la connexion — "option A, mono-fichier par connexion", confirmée par test réel
+        /// sur Loois) plutôt qu'un nom de fichier précis, puisque cet outil explore des
+        /// tables variées d'un appel à l'autre.
+        /// </summary>
+        public string ConstruireChaineConnexion()
+        {
+            var chaine =
+                $"Provider={ProviderOleDb};" +
+                $"Data Source={Serveur}:{Port};" +
+                $"Initial Catalog={Base};" +
+                $"User ID={Utilisateur};" +
+                $"Password={MotDePasse};" +
+                $"Connect Timeout={TimeoutSecondes};";
+
+            if (!string.IsNullOrEmpty(MotDePasseFichiers))
+            {
+                chaine += $"Extended Properties=\"Language=ISO-8859-1;Password=*:{MotDePasseFichiers}\";";
+            }
+
+            return chaine;
+        }
 
         public static Options Analyser(string[] args)
         {
@@ -293,7 +341,7 @@ namespace HFSQL_SchemaExplorer
                         break;
 
                     case "--driver":
-                        options.Pilote = ValeurSuivante(args, ref i, argument);
+                        options.ProviderOleDb = ValeurSuivante(args, ref i, argument);
                         break;
 
                     case "--user":
@@ -302,6 +350,10 @@ namespace HFSQL_SchemaExplorer
 
                     case "--password":
                         options.MotDePasse = ValeurSuivante(args, ref i, argument);
+                        break;
+
+                    case "--file-password":
+                        options.MotDePasseFichiers = ValeurSuivante(args, ref i, argument);
                         break;
 
                     case "--timeout":
@@ -342,9 +394,13 @@ namespace HFSQL_SchemaExplorer
                 options.Serveur = LireTexte(hfsql, "ServeurHFSQL", options.Serveur);
                 options.Port = LireEntier(hfsql, "PortHFSQL", options.Port);
                 options.Base = LireTexte(hfsql, "NomBaseDeDonnees", options.Base);
-                options.Pilote = LireTexte(hfsql, "NomPiloteODBC", options.Pilote);
+                // § "NomPiloteODBC" conservé tel quel dans le fichier de config (compatibilité)
+                // mais représente désormais le fournisseur OLE-DB — voir le commentaire sur
+                // la propriété ProviderOleDb ci-dessus.
+                options.ProviderOleDb = LireTexte(hfsql, "NomPiloteODBC", options.ProviderOleDb);
                 options.Utilisateur = LireTexte(hfsql, "UtilisateurConnexion", options.Utilisateur);
                 options.MotDePasse = LireTexte(hfsql, "MotDePasseConnexion", options.MotDePasse);
+                options.MotDePasseFichiers = LireTexte(hfsql, "MotDePasseFichiers", options.MotDePasseFichiers);
                 options.TimeoutSecondes = LireEntier(hfsql, "TimeoutConnexionSecondes", options.TimeoutSecondes);
             }
             catch (Exception ex)

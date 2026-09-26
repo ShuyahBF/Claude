@@ -56,3 +56,35 @@ for bundle in reader.iter_email_pdfs(query="has:attachment filename:pdf", max_re
 `iter_email_pdfs` est un générateur : à chaque itération, un seul email est traité, ses PDF sont téléchargés en mémoire (`bytes`) et fusionnés en un seul fichier si plusieurs, le texte en est extrait via `pypdf`, puis l'objet est renvoyé. Rien n'est conservé une fois l'itération suivante démarrée, sauf si vous stockez `bundle` vous-même.
 
 Le paramètre `query` accepte la syntaxe de recherche Gmail habituelle (`from:`, `after:`, `is:unread`, etc.).
+
+## 2026-09-24 — HFSQL_SchemaExplorer : passage à OLE-DB (même chaîne que Loois)
+
+"Pour 'HFSQL_SchemaExplorer' crée la chaîne de connexion par rapport à
+ce que tu sais déjà de Loois pour une connexion OLEDB" — REMPLACE la
+connexion ODBC (System.Data.Odbc) par OLE-DB (System.Data.OleDb), MÊME
+fournisseur (HFSQLOLEDB) et MÊME format de chaîne de connexion que
+Loois (ParametresApp.ChaineConnexionHFSQLPour, dépôt ShuyahBF/Loois).
+
+- HFSQL_SchemaExplorer.csproj : System.Data.Odbc -> System.Data.OleDb,
+  TargetFramework net8.0 -> net8.0-windows (obligatoire, OleDb
+  n'existe que sous Windows).
+- Program.cs : réécrit intégralement — OleDbConnection/OleDbCommand/OleDbDataReader,
+  connexion construite EXACTEMENT comme Loois, y compris le mot de
+  passe de protection des fichiers optionnel (--file-password,
+  joker "*" — "option A, mono-fichier par connexion" confirmée sur
+  Loois). --timeout restauré via la chaîne de connexion elle-même
+  (Connect Timeout=...) — OleDbConnection.ConnectionTimeout est en
+  LECTURE SEULE, contrairement à OdbcConnection.ConnectionTimeout
+  utilisé par l'ancienne version.
+- HFSQL_Shared/CatalogueHfsqlService.cs : signatures GÉNÉRALISÉES de
+  OdbcConnection vers System.Data.Common.DbConnection (classe de base
+  commune aux deux types de connexion) — AUCUN changement de logique
+  interne (n'utilise que GetSchema(...), disponible sur la classe de
+  base) — donc AUCUN impact sur HFSQL_LoginApp, qui continue de passer
+  un OdbcConnection sans modification (upcast implicite valide).
+
+Usage inchangé (mêmes options --server/--port/--database/--table/--sample/--export),
+sauf --driver qui représente désormais le fournisseur OLE-DB
+(HFSQLOLEDB par défaut) plutôt que le pilote ODBC — nom de l'option
+conservé pour compatibilité avec d'éventuels scripts existants, seul
+son SENS change.

@@ -2,7 +2,14 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <!-- § demande utilisateur (24/09) : "crée la chaîne de connexion par
+         rapport à ce que tu sais déjà de Loois pour une connexion
+         OLEDB" — REMPLACE ODBC (System.Data.Odbc) par OLE-DB
+         (System.Data.OleDb), qui n'existe QUE sous Windows —
+         TargetFramework passé à net8.0-windows en conséquence
+         (obligatoire, System.Data.OleDb lève PlatformNotSupportedException
+         ailleurs). -->
+    <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>HFSQL_SchemaExplorer</RootNamespace>
@@ -11,8 +18,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Fournit System.Data.Odbc, utilisé pour interroger le catalogue ODBC du serveur HFSQL. -->
-    <PackageReference Include="System.Data.Odbc" Version="8.0.1" />
+    <!-- Fournit System.Data.OleDb — MÊME fournisseur (HFSQLOLEDB) et
+         MÊME format de chaîne de connexion que Loois (voir
+         ParametresApp.ChaineConnexionHFSQLPour). -->
+    <PackageReference Include="System.Data.OleDb" Version="8.0.1" />
   </ItemGroup>
 
   <ItemGroup>
