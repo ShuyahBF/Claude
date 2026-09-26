@@ -146,8 +146,9 @@ concerné.
   par le superviseur (trace deleted_users) ; « Créer comptes de test » (+alias
   e-mail, invisibles sauf superviseur, exclus des envois de masse) ;
   Paramètres superviseur seul (RGPD compris). 57 tests autonomes + navigateur OK.
-- **Sawali lot 25 — droits d'accès alignés** — **livré, en attente de
-  publication** (base `399c63f` = lot 24 publié ;
+- **Sawali lot 25 — droits d'accès alignés** — **déployé en production le
+  2026-09-26 (bundle main.3c611dee), PAS encore enregistré sur GitHub**
+  (conflict_230926_1008 toujours à 399c63f) (base `399c63f` = lot 24 publié ;
   `sawali-portal-livraisons/sawali-portal-corrections_25_0f62076.patch` +
   `sawali-portal-prompt_25.md` ; dev `claude/lot25` 5bb5aac). Traducteur →
   /portal/i18n, moderateur/moderator acceptés partout, Registre des erreurs
@@ -157,7 +158,8 @@ concerné.
   Voice Studio grisé, « Générer l'image », liste noire anti-verrouillage ;
   16 tests nouveaux, 67 autonomes OK, build OK.
 - **Albarka lot 5 — design SAWALI sur tout le portail + corrections de droits**
-  — **livré, en attente de publication** (base `36d9fc1` = lot 4 publié ;
+  — **publié le 2026-09-26** (GitHub d30e280→37de42f, code identique hors
+  `.emergent`/`.gitignore` ; production v2026.5) (base `36d9fc1` = lot 4 publié ;
   `albarka-portal-livraisons/albarka-portal-corrections_5_64982f0.patch` +
   `albarka-portal-prompt_5.md`, remplace 17d196a non publié ; dev
   `claude/albarka-lot5` 477001c). Corrections : gestion du personnel réservée
