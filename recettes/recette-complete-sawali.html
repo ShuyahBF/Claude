@@ -95,7 +95,7 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Sawali Smart Systems · sawalismartsystems.com · lot 24</div>
+    <div class="eyebrow">Sawali Smart Systems · sawalismartsystems.com · lot 25</div>
     <h1>Recette complète Sawali</h1>
     <p class="lead">Tous les modules de la plateforme : l'administration (/admin) et l'espace client (/portal), avec les variantes de menu par métier (pharmacie, fabricant, caisse, GRH…). Pour chaque point : faites l'action, puis cochez <b>OK</b> ou <b>Problème</b> (avec le compte utilisé et le message exact). Toute l'équipe voit les coches en direct. Cette liste sert de référence avant chaque mise en production.</p>
   </header>
@@ -1578,6 +1578,73 @@ const SECTIONS = [
 "expect": [
 "Les demandes s'affichent (ou « Aucune demande en attente — tout est à jour 🎉 ») et le badge Paramètres de la barre latérale est cohérent.",
 "L'historique indique qui a changé quelle clé et quand, sans jamais afficher la valeur."
+]
+}
+],
+"part": "Administration"
+},
+{
+"id": "a-lot25",
+"title": "Corrections de droits (lot 25)",
+"who": "Plusieurs écrans — visible par : selon le rôle",
+"prep": "Comptes : Traducteur (suivi), Modérateur (rôle système), client standard, admin autre que le super-admin, Comptable suivi sans droit Caisse, suivi d'un client Fabricant.",
+"items": [
+{
+"id": "a-lot25-1",
+"do": "Se connecter en Traducteur (utilisateur suivi).",
+"expect": [
+"Arrivée sur Régionalisation (/portal/i18n) ; une traduction de sa langue s'enregistre."
+]
+},
+{
+"id": "a-lot25-2",
+"do": "Se connecter avec un compte au rôle système Modérateur.",
+"expect": [
+"Brochures & Guides, Liluvine PRO — Historique et Registre des erreurs visibles et accessibles."
+]
+},
+{
+"id": "a-lot25-3",
+"do": "Se connecter avec un client standard.",
+"expect": [
+"Plus de lien « Registre des erreurs »."
+]
+},
+{
+"id": "a-lot25-4",
+"do": "Admin → Clients → choisir le rôle « Administrateur plateforme (accès complet) ».",
+"expect": [
+"Confirmation demandée, puis encadré d'avertissement."
+]
+},
+{
+"id": "a-lot25-5",
+"do": "Avec un admin qui n'est pas le super-admin, créer un lien crypté.",
+"expect": [
+"Refus « réservée au super-administrateur » ; le super-admin, lui, y arrive."
+]
+},
+{
+"id": "a-lot25-6",
+"do": "Comptable suivi sans droit Caisse ; suivi d'un client Fabricant.",
+"expect": [
+"Comptable : pas de lien Caisse/Facturation (GRH reste).",
+"Suivi Fabricant : menu Fabricant."
+]
+},
+{
+"id": "a-lot25-7",
+"do": "Blacklist IP : ajouter sa propre adresse IP.",
+"expect": [
+"Ajout refusé avec le message « cette entrée contient votre propre adresse IP »."
+]
+},
+{
+"id": "a-lot25-8",
+"do": "Désactiver « Génération vocale IA » d'un client ; ouvrir Story Studio.",
+"expect": [
+"Voice Studio grisé pour ce client.",
+"Bouton « Générer l'image »."
 ]
 }
 ],

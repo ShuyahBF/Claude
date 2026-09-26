@@ -146,10 +146,27 @@ concerné.
   par le superviseur (trace deleted_users) ; « Créer comptes de test » (+alias
   e-mail, invisibles sauf superviseur, exclus des envois de masse) ;
   Paramètres superviseur seul (RGPD compris). 57 tests autonomes + navigateur OK.
-- **Albarka lot 5 — design SAWALI sur tout le portail** — **livré, en attente
-  de publication** (base `36d9fc1` = lot 4 publié ;
-  `albarka-portal-livraisons/albarka-portal-corrections_5_17d196a.patch` +
-  `albarka-portal-prompt_5.md` ; dev `claude/albarka-lot5` ffc0307). Thème
+- **Sawali lot 25 — droits d'accès alignés** — **livré, en attente de
+  publication** (base `399c63f` = lot 24 publié ;
+  `sawali-portal-livraisons/sawali-portal-corrections_25_0f62076.patch` +
+  `sawali-portal-prompt_25.md` ; dev `claude/lot25` 5bb5aac). Traducteur →
+  /portal/i18n, moderateur/moderator acceptés partout, Registre des erreurs
+  aligné, « Administrateur plateforme (accès complet) », liens cryptés
+  super-admin côté serveur, lien Caisse aligné, business_type du parent pour
+  les suivis, Documentation/Formulaires toujours visibles aux créateurs,
+  Voice Studio grisé, « Générer l'image », liste noire anti-verrouillage ;
+  16 tests nouveaux, 67 autonomes OK, build OK.
+- **Albarka lot 5 — design SAWALI sur tout le portail + corrections de droits**
+  — **livré, en attente de publication** (base `36d9fc1` = lot 4 publié ;
+  `albarka-portal-livraisons/albarka-portal-corrections_5_64982f0.patch` +
+  `albarka-portal-prompt_5.md`, remplace 17d196a non publié ; dev
+  `claude/albarka-lot5` 477001c). Corrections : gestion du personnel réservée
+  à Direction/DG/Administrateur/Superviseur (faille API fermée), Administrateur
+  attribuable par Superviseur et admin, contrat de test + comptes de test
+  visibles entre eux, Caisse protégée par rôle côté serveur, menus DG et
+  Administrateur, Personnels pour l'adresse désignée, page d'arrivée selon le
+  menu, lien Rapports en double, modules fermés masqués au tableau de bord
+  client ; 63 tests autonomes. Thème
   « portail » (classe `portal-ui` sur body : Space Grotesk + Geist, champs,
   cases, tableaux, cartes, menu à pastille pleine), briques shadcn restylées
   (bouton, champ, zone de texte, étiquette, case, interrupteur, liste, tableau,

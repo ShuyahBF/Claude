@@ -1,0 +1,894 @@
+From 0f6207643ca5377cec6d782b5df614412f569702 Mon Sep 17 00:00:00 2001
+From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
+Date: Sat, 26 Sep 2026 05:10:46 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20lot=2025=20=E2=80=94=20droits=20d'acc?=
+ =?UTF-8?q?=C3=A8s=20align=C3=A9s=20(traducteur,=20mod=C3=A9rateur,=20regi?=
+ =?UTF-8?q?stre,=20caisse,=20liens=20crypt=C3=A9s,=20liste=20noire=20IP)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- J'ouvre la page Régionalisation au Traducteur via /portal/i18n (lien, redirection de connexion et route portail).
+- J'accepte les deux orthographes du rôle modérateur (moderateur / moderator) côté serveur et côté écran.
+- Je n'affiche le Registre des erreurs qu'aux rôles acceptés par le serveur (admin, superviseur, modérateur système).
+- Je renomme « Admin (client) » en « Administrateur plateforme (accès complet) » avec avertissement et confirmation.
+- Je réserve la création de liens cryptés au super-admin SAWALI côté serveur.
+- Je masque le lien Caisse quand la page le refuserait (même condition que la page).
+- Je transmets le profil Fabricant du client parent aux utilisateurs suivis (/auth/me et connexion).
+- Je garde Documentation / Formulaires visibles pour les comptes qui peuvent créer le premier élément.
+- Je grise Voice Studio sans la fonctionnalité ai_voice_gen et corrige « Générer l'image ».
+- Je refuse de bloquer sa propre IP et le super-admin n'est jamais bloqué par la liste noire.
+- J'ajoute des tests autonomes (MongoDB simulé) pour ces règles.
+---
+ backend/auth.py                               |   4 +-
+ backend/routes/auth.py                        |  23 +-
+ backend/routes/internal_chat.py               |   3 +-
+ backend/routes/liluvine_pro.py                |   6 +-
+ backend/routes/smart_comm_senders.py          |   3 +-
+ backend/routes/vidal.py                       |   3 +-
+ backend/routes/wa_otp_login_9o.py             |   6 +-
+ backend/server.py                             |  76 +++++-
+ .../tests/test_roles_links_blacklist_lot25.py | 228 ++++++++++++++++++
+ frontend/src/App.js                           |   5 +
+ frontend/src/components/ContactGroupChips.jsx |   3 +-
+ frontend/src/components/PortalLayout.jsx      |  52 +++-
+ frontend/src/components/TicketsBubble.jsx     |   3 +-
+ frontend/src/pages/admin/AdminClients.jsx     |  32 ++-
+ .../src/pages/admin/AdminLiluvineHistory.jsx  |   3 +-
+ frontend/src/pages/admin/StoryStudio.jsx      |   4 +-
+ frontend/src/pages/auth/Login.jsx             |   4 +-
+ frontend/src/pages/portal/Contacts.jsx        |   3 +-
+ frontend/src/pages/portal/LiluvinePro.jsx     |   3 +-
+ 19 files changed, 423 insertions(+), 41 deletions(-)
+ create mode 100644 backend/tests/test_roles_links_blacklist_lot25.py
+
+diff --git a/backend/auth.py b/backend/auth.py
+index 2625f74..ff49964 100644
+--- a/backend/auth.py
++++ b/backend/auth.py
+@@ -117,6 +117,8 @@ async def get_current_admin(user: dict = Depends(get_current_user)) -> dict:
+ 
+ async def get_current_admin_or_moderator(user: dict = Depends(get_current_user)) -> dict:
+     """Iter43-fix22 — Accès pour les rôles admin / moderator / superviseur."""
+-    if user.get("role") not in {"admin", "moderator", "superviseur"}:
++    # Lot 25 — Le formulaire Clients enregistre « moderateur » (orthographe
++    # française) : on accepte les deux orthographes du rôle modérateur.
++    if user.get("role") not in {"admin", "moderator", "moderateur", "superviseur"}:
+         raise HTTPException(status_code=403, detail="Accès réservé aux modérateurs, superviseurs et administrateurs")
+     return user
+diff --git a/backend/routes/auth.py b/backend/routes/auth.py
+index 2e7c963..28c67fd 100644
+--- a/backend/routes/auth.py
++++ b/backend/routes/auth.py
+@@ -59,6 +59,23 @@ def attach_auth_routes(
+     # 2026-02 fork (P3a) — Optional login automation hook. Fire-and-forget.
+     emit_login_event = helpers.get("emit_login_event")
+ 
++    async def _public_with_tenant_profile(user: dict) -> dict:
++        """Lot 25 — Profil public + `business_type` du client parent.
++
++        Un utilisateur suivi (tracked) n'a pas son propre `business_type` : le
++        profil (ex. « fabricant ») est enregistré sur le compte du client parent.
++        On renvoie donc la valeur du parent, comme routes/production.py le fait
++        déjà, pour que la sidebar du portail affiche le bon menu.
++        """
++        pub = _to_user_public(user)
++        # Seuls les utilisateurs suivis héritent du profil de leur client parent.
++        is_tracked = bool(user.get("tracked_user_id") or user.get("tracked_role"))
++        parent_id = user.get("parent_client_id") or user.get("client_id")
++        if is_tracked and parent_id and parent_id != user.get("id"):
++            parent = await db.users.find_one({"id": parent_id}, {"_id": 0, "business_type": 1})
++            pub["business_type"] = (parent or {}).get("business_type") or ""
++        return pub
++
+     @api.post("/auth/login", response_model=LoginResponse, tags=["Authentification"])
+     async def auth_login(payload: LoginRequest, request: Request):
+         user = await db.users.find_one({"email": payload.email.lower()})
+@@ -133,7 +150,8 @@ def attach_auth_routes(
+                 asyncio.create_task(emit_login_event(user, request))
+             except Exception:  # noqa: BLE001
+                 pass
+-        return AuthTokenResponse(access_token=token, user=_to_user_public(user))
++        # Lot 25 — Profil (business_type) du client parent transmis aux utilisateurs suivis.
++        return AuthTokenResponse(access_token=token, user=await _public_with_tenant_profile(user))
+ 
+     @api.post("/auth/resend-otp", tags=["Authentification"])
+     async def auth_resend_otp(session_token: str):
+@@ -160,7 +178,8 @@ def attach_auth_routes(
+ 
+     @api.get("/auth/me", response_model=UserPublic, tags=["Authentification"])
+     async def auth_me(user: dict = Depends(get_current_user)):
+-        return _to_user_public(user)
++        # Lot 25 — Profil (business_type) du client parent transmis aux utilisateurs suivis.
++        return await _public_with_tenant_profile(user)
+ 
+     @api.post("/auth/change-password", tags=["Authentification"])
+     async def auth_change_password(
+diff --git a/backend/routes/internal_chat.py b/backend/routes/internal_chat.py
+index 092081e..81f32e4 100644
+--- a/backend/routes/internal_chat.py
++++ b/backend/routes/internal_chat.py
+@@ -825,7 +825,8 @@ def make_router(*, db, get_current_user, decode_token):
+         team_ids: List[str] = []
+         cursor = db.users.find(
+             {
+-                "role": {"$in": ["admin", "superviseur", "moderateur"]},
++                # Lot 25 — Les deux orthographes du rôle modérateur sont incluses.
++                "role": {"$in": ["admin", "superviseur", "moderateur", "moderator"]},
+                 "account_status": "active",
+             },
+             {"_id": 0, "id": 1},
+diff --git a/backend/routes/liluvine_pro.py b/backend/routes/liluvine_pro.py
+index f7d4b88..9056e19 100644
+--- a/backend/routes/liluvine_pro.py
++++ b/backend/routes/liluvine_pro.py
+@@ -622,7 +622,8 @@ def setup_liluvine_pro_routes(*, db, api, get_current_user, wa_send_text=None):
+         try:
+             sess = await db.liluvine_pro_sessions.find_one({"id": session_id}, {"_id": 0, "user_label": 1, "title": 1})
+             admins = db.users.find(
+-                {"role": {"$in": ["admin", "superviseur", "moderateur"]},
++                # Lot 25 — Les deux orthographes du rôle modérateur sont incluses.
++                {"role": {"$in": ["admin", "superviseur", "moderateur", "moderator"]},
+                  "$or": [{"id": scope_uid}, {"parent_client_id": scope_uid}, {"client_id": scope_uid}]},
+                 {"_id": 0, "email": 1},
+             )
+@@ -1684,7 +1685,8 @@ def setup_liluvine_pro_routes(*, db, api, get_current_user, wa_send_text=None):
+     # `duration_minutes` (default 120).
+     # S-iter39b — Include "moderation" (tracked_role value stored in DB) and
+     # "administrateur" so tracked-Moderation/Administrateur users can take over.
+-    _TAKEOVER_ROLES = {"admin", "superviseur", "moderateur", "moderation", "administrateur"}
++    # Lot 25 — « moderator » ajouté : autre orthographe du rôle système modérateur.
++    _TAKEOVER_ROLES = {"admin", "superviseur", "moderateur", "moderator", "moderation", "administrateur"}
+ 
+     def _can_takeover(u: Dict[str, Any]) -> bool:
+         if (u.get("role") or "") in _TAKEOVER_ROLES:
+diff --git a/backend/routes/smart_comm_senders.py b/backend/routes/smart_comm_senders.py
+index b36583b..7d09843 100644
+--- a/backend/routes/smart_comm_senders.py
++++ b/backend/routes/smart_comm_senders.py
+@@ -39,7 +39,8 @@ def _tenant_id_for(user: dict) -> str:
+ 
+ 
+ def _require_channel_operator(user: dict) -> None:
+-    if user.get("role") not in ("admin", "superviseur", "moderator", "marketing", "communication"):
++    # Lot 25 — Rôle modérateur accepté sous ses deux orthographes (moderator / moderateur).
++    if user.get("role") not in ("admin", "superviseur", "moderator", "moderateur", "marketing", "communication"):
+         raise HTTPException(status_code=403, detail="Réservé aux rôles admin / superviseur / marketing")
+ 
+ 
+diff --git a/backend/routes/vidal.py b/backend/routes/vidal.py
+index 469f7b9..9c93f56 100644
+--- a/backend/routes/vidal.py
++++ b/backend/routes/vidal.py
+@@ -250,7 +250,8 @@ async def _resolve_tenant_vidal(db, user: Dict[str, Any]) -> Dict[str, Any]:
+     """
+     role = user.get("role")
+     scope_uid = user.get("id")
+-    if role in ("client", "tracked", "moderateur", "regulateur", "pharmacien", "medecin", "editeur_vidal"):
++    # Lot 25 — « moderator » ajouté : autre orthographe du rôle modérateur.
++    if role in ("client", "tracked", "moderateur", "moderator", "regulateur", "pharmacien", "medecin", "editeur_vidal"):
+         scope_uid = user.get("parent_client_id") or user.get("client_id") or scope_uid
+     tenant = await db.users.find_one({"id": scope_uid}, {"_id": 0, "features": 1, "tenant_type": 1}) or {}
+     feats = tenant.get("features") or {}
+diff --git a/backend/routes/wa_otp_login_9o.py b/backend/routes/wa_otp_login_9o.py
+index 0f75bcb..8addeee 100644
+--- a/backend/routes/wa_otp_login_9o.py
++++ b/backend/routes/wa_otp_login_9o.py
+@@ -303,7 +303,8 @@ def setup_wa_otp_routes(app, db, get_current_user, create_jwt_token, hash_passwo
+ 
+     @api.get("/admin/wa-demo/recent", tags=["Admin — Bonus"])
+     async def admin_wa_demo_recent(limit: int = 5, user: dict = Depends(get_current_user)):
+-        if user.get("role") not in ("admin", "superviseur", "moderateur"):
++        # Lot 25 — Rôle modérateur accepté sous ses deux orthographes (moderateur / moderator).
++        if user.get("role") not in ("admin", "superviseur", "moderateur", "moderator"):
+             raise HTTPException(status_code=403, detail="Réservé aux admins/modérateurs")
+         cap = min(max(limit, 1), 50)
+         items = await db.users.find(
+@@ -317,7 +318,8 @@ def setup_wa_otp_routes(app, db, get_current_user, create_jwt_token, hash_passwo
+ 
+     @api.post("/admin/wa-demo/{user_id}/mark-seen", tags=["Admin — Bonus"])
+     async def mark_seen(user_id: str, user: dict = Depends(get_current_user)):
+-        if user.get("role") not in ("admin", "superviseur", "moderateur"):
++        # Lot 25 — Rôle modérateur accepté sous ses deux orthographes (moderateur / moderator).
++        if user.get("role") not in ("admin", "superviseur", "moderateur", "moderator"):
+             raise HTTPException(status_code=403, detail="Réservé aux admins/modérateurs")
+         r = await db.users.update_one(
+             {"id": user_id, "source": "wa_otp_login"},
+diff --git a/backend/server.py b/backend/server.py
+index d3a07a3..6495107 100644
+--- a/backend/server.py
++++ b/backend/server.py
+@@ -283,6 +283,40 @@ def _client_ip_from_request(request) -> str:
+     return request.client.host if request.client else ""
+ 
+ 
++def _ip_in_cidr(ip: str, cidr: str) -> bool:
++    """Lot 25 — Vrai si l'adresse IP `ip` fait partie de l'entrée `cidr`
++    (IP seule ou plage CIDR). Renvoie Faux si l'une des deux est invalide."""
++    try:
++        ip_obj = ipaddress.ip_address((ip or "").strip())
++        cidr = (cidr or "").strip()
++        # Même conversion que _reload_blacklist : une IP seule devient /32 (IPv4) ou /128 (IPv6).
++        net = ipaddress.ip_network(cidr if "/" in cidr else (f"{cidr}/32" if "." in cidr else f"{cidr}/128"), strict=False)
++        return ip_obj in net
++    except (ValueError, TypeError):
++        return False
++
++
++async def _request_is_super_admin(request) -> bool:
++    """Lot 25 — Vrai si la requête porte le jeton (Bearer) du super-admin SAWALI.
++
++    Utilisé par le filtre IP : le super-admin n'est JAMAIS bloqué par la liste
++    noire, pour qu'il puisse toujours corriger une erreur de blocage.
++    En cas de jeton absent, invalide ou expiré → Faux (aucune exception)."""
++    auth_header = request.headers.get("authorization") or ""
++    if not auth_header.startswith("Bearer "):
++        return False
++    try:
++        from auth import decode_token  # import local, comme ailleurs dans ce fichier
++        token_data = decode_token(auth_header.split(" ", 1)[1])
++        user_id = (token_data or {}).get("sub")
++        if not user_id:
++            return False
++        u = await db.users.find_one({"id": user_id}, {"_id": 0, "email": 1})
++        return bool(u) and _is_super_admin(u)
++    except Exception:  # noqa: BLE001
++        return False
++
++
+ @app.middleware("http")
+ async def ip_blacklist_middleware(request, call_next):
+     # Apply only to /api/* (the public site files & assets are served separately)
+@@ -299,6 +333,10 @@ async def ip_blacklist_middleware(request, call_next):
+                 ip_obj = ipaddress.ip_address(client_ip)
+                 for net in _BLACKLIST_CACHE["nets"]:
+                     if ip_obj in net:
++                        # Lot 25 — Le super-admin SAWALI n'est jamais bloqué (vérifié
++                        # seulement quand l'IP est bloquée, donc sans coût pour les autres).
++                        if await _request_is_super_admin(request):
++                            break
+                         return JSONResponse(
+                             status_code=403,
+                             content={"detail": "Adresse IP bloquée par l'administrateur."},
+@@ -3271,7 +3309,8 @@ async def me_access_summary(user: dict = Depends(get_current_user)):
+     current user, respecting `access_client_ids` gates and tenant scope. Only
+     returns booleans (has_XXX)."""
+     # Super-admin / admin / superviseur : always visible.
+-    if _is_super_admin(user) or (user.get("role") in ("admin", "superviseur", "moderator")):
++    # Lot 25 — Rôle modérateur accepté sous ses deux orthographes (moderateur / moderator).
++    if _is_super_admin(user) or (user.get("role") in ("admin", "superviseur", "moderator", "moderateur")):
+         return {"has_documents": True, "has_formations": True, "has_forms": True}
+ 
+     # Resolve the tenant scope.
+@@ -3976,13 +4015,15 @@ async def me_access_clients_list(user: dict = Depends(get_current_user)):
+     Cela évite le 403 silencieux subi par le compte `support@` en production
+     (tracked-Administrateur → sidebar admin OK mais `/admin/clients` refusait).
+     """
+-    role_ok = user.get("role") in ("admin", "superviseur", "moderateur")
++    # Lot 25 — Rôle modérateur accepté sous ses deux orthographes (moderateur / moderator).
++    role_ok = user.get("role") in ("admin", "superviseur", "moderateur", "moderator")
+     tracked_ok = user.get("tracked_role") in ELEVATED_TRACKED_ROLES
+     if not (role_ok or tracked_ok):
+         raise HTTPException(status_code=403, detail="Accès réservé aux administrateurs / superviseurs / modérateurs")
+     # Return the same shape /admin/clients uses so the FE can swap without changes.
+     items = await db.users.find(
+-        {"role": {"$in": ["client", "superviseur", "admin", "moderateur"]},
++        # Lot 25 — Les deux orthographes du rôle modérateur sont listées.
++        {"role": {"$in": ["client", "superviseur", "admin", "moderateur", "moderator"]},
+          "email": {"$nin": [SUPER_ADMIN_EMAIL]}},
+         {"_id": 0, "id": 1, "email": 1, "full_name": 1, "company": 1, "role": 1},
+     ).sort("full_name", 1).to_list(1000)
+@@ -4017,8 +4058,9 @@ async def admin_list_clients(
+         # medecin, editeur_vidal) pour éviter qu'un client ne disparaisse de la
+         # liste après changement de rôle. La pill "Autres rôles" côté UI permet
+         # de filtrer si nécessaire.
++        # Lot 25 — « moderator » ajouté : même rôle que « moderateur », autre orthographe.
+         roles = [
+-            "client", "superviseur", "admin", "moderateur",
++            "client", "superviseur", "admin", "moderateur", "moderator",
+             "regulateur", "pharmacien", "medecin", "editeur_vidal",
+         ]
+     query: Dict[str, Any] = {
+@@ -4251,7 +4293,8 @@ def _normalize_features(raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+ 
+ 
+ # ---------- RGPD anonymization (per-client toggles inherited by tracked users) ----------
+-RGPD_PRIVILEGED_ROLES = {"admin", "superviseur", "moderateur"}
++# Lot 25 — Rôle modérateur accepté sous ses deux orthographes (moderateur / moderator).
++RGPD_PRIVILEGED_ROLES = {"admin", "superviseur", "moderateur", "moderator"}
+ 
+ 
+ def _anon_name(name: Optional[str]) -> Optional[str]:
+@@ -8050,7 +8093,8 @@ async def admin_update_client(
+             if raw_link == client_id:
+                 raise HTTPException(status_code=400, detail="Un compte ne peut pas être lié à lui-même")
+             canon = await db.users.find_one(
+-                {"id": raw_link, "role": {"$in": ["admin", "superviseur", "moderateur", "client"]}},
++                # Lot 25 — Les deux orthographes du rôle modérateur sont acceptées.
++                {"id": raw_link, "role": {"$in": ["admin", "superviseur", "moderateur", "moderator", "client"]}},
+                 {"_id": 0, "id": 1},
+             )
+             if not canon:
+@@ -10474,7 +10518,7 @@ async def admin_list_blacklist(_: dict = Depends(get_current_admin)):
+ 
+ 
+ @api.post("/admin/blacklisted-ips", tags=["Admin"])
+-async def admin_add_blacklist(payload: BlacklistedIPCreate, _: dict = Depends(get_current_admin)):
++async def admin_add_blacklist(payload: BlacklistedIPCreate, request: Request, _: dict = Depends(get_current_admin)):
+     cidr = (payload.cidr or "").strip()
+     if not cidr:
+         raise HTTPException(status_code=400, detail="IP/CIDR requis")
+@@ -10482,6 +10526,15 @@ async def admin_add_blacklist(payload: BlacklistedIPCreate, _: dict = Depends(ge
+         ipaddress.ip_network(cidr if "/" in cidr else (f"{cidr}/32" if "." in cidr else f"{cidr}/128"), strict=False)
+     except ValueError as exc:
+         raise HTTPException(status_code=400, detail=f"IP/CIDR invalide : {exc}") from exc
++    # Lot 25 — Anti-verrouillage : on refuse une entrée qui contient l'adresse IP
++    # de la personne qui fait la demande (sinon tout /api lui serait refusé).
++    current_ip = _client_ip_from_request(request)
++    if current_ip and _ip_in_cidr(current_ip, cidr):
++        raise HTTPException(
++            status_code=400,
++            detail=f"Impossible de bloquer {cidr} : cette entrée contient votre propre adresse IP ({current_ip}). "
++                   "Vous perdriez l'accès à l'application.",
++        )
+     existing = await db.blacklisted_ips.find_one({"cidr": cidr})
+     if existing:
+         raise HTTPException(status_code=409, detail="Cette entrée existe déjà")
+@@ -21046,7 +21099,11 @@ async def integrations_link_actions(_: dict = Depends(get_current_admin)):
+ 
+ 
+ @api.post("/integrations/build-link", tags=["Admin"])
+-async def integrations_build_link(request: Request, payload: BuildLinkRequest, _: dict = Depends(get_current_admin)):
++async def integrations_build_link(request: Request, payload: BuildLinkRequest, user: dict = Depends(get_current_admin)):
++    # Lot 25 — L'écran « Liens cryptés » est réservé au super-admin SAWALI
++    # (SUPER_ADMIN_EMAIL) : un simple compte admin ne peut plus fabriquer de lien.
++    if not _is_super_admin(user):
++        raise HTTPException(status_code=403, detail="Création de liens cryptés réservée au super-administrateur SAWALI")
+     action = (payload.action or "").strip().lower()
+     if action not in LINK_ACTIONS:
+         raise HTTPException(status_code=400, detail=f"Action inconnue. Options : {', '.join(LINK_ACTIONS.keys())}")
+@@ -25033,7 +25090,8 @@ async def _build_welcome_notes_kpis(user: dict) -> Dict[str, Any]:
+ # Iter38r-fix9o (Item 8) — Welcome modal widget: recent WA-OTP demo signups.
+ # Admin/superviseur/moderateur only. Returns up to N items + unseen badge.
+ async def _build_wa_demo_recent_stats(user: dict) -> Optional[Dict[str, Any]]:
+-    if user.get("role") not in ("admin", "superviseur", "moderateur"):
++    # Lot 25 — Rôle modérateur accepté sous ses deux orthographes (moderateur / moderator).
++    if user.get("role") not in ("admin", "superviseur", "moderateur", "moderator"):
+         return None
+     items = await db.users.find(
+         {"source": "wa_otp_login", "is_demo": True},
+diff --git a/backend/tests/test_roles_links_blacklist_lot25.py b/backend/tests/test_roles_links_blacklist_lot25.py
+new file mode 100644
+index 0000000..26862e8
+--- /dev/null
++++ b/backend/tests/test_roles_links_blacklist_lot25.py
+@@ -0,0 +1,228 @@
++"""Lot 25 — Droits et verrous :
++  (3) rôle modérateur accepté sous ses deux orthographes (moderateur / moderator) ;
++  (5) création de liens cryptés réservée au super-admin SAWALI ;
++  (7) profil Fabricant (business_type) du client parent transmis aux utilisateurs suivis ;
++  (11) liste noire IP : refus de bloquer sa propre IP, super-admin jamais bloqué.
++Fonctions extraites de server.py / auth.py (ast), MongoDB simulé. Aucun réseau.
++Lancer : cd backend && python -m pytest tests/test_roles_links_blacklist_lot25.py -q
++"""
++from __future__ import annotations
++
++import ast
++import asyncio
++import ipaddress
++import sys
++import types
++import uuid
++from datetime import datetime, timezone
++from pathlib import Path
++from typing import Any, Dict, List, Optional
++
++import jwt as pyjwt
++import pytest
++
++pytest.importorskip("mongomock_motor")
++from mongomock_motor import AsyncMongoMockClient  # noqa: E402
++from starlette.responses import JSONResponse  # noqa: E402
++
++BACKEND = Path(__file__).resolve().parents[1]
++SERVER = BACKEND / "server.py"
++AUTH = BACKEND / "auth.py"
++if str(BACKEND) not in sys.path:
++    sys.path.insert(0, str(BACKEND))
++
++SUPER_EMAIL = "admin@sawalismartsystems.com"
++TEST_SECRET = "secret-de-test-lot25"
++
++
++class _HTTPException(Exception):
++    """Remplace fastapi.HTTPException : garde le code HTTP pour les vérifications."""
++
++    def __init__(self, status_code, detail=""):
++        super().__init__(detail)
++        self.status_code = status_code
++        self.detail = detail
++
++
++def _extract(path: Path, funcs: set, consts: set = frozenset()) -> List[ast.stmt]:
++    """Extrait du fichier les fonctions (sans décorateurs) et constantes demandées."""
++    tree = ast.parse(path.read_text())
++    nodes = []
++    for node in tree.body:
++        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in funcs:
++            node.decorator_list = []
++            nodes.append(node)
++        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) in consts for t in node.targets):
++            nodes.append(node)
++    assert {getattr(n, "name", None) for n in nodes if hasattr(n, "name")} >= set(funcs)
++    return nodes
++
++
++def _exec(path: Path, nodes: List[ast.stmt], ns: Dict[str, Any]) -> Dict[str, Any]:
++    exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), "exec"), ns)  # noqa: S102
++    return ns
++
++
++@pytest.fixture()
++def env(monkeypatch):
++    # Faux module `auth` : server.py fait `from auth import decode_token` en local.
++    fake_auth = types.ModuleType("auth")
++    fake_auth.decode_token = lambda tok: pyjwt.decode(tok, TEST_SECRET, algorithms=["HS256"])
++    monkeypatch.setitem(sys.modules, "auth", fake_auth)
++    monkeypatch.delenv("SUPER_ADMIN_EMAIL", raising=False)
++    db = AsyncMongoMockClient()["sawali_lot25"]
++    loop = asyncio.new_event_loop()
++    yield types.SimpleNamespace(db=db, run=loop.run_until_complete)
++    loop.close()
++
++
++def _server_ns(db) -> Dict[str, Any]:
++    funcs = {"_is_super_admin", "integrations_build_link", "_reload_blacklist", "_client_ip_from_request",
++             "_ip_in_cidr", "_request_is_super_admin", "ip_blacklist_middleware", "admin_add_blacklist",
++             "_to_user_public"}
++    ns = {"db": db, "os": __import__("os"), "ipaddress": ipaddress, "datetime": datetime, "timezone": timezone,
++          "Optional": Optional, "Dict": Dict, "Any": Any, "List": List,
++          "Depends": lambda x: None, "get_current_admin": None, "HTTPException": _HTTPException,
++          "Request": None, "BuildLinkRequest": None, "BlacklistedIPCreate": None, "JSONResponse": JSONResponse,
++          "_BLACKLIST_CACHE": {"nets": [], "loaded": False},
++          "LINK_ACTIONS": {"login": "Connexion", "dashboard": "Tableau de bord"},
++          "LINK_DEFAULT_TTL_SECONDS": 900, "LINK_JWT_SECRET": "lien", "LINK_JWT_ALGO": "HS256",
++          "_pyjwt_links": pyjwt, "PUBLIC_BASE_URL": "https://exemple.test",
++          "_public_base_url": lambda request=None: "https://exemple.test",
++          "_uuid": lambda: uuid.uuid4().hex, "_now": lambda: datetime.now(timezone.utc).isoformat()}
++    return _exec(SERVER, _extract(SERVER, funcs), ns)
++
++
++def _request(ip: str, token: Optional[str] = None, path: str = "/api/me/x"):
++    """Fausse requête HTTP : IP (via X-Forwarded-For), jeton Bearer et chemin."""
++    headers = {"x-forwarded-for": ip}
++    if token:
++        headers["authorization"] = f"Bearer {token}"
++    return types.SimpleNamespace(headers=headers, client=types.SimpleNamespace(host=ip),
++                                 url=types.SimpleNamespace(path=path))
++
++
++def _token(user_id: str) -> str:
++    return pyjwt.encode({"sub": user_id}, TEST_SECRET, algorithm="HS256")
++
++
++# ---------------------------------------------------------------- (3) modérateur
++@pytest.mark.parametrize("role", ["moderateur", "moderator", "admin", "superviseur"])
++def test_admin_or_moderator_accepts_both_spellings(env, role):
++    ns = _exec(AUTH, _extract(AUTH, {"get_current_admin_or_moderator"}),
++               {"Depends": lambda x: None, "get_current_user": None, "HTTPException": _HTTPException})
++    user = {"id": "u", "role": role}
++    assert env.run(ns["get_current_admin_or_moderator"](user=user)) is user
++
++
++def test_admin_or_moderator_refuses_client(env):
++    ns = _exec(AUTH, _extract(AUTH, {"get_current_admin_or_moderator"}),
++               {"Depends": lambda x: None, "get_current_user": None, "HTTPException": _HTTPException})
++    with pytest.raises(_HTTPException) as exc:
++        env.run(ns["get_current_admin_or_moderator"](user={"id": "u", "role": "client"}))
++    assert exc.value.status_code == 403
++
++
++@pytest.mark.parametrize("role", ["moderateur", "moderator"])
++def test_other_moderator_checks_accept_both_spellings(role):
++    from routes import error_registry, smart_comm_senders
++    assert error_registry._can_access({"role": role}) is True
++    smart_comm_senders._require_channel_operator({"role": role})  # ne lève pas d'erreur
++
++
++def test_error_registry_refuses_tracked_moderation():
++    # Registre global (non cloisonné par client) : le modérateur SUIVI n'y a pas accès.
++    from routes import error_registry
++    assert error_registry._can_access({"role": "client", "tracked_role": "Moderation"}) is False
++
++
++def test_access_summary_bypass_for_moderateur(env):
++    ns = _exec(SERVER, _extract(SERVER, {"_is_super_admin", "me_access_summary"}),
++               {"db": env.db, "os": __import__("os"), "Depends": lambda x: None, "get_current_user": None})
++    out = env.run(ns["me_access_summary"](user={"id": "m", "role": "moderateur", "email": "m@x.bf"}))
++    assert out == {"has_documents": True, "has_formations": True, "has_forms": True}
++
++
++# ---------------------------------------------------------------- (5) liens cryptés
++def test_build_link_refused_for_plain_admin(env):
++    ns = _server_ns(env.db)
++    payload = types.SimpleNamespace(action="login", client_code="C1", username="x", target_id=None, ttl_seconds=None)
++    with pytest.raises(_HTTPException) as exc:
++        env.run(ns["integrations_build_link"](_request("1.1.1.1"), payload, user={"role": "admin", "email": "admin@client.bf"}))
++    assert exc.value.status_code == 403
++
++
++def test_build_link_allowed_for_super_admin(env):
++    ns = _server_ns(env.db)
++    payload = types.SimpleNamespace(action="login", client_code="C1", username="x", target_id=None, ttl_seconds=None)
++    out = env.run(ns["integrations_build_link"](_request("1.1.1.1"), payload, user={"role": "admin", "email": SUPER_EMAIL.upper()}))
++    assert out["url"].startswith("https://exemple.test/launch?t=")
++    assert pyjwt.decode(out["token"], "lien", algorithms=["HS256"])["action"] == "login"
++
++
++# ---------------------------------------------------------------- (7) profil Fabricant
++def test_auth_me_returns_parent_business_type_for_tracked_user(env):
++    from fastapi import APIRouter
++    from routes.auth import attach_auth_routes
++    ns = _server_ns(env.db)
++    env.run(env.db.users.insert_one({"id": "t-fab", "business_type": "fabricant"}))
++    api = APIRouter()
++    helpers = {k: None for k in ("verify_password", "hash_password", "verify_recaptcha", "generate_otp",
++                                 "generate_session_token", "send_otp_email", "create_access_token", "_uuid", "_now")}
++    helpers.update({"get_current_user": lambda: None, "_to_user_public": ns["_to_user_public"]})
++    attach_auth_routes(api, db=env.db, helpers=helpers)
++    auth_me = next(r.endpoint for r in api.routes if getattr(r, "path", "") == "/auth/me")
++    base = {"email": "a@x.bf", "full_name": "A", "role": "client", "created_at": "2026-01-01"}
++    tracked = {**base, "id": "u-suivi", "tracked_role": "Edition", "parent_client_id": "t-fab", "client_id": "t-fab"}
++    assert env.run(auth_me(user=tracked))["business_type"] == "fabricant"
++    # Compte principal (non suivi) : sa propre valeur est conservée.
++    owner = {**base, "id": "t-autre", "business_type": "distributeur"}
++    assert env.run(auth_me(user=owner))["business_type"] == "distributeur"
++
++
++# ---------------------------------------------------------------- (11) liste noire IP
++def test_ip_in_cidr():
++    ns = _server_ns(None)
++    assert ns["_ip_in_cidr"]("10.0.0.5", "10.0.0.0/24") is True
++    assert ns["_ip_in_cidr"]("10.0.0.5", "10.0.0.5") is True
++    assert ns["_ip_in_cidr"]("10.0.1.5", "10.0.0.0/24") is False
++    assert ns["_ip_in_cidr"]("pas-une-ip", "10.0.0.0/24") is False
++
++
++def test_cannot_blacklist_own_ip(env):
++    ns = _server_ns(env.db)
++    for cidr in ("41.207.1.10", "41.207.1.0/24"):
++        with pytest.raises(_HTTPException) as exc:
++            env.run(ns["admin_add_blacklist"](types.SimpleNamespace(cidr=cidr, reason=""), _request("41.207.1.10"), _={}))
++        assert exc.value.status_code == 400
++        assert "votre propre adresse IP" in exc.value.detail
++    assert env.run(env.db.blacklisted_ips.count_documents({})) == 0
++
++
++def test_can_blacklist_other_ip(env):
++    ns = _server_ns(env.db)
++    doc = env.run(ns["admin_add_blacklist"](types.SimpleNamespace(cidr="5.5.5.5", reason="spam"), _request("41.207.1.10"), _={}))
++    assert doc["cidr"] == "5.5.5.5"
++    assert env.run(env.db.blacklisted_ips.count_documents({})) == 1
++
++
++def _call_middleware(env, ns, request):
++    async def _next(req):
++        return "SUITE"
++    return env.run(ns["ip_blacklist_middleware"](request, _next))
++
++
++def test_middleware_blocks_listed_ip_but_never_super_admin(env):
++    ns = _server_ns(env.db)
++    env.run(env.db.users.insert_many([{"id": "sa", "email": SUPER_EMAIL}, {"id": "adm", "email": "admin@client.bf"}]))
++    env.run(env.db.blacklisted_ips.insert_one({"id": "b1", "cidr": "9.9.9.0/24"}))
++    # IP bloquée, sans jeton ou avec le jeton d'un admin ordinaire → 403
++    assert isinstance(_call_middleware(env, ns, _request("9.9.9.9")), JSONResponse)
++    blocked = _call_middleware(env, ns, _request("9.9.9.9", _token("adm")))
++    assert isinstance(blocked, JSONResponse) and blocked.status_code == 403
++    # Super-admin : jamais bloqué
++    assert _call_middleware(env, ns, _request("9.9.9.9", _token("sa"))) == "SUITE"
++    # Jeton invalide → traité comme anonyme (bloqué)
++    assert isinstance(_call_middleware(env, ns, _request("9.9.9.9", "jeton-invalide")), JSONResponse)
++    # IP non bloquée → passe
++    assert _call_middleware(env, ns, _request("8.8.8.8")) == "SUITE"
+diff --git a/frontend/src/App.js b/frontend/src/App.js
+index 75ee5e4..059b02c 100644
+--- a/frontend/src/App.js
++++ b/frontend/src/App.js
+@@ -368,6 +368,11 @@ export default function App() {
+             <Route path="meetings/:id" element={<MeetingMinutes />} />
+             {/* S-iter39d (fix #2) — Liluvine PRO history accessible aux modérateurs */}
+             <Route path="liluvine-history" element={<AdminLiluvineHistory />} />
++            {/* Lot 25 — Page Régionalisation accessible depuis le portail : l'utilisateur
++                suivi « Traducteur » n'a pas le rôle système admin, il ne peut donc pas
++                ouvrir /admin/i18n. On lui affiche la même page ici (le serveur limite
++                déjà ses droits à la lecture/écriture de ses langues). */}
++            <Route path="i18n" element={<AdminI18n />} />
+           </Route>
+ 
+           {/* Admin */}
+diff --git a/frontend/src/components/ContactGroupChips.jsx b/frontend/src/components/ContactGroupChips.jsx
+index 42ce9a2..30d845f 100644
+--- a/frontend/src/components/ContactGroupChips.jsx
++++ b/frontend/src/components/ContactGroupChips.jsx
+@@ -16,7 +16,8 @@ import { Tags, Loader2 } from "lucide-react";
+ import { toast } from "sonner";
+ import { apiClient } from "@/lib/api";
+ 
+-const TOGGLE_ROLES = new Set(["admin", "superviseur", "moderateur"]);
++// Lot 25 — « moderator » accepté : même rôle que « moderateur », autre orthographe.
++const TOGGLE_ROLES = new Set(["admin", "superviseur", "moderateur", "moderator"]);
+ 
+ export const ContactGroupChips = ({ contact, userRole, onCountChange }) => {
+   const [groups, setGroups] = useState([]);
+diff --git a/frontend/src/components/PortalLayout.jsx b/frontend/src/components/PortalLayout.jsx
+index b2ae9c7..95929d0 100644
+--- a/frontend/src/components/PortalLayout.jsx
++++ b/frontend/src/components/PortalLayout.jsx
+@@ -47,7 +47,9 @@ const clientLinks = [
+   { to: "/portal/forms", label: "Formulaires", tKey: "nav.forms", icon: FileText },
+   { to: "/portal/contacts", label: "Centre de Messagerie", tKey: "nav.contacts", icon: MessageCircle, module: "contacts_unread", noMarkSeen: true },
+   { to: "/portal/contact-groups", label: "Groupes de contacts", icon: Users },
+-  { to: "/portal/error-registry", label: "Registre des erreurs", icon: AlertOctagon, showBadges: true },
++  // Lot 25 — `errorRegistryOnly` : lien affiché seulement aux rôles système que le
++  // serveur accepte (admin, superviseur, modérateur) — voir routes/error_registry.py.
++  { to: "/portal/error-registry", label: "Registre des erreurs", icon: AlertOctagon, showBadges: true, errorRegistryOnly: true },
+   // Iter38i — Unified omnichannel inbox (WhatsApp + Messenger)
+   { to: "/portal/inbox", label: "Inbox unifiée (WA + Messenger)", icon: MessageCircle },
+   { to: "/portal/sms", label: "SMS — Masse & Planif.", icon: Send, module: "sms" },
+@@ -74,7 +76,9 @@ const clientLinks = [
+   { to: "/portal/tickets", label: "Tickets", tKey: "nav.tickets", icon: Ticket, badgeKey: "tickets_pending" },
+   { to: "/portal/media-library", label: "Bibliothèque de médias", icon: FolderOpen },
+   { to: "/portal/media-generator", label: "Générateur d'Images et Vidéos", icon: Wand2 },
+-  { to: "/portal/voice-studio", label: "Voice Studio (Clonage)", icon: Volume2 },
++  // Lot 25 — Grisé (featureGate) quand la fonctionnalité « Génération Vocale IA »
++  // (clé ai_voice_gen, testée par backend routes/ai_media_9m.py) est désactivée.
++  { to: "/portal/voice-studio", label: "Voice Studio (Clonage)", icon: Volume2, featureGate: "ai_voice_gen" },
+   // Iter38n — Catalog analytics cockpit (admin/sup/tracked users)
+   { to: "/portal/catalog-stats", label: "Statistiques catalogue", icon: BarChart3, catalogStatsOnly: true },
+   // Iter38r-fix6/7 — Liluvine PRO (visible mais grisé si ai_liluvine_pro = false)
+@@ -227,7 +231,10 @@ function PortalLayoutInner({ admin = false }) {
+   const isComptaStrict = isComptable && !isAdminOrSup;
+   // S-iter39b — Modérateurs (tracked_role="Moderation") accèdent à Brochures
+   const isModerator = (user?.tracked_role || "") === "Moderation";
+-  // 2026-02 (#1) — Traducteur : seul accès = /admin/i18n (Régionalisation).
++  // Lot 25 — Rôle SYSTÈME modérateur : il existe sous deux orthographes
++  // (« moderateur » enregistré par le formulaire Clients, « moderator » ailleurs).
++  const isSysModerator = ["moderateur", "moderator"].includes(user?.role || "");
++  // 2026-02 (#1) — Traducteur : seul accès = /portal/i18n (Régionalisation, lot 25).
+   // Toutes les autres entrées de la sidebar sont masquées. L'utilisateur
+   // est forcé d'aller sur Régionalisation au login (route handled in App.js).
+   const isTranslator = (user?.tracked_role || "") === "Traducteur";
+@@ -258,6 +265,9 @@ function PortalLayoutInner({ admin = false }) {
+   // hidden when the user's linked tenant has no accessible items. Fetched once
+   // via `/me/access-summary`. Admins/super-admins always see the entries.
+   const [accessSummary, setAccessSummary] = React.useState(null);
++  // Lot 25 — Peut créer un document : même règle que le bouton « Nouveau document »
++  // de la page Documentation (pages/portal/Documents.jsx, fonction isElevated).
++  const canCreateDocuments = isAdminOrSup || ["Moderation", "Administrateur", "Superviseur"].includes(user?.tracked_role || "");
+   React.useEffect(() => {
+     if (!user) return;
+     apiClient.get("/me/access-summary")
+@@ -294,7 +304,9 @@ function PortalLayoutInner({ admin = false }) {
+     "/admin/officines-registry",
+   ]);
+   const allowedComptaPaths = new Set(["/portal/cash", "/portal/hr"]);
+-  const allowedTranslatorPaths = new Set(["/admin/i18n"]);
++  // Lot 25 — Le Traducteur utilise la page Régionalisation du portail
++  // (/portal/i18n) : /admin/i18n le renvoyait vers /portal (rôle système non admin).
++  const allowedTranslatorPaths = new Set(["/portal/i18n"]);
+   const allowedMedecinTrackedPaths = new Set([
+     "/portal/planning",
+     "/portal/prescription-analysis",  // Iter43-fix24az-ac — conservé pour compatibilité, plus lié en sidebar
+@@ -342,8 +354,9 @@ function PortalLayoutInner({ admin = false }) {
+   // le contrôle d'accès réel pour eux vient déjà de leur propre allowlist
+   // ci-dessus — ce filtre global ne doit pas les re-bloquer en plus).
+   const canSeeVidal = isAdminOrSup || isRegulateur || isPharmacien || isMedecin || isEditeurVidal || isMedecinTracked || isPharmacienTracked;
++  // Lot 25 — Lien unique du Traducteur : la page Régionalisation côté portail.
+   const baseLinks = isTranslator
+-    ? [{ to: "/admin/i18n", label: "Régionalisation", icon: Languages }]
++    ? [{ to: "/portal/i18n", label: "Régionalisation", icon: Languages }]
+     : (isMedecinTracked
+         ? [
+             { to: "/portal/planning", label: "Planning consultations", icon: Calendar, badgeKey: "walk_ins_today" },
+@@ -404,28 +417,45 @@ function PortalLayoutInner({ admin = false }) {
+     .filter((l) => !isRegulateur || allowedRegulateurPaths.has(l.to))
+     .filter((l) => !isEditeurVidal || allowedEditeurVidalPaths.has(l.to))
+     // Iter43-fix24az-f — Fabricant tenants : allowlist stricte
+-    .filter((l) => !isFabricant || fabricantAllowedPaths.has(l.to) || (l.to === "/portal" && p4ShowDashboard))
++    // Lot 25 — Les utilisateurs suivis héritent désormais du profil Fabricant de leur
++    // client parent : les rôles qui ont déjà leur propre menu réduit (Traducteur,
++    // Médecin, Pharmacien, Secrétaire médicale) gardent ce menu au lieu d'être vidés.
++    .filter((l) => !isFabricant || isTranslator || isMedecinTracked || isPharmacienTracked || isSecretaireMedicale
++      || fabricantAllowedPaths.has(l.to) || (l.to === "/portal" && p4ShowDashboard))
+     .filter((l) => !l.fabricantOnly || isFabricant)
+     .filter((l) => !restrictedVidalPaths.has(l.to) || canSeeVidal)
+     .filter((l) => !l.trackedOnly || isTracked)
+     // 2026-02 fork iter105 — Cache Documents / Formations / Formulaires quand
+     // le tenant lié n'a rien de visible. Admin/superviseur bypass via `accessSummary=null`
+     // (l'endpoint retourne toujours has_XXX=true pour eux).
++    // Lot 25 — Exception : le lien reste affiché aux comptes qui peuvent CRÉER le
++    // premier élément (sinon ils ne pourraient jamais le créer) :
++    //   • Documentation : mêmes conditions que le bouton « Nouveau document »
++    //     (Documents.jsx : rôle admin/superviseur ou suivi Moderation/Administrateur/Superviseur) ;
++    //   • Formulaires : le bouton « Nouveau formulaire » (FormsList.jsx) est proposé à
++    //     tous les comptes du portail, le lien reste donc toujours visible.
+     .filter((l) => {
+       if (!accessSummary) return true;
+-      if (l.to === "/portal/documents") return accessSummary.has_documents !== false;
++      if (l.to === "/portal/documents") return accessSummary.has_documents !== false || canCreateDocuments;
+       if (l.to === "/portal/formations") return accessSummary.has_formations !== false;
+-      if (l.to === "/portal/forms") return accessSummary.has_forms !== false;
++      if (l.to === "/portal/forms") return true;
+       return true;
+     })
+     .filter((l) => !l.superAdminOnly || isSuperAdmin)
+-    .filter((l) => !l.cashOnly || canCash || isComptable)
++    // Lot 25 — Même condition que la page Caisse (CashBilling.jsx : admin/superviseur
++    // ou can_cash) : un Comptable sans « can_cash » ne voit plus un lien qui le bloquerait.
++    .filter((l) => !l.cashOnly || canCash)
+     .filter((l) => !l.hrOnly || canHR)
+     .filter((l) => !l.metaOnly || metaEnabled || isAdminOrSup)
+     .filter((l) => !l.cashAdminOnly || isAdminOrSup)
+-    .filter((l) => !l.moderationOnly || isModerator || isAdminOrSup)
++    // Lot 25 — Brochures / Liluvine Historique : modérateur suivi OU rôle système modérateur.
++    .filter((l) => !l.moderationOnly || isModerator || isSysModerator || isAdminOrSup)
+     .filter((l) => !l.adminOrSup || isAdminOrSup)
+-    .filter((l) => !l.moderatorPlus || isModerator || isAdminOrSup)
++    .filter((l) => !l.moderatorPlus || isModerator || isSysModerator || isAdminOrSup)
++    // Lot 25 — Registre des erreurs : mêmes rôles que le serveur (admin, superviseur,
++    // modérateur système). Le registre n'est pas cloisonné par client, donc le
++    // modérateur SUIVI (« Moderation », rattaché à un client) ne le voit pas.
++    .filter((l) => !l.errorRegistryOnly || isAdminOrSup || isSysModerator)
+     .filter((l) => !l.catalogStatsOnly || isAdminOrSup || isTracked)
+     // Lot OCR sur Pièces (2026-09) — pharmacies + administration uniquement
+     // (même règle que le backend routes/ocr_pieces.py).
+diff --git a/frontend/src/components/TicketsBubble.jsx b/frontend/src/components/TicketsBubble.jsx
+index 56612d4..9b3f4f9 100644
+--- a/frontend/src/components/TicketsBubble.jsx
++++ b/frontend/src/components/TicketsBubble.jsx
+@@ -18,7 +18,8 @@ export default function TicketsBubble() {
+   const navigate = useNavigate();
+   const role = (user?.role || "").toLowerCase();
+   const tracked = (user?.tracked_role || "").toLowerCase();
+-  const canCreate = ["admin", "superviseur", "moderateur"].includes(role)
++  // Lot 25 — « moderator » accepté : même rôle que « moderateur », autre orthographe.
++  const canCreate = ["admin", "superviseur", "moderateur", "moderator"].includes(role)
+     || ["admin", "superviseur", "moderateur"].includes(tracked);
+ 
+   const [enabled, setEnabled] = useState(false);
+diff --git a/frontend/src/pages/admin/AdminClients.jsx b/frontend/src/pages/admin/AdminClients.jsx
+index 5806853..3b2bb6f 100644
+--- a/frontend/src/pages/admin/AdminClients.jsx
++++ b/frontend/src/pages/admin/AdminClients.jsx
+@@ -608,9 +608,35 @@ export default function AdminClients() {
+               <p className="mt-1 text-[11px] text-slate-500">Affiché dans la sidebar du portail à la place du logo SAWALI quand l'utilisateur de ce client est connecté.</p>
+             </div>
+             <div className="grid grid-cols-2 gap-3">
+-              <Select label="Rôle" value={form.role} onChange={(v) => setForm({ ...form, role: v })} options={[{ v: "client", l: "Client" }, { v: "admin", l: "Admin (client)" }, { v: "superviseur", l: "Superviseur" }, { v: "moderateur", l: "Modérateur" }, { v: "regulateur", l: "💊 Régulateur (AMM)" }, { v: "editeur_vidal", l: "📚 Éditeur VIDAL (lecture)" }, { v: "pharmacien", l: "💊 Pharmacien" }, { v: "medecin", l: "⚕️ Médecin" }, { v: "demo", l: "Démo (limité)" }]} />
++              {/* Lot 25 — Le rôle « admin » donne TOUTE l'administration de la plateforme
++                  (pas seulement celle du client) : libellé explicite + confirmation
++                  obligatoire au moment où on le choisit. Les droits ne changent pas. */}
++              <Select
++                label="Rôle"
++                value={form.role}
++                onChange={(v) => {
++                  // Confirmation explicite avant d'attribuer le rôle admin ; si l'utilisateur
++                  // annule, on garde le rôle précédent (aucune modification du formulaire).
++                  if (v === "admin" && form.role !== "admin") {
++                    const ok = window.confirm(
++                      "Attention : le rôle « Administrateur plateforme » donne un accès COMPLET à toute l'administration SAWALI " +
++                      "(tous les clients, paramètres, facturation…), pas seulement à ce client.\n\nConfirmer l'attribution de ce rôle ?"
++                    );
++                    if (!ok) return;
++                  }
++                  setForm({ ...form, role: v });
++                }}
++                options={[{ v: "client", l: "Client" }, { v: "admin", l: "Administrateur plateforme (accès complet)" }, { v: "superviseur", l: "Superviseur" }, { v: "moderateur", l: "Modérateur" }, { v: "regulateur", l: "💊 Régulateur (AMM)" }, { v: "editeur_vidal", l: "📚 Éditeur VIDAL (lecture)" }, { v: "pharmacien", l: "💊 Pharmacien" }, { v: "medecin", l: "⚕️ Médecin" }, { v: "demo", l: "Démo (limité)" }]}
++              />
+               <Select label="Statut" value={form.account_status} onChange={(v) => setForm({ ...form, account_status: v })} options={[{ v: "active", l: "Actif" }, { v: "disabled", l: "Désactivé" }]} />
+             </div>
++            {/* Lot 25 — Texte d'aide affiché tant que le rôle admin est sélectionné. */}
++            {form.role === "admin" && (
++              <p className="-mt-1 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-800" data-testid="client-role-admin-warning">
++                ⚠️ <strong>Administrateur plateforme</strong> : ce compte aura accès à toute l'administration SAWALI
++                (tous les clients, paramètres, facturation…). Réservez ce rôle à l'équipe SAWALI.
++              </p>
++            )}
+ 
+             {/* S-iter39a — Client lié canonique (modifiable depuis la fiche).
+                  Permet à un Admin/Superviseur de rattacher ou détacher ce compte
+@@ -636,7 +662,8 @@ export default function AdminClients() {
+                 >
+                   <option value="">— Aucun (tenant indépendant) —</option>
+                   {items
+-                    .filter((u) => u.id !== editing.id && ["admin", "superviseur", "moderateur", "client"].includes(u.role))
++                    /* Lot 25 — Les deux orthographes du rôle modérateur sont proposées. */
++                    .filter((u) => u.id !== editing.id && ["admin", "superviseur", "moderateur", "moderator", "client"].includes(u.role))
+                     .map((u) => (
+                       <option key={u.id} value={u.id}>
+                         {u.full_name}{u.company ? ` — ${u.company}` : ""} ({u.role})
+@@ -1492,4 +1519,3 @@ const PaymentsModal = ({ client, onClose, onChanged }) => {
+     </div>
+   );
+ };
+-
+diff --git a/frontend/src/pages/admin/AdminLiluvineHistory.jsx b/frontend/src/pages/admin/AdminLiluvineHistory.jsx
+index 575239e..d9992f6 100644
+--- a/frontend/src/pages/admin/AdminLiluvineHistory.jsx
++++ b/frontend/src/pages/admin/AdminLiluvineHistory.jsx
+@@ -33,7 +33,8 @@ const DATE_RANGES = [
+ // S-iter39d (fix #2) — Include the stored values used in the DB:
+ // tracked_role can be "Moderation" or "Administrateur" (lowercase becomes
+ // "moderation" / "administrateur"), not "moderateur".
+-const TAKEOVER_ROLES = new Set(["admin", "superviseur", "moderateur", "moderation", "administrateur"]);
++// Lot 25 — « moderator » accepté : même rôle que « moderateur », autre orthographe.
++const TAKEOVER_ROLES = new Set(["admin", "superviseur", "moderateur", "moderator", "moderation", "administrateur"]);
+ 
+ export default function AdminLiluvineHistory() {
+   const { user } = useAuth() || {};
+diff --git a/frontend/src/pages/admin/StoryStudio.jsx b/frontend/src/pages/admin/StoryStudio.jsx
+index b204571..3fe9bd7 100644
+--- a/frontend/src/pages/admin/StoryStudio.jsx
++++ b/frontend/src/pages/admin/StoryStudio.jsx
+@@ -349,7 +349,8 @@ function GenerateTab({ settings, onCreated }) {
+               className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-violet-600 text-white hover:bg-violet-700 px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
+               data-testid="generate-submit">
+         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+-        {busy ? "Génération en cours…" : `Générer la ${mode === "video" ? "vidéo" : "image"}`}
++        {/* Lot 25 — Accord correct : « l'image » (élision) et « la vidéo ». */}
++        {busy ? "Génération en cours…" : (mode === "video" ? "Générer la vidéo" : "Générer l'image")}
+       </button>
+     </form>
+   );
+@@ -1907,4 +1908,3 @@ function TopupModal({ tenantId, currency, onClose, onDone }) {
+     </div>
+   );
+ }
+-
+diff --git a/frontend/src/pages/auth/Login.jsx b/frontend/src/pages/auth/Login.jsx
+index 82687a2..5c6e619 100644
+--- a/frontend/src/pages/auth/Login.jsx
++++ b/frontend/src/pages/auth/Login.jsx
+@@ -33,7 +33,9 @@ export default function Login() {
+   // /portal/planning (no dashboard, no welcome briefing).
+   const _postLoginRoute = (u) => {
+     if (!u) return "/portal";
+-    if ((u.tracked_role || "") === "Traducteur") return "/admin/i18n";
++    // Lot 25 — Le Traducteur va sur la page Régionalisation du portail (/portal/i18n),
++    // car /admin est réservé au rôle système « admin ».
++    if ((u.tracked_role || "") === "Traducteur") return "/portal/i18n";
+     if ((u.tracked_role || "") === "Médecin") return "/portal/planning";
+     return u.role === "admin" ? "/admin" : "/portal";
+   };
+diff --git a/frontend/src/pages/portal/Contacts.jsx b/frontend/src/pages/portal/Contacts.jsx
+index 85b8d6c..a24c2ed 100644
+--- a/frontend/src/pages/portal/Contacts.jsx
++++ b/frontend/src/pages/portal/Contacts.jsx
+@@ -940,7 +940,8 @@ const ContactEditModal = ({ contact, companyOptions = [], onClose, onSaved }) =>
+   const role = (user?.role || "").toLowerCase();
+   // Photo upload is restricted to admin/superviseur/moderateur. Standard users
+   // (client/tracked) see the photo but cannot replace or remove it.
+-  const canManagePhoto = ["admin", "superviseur", "moderateur"].includes(role);
++  // Lot 25 — « moderator » accepté : même rôle que « moderateur », autre orthographe.
++  const canManagePhoto = ["admin", "superviseur", "moderateur", "moderator"].includes(role);
+   const [form, setForm] = useState(() => contact || {
+     name: "", phone: "", whatsapp: "", email: "", company: "", notes: "", tags: [], shared: true,
+   });
+diff --git a/frontend/src/pages/portal/LiluvinePro.jsx b/frontend/src/pages/portal/LiluvinePro.jsx
+index 806e5de..02e955e 100644
+--- a/frontend/src/pages/portal/LiluvinePro.jsx
++++ b/frontend/src/pages/portal/LiluvinePro.jsx
+@@ -22,7 +22,8 @@ export default function LiluvinePro() {
+   const trackedRole = (authUser?.tracked_role || "").toLowerCase();
+   // S-iter39b — Fix: tracked_role value stored as "Moderation" (not "moderateur").
+   // Includes both legacy and current spelling so moderators get the Reprendre button.
+-  const canTakeover = ["admin", "superviseur", "moderateur"].includes(userRole)
++  // Lot 25 — « moderator » accepté : même rôle que « moderateur », autre orthographe.
++  const canTakeover = ["admin", "superviseur", "moderateur", "moderator"].includes(userRole)
+     || ["admin", "superviseur", "moderateur", "moderation", "administrateur"].includes(trackedRole);
+   const [sessions, setSessions] = useState([]);
+   const [activeId, setActiveId] = useState(null);
+-- 
+2.43.0
+
