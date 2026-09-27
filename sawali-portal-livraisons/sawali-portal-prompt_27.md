@@ -4,7 +4,7 @@
 de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 évaluateur ou analyseur automatique**. Tu appliques et tu déploies directement.
 
-Applique `sawali-portal-corrections_27_ae43964.patch` sur la branche
+Applique `sawali-portal-corrections_27_478eecd.patch` sur la branche
 `conflict_230926_1008`. Base attendue : ton commit `d091c30` (« Auto-generated
 changes », juste après `55e46f2`, le lot 26 que tu as publié). Le patch ne
 touche pas au dossier `.emergent`. C'est un `git format-patch` d'un seul
@@ -114,8 +114,10 @@ le Suivi » ouvre un formulaire WhatsApp (bouton de type « Flux terminé »).
 
 ## Sondages WhatsApp (nouvelle page, à côté des Formulaires)
 
-Menu « Sondages WhatsApp ». Des onglets « Formulaires | Sondages WhatsApp »
-en tête des deux pages permettent de passer de l'une à l'autre.
+Pour raccourcir la barre latérale, **une seule entrée « Formulaires &
+Sondages »** remplace « Formulaires » (portail et console admin). En tête de la
+page, une bascule « Formulaires | Sondages WhatsApp » permet de passer de l'un
+à l'autre. L'entrée reste en surbrillance sur les pages des sondages.
 
 1. **Concevoir** (Nouveau sondage) :
    - titre, introduction, message de remerciement, date limite facultative ;
@@ -294,8 +296,11 @@ Après le déploiement, supprime une dernière fois les doublons existants
 - `frontend/src/pages/portal/FormEditor.jsx` : nouvel éditeur ; `FormRunner.jsx` : rendu d'un champ partagé avec l'aperçu
 - `frontend/src/pages/admin/AdminClientFeatures.jsx` : section Facturation
 - `frontend/src/App.js` : routes `/portal|admin/surveys…`, `portfolio-invoices` et `/s/:token`
-- `frontend/src/components/PortalLayout.jsx` : lien « Sondages WhatsApp »
-- `frontend/src/pages/portal/FormsList.jsx` : onglets Formulaires / Sondages
+- `frontend/src/components/PortalLayout.jsx` : entrée unique « Formulaires &
+  Sondages » (portail et admin), en surbrillance aussi sur les sondages
+- `frontend/src/pages/portal/FormsList.jsx` : bascule Formulaires / Sondages
+- `backend/routes/i18n.py` : libellé traduit « Formulaires & Sondages »
+  (clé `nav.forms_surveys`, ajoutée au démarrage si absente)
 - `backend/routes/whatsapp_helpers.py` : bouton « Flux » ajouté à l'envoi,
   lecture de la réponse du formulaire
 - `backend/routes/cashier.py` : garde-fous des relances automatiques
@@ -343,7 +348,10 @@ production uniquement, puis dis-le-moi.
    un texte, puis **Terminer**. L'aperçu montre l'image annotée ; envoie-la :
    le client la reçoit avec les annotations.
 7. Envoi de SMS : ajoute un emoji.
-8. **Sondages WhatsApp → Nouveau sondage** :
+8. **Barre latérale** : une seule entrée « Formulaires & Sondages » (plus de
+   « Sondages WhatsApp » séparé). Clique dessus, puis sur la bascule
+   « Sondages WhatsApp » en haut de la page : l'entrée reste en surbrillance.
+   Ensuite, **Nouveau sondage** :
    - crée « Test satisfaction » avec une question à choix, une note et une
      recommandation ;
    - clique sur « Enregistrer et ouvrir », puis Envoyer ;
@@ -362,7 +370,7 @@ production uniquement, puis dis-le-moi.
      F-2026-… est dans Caisse/Facturation, sans TVA.
 10. **Bilans à facturer** (menu) : le bilan est dans « Facturés », avec la
     mention « sans TVA ».
-11. **Sondages → Meilleurs contributeurs** : le podium s'affiche.
+11. **Formulaires & Sondages → Sondages WhatsApp → Meilleurs contributeurs** : le podium s'affiche.
 12. **Formulaires → Éditer** :
     - glisse « Date » en haut, ajoute une « Liste déroulante » en moitié de
       largeur, puis Aperçu ;

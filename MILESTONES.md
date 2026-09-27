@@ -172,8 +172,9 @@ concerné.
   (server.py ~22426-22865, après un return) → tâches planifiées inactives.
 - **Sawali lot 27 — tâches planifiées réactivées (garde-fous) + modèles WA à Flow + emojis + annotation d'images + sondages WhatsApp + facturation/bilans IA + éditeur de formulaires**
   — **livré, en attente de publication** (base `d091c30` = lot 26 publié ;
-  `sawali-portal-livraisons/sawali-portal-corrections_27_ae43964.patch` +
-  `sawali-portal-prompt_27.md`, remplace 8e70384, 4ca6874, 6eb9527, c83fc89, cf6ef53 non publiés ; dev `claude/lot27` ae43964). Bloc APScheduler
+  `sawali-portal-livraisons/sawali-portal-corrections_27_478eecd.patch` +
+  `sawali-portal-prompt_27.md`, remplace 8e70384, 4ca6874, 6eb9527, c83fc89, cf6ef53, ae43964 non publiés ; dev `claude/lot27` 478eecd ;
+  sidebar : entrée unique « Formulaires & Sondages » avec bascule dans la page). Bloc APScheduler
   (26 tâches) sorti du code mort vers `_start_scheduler` (add_job protégés,
   start garanti, jamais en preview, DISABLE_SCHEDULER, page d'état
   /api/admin/scheduler/status). Garde-fous : envois WA/SMS programmés > 3 h de

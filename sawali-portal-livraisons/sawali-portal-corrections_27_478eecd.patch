@@ -1,6 +1,6 @@
-From ae43964ac496a9bb4a99818d7b4cc727d6f99354 Mon Sep 17 00:00:00 2001
+From 478eecd0a82f5976a64da93c0d65e7eb57aa95be Mon Sep 17 00:00:00 2001
 From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
-Date: Sat, 26 Sep 2026 18:57:21 +0000
+Date: Sun, 27 Sep 2026 02:34:40 +0000
 Subject: [PATCH] =?UTF-8?q?Lot=2027=20:=20t=C3=A2ches=20planifi=C3=A9es=20?=
  =?UTF-8?q?r=C3=A9activ=C3=A9es,=20mod=C3=A8les=20WhatsApp=20=C3=A0=20form?=
  =?UTF-8?q?ulaire=20(Flow),=20emojis,=20annotation=20d'images,=20sondages?=
@@ -62,6 +62,7 @@ enregistré sans « + » n'est plus recréé à chaque conversation.
  backend/health_report.py                      |   4 +-
  backend/models.py                             |   4 +
  backend/routes/cashier.py                     |  84 ++
+ backend/routes/i18n.py                        |   2 +
  backend/routes/liluvine_reactions.py          |  28 +-
  backend/routes/portfolio_billing.py           | 535 ++++++++++
  backend/routes/production.py                  |  22 +-
@@ -78,7 +79,7 @@ enregistré sans « + » n'est plus recréé à chaque conversation.
  frontend/src/components/FormsSurveysTabs.jsx  |  27 +
  frontend/src/components/ImageAnnotator.jsx    | 441 ++++++++
  frontend/src/components/InvoiceTvaDialog.jsx  |  76 ++
- frontend/src/components/PortalLayout.jsx      |   6 +
+ frontend/src/components/PortalLayout.jsx      |  18 +-
  .../src/components/SurveyContributors.jsx     | 140 +++
  frontend/src/components/SurveySendModal.jsx   | 329 ++++++
  .../src/pages/admin/AdminClientFeatures.jsx   |   4 +
@@ -87,7 +88,7 @@ enregistré sans « + » n'est plus recréé à chaque conversation.
  frontend/src/pages/portal/Contacts.jsx        |  59 +-
  frontend/src/pages/portal/FormEditor.jsx      | 523 ++++++----
  frontend/src/pages/portal/FormRunner.jsx      |   4 +-
- frontend/src/pages/portal/FormsList.jsx       |   3 +
+ frontend/src/pages/portal/FormsList.jsx       |   5 +-
  .../src/pages/portal/PortfolioInvoices.jsx    |  98 ++
  frontend/src/pages/portal/Production.jsx      |  42 +-
  frontend/src/pages/portal/SmsBulk.jsx         |   5 +-
@@ -97,7 +98,7 @@ enregistré sans « + » n'est plus recréé à chaque conversation.
  frontend/src/pages/portal/UnifiedInbox.jsx    |   7 +-
  frontend/src/pages/portal/WaBulk.jsx          |   4 +
  frontend/src/pages/public/PublicSurvey.jsx    | 161 +++
- 38 files changed, 5979 insertions(+), 277 deletions(-)
+ 39 files changed, 5990 insertions(+), 282 deletions(-)
  create mode 100644 backend/routes/portfolio_billing.py
  create mode 100644 backend/routes/wa_surveys.py
  create mode 100644 backend/tests/test_contacts_no_duplicate_lot27.py
@@ -261,6 +262,19 @@ index f3dc5d0..5272e59 100644
 +
 +    router.create_invoice_for_client = create_invoice_for_client
      return router, run_auto_relance
+diff --git a/backend/routes/i18n.py b/backend/routes/i18n.py
+index 1455415..a8fd9a7 100644
+--- a/backend/routes/i18n.py
++++ b/backend/routes/i18n.py
+@@ -111,6 +111,8 @@ SEED_KEYS: List[Dict[str, str]] = [
+     {"key": "nav.reports", "fr": "Mes rapports", "en": "My reports", "ar": "تقاريري", "context": "Sidebar"},
+     {"key": "nav.followups", "fr": "Mes suivis", "en": "My follow-ups", "ar": "متابعاتي", "context": "Sidebar"},
+     {"key": "nav.forms", "fr": "Formulaires", "en": "Forms", "ar": "النماذج", "context": "Sidebar"},
++    # Lot 27 — entrée fusionnée « Formulaires & Sondages » (bascule dans la page)
++    {"key": "nav.forms_surveys", "fr": "Formulaires & Sondages", "en": "Forms & Surveys", "ar": "النماذج والاستطلاعات", "context": "Sidebar"},
+     {"key": "nav.contacts", "fr": "Centre de Messagerie", "en": "Messaging Center", "ar": "مركز المراسلة", "context": "Sidebar"},
+     {"key": "nav.tickets", "fr": "Tickets", "en": "Tickets", "ar": "التذاكر", "context": "Sidebar"},
+     {"key": "nav.liluvine", "fr": "Liluvine PRO (Assistant IA)", "en": "Liluvine PRO (AI Assistant)", "ar": "ليلوفين برو (مساعد الذكاء الاصطناعي)", "context": "Sidebar"},
 diff --git a/backend/routes/liluvine_reactions.py b/backend/routes/liluvine_reactions.py
 index cfc3b66..a374f66 100644
 --- a/backend/routes/liluvine_reactions.py
@@ -4492,29 +4506,62 @@ index 0000000..34d0a85
 +  );
 +}
 diff --git a/frontend/src/components/PortalLayout.jsx b/frontend/src/components/PortalLayout.jsx
-index 95929d0..e2ddd82 100644
+index 95929d0..9957d2f 100644
 --- a/frontend/src/components/PortalLayout.jsx
 +++ b/frontend/src/components/PortalLayout.jsx
-@@ -45,6 +45,10 @@ const clientLinks = [
+@@ -44,7 +44,12 @@ const clientLinks = [
+   { to: "/portal/formations", label: "Formations Spécialisées", icon: GraduationCap, trackedOnly: true, module: "formations" },
    { to: "/portal/notes/reports", label: "Mes rapports", tKey: "nav.reports", icon: FileEdit, module: "reports" },
    { to: "/portal/notes/suivis", label: "Mes suivis", tKey: "nav.followups", icon: FileEdit, module: "suivis" },
-   { to: "/portal/forms", label: "Formulaires", tKey: "nav.forms", icon: FileText },
-+  // Lot 27 — Sondages WhatsApp (lien personnel par destinataire, mesure des retours)
-+  { to: "/portal/surveys", label: "Sondages WhatsApp", icon: BarChart3, module: "whatsapp" },
+-  { to: "/portal/forms", label: "Formulaires", tKey: "nav.forms", icon: FileText },
++  // Lot 27 — « Formulaires & Sondages » : une seule entrée (sidebar plus courte) ;
++  // la page bascule entre Formulaires et Sondages WhatsApp (FormsSurveysTabs).
++  // `alsoActive` : le lien reste en surbrillance sur les pages des sondages.
++  { to: "/portal/forms", label: "Formulaires & Sondages", tKey: "nav.forms_surveys", icon: FileText, alsoActive: ["/portal/surveys"] },
 +  // Lot 27 — bilans formulaires & sondages à facturer (admin et Superviseur : choix de la TVA)
 +  { to: "/portal/portfolio-invoices", label: "Bilans à facturer", icon: Receipt, adminOrSup: true },
    { to: "/portal/contacts", label: "Centre de Messagerie", tKey: "nav.contacts", icon: MessageCircle, module: "contacts_unread", noMarkSeen: true },
    { to: "/portal/contact-groups", label: "Groupes de contacts", icon: Users },
    // Lot 25 — `errorRegistryOnly` : lien affiché seulement aux rôles système que le
-@@ -116,6 +120,8 @@ const adminLinks = [
+@@ -115,7 +120,9 @@ const adminLinks = [
+   { to: "/admin/appointments", label: "Rendez-vous", icon: Calendar, module: "admin_appointments" },
    { to: "/admin/interventions", label: "Interventions", icon: Wrench, module: "admin_interventions", badgeKey: "tickets_pending" },
    { to: "/admin/documents", label: "Documents", icon: FileText },
-   { to: "/admin/forms", label: "Formulaires", icon: FileEdit },
-+  { to: "/admin/surveys", label: "Sondages WhatsApp", icon: BarChart3 },   // lot 27
+-  { to: "/admin/forms", label: "Formulaires", icon: FileEdit },
++  // Lot 27 — une seule entrée, bascule Formulaires / Sondages dans la page
++  { to: "/admin/forms", label: "Formulaires & Sondages", icon: FileEdit, alsoActive: ["/admin/surveys"] },
 +  { to: "/admin/portfolio-invoices", label: "Bilans à facturer", icon: Receipt },   // lot 27
    { to: "/admin/messaging", label: "Messagerie WhatsApp", icon: MessageCircle },
    { to: "/admin/whatsapp-templates", label: "Templates WhatsApp", icon: FileEdit },
    { to: "/admin/automations", label: "Automations", icon: Zap },
+@@ -556,6 +563,7 @@ function PortalLayoutInner({ admin = false }) {
+     // Resolve a friendly module label from the matching link
+     const match = [...adminLinks, ...clientLinks].find((l) =>
+       l.end ? path === l.to : path === l.to || path.startsWith(l.to + "/")
++        || (l.alsoActive || []).some((p) => path === p || path.startsWith(p + "/"))
+     );
+     const moduleLabel = match?.label || (path.startsWith("/admin") ? "Admin" : "Portail");
+     apiClient.post("/me/access-log", { module: moduleLabel, page: path }).catch(() => {});
+@@ -607,7 +615,9 @@ function PortalLayoutInner({ admin = false }) {
+         <WeatherWidget variant="compact" placement="portal" className="w-full justify-start" />
+       </div>
+       <nav className="space-y-1">
+-        {links.map(({ to, label, tKey, icon: Icon, end, module, soon, badgeKey, featureGate, showBadges, disabled, disabledReason }) => {
++        {links.map(({ to, label, tKey, icon: Icon, end, module, soon, badgeKey, featureGate, showBadges, disabled, disabledReason, alsoActive }) => {
++          // Lot 27 — actif aussi sur les chemins associés (ex. sondages sous « Formulaires & Sondages »)
++          const extraActive = (alsoActive || []).some((p) => location.pathname === p || location.pathname.startsWith(p + "/"));
+           // Lot 23 — le badge du Centre de Messagerie affiche le MÊME nombre que la cloche
+           // et que les pastilles des contacts (/me/whatsapp/unread, relu toutes les 15 s
+           // et dès qu'une conversation est lue), au lieu d'un second compteur relu toutes les 90 s.
+@@ -658,7 +668,7 @@ function PortalLayoutInner({ admin = false }) {
+               className={({ isActive }) =>
+                 isDisabled
+                   ? "sidebar-link opacity-40 cursor-not-allowed group"
+-                  : `sidebar-link ${isActive ? "active" : ""} group`
++                  : `sidebar-link ${isActive || extraActive ? "active" : ""} group`
+               }
+               data-testid={`sidebar-link-${to.replace(/\//g, "-")}`}
+               title={featureDisabled ? `${displayLabel} (non activé)` : (disabled ? (disabledReason || `${displayLabel} (non disponible)`) : undefined)}
 diff --git a/frontend/src/components/SurveyContributors.jsx b/frontend/src/components/SurveyContributors.jsx
 new file mode 100644
 index 0000000..05c1f5e
@@ -6049,7 +6096,7 @@ index 5b21a45..1681ff5 100644
    switch (field.type) {
      case "textarea":
 diff --git a/frontend/src/pages/portal/FormsList.jsx b/frontend/src/pages/portal/FormsList.jsx
-index 1cab64d..064e28f 100644
+index 1cab64d..1efe22b 100644
 --- a/frontend/src/pages/portal/FormsList.jsx
 +++ b/frontend/src/pages/portal/FormsList.jsx
 @@ -4,6 +4,7 @@ import { apiClient } from "@/lib/api";
@@ -6060,7 +6107,7 @@ index 1cab64d..064e28f 100644
  
  // Form catalogue : user's forms + public forms from other clients
  export default function FormsList() {
-@@ -113,6 +114,8 @@ export default function FormsList() {
+@@ -113,9 +114,11 @@ export default function FormsList() {
  
    return (
      <div className="max-w-6xl space-y-6" data-testid="forms-list-page">
@@ -6068,7 +6115,11 @@ index 1cab64d..064e28f 100644
 +      <FormsSurveysTabs active="forms" />
        <div className="flex items-center justify-between gap-4 flex-wrap">
          <div>
-           <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Formulaires</p>
+-          <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Formulaires</p>
++          <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Formulaires &amp; Sondages</p>
+           <h1 className="text-2xl font-display font-bold flex items-center gap-2">
+             <FileText className="h-5 w-5 text-sawali-blue" /> Bibliothèque de formulaires
+           </h1>
 diff --git a/frontend/src/pages/portal/PortfolioInvoices.jsx b/frontend/src/pages/portal/PortfolioInvoices.jsx
 new file mode 100644
 index 0000000..84fc34d
@@ -6993,7 +7044,7 @@ index 0000000..1be6ba3
 +}
 diff --git a/frontend/src/pages/portal/Surveys.jsx b/frontend/src/pages/portal/Surveys.jsx
 new file mode 100644
-index 0000000..bf4b6e3
+index 0000000..e514cf0
 --- /dev/null
 +++ b/frontend/src/pages/portal/Surveys.jsx
 @@ -0,0 +1,212 @@
@@ -7080,7 +7131,7 @@ index 0000000..bf4b6e3
 +      <FormsSurveysTabs active="surveys" />
 +      <div className="flex items-center justify-between gap-4 flex-wrap">
 +        <div>
-+          <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Sondages</p>
++          <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Formulaires &amp; Sondages</p>
 +          <h1 className="text-2xl font-display font-bold flex items-center gap-2">
 +            <BarChart3 className="h-5 w-5 text-sawali-blue" /> Sondages WhatsApp
 +          </h1>
