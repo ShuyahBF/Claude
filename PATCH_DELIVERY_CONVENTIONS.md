@@ -69,6 +69,8 @@ Structure à reprendre systématiquement :
    (2) **« Save to GitHub »**, (3) **Deploy** (production). L'enregistrement
    GitHub vient AVANT le déploiement (ordre recommandé par Emergent,
    rappelé par l'utilisateur le 2026-09-27) ; puis l'utilisateur dit « publié ».
+   Contrôle de santé à citer : `/api/health` (en production, `/health` sans
+   `/api` est servi par le frontend et affiche la page du site).
 2. **Interdiction explicite, toujours présente** : aucune commande de
    test/build/lint, pas de ré-analyse du code, **et surtout AUCUN Testing
    Agent / agent évaluateur / analyseur automatique** — appliquer et

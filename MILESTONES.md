@@ -205,7 +205,7 @@ concerné.
   Doublons auto-liluvine : auto_add_new_contact_if_enabled cherchait « +digits »
   exact -> reconnaissance sur 8 derniers chiffres. 107 tests autonomes, E2E navigateur OK. Ensuite : découpage de server.py par lots. Lot 26 : 395/395 sondes OK sur 15 min.
 - **Sawali lot 28 — zone de saisie pleine largeur + découpage de server.py**
-  — **livré, en attente de publication** (base `ce753a0` = lot 27 publié ;
+  — **publié le 2026-09-27** (GitHub db42025→ec599b9, code identique hors `.emergent` ; production deploy_seq 55, /api/health ok ; NB : /health sans /api est servi par le frontend en production) (base `ce753a0` = lot 27 publié ;
   `sawali-portal-livraisons/sawali-portal-corrections_28_057b712.patch` +
   `sawali-portal-prompt_28.md`, remplace 8fbeb16 non publié ; dev `claude/lot28`
   057b712 ; étiquette locale `sauvegarde-avant-decoupage-serverpy`).
