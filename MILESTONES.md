@@ -171,7 +171,7 @@ concerné.
   (7 nouveaux), build OK. Signalé, non corrigé : bloc APScheduler jamais exécuté
   (server.py ~22426-22865, après un return) → tâches planifiées inactives.
 - **Sawali lot 27 — tâches planifiées réactivées (garde-fous) + modèles WA à Flow + emojis + annotation d'images + sondages WhatsApp + facturation/bilans IA + éditeur de formulaires**
-  — **en production le 2026-09-27 (deploy_seq 54, « Formulaires & Sondages » et routes sondages/bilans en ligne ; GitHub pas encore enregistré, toujours d091c30)** (base `d091c30` = lot 26 publié ;
+  — **publié le 2026-09-27 (deploy_seq 54 ; GitHub 47e17b9→ce753a0, code identique hors `.emergent`)** (base `d091c30` = lot 26 publié ;
   `sawali-portal-livraisons/sawali-portal-corrections_27_478eecd.patch` +
   `sawali-portal-prompt_27.md`, remplace 8e70384, 4ca6874, 6eb9527, c83fc89, cf6ef53, ae43964 non publiés ; dev `claude/lot27` 478eecd ;
   sidebar : entrée unique « Formulaires & Sondages » avec bascule dans la page). Bloc APScheduler
@@ -205,7 +205,7 @@ concerné.
   Doublons auto-liluvine : auto_add_new_contact_if_enabled cherchait « +digits »
   exact -> reconnaissance sur 8 derniers chiffres. 107 tests autonomes, E2E navigateur OK. Ensuite : découpage de server.py par lots. Lot 26 : 395/395 sondes OK sur 15 min.
 - **Albarka lot 8 — paie Burkina Faso paramétrable (cabinet + clients), retenue et arrondis des factures**
-  — **en production le 2026-09-27** (v2026.8, routes /api/hr/paie en ligne ; GitHub pas encore enregistré, toujours 7b86f23) (base `7b86f23` = lot 7 publié ;
+  — **publié le 2026-09-27** (v2026.8 ; GitHub 34ae308→b7eee01, code identique hors `.emergent`) (base `7b86f23` = lot 7 publié ;
   `albarka-portal-livraisons/albarka-portal-corrections_8_20283d5.patch` +
   `albarka-portal-prompt_8.md`, remplace b1465a9 non publié ; dev
   `claude/albarka-lot8` 20283d5). Moteur
