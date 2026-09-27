@@ -203,6 +203,20 @@ concerné.
   (même modèle de données) ; Production : Recette -> Formulation.
   Doublons auto-liluvine : auto_add_new_contact_if_enabled cherchait « +digits »
   exact -> reconnaissance sur 8 derniers chiffres. 107 tests autonomes, E2E navigateur OK. Ensuite : découpage de server.py par lots. Lot 26 : 395/395 sondes OK sur 15 min.
+- **Albarka lot 8 — paie Burkina Faso paramétrable (cabinet + clients), retenue et arrondis des factures**
+  — **livré, en attente de publication** (base `7b86f23` = lot 7 publié ;
+  `albarka-portal-livraisons/albarka-portal-corrections_8_b1465a9.patch` +
+  `albarka-portal-prompt_8.md` ; dev `claude/albarka-lot8` b1465a9). Moteur
+  albarka_paie_moteur.py (reproduit exactement le fichier Excel CARD-IPRO ;
+  défauts : franc, base IUTS centaine inf., net centaine → 300 000 / 297 000),
+  modèles paie_modeles (Appliquer / Restaurer les valeurs par défaut),
+  paie_employeurs (modèle + personnalisation / Restaurer les valeurs du modèle,
+  employeur « cabinet » pour le personnel propre), fiche paie (catégorie,
+  charges, embauche → ancienneté dès 3 ans, brut→net / net→brut), bulletins
+  paie_bulletins (brouillon/validé, PDF QR, impression groupée), livre de paie
+  (charges patronales CNSS 16 % + TPA 3 %, PDF/CSV), tableau lot 7 alimenté.
+  Factures : round_franc demi-haut, retenue IFU 5 % / sans IFU 10 % + libellé
+  (doc settings). 81 tests autonomes, E2E navigateur OK.
 - **Albarka lot 5 — design SAWALI sur tout le portail + corrections de droits**
   — **publié le 2026-09-26** (GitHub d30e280→37de42f, code identique hors
   `.emergent`/`.gitignore` ; production v2026.5) (base `36d9fc1` = lot 4 publié ;

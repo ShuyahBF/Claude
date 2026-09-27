@@ -1,0 +1,2883 @@
+From b1465a9d1d8dc9cf22587a3b2f826917f2d42304 Mon Sep 17 00:00:00 2001
+From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
+Date: Sun, 27 Sep 2026 00:12:26 +0000
+Subject: [PATCH] =?UTF-8?q?Lot=208=20:=20paie=20Burkina=20Faso=20param?=
+ =?UTF-8?q?=C3=A9trable=20(cabinet=20et=20clients),=20retenue=20et=20arron?=
+ =?UTF-8?q?dis=20des=20factures?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Paie, pour le personnel du cabinet et pour celui des clients :
+- moteur de calcul repris du bulletin du cabinet (CNSS 5,5 % plafonnée,
+  CNSS fiscale ≤ 8 % du salaire de base, exonérations logement/transport/
+  fonction, abattement forfaitaire, barème IUTS par tranches, charges de
+  famille, soutien patriotique 1 %) ; il retrouve exactement les montants du
+  fichier Excel ; prime d'ancienneté à partir de 3 ans ; arrondis au franc,
+  base IUTS à la centaine inférieure et net à la centaine ;
+- modèles de configuration indépendants des employeurs, tout est modifiable
+  (tranches, taux, charges de famille, catégories, arrondis…) avec
+  « Appliquer » et « Restaurer les valeurs par défaut » ; chaque employeur
+  choisit son modèle et peut le personnaliser (« Restaurer les valeurs du modèle ») ;
+- abattement forfaitaire unique ou selon la catégorie du salarié ;
+- fiche paie du salarié, modes « brut → net » et « net négocié → brut » ;
+- bulletins du mois (préparation, primes et retenues, validation), PDF au
+  format du modèle avec QR code, impression groupée ;
+- livre de paie avec les charges patronales (CNSS employeur, TPA), PDF et Excel ;
+- le tableau de paie du lot 7 reprend le net calculé.
+Factures : TVA et retenue arrondies au franc (0,5 vers le haut) ; retenue à
+la source avec IFU 5 % / sans IFU 10 % et libellé, modifiables.
+---
+ backend/albarka_docgen.py                     |  12 +
+ backend/albarka_paie.py                       | 760 ++++++++++++++++++
+ backend/albarka_paie_moteur.py                | 477 +++++++++++
+ backend/albarka_payroll.py                    |  10 +
+ backend/albarka_phase_c.py                    |  13 +-
+ backend/server.py                             |   5 +
+ backend/tests/test_paie_lot8.py               | 235 ++++++
+ .../src/components/paie/PaieBulletins.jsx     | 258 ++++++
+ .../src/components/paie/PaieEmployees.jsx     | 186 +++++
+ .../src/components/paie/PaieParamsEditor.jsx  | 241 ++++++
+ frontend/src/components/paie/PaieSettings.jsx | 197 +++++
+ frontend/src/components/paie/paieCommon.jsx   |  51 ++
+ frontend/src/pages/admin/AdminBilling.jsx     |  41 +-
+ frontend/src/pages/admin/AdminHR.jsx          |  86 +-
+ frontend/src/pages/admin/DocSettingsPanel.jsx |  11 +-
+ frontend/src/version.js                       |   2 +-
+ 16 files changed, 2503 insertions(+), 82 deletions(-)
+ create mode 100644 backend/albarka_paie.py
+ create mode 100644 backend/albarka_paie_moteur.py
+ create mode 100644 backend/tests/test_paie_lot8.py
+ create mode 100644 frontend/src/components/paie/PaieBulletins.jsx
+ create mode 100644 frontend/src/components/paie/PaieEmployees.jsx
+ create mode 100644 frontend/src/components/paie/PaieParamsEditor.jsx
+ create mode 100644 frontend/src/components/paie/PaieSettings.jsx
+ create mode 100644 frontend/src/components/paie/paieCommon.jsx
+
+diff --git a/backend/albarka_docgen.py b/backend/albarka_docgen.py
+index 0de49b7..3dd8095 100644
+--- a/backend/albarka_docgen.py
++++ b/backend/albarka_docgen.py
+@@ -152,6 +152,10 @@ DOC_SETTINGS_DEFAULTS = {
+     "thanks_text": "Nous vous remercions de votre confiance.",
+     "default_tva_rate": 18.0,
+     "default_withholding_rate": 0.0,
++    # Lot 8 — retenue à la source : libellé et taux selon le prestataire
++    "withholding_label": "retenue",
++    "withholding_rate_ifu": 5.0,        # prestataire avec numéro IFU
++    "withholding_rate_no_ifu": 10.0,    # prestataire sans numéro IFU
+ }
+ 
+ 
+@@ -164,6 +168,9 @@ class DocSettingsUpdate(BaseModel):
+     thanks_text: Optional[str] = Field(None, max_length=200)
+     default_tva_rate: Optional[float] = Field(None, ge=0, le=100)
+     default_withholding_rate: Optional[float] = Field(None, ge=0, le=100)
++    withholding_label: Optional[str] = Field(None, max_length=60)
++    withholding_rate_ifu: Optional[float] = Field(None, ge=0, le=100)
++    withholding_rate_no_ifu: Optional[float] = Field(None, ge=0, le=100)
+ 
+ 
+ async def get_doc_settings() -> dict:
+@@ -417,4 +424,9 @@ async def verify_document(token: str):
+         return {"valid": True, "issuer": issuer, "kind": "Tableau de paie", "number": payroll.get("period_month"),
+                 "date": (payroll.get("generated_at") or "")[:10], "client": payroll.get("company") or "—",
+                 "title": f"Liste du personnel — {payroll.get('period_label') or ''}".strip(" —")}
++    # Lot 8 : bulletin de paie
++    from albarka_paie import bulletin_for_verify
++    slip = await bulletin_for_verify(token)
++    if slip:
++        return {"valid": True, "issuer": issuer, **slip}
+     raise HTTPException(status_code=404, detail="Document inconnu")
+diff --git a/backend/albarka_paie.py b/backend/albarka_paie.py
+new file mode 100644
+index 0000000..04f6a4f
+--- /dev/null
++++ b/backend/albarka_paie.py
+@@ -0,0 +1,760 @@
++"""PAIE — modèles de configuration, bulletins et livre de paie (lot 8).
++
++Le cabinet calcule la paie de SON PROPRE PERSONNEL (employeur « cabinet ») et
++celle de SES CLIENTS (employeur = compte client).
++
++  - MODÈLES DE CONFIGURATION (indépendants des employeurs) : jeux complets de
++    paramètres (barème IUTS, CNSS, exonérations, abattements, charges de
++    famille, ancienneté, soutien patriotique, charges patronales, arrondis).
++    On les modifie, on clique « Appliquer » ; « Restaurer les valeurs par
++    défaut » remet les paramètres par défaut (Burkina Faso). Un modèle
++    « Burkina Faso — standard » est créé au premier démarrage.
++  - CONFIGURATION D'UN EMPLOYEUR : le modèle utilisé + une personnalisation
++    facultative propre à cet employeur (« Restaurer les valeurs du modèle »),
++    et son en-tête de bulletin (raison sociale, adresse, téléphone, n° CNSS).
++  - FICHE PAIE DU SALARIÉ : catégorie, charges de famille, date d'embauche,
++    indemnités (exonérées ou non), mode « brut → net » ou « net négocié → brut ».
++  - BULLETINS du mois (brouillon → validé), PDF avec QR code de vérification.
++  - LIVRE DE PAIE du mois : tous les salariés, retenues, net à payer et
++    CHARGES PATRONALES (CNSS employeur, TPA) ; PDF et Excel (CSV).
++
++Collections : paie_modeles, paie_employeurs, paie_bulletins (+ employees).
++"""
++from __future__ import annotations
++
++import csv
++import io
++import re
++import secrets
++from typing import Any, Dict, List, Optional
++from xml.sax.saxutils import escape
++
++from fastapi import APIRouter, Depends, HTTPException
++from fastapi.responses import Response
++from pydantic import BaseModel, Field
++
++from albarka_auth import require_roles
++from albarka_docgen import MONTHS_FR, fcfa, new_verify_token, now_iso, qr_png, verify_url
++from albarka_paie_moteur import DEFAULT_PARAMS, base_for_net, compute_payslip, normalize_params
++from db import db
++
++router = APIRouter(prefix="/hr/paie", tags=["RH & Paie — bulletins"])
++HR_ROLES = ["superviseur", "direction", "administrateur", "rh"]
++CABINET_ID = "cabinet"                       # employeur « personnel du cabinet »
++SYSTEM_TEMPLATE_NAME = "Burkina Faso — standard"
++
++
++def _month_ok(v: str) -> str:
++    if not re.match(r"^\d{4}-(0[1-9]|1[0-2])$", v or ""):
++        raise HTTPException(status_code=400, detail="Mois attendu au format AAAA-MM")
++    return v
++
++
++def period_label(month: str) -> str:
++    y, m = month.split("-")
++    return f"{MONTHS_FR[int(m) - 1].upper()} {y}"
++
++
++def period_bounds(month: str) -> tuple[str, str]:
++    """(« 01/07/2024 », « 31/07/2024 »)."""
++    import calendar
++    y, m = map(int, month.split("-"))
++    return f"01/{m:02d}/{y}", f"{calendar.monthrange(y, m)[1]:02d}/{m:02d}/{y}"
++
++
++def _clean_params(params: Optional[dict]) -> dict:
++    try:
++        return normalize_params(params)
++    except ValueError as exc:
++        raise HTTPException(status_code=400, detail=str(exc))
++
++
++# ==========================================================================
++# Modèles de configuration
++# ==========================================================================
++class TemplateIn(BaseModel):
++    name: str = Field(..., min_length=1, max_length=120)
++    description: str = Field("", max_length=500)
++    params: Optional[dict] = None                # absent = valeurs par défaut
++
++
++async def ensure_paie_setup() -> None:
++    """Index et modèle « Burkina Faso — standard » (au premier démarrage)."""
++    await db.paie_bulletins.create_index([("employer_id", 1), ("period_month", 1), ("employee_id", 1)], unique=True)
++    await db.paie_employeurs.create_index("employer_id", unique=True)
++    if not await db.paie_modeles.find_one({}, {"_id": 0, "id": 1}):
++        await db.paie_modeles.insert_one({
++            "id": secrets.token_hex(8), "name": SYSTEM_TEMPLATE_NAME,
++            "description": "Barème IUTS, CNSS 5,5 % plafonnée, exonérations logement/transport/fonction, "
++                           "abattement 25 %, soutien patriotique 1 % (valeurs du fichier du cabinet).",
++            "params": normalize_params(None), "is_default": True, "created_at": now_iso(), "updated_at": now_iso()})
++
++
++async def _template(tid: str) -> dict:
++    t = await db.paie_modeles.find_one({"id": tid}, {"_id": 0})
++    if not t:
++        raise HTTPException(status_code=404, detail="Modèle introuvable")
++    return t
++
++
++async def _default_template() -> dict:
++    await ensure_paie_setup()
++    return (await db.paie_modeles.find_one({"is_default": True}, {"_id": 0})
++            or await db.paie_modeles.find_one({}, {"_id": 0}, sort=[("created_at", 1)]))
++
++
++@router.get("/defaults")
++async def get_defaults(user: dict = Depends(require_roles(HR_ROLES))):
++    """Valeurs par défaut (bouton « Restaurer les valeurs par défaut »)."""
++    return {"params": normalize_params(DEFAULT_PARAMS)}
++
++
++@router.get("/modeles")
++async def list_templates(user: dict = Depends(require_roles(HR_ROLES))):
++    await ensure_paie_setup()
++    items = await db.paie_modeles.find({}, {"_id": 0}).sort("created_at", 1).to_list(200)
++    usage = {}
++    async for e in db.paie_employeurs.find({}, {"_id": 0, "template_id": 1}):
++        usage[e.get("template_id")] = usage.get(e.get("template_id"), 0) + 1
++    for t in items:
++        t["employers_count"] = usage.get(t["id"], 0)
++    return {"items": items}
++
++
++@router.post("/modeles")
++async def create_template(payload: TemplateIn, user: dict = Depends(require_roles(HR_ROLES))):
++    if await db.paie_modeles.find_one({"name": payload.name.strip()}, {"_id": 0, "id": 1}):
++        raise HTTPException(status_code=409, detail="Un modèle porte déjà ce nom")
++    doc = {"id": secrets.token_hex(8), "name": payload.name.strip(), "description": payload.description.strip(),
++           "params": _clean_params(payload.params), "is_default": False, "created_at": now_iso(),
++           "updated_at": now_iso(), "updated_by": user.get("email")}
++    await db.paie_modeles.insert_one(doc.copy())
++    return doc
++
++
++@router.put("/modeles/{tid}")
++async def update_template(tid: str, payload: TemplateIn, user: dict = Depends(require_roles(HR_ROLES))):
++    """« Appliquer » : enregistre les paramètres du modèle (employeurs qui l'utilisent
++    sans personnalisation : pris en compte pour les prochains calculs)."""
++    await _template(tid)
++    other = await db.paie_modeles.find_one({"name": payload.name.strip(), "id": {"$ne": tid}}, {"_id": 0, "id": 1})
++    if other:
++        raise HTTPException(status_code=409, detail="Un autre modèle porte déjà ce nom")
++    await db.paie_modeles.update_one({"id": tid}, {"$set": {
++        "name": payload.name.strip(), "description": payload.description.strip(),
++        "params": _clean_params(payload.params), "updated_at": now_iso(), "updated_by": user.get("email")}})
++    return await _template(tid)
++
++
++@router.post("/modeles/{tid}/restore-defaults")
++async def restore_template_defaults(tid: str, user: dict = Depends(require_roles(HR_ROLES))):
++    """« Restaurer les valeurs par défaut » du modèle."""
++    await _template(tid)
++    await db.paie_modeles.update_one({"id": tid}, {"$set": {"params": normalize_params(None), "updated_at": now_iso(),
++                                                             "updated_by": user.get("email")}})
++    return await _template(tid)
++
++
++@router.post("/modeles/{tid}/duplicate")
++async def duplicate_template(tid: str, user: dict = Depends(require_roles(HR_ROLES))):
++    t = await _template(tid)
++    name, n = f"{t['name']} (copie)", 2
++    while await db.paie_modeles.find_one({"name": name}, {"_id": 0, "id": 1}):
++        name, n = f"{t['name']} (copie {n})", n + 1
++    doc = {**t, "id": secrets.token_hex(8), "name": name, "is_default": False, "created_at": now_iso(),
++           "updated_at": now_iso(), "updated_by": user.get("email")}
++    await db.paie_modeles.insert_one(doc.copy())
++    doc.pop("employers_count", None)
++    return doc
++
++
++@router.post("/modeles/{tid}/set-default")
++async def set_default_template(tid: str, user: dict = Depends(require_roles(HR_ROLES))):
++    """Modèle proposé aux employeurs qui n'en ont pas choisi."""
++    await _template(tid)
++    await db.paie_modeles.update_many({}, {"$set": {"is_default": False}})
++    await db.paie_modeles.update_one({"id": tid}, {"$set": {"is_default": True}})
++    return {"ok": True}
++
++
++@router.delete("/modeles/{tid}")
++async def delete_template(tid: str, user: dict = Depends(require_roles(HR_ROLES))):
++    t = await _template(tid)
++    if t.get("is_default"):
++        raise HTTPException(status_code=400, detail="Le modèle par défaut ne peut pas être supprimé")
++    if await db.paie_employeurs.count_documents({"template_id": tid}):
++        raise HTTPException(status_code=409, detail="Ce modèle est utilisé par des employeurs : choisissez-leur un autre modèle d'abord")
++    await db.paie_modeles.delete_one({"id": tid})
++    return {"ok": True}
++
++
++# ==========================================================================
++# Employeurs (cabinet + clients) et leur configuration
++# ==========================================================================
++class EmployerConfigIn(BaseModel):
++    template_id: Optional[str] = None
++    custom_params: Optional[dict] = None         # None = paramètres du modèle
++    display_name: str = Field("", max_length=200)
++    address: str = Field("", max_length=300)
++    phone: str = Field("", max_length=60)
++    cnss_number: str = Field("", max_length=60)
++
++
++async def _employer_identity(eid: str) -> Dict[str, str]:
++    """Nom, adresse et téléphone par défaut d'un employeur."""
++    if eid == CABINET_ID:
++        s = await db.settings.find_one({"_id": "global"}, {"_id": 0, "cabinet_name": 1, "doc_settings": 1}) or {}
++        return {"name": s.get("cabinet_name") or "Cabinet ALBARKA", "address": (s.get("doc_settings") or {}).get("city", ""),
++                "phone": "", "kind": "cabinet"}
++    u = await db.users.find_one({"id": eid}, {"_id": 0, "company": 1, "full_name": 1, "phone": 1, "roles": 1})
++    if not u or "client" not in (u.get("roles") or []):
++        raise HTTPException(status_code=404, detail="Employeur introuvable")
++    kyc = await db.client_kyc.find_one({"tenant_id": eid}, {"_id": 0, "business_name": 1, "address": 1}) or {}
++    return {"name": kyc.get("business_name") or u.get("company") or u.get("full_name") or "", "address": kyc.get("address") or "",
++            "phone": u.get("phone") or "", "kind": "client"}
++
++
++async def employer_config(eid: str) -> Dict[str, Any]:
++    """Configuration effective : modèle, personnalisation, paramètres utilisés, en-tête."""
++    ident = await _employer_identity(eid)
++    cfg = await db.paie_employeurs.find_one({"employer_id": eid}, {"_id": 0}) or {}
++    tpl = None
++    if cfg.get("template_id"):
++        tpl = await db.paie_modeles.find_one({"id": cfg["template_id"]}, {"_id": 0})
++    tpl = tpl or await _default_template()
++    custom = cfg.get("custom_params")
++    return {
++        "employer_id": eid, "kind": ident["kind"],
++        "name": cfg.get("display_name") or ident["name"], "default_name": ident["name"],
++        "display_name": cfg.get("display_name") or "", "address": cfg.get("address") or ident["address"],
++        "phone": cfg.get("phone") or ident["phone"], "cnss_number": cfg.get("cnss_number") or "",
++        "template_id": tpl["id"], "template_name": tpl["name"], "customized": custom is not None,
++        "custom_params": custom, "params": normalize_params(custom if custom is not None else tpl["params"]),
++    }
++
++
++@router.get("/employeurs")
++async def list_employers(user: dict = Depends(require_roles(HR_ROLES))):
++    """Le cabinet (son personnel) puis les clients, avec leur modèle et leurs salariés."""
++    cfgs = {c["employer_id"]: c async for c in db.paie_employeurs.find({}, {"_id": 0})}
++    tpls = {t["id"]: t["name"] async for t in db.paie_modeles.find({}, {"_id": 0, "id": 1, "name": 1})}
++    default = await _default_template()
++    counts = {}
++    async for e in db.employees.find({}, {"_id": 0, "tenant_id": 1}):
++        counts[e.get("tenant_id")] = counts.get(e.get("tenant_id"), 0) + 1
++    out = []
++    cab = await _employer_identity(CABINET_ID)
++    clients = await db.users.find({"roles": "client"}, {"_id": 0, "id": 1, "company": 1, "full_name": 1}).sort("company", 1).to_list(2000)
++    rows = [{"employer_id": CABINET_ID, "name": cab["name"], "kind": "cabinet"}] + [
++        {"employer_id": c["id"], "name": c.get("company") or c.get("full_name") or c["id"], "kind": "client"} for c in clients]
++    for r in rows:
++        cfg = cfgs.get(r["employer_id"]) or {}
++        tid = cfg.get("template_id") or default["id"]
++        out.append({**r, "name": cfg.get("display_name") or r["name"], "template_id": tid,
++                    "template_name": tpls.get(tid, default["name"]), "customized": cfg.get("custom_params") is not None,
++                    "employees_count": counts.get(r["employer_id"], 0)})
++    return {"items": out}
++
++
++@router.get("/employeurs/{eid}")
++async def get_employer(eid: str, user: dict = Depends(require_roles(HR_ROLES))):
++    return await employer_config(eid)
++
++
++@router.put("/employeurs/{eid}")
++async def put_employer(eid: str, payload: EmployerConfigIn, user: dict = Depends(require_roles(HR_ROLES))):
++    """« Appliquer » : modèle choisi, personnalisation éventuelle, en-tête du bulletin."""
++    await _employer_identity(eid)
++    if payload.template_id:
++        await _template(payload.template_id)
++    custom = _clean_params(payload.custom_params) if payload.custom_params is not None else None
++    await db.paie_employeurs.update_one({"employer_id": eid}, {"$set": {
++        "employer_id": eid, "template_id": payload.template_id, "custom_params": custom,
++        "display_name": payload.display_name.strip(), "address": payload.address.strip(), "phone": payload.phone.strip(),
++        "cnss_number": payload.cnss_number.strip(), "updated_at": now_iso(), "updated_by": user.get("email")}}, upsert=True)
++    return await employer_config(eid)
++
++
++@router.post("/employeurs/{eid}/restore-template")
++async def restore_employer_template(eid: str, user: dict = Depends(require_roles(HR_ROLES))):
++    """« Restaurer les valeurs du modèle » : supprime la personnalisation de l'employeur."""
++    await _employer_identity(eid)
++    await db.paie_employeurs.update_one({"employer_id": eid}, {"$set": {"custom_params": None, "updated_at": now_iso()}},
++                                        upsert=True)
++    return await employer_config(eid)
++
++
++# ==========================================================================
++# Fiche paie du salarié
++# ==========================================================================
++class EmployeePaieIn(BaseModel):
++    tenant_id: Optional[str] = None               # création : « cabinet » ou id du client
++    full_name: str = Field(..., min_length=2, max_length=200)
++    role: Optional[str] = Field(None, max_length=120)
++    matricule: Optional[str] = Field(None, max_length=40)
++    cnss_number: Optional[str] = Field(None, max_length=40)
++    category: Optional[str] = Field(None, max_length=40)
++    dependents: int = Field(0, ge=0, le=30)
++    hire_date: Optional[str] = None
++    pay_mode: str = "gross"                       # gross (brut → net) | net (net négocié → brut)
++    base_salary: float = Field(0, ge=0)
++    net_target: Optional[float] = Field(None, ge=0)
++    allowances: Dict[str, float] = Field(default_factory=dict)
++    non_exempt: List[str] = Field(default_factory=list)
++    email: Optional[str] = None
++    phone: Optional[str] = None
++
++
++def _employee_fields(p: EmployeePaieIn) -> dict:
++    if p.pay_mode not in ("gross", "net"):
++        raise HTTPException(status_code=400, detail="Mode de paie inconnu")
++    if p.pay_mode == "net" and not p.net_target:
++        raise HTTPException(status_code=400, detail="Indiquez le salaire net négocié")
++    if p.hire_date and not re.match(r"^\d{4}-\d{2}-\d{2}$", p.hire_date):
++        raise HTTPException(status_code=400, detail="Date d'embauche attendue au format AAAA-MM-JJ")
++    d = p.model_dump(exclude={"tenant_id"})
++    d["allowances"] = {k: float(v) for k, v in (p.allowances or {}).items() if float(v or 0) > 0}
++    d["full_name"] = p.full_name.strip()
++    return d
++
++
++@router.post("/employees")
++async def create_employee(payload: EmployeePaieIn, user: dict = Depends(require_roles(HR_ROLES))):
++    """Salarié du cabinet (tenant_id = « cabinet ») ou d'un client."""
++    if not payload.tenant_id:
++        raise HTTPException(status_code=400, detail="Choisissez l'employeur")
++    await _employer_identity(payload.tenant_id)
++    doc = {"id": secrets.token_urlsafe(12), "tenant_id": payload.tenant_id, **_employee_fields(payload),
++           "created_at": now_iso(), "created_by": user["id"]}
++    await db.employees.insert_one(doc.copy())
++    return doc
++
++
++@router.put("/employees/{emp_id}")
++async def update_employee(emp_id: str, payload: EmployeePaieIn, user: dict = Depends(require_roles(HR_ROLES))):
++    if not await db.employees.find_one({"id": emp_id}, {"_id": 0, "id": 1}):
++        raise HTTPException(status_code=404, detail="Salarié introuvable")
++    await db.employees.update_one({"id": emp_id}, {"$set": {**_employee_fields(payload), "updated_at": now_iso()}})
++    return await db.employees.find_one({"id": emp_id}, {"_id": 0})
++
++
++@router.get("/employees")
++async def list_employees(employer_id: Optional[str] = None, user: dict = Depends(require_roles(HR_ROLES))):
++    q = {"tenant_id": employer_id} if employer_id else {}
++    return {"items": await db.employees.find(q, {"_id": 0}).sort("full_name", 1).to_list(2000)}
++
++
++@router.delete("/employees/{emp_id}")
++async def delete_employee(emp_id: str, user: dict = Depends(require_roles(HR_ROLES))):
++    if await db.paie_bulletins.count_documents({"employee_id": emp_id, "status": "validated"}):
++        raise HTTPException(status_code=409, detail="Ce salarié a des bulletins validés : il ne peut pas être supprimé")
++    await db.paie_bulletins.delete_many({"employee_id": emp_id})
++    await db.employees.delete_one({"id": emp_id})
++    return {"ok": True}
++
++
++# ==========================================================================
++# Calcul et bulletins
++# ==========================================================================
++class SimulateIn(BaseModel):
++    employer_id: Optional[str] = None
++    params: Optional[dict] = None                 # paramètres en cours d'édition (aperçu)
++    employee: dict = Field(default_factory=dict)
++    period_month: Optional[str] = None
++
++
++def _calc(emp_input: dict, params: dict, month: Optional[str]) -> dict:
++    """Calcule un bulletin ; en mode « net négocié », cherche d'abord le salaire de base."""
++    emp = dict(emp_input)
++    if emp.get("pay_mode") == "net" and emp.get("net_target"):
++        try:
++            emp["base_salary"] = base_for_net(emp, emp["net_target"], params, month)
++        except ValueError as exc:
++            raise HTTPException(status_code=400, detail=str(exc))
++    try:
++        res = compute_payslip(emp, params, month)
++    except ValueError as exc:
++        raise HTTPException(status_code=400, detail=str(exc))
++    res["base_salary"] = float(emp.get("base_salary") or 0)
++    return res
++
++
++@router.post("/simulate")
++async def simulate(payload: SimulateIn, user: dict = Depends(require_roles(HR_ROLES))):
++    """Aperçu du calcul (écran des paramètres, fiche salarié)."""
++    if payload.params is not None:
++        params = _clean_params(payload.params)
++    elif payload.employer_id:
++        params = (await employer_config(payload.employer_id))["params"]
++    else:
++        params = normalize_params(None)
++    return _calc(payload.employee, params, payload.period_month)
++
++
++class BulletinVars(BaseModel):
++    extras: List[dict] = Field(default_factory=list)          # primes du mois [{label, amount}]
++    deductions: List[dict] = Field(default_factory=list)      # acomptes, prêts, autres [{label, amount}]
++    seniority_amount: Optional[float] = Field(None, ge=0)     # vide = calculée
++    notes: str = Field("", max_length=500)
++
++
++class PrepareIn(BaseModel):
++    employer_id: str
++    period_month: str
++
++
++def _snapshot(emp: dict) -> dict:
++    keys = ("full_name", "role", "matricule", "cnss_number", "category", "dependents", "hire_date", "pay_mode",
++            "base_salary", "net_target", "allowances", "non_exempt")
++    return {k: emp.get(k) for k in keys}
++
++
++def _clean_items(items: List[dict], default_label: str) -> List[dict]:
++    out = []
++    for it in items or []:
++        try:
++            amt = float(it.get("amount") or 0)
++        except (TypeError, ValueError):
++            raise HTTPException(status_code=400, detail="Montant invalide")
++        if amt < 0:
++            raise HTTPException(status_code=400, detail="Montant négatif interdit")
++        if amt:
++            out.append({"label": str(it.get("label") or default_label).strip()[:80], "amount": amt})
++    return out
++
++
++async def _compute_bulletin(b: dict, cfg: dict) -> dict:
++    """(Re)calcule un bulletin brouillon depuis la fiche actuelle du salarié."""
++    emp = await db.employees.find_one({"id": b["employee_id"]}, {"_id": 0}) or {}
++    snap = _snapshot(emp) if emp else b.get("employee", {})
++    v = b.get("variables") or {}
++    inp = {**snap, "extras": v.get("extras") or [], "deductions": v.get("deductions") or [],
++           "seniority_amount": v.get("seniority_amount")}
++    res = _calc(inp, cfg["params"], b["period_month"])
++    return {"employee": snap, "result": res, "params": cfg["params"], "template_name": cfg["template_name"],
++            "customized": cfg["customized"],
++            "employer": {k: cfg[k] for k in ("name", "address", "phone", "cnss_number")}, "updated_at": now_iso()}
++
++
++@router.post("/bulletins/prepare")
++async def prepare_month(payload: PrepareIn, user: dict = Depends(require_roles(HR_ROLES))):
++    """Crée les bulletins du mois pour tous les salariés de l'employeur et
++    recalcule les brouillons existants (les bulletins validés ne bougent pas)."""
++    month = _month_ok(payload.period_month)
++    cfg = await employer_config(payload.employer_id)
++    emps = await db.employees.find({"tenant_id": payload.employer_id}, {"_id": 0}).to_list(2000)
++    created = updated = 0
++    for e in emps:
++        b = await db.paie_bulletins.find_one({"employer_id": payload.employer_id, "period_month": month, "employee_id": e["id"]}, {"_id": 0})
++        if b and b.get("status") == "validated":
++            continue
++        if not b:
++            b = {"id": secrets.token_hex(8), "employer_id": payload.employer_id, "employee_id": e["id"], "period_month": month,
++                 "status": "draft", "variables": {"extras": [], "deductions": [], "seniority_amount": None, "notes": ""},
++                 "verify_token": new_verify_token(), "created_at": now_iso(), "created_by": user["id"]}
++            b.update(await _compute_bulletin(b, cfg))
++            await db.paie_bulletins.insert_one(b.copy())
++            created += 1
++        else:
++            await db.paie_bulletins.update_one({"id": b["id"]}, {"$set": await _compute_bulletin(b, cfg)})
++            updated += 1
++    return {"ok": True, "created": created, "updated": updated, "employees": len(emps)}
++
++
++async def _bulletin(bid: str) -> dict:
++    b = await db.paie_bulletins.find_one({"id": bid}, {"_id": 0})
++    if not b:
++        raise HTTPException(status_code=404, detail="Bulletin introuvable")
++    return b
++
++
++@router.get("/bulletins")
++async def list_bulletins(employer_id: str, period_month: str, user: dict = Depends(require_roles(HR_ROLES))):
++    _month_ok(period_month)
++    items = await db.paie_bulletins.find({"employer_id": employer_id, "period_month": period_month},
++                                         {"_id": 0, "params": 0}).to_list(2000)
++    items.sort(key=lambda b: (b.get("employee") or {}).get("full_name") or "")
++    return {"items": items, "totals": _totals(items)}
++
++
++@router.get("/bulletins/{bid}")
++async def get_bulletin(bid: str, user: dict = Depends(require_roles(HR_ROLES))):
++    return await _bulletin(bid)
++
++
++@router.put("/bulletins/{bid}")
++async def update_bulletin(bid: str, payload: BulletinVars, user: dict = Depends(require_roles(HR_ROLES))):
++    """Éléments du mois (primes, retenues, ancienneté saisie) puis recalcul."""
++    b = await _bulletin(bid)
++    if b.get("status") == "validated":
++        raise HTTPException(status_code=409, detail="Bulletin validé : rouvrez-le pour le modifier")
++    b["variables"] = {"extras": _clean_items(payload.extras, "Prime"), "deductions": _clean_items(payload.deductions, "Retenue"),
++                      "seniority_amount": payload.seniority_amount, "notes": payload.notes.strip()}
++    cfg = await employer_config(b["employer_id"])
++    await db.paie_bulletins.update_one({"id": bid}, {"$set": {"variables": b["variables"], **await _compute_bulletin(b, cfg)}})
++    return await _bulletin(bid)
++
++
++@router.post("/bulletins/{bid}/validate")
++async def validate_bulletin(bid: str, user: dict = Depends(require_roles(HR_ROLES))):
++    await _bulletin(bid)
++    await db.paie_bulletins.update_one({"id": bid}, {"$set": {"status": "validated", "validated_at": now_iso(),
++                                                              "validated_by": user.get("email")}})
++    return await _bulletin(bid)
++
++
++@router.post("/bulletins/{bid}/reopen")
++async def reopen_bulletin(bid: str, user: dict = Depends(require_roles(HR_ROLES))):
++    await _bulletin(bid)
++    await db.paie_bulletins.update_one({"id": bid}, {"$set": {"status": "draft"}, "$unset": {"validated_at": "", "validated_by": ""}})
++    return await _bulletin(bid)
++
++
++@router.delete("/bulletins/{bid}")
++async def delete_bulletin(bid: str, user: dict = Depends(require_roles(HR_ROLES))):
++    b = await _bulletin(bid)
++    if b.get("status") == "validated":
++        raise HTTPException(status_code=409, detail="Bulletin validé : rouvrez-le avant de le supprimer")
++    await db.paie_bulletins.delete_one({"id": bid})
++    return {"ok": True}
++
++
++# ==========================================================================
++# Livre de paie
++# ==========================================================================
++LEDGER_COLUMNS = [
++    ("gross", "Brut"), ("cnss", "CNSS sal."), ("iuts", "IUTS net"), ("patriotic_support", "Soutien patr."),
++    ("deductions_total", "Retenues"), ("net_to_pay", "Net à payer"), ("employer_total", "Charges patr."),
++    ("employer_cost", "Coût total"),
++]
++
++
++def _totals(items: List[dict]) -> dict:
++    t = {k: 0.0 for k, _ in LEDGER_COLUMNS}
++    t["iuts_base"] = 0.0
++    employer_detail: Dict[str, float] = {}
++    for b in items:
++        r = b.get("result") or {}
++        for k in list(t):
++            t[k] += float(r.get(k) or 0)
++        for x in r.get("employer_charges") or []:
++            employer_detail[x["label"]] = employer_detail.get(x["label"], 0) + float(x["amount"] or 0)
++    t["count"] = len(items)
++    t["employer_detail"] = [{"label": k, "amount": v} for k, v in employer_detail.items()]
++    return t
++
++
++@router.get("/livre")
++async def ledger(employer_id: str, period_month: str, user: dict = Depends(require_roles(HR_ROLES))):
++    month = _month_ok(period_month)
++    cfg = await employer_config(employer_id)
++    items = await db.paie_bulletins.find({"employer_id": employer_id, "period_month": month}, {"_id": 0, "params": 0}).to_list(2000)
++    items.sort(key=lambda b: (b.get("employee") or {}).get("full_name") or "")
++    return {"employer": {k: cfg[k] for k in ("employer_id", "name", "address", "phone", "cnss_number")},
++            "period_month": month, "period_label": period_label(month),
++            "rows": [{"id": b["id"], "status": b.get("status"), "full_name": (b.get("employee") or {}).get("full_name"),
++                      "role": (b.get("employee") or {}).get("role"), **{k: (b.get("result") or {}).get(k) for k, _ in LEDGER_COLUMNS},
++                      "employer_charges": (b.get("result") or {}).get("employer_charges") or []} for b in items],
++            "totals": _totals(items), "columns": [{"key": k, "label": lbl} for k, lbl in LEDGER_COLUMNS]}
++
++
++@router.get("/livre/csv")
++async def ledger_csv(employer_id: str, period_month: str, user: dict = Depends(require_roles(HR_ROLES))):
++    data = await ledger(employer_id, period_month, user)
++    buf = io.StringIO()
++    w = csv.writer(buf, delimiter=";")
++    w.writerow([f"Livre de paie — {data['employer']['name']} — {data['period_label']}"])
++    w.writerow(["Salarié", "Fonction"] + [lbl for _, lbl in LEDGER_COLUMNS])
++    for r in data["rows"]:
++        w.writerow([r["full_name"], r.get("role") or ""] + [int(round(float(r.get(k) or 0))) for k, _ in LEDGER_COLUMNS])
++    w.writerow(["TOTAL", ""] + [int(round(float(data["totals"].get(k) or 0))) for k, _ in LEDGER_COLUMNS])
++    w.writerow([])
++    w.writerow(["Charges patronales"])
++    for x in data["totals"]["employer_detail"]:
++        w.writerow([x["label"], "", int(round(x["amount"]))])
++    name = re.sub(r"[^A-Za-z0-9_-]+", "_", f"livre_de_paie_{data['employer']['name']}_{period_month}")[:80]
++    return Response("﻿" + buf.getvalue(), media_type="text/csv; charset=utf-8",
++                    headers={"Content-Disposition": f'attachment; filename="{name}.csv"'})
++
++
++# ==========================================================================
++# PDF : bulletin et livre de paie
++# ==========================================================================
++def _money(v) -> str:
++    return fcfa(v) if v not in (None, "") and float(v or 0) != 0 else ""
++
++
++def build_bulletin_pdf(b: dict) -> bytes:
++    """Bulletin au format du fichier du cabinet : en-tête employeur / salarié,
++    rubriques (base, taux, gains, retenues), bases fiscales, net à payer, QR code."""
++    from reportlab.lib import colors
++    from reportlab.lib.pagesizes import A4
++    from reportlab.lib.styles import ParagraphStyle
++    from reportlab.lib.units import mm
++    from reportlab.platypus import Image as RLImage, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
++
++    green = colors.HexColor("#0F6B4A")
++    st = {"h": ParagraphStyle("h", fontName="Helvetica-Bold", fontSize=15, alignment=1, textColor=green),
++          "b": ParagraphStyle("b", fontName="Helvetica", fontSize=8.8, leading=11.5),
++          "bb": ParagraphStyle("bb", fontName="Helvetica-Bold", fontSize=8.8, leading=11.5),
++          "s": ParagraphStyle("s", fontName="Helvetica-Oblique", fontSize=7.5, textColor=colors.HexColor("#64748B"), alignment=1)}
++    e, r, emp = b.get("employer") or {}, b.get("result") or {}, b.get("employee") or {}
++    d1, d2 = period_bounds(b["period_month"])
++    buf = io.BytesIO()
++    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=15 * mm, rightMargin=15 * mm, topMargin=14 * mm, bottomMargin=14 * mm,
++                            title=f"Bulletin de paie {emp.get('full_name')} {b['period_month']}")
++    P = lambda t, s="b": Paragraph(escape(str(t or "")), st[s])  # noqa: E731
++    head = Table([
++        [P("Employeur", "bb"), P(f"{period_label(b['period_month'])}", "bb"), P("Salarié", "bb")],
++        [P(e.get("name"), "bb"), P(f"du {d1}"), P(emp.get("full_name"), "bb")],
++        [P(e.get("address")), P(f"au {d2}"), P(emp.get("role") or "")],
++        [P(f"Tél : {e.get('phone')}" if e.get("phone") else ""), P(""),
++         P(" · ".join(x for x in [f"Matricule {emp['matricule']}" if emp.get("matricule") else "",
++                                  f"N° CNSS {emp['cnss_number']}" if emp.get("cnss_number") else ""] if x))],
++        [P(f"N° CNSS employeur : {e.get('cnss_number')}" if e.get("cnss_number") else ""), P(""),
++         P(f"Charges familiales : {r.get('family_charges', 0)} · Ancienneté : {r.get('years_of_service', 0)} an(s)"
++           + (f" · Catégorie : {emp['category']}" if emp.get("category") else ""))],
++    ], colWidths=[70 * mm, 40 * mm, 70 * mm])
++    head.setStyle(TableStyle([("BOX", (0, 0), (0, -1), 0.5, colors.grey), ("BOX", (2, 0), (2, -1), 0.5, colors.grey),
++                              ("VALIGN", (0, 0), (-1, -1), "TOP"), ("ALIGN", (1, 0), (1, -1), "CENTER")]))
++    rows = [["Rubrique", "Base", "Taux", "Gains", "Retenues"]]
++
++    def row_of(ln):
++        gain = ln["amount"] if ln["kind"] == "gain" else None
++        ret = ln["amount"] if ln["kind"] == "deduction" else None
++        rate = f"{ln['rate']:g} %".replace(".", ",") if ln.get("rate") not in (None, "") else ""
++        return [P(ln["label"]), _money(ln.get("base")), rate, _money(gain),
++                ("− " + fcfa(-ret)) if ret is not None and ret < 0 else _money(ret)]
++    # Ordre du modèle : gains, salaire brut, CNSS et IUTS, IUTS net, salaire net,
++    # puis soutien patriotique et retenues du mois, enfin le net à payer.
++    after_net = []
++    for ln in r.get("lines") or []:
++        if ln["code"] == "cnss":
++            rows.append([P("Salaire brut", "bb"), "", "", fcfa(r.get("gross")), ""])
++        if ln["code"] == "patriotic" or ln["code"].startswith("ded_"):
++            after_net.append(ln)
++            continue
++        rows.append(row_of(ln))
++    rows.append([P("IUTS net", "bb"), "", "", "", fcfa(r.get("iuts"))])
++    if r.get("rounding_diff"):
++        rows.append([P("Arrondi du net"), "", "", _money(r["rounding_diff"]) if r["rounding_diff"] > 0 else "",
++                     _money(-r["rounding_diff"]) if r["rounding_diff"] < 0 else ""])
++    rows.append([P("Salaire net", "bb"), "", "", fcfa(r.get("net")), ""])
++    rows.extend(row_of(ln) for ln in after_net)
++    t = Table(rows, colWidths=[72 * mm, 28 * mm, 16 * mm, 32 * mm, 32 * mm], repeatRows=1)
++    t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), green), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
++                           ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 8.8), ("FONT", (1, 1), (-1, -1), "Helvetica", 8.8),
++                           ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")), ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
++                           ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
++    fisc = Table([
++        ["Contrôle CNSS (fiscal)", fcfa(r.get("cnss_fiscal")), "Salaire imposable IUTS", fcfa(r.get("taxable"))],
++        ["Total exonérations", fcfa(r.get("exemptions_total")), f"Abattement forfaitaire ({r.get('flat_abatement_rate', 0):g} %)", fcfa(r.get("flat_abatement"))],
++        ["Base IUTS", fcfa(r.get("iuts_base")), f"Abattement famille ({r.get('family_rate', 0):g} %)", fcfa(r.get("family_abatement"))],
++    ], colWidths=[45 * mm, 45 * mm, 45 * mm, 45 * mm])
++    fisc.setStyle(TableStyle([("FONT", (0, 0), (-1, -1), "Helvetica", 7.8), ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#475569")),
++                              ("ALIGN", (1, 0), (1, -1), "RIGHT"), ("ALIGN", (3, 0), (3, -1), "RIGHT"),
++                              ("BOX", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1"))]))
++    pay = Table([[P("NET À PAYER", "bb"), fcfa(r.get("net_to_pay"))]], colWidths=[140 * mm, 40 * mm])
++    pay.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#E5A24B")), ("FONT", (1, 0), (1, 0), "Helvetica-Bold", 11),
++                             ("ALIGN", (1, 0), (1, 0), "RIGHT"), ("BOX", (0, 0), (-1, -1), 0.6, colors.grey)]))
++    el = [Paragraph("BULLETIN DE PAIE", st["h"]), Spacer(1, 6), head, Spacer(1, 8), t, Spacer(1, 4), pay, Spacer(1, 6), fisc]
++    notes = (b.get("variables") or {}).get("notes")
++    if notes:
++        el += [Spacer(1, 4), P(f"Observations : {notes}")]
++    if b.get("verify_token"):
++        qr = RLImage(io.BytesIO(qr_png(verify_url(b["verify_token"]), box=4)), width=22 * mm, height=22 * mm)
++        el += [Spacer(1, 6), Table([[qr, P("Scannez ce code pour vérifier l'authenticité du bulletin. "
++                                            + ("Bulletin validé." if b.get("status") == "validated" else "Brouillon (non validé)."))]],
++                                   colWidths=[26 * mm, 154 * mm])]
++    el += [Spacer(1, 8), Paragraph("Ce bulletin de salaire doit être conservé sans limitation de durée", st["s"])]
++    doc.build(el)
++    return buf.getvalue()
++
++
++def build_ledger_pdf(data: dict) -> bytes:
++    from reportlab.lib import colors
++    from reportlab.lib.pagesizes import A4, landscape
++    from reportlab.lib.styles import ParagraphStyle
++    from reportlab.lib.units import mm
++    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
++
++    green = colors.HexColor("#0F6B4A")
++    h = ParagraphStyle("h", fontName="Helvetica-Bold", fontSize=13, textColor=green)
++    s = ParagraphStyle("s", fontName="Helvetica", fontSize=8.5, textColor=colors.HexColor("#475569"))
++    cell = ParagraphStyle("c", fontName="Helvetica", fontSize=7.8, leading=9.5)
++    buf = io.BytesIO()
++    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), leftMargin=10 * mm, rightMargin=10 * mm, topMargin=12 * mm, bottomMargin=12 * mm,
++                            title=f"Livre de paie {data['employer']['name']} {data['period_month']}")
++    rows = [["N°", "Salarié", "Fonction"] + [lbl for _, lbl in LEDGER_COLUMNS]]
++    for i, r in enumerate(data["rows"], start=1):
++        rows.append([str(i), Paragraph(escape(r["full_name"] or ""), cell), Paragraph(escape(r.get("role") or ""), cell)]
++                    + [fcfa(r.get(k) or 0) for k, _ in LEDGER_COLUMNS])
++    rows.append(["", "TOTAL", ""] + [fcfa(data["totals"].get(k) or 0) for k, _ in LEDGER_COLUMNS])
++    t = Table(rows, colWidths=[8 * mm, 48 * mm, 36 * mm] + [23.3 * mm] * len(LEDGER_COLUMNS), repeatRows=1)
++    t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), green), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
++                           ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 7.8), ("FONT", (0, 1), (-1, -1), "Helvetica", 7.8),
++                           ("FONT", (0, -1), (-1, -1), "Helvetica-Bold", 8), ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#F1F5F9")),
++                           ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")), ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
++                           ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
++    detail = [["Charges patronales", "Montant"]] + [[x["label"], fcfa(x["amount"])] for x in data["totals"]["employer_detail"]] \
++        + [["Total charges patronales", fcfa(data["totals"].get("employer_total") or 0)]]
++    dt = Table(detail, colWidths=[80 * mm, 35 * mm], hAlign="LEFT")
++    dt.setStyle(TableStyle([("FONT", (0, 0), (-1, -1), "Helvetica", 8.5), ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 8.5),
++                            ("FONT", (0, -1), (-1, -1), "Helvetica-Bold", 8.5), ("ALIGN", (1, 0), (1, -1), "RIGHT"),
++                            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1"))]))
++    e = data["employer"]
++    el = [Paragraph(escape(f"Livre de paie — {data['period_label']}"), h),
++          Paragraph(escape(" · ".join(x for x in [e.get("name"), e.get("address"), f"N° CNSS {e['cnss_number']}" if e.get("cnss_number") else ""] if x)), s),
++          Spacer(1, 6), t, Spacer(1, 10), dt]
++    doc.build(el)
++    return buf.getvalue()
++
++
++@router.get("/bulletins/{bid}/pdf")
++async def bulletin_pdf(bid: str, user: dict = Depends(require_roles(HR_ROLES))):
++    import asyncio
++    b = await _bulletin(bid)
++    pdf = await asyncio.to_thread(build_bulletin_pdf, b)
++    name = re.sub(r"[^A-Za-z0-9_-]+", "_", f"bulletin_{b['period_month']}_{(b.get('employee') or {}).get('full_name') or 'salarie'}")[:90]
++    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}.pdf"'})
++
++
++@router.get("/bulletins-pdf")
++async def bulletins_pdf(employer_id: str, period_month: str, user: dict = Depends(require_roles(HR_ROLES))):
++    """Tous les bulletins du mois dans un seul PDF (impression groupée)."""
++    import asyncio
++
++    import fitz  # PyMuPDF, déjà utilisé par le portail
++    items = await db.paie_bulletins.find({"employer_id": employer_id, "period_month": _month_ok(period_month)}, {"_id": 0}).to_list(2000)
++    if not items:
++        raise HTTPException(status_code=404, detail="Aucun bulletin pour ce mois")
++    items.sort(key=lambda b: (b.get("employee") or {}).get("full_name") or "")
++
++    def merge():
++        out = fitz.open()
++        for b in items:
++            with fitz.open(stream=build_bulletin_pdf(b), filetype="pdf") as one:
++                out.insert_pdf(one)
++        return out.tobytes()
++    pdf = await asyncio.to_thread(merge)
++    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="bulletins_{period_month}.pdf"'})
++
++
++@router.get("/livre/pdf")
++async def ledger_pdf(employer_id: str, period_month: str, user: dict = Depends(require_roles(HR_ROLES))):
++    import asyncio
++    data = await ledger(employer_id, period_month, user)
++    pdf = await asyncio.to_thread(build_ledger_pdf, data)
++    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="livre_de_paie_{period_month}.pdf"'})
++
++
++async def bulletin_for_verify(token: str) -> Optional[dict]:
++    """Page publique du QR code (albarka_docgen.verify_document)."""
++    b = await db.paie_bulletins.find_one({"verify_token": token}, {"_id": 0, "params": 0})
++    if not b:
++        return None
++    return {"kind": "Bulletin de paie", "number": b["period_month"], "date": (b.get("validated_at") or b.get("updated_at") or "")[:10],
++            "client": (b.get("employer") or {}).get("name") or "—",
++            "title": f"{(b.get('employee') or {}).get('full_name') or ''} — {period_label(b['period_month'])}",
++            "amount": (b.get("result") or {}).get("net_to_pay"), "currency": "XOF",
++            "status": "validé" if b.get("status") == "validated" else "brouillon"}
+diff --git a/backend/albarka_paie_moteur.py b/backend/albarka_paie_moteur.py
+new file mode 100644
+index 0000000..f0ee56b
+--- /dev/null
++++ b/backend/albarka_paie_moteur.py
+@@ -0,0 +1,477 @@
++"""MOTEUR DE PAIE — Burkina Faso, entièrement paramétrable (lot 8).
++
++Module pur : aucune base de données, aucun accès réseau. Il reçoit la fiche
++d'un salarié et un jeu de PARAMÈTRES, et rend le bulletin calculé ligne par
++ligne. Les paramètres viennent d'un MODÈLE de configuration (ou de sa version
++personnalisée pour un employeur) ; DEFAULT_PARAMS sert de « valeurs par défaut »
++(bouton « Restaurer les valeurs par défaut »).
++
++Calcul (repris du fichier Excel « Assistante_cardi_pro_ESSAI.xlsx ») :
++  1. prime d'ancienneté  : à partir de N années de service (3 par défaut),
++     taux de départ + un pas par année supplémentaire, plafonné ;
++  2. salaire brut        : base + ancienneté + indemnités + primes du mois ;
++  3. CNSS salariale      : taux × brut plafonné (5,5 % × 600 000 = 33 000 max) ;
++  4. CNSS « fiscale »    : CNSS retenue, limitée à 8 % du salaire de base ;
++  5. imposable IUTS      : brut − CNSS fiscale ;
++  6. exonérations        : par indemnité, min(montant versé, taux × imposable,
++     plafond) — logement 20 %/75 000, transport 5 %/30 000, fonction 5 %/50 000 ;
++     une indemnité peut être déclarée « non exonérée » sur la fiche ;
++  7. abattement forfaitaire : taux × salaire de base, unique (25 %) ou selon
++     la catégorie du salarié (ex. cadre 20 %, non cadre 25 %) ;
++  8. base IUTS           : imposable − exonérations − abattement (arrondie) ;
++  9. IUTS brut           : barème progressif par tranches ;
++ 10. abattement charges de famille : % de l'IUTS selon le nombre de charges
++     (table libre : nombre de charges → taux, la dernière ligne vaut au-delà) ;
++ 11. IUTS net, salaire net (brut − CNSS − IUTS), arrondi (centaine par défaut) ;
++ 12. soutien patriotique : 1 % du salaire net ;
++ 13. net à payer         : net − soutien patriotique − retenues (acomptes, prêts…).
++Charges patronales (pour le livre de paie) : CNSS employeur par branche et
++taxes patronales (TPA…), sur le brut plafonné ou non.
++
++Arrondis : règle { step, mode } — step 0 = pas d'arrondi, 1 = au franc,
++5, 10, 25, 50, 100… ; mode « nearest » (au plus proche, 0,5 vers le haut),
++« down » (inférieur) ou « up » (supérieur).
++"""
++from __future__ import annotations
++
++import copy
++import math
++from datetime import date
++from typing import Any, Dict, List, Optional
++
++# ---------------------------------------------------------------------------
++# Valeurs par défaut (Burkina Faso). Toutes modifiables dans les modèles.
++# ---------------------------------------------------------------------------
++DEFAULT_PARAMS: Dict[str, Any] = {
++    "country": "Burkina Faso",
++    # Rubriques d'indemnités proposées sur la fiche salarié.
++    # « exemption » : clé de la règle d'exonération qui s'y applique (ou None).
++    "allowances": [
++        {"key": "housing", "label": "Indemnité de logement", "exemption": "housing"},
++        {"key": "transport", "label": "Indemnité de transport", "exemption": "transport"},
++        {"key": "function", "label": "Indemnité de fonction", "exemption": "function"},
++        {"key": "responsibility", "label": "Indemnité de responsabilité", "exemption": None},
++        {"key": "risk", "label": "Indemnité de risque", "exemption": None},
++        {"key": "subjection", "label": "Indemnité de sujétion", "exemption": None},
++        {"key": "guard", "label": "Indemnité de garde", "exemption": None},
++        {"key": "other", "label": "Autre indemnité", "exemption": None},
++    ],
++    "exemptions": [
++        {"key": "housing", "label": "Logement", "rate": 20.0, "cap": 75000},
++        {"key": "transport", "label": "Transport", "rate": 5.0, "cap": 30000},
++        {"key": "function", "label": "Fonction", "rate": 5.0, "cap": 50000},
++    ],
++    "cnss": {
++        "employee_rate": 5.5,           # % du brut
++        "ceiling": 600000,              # brut plafonné (5,5 % × 600 000 = 33 000)
++        "fiscal_cap_enabled": True,     # CNSS déductible de l'IUTS limitée…
++        "fiscal_cap_rate": 8.0,         # … à 8 % du salaire de base
++        "employer_ceiling": 600000,
++        "employer_lines": [             # CNSS patronale (livre de paie)
++            {"label": "Prestations familiales", "rate": 7.0},
++            {"label": "Risques professionnels", "rate": 3.5},
++            {"label": "Pension vieillesse", "rate": 5.5},
++        ],
++    },
++    "employer_taxes": [                 # taxes patronales sur le brut (non plafonné)
++        {"label": "Taxe patronale d'apprentissage (TPA)", "rate": 3.0},
++    ],
++    "flat_abatement": {
++        "mode": "single",               # single | by_category
++        "rate": 25.0,                   # % du salaire de base (mode single)
++        "categories": [
++            {"key": "cadre", "label": "Cadre", "rate": 20.0},
++            {"key": "non_cadre", "label": "Non cadre", "rate": 25.0},
++        ],
++    },
++    "iuts_brackets": [                  # up_to = borne haute ; None = au-delà
++        {"up_to": 30000, "rate": 0.0},
++        {"up_to": 50000, "rate": 12.1},
++        {"up_to": 80000, "rate": 13.9},
++        {"up_to": 120000, "rate": 15.7},
++        {"up_to": 170000, "rate": 18.4},
++        {"up_to": 250000, "rate": 21.7},
++        {"up_to": None, "rate": 25.0},
++    ],
++    "family_abatement": [               # nombre de charges → % de l'IUTS ; la dernière ligne vaut au-delà
++        {"charges": 1, "rate": 8.0},
++        {"charges": 2, "rate": 10.0},
++        {"charges": 3, "rate": 12.0},
++        {"charges": 4, "rate": 14.0},
++        {"charges": 5, "rate": 16.0},
++        {"charges": 6, "rate": 18.0},
++        {"charges": 7, "rate": 20.0},
++        {"charges": 8, "rate": 22.0},
++    ],
++    "seniority": {
++        "enabled": True,
++        "start_years": 3,               # la prime commence à 3 ans de service
++        "start_rate": 5.0,              # % du salaire de base à 3 ans
++        "step_rate": 1.0,               # + 1 point par année supplémentaire
++        "max_rate": 25.0,
++    },
++    "patriotic_support": {"enabled": True, "rate": 1.0, "label": "Soutien patriotique"},
++    "rounding": {
++        "amounts": {"step": 1, "mode": "nearest"},      # CNSS, IUTS, primes… : au franc
++        "iuts_base": {"step": 100, "mode": "down"},     # base IUTS : centaine inférieure
++        "net": {"step": 100, "mode": "nearest"},        # salaire net : centaine la plus proche
++    },
++}
++
++ROUND_MODES = {"nearest", "down", "up"}
++
++
++# ---------------------------------------------------------------------------
++# Outils
++# ---------------------------------------------------------------------------
++def round_rule(value: float, rule: Optional[Dict[str, Any]]) -> float:
++    """Arrondit selon {step, mode}. step 0 (ou absent) : valeur inchangée."""
++    step = float((rule or {}).get("step") or 0)
++    if step <= 0:
++        return value
++    mode = (rule or {}).get("mode") or "nearest"
++    q = value / step
++    if mode == "down":
++        n = math.floor(q + 1e-9)
++    elif mode == "up":
++        n = math.ceil(q - 1e-9)
++    else:
++        n = math.floor(q + 0.5 + 1e-9)          # 0,5 vers le haut (pas l'arrondi « bancaire »)
++    out = n * step
++    return int(out) if float(out).is_integer() else out
++
++
++def _num(v, default=0.0) -> float:
++    try:
++        return float(v)
++    except (TypeError, ValueError):
++        return float(default)
++
++
++def merged_params(params: Optional[Dict[str, Any]]) -> Dict[str, Any]:
++    """Complète un jeu de paramètres avec les valeurs par défaut (clés absentes)."""
++    base = copy.deepcopy(DEFAULT_PARAMS)
++    if not params:
++        return base
++    for k, v in params.items():
++        if isinstance(v, dict) and isinstance(base.get(k), dict):
++            base[k] = {**base[k], **v}
++            if k == "rounding":
++                for rk in DEFAULT_PARAMS["rounding"]:
++                    base[k][rk] = {**DEFAULT_PARAMS["rounding"][rk], **(v.get(rk) or {})}
++        else:
++            base[k] = copy.deepcopy(v)
++    return base
++
++
++def normalize_params(params: Optional[Dict[str, Any]]) -> Dict[str, Any]:
++    """Contrôle et nettoie un jeu de paramètres ; lève ValueError (message clair)."""
++    p = merged_params(params)
++
++    def pct(v, what):
++        x = _num(v, -1)
++        if not 0 <= x <= 100:
++            raise ValueError(f"{what} : taux entre 0 et 100 %")
++        return round(x, 4)
++
++    def amount(v, what, allow_none=False):
++        if v in (None, "") and allow_none:
++            return None
++        x = _num(v, -1)
++        if x < 0:
++            raise ValueError(f"{what} : montant positif attendu")
++        return x
++
++    # Indemnités et exonérations
++    ex_keys = []
++    exemptions = []
++    for i, e in enumerate(p.get("exemptions") or [], start=1):
++        key = str(e.get("key") or f"ex{i}").strip()[:40]
++        if key in ex_keys:
++            raise ValueError(f"Exonération « {key} » en double")
++        ex_keys.append(key)
++        exemptions.append({"key": key, "label": str(e.get("label") or key).strip()[:80],
++                           "rate": pct(e.get("rate"), f"Exonération {key}"), "cap": amount(e.get("cap"), f"Plafond {key}")})
++    allowances, seen = [], set()
++    for i, a in enumerate(p.get("allowances") or [], start=1):
++        key = str(a.get("key") or f"a{i}").strip()[:40]
++        if key in seen:
++            raise ValueError(f"Indemnité « {key} » en double")
++        seen.add(key)
++        ex = a.get("exemption") or None
++        if ex and ex not in ex_keys:
++            raise ValueError(f"Indemnité « {a.get('label') or key} » : exonération inconnue « {ex} »")
++        allowances.append({"key": key, "label": str(a.get("label") or key).strip()[:80], "exemption": ex})
++    # CNSS
++    c = p["cnss"]
++    cnss = {"employee_rate": pct(c.get("employee_rate"), "CNSS salariale"),
++            "ceiling": amount(c.get("ceiling"), "Plafond CNSS"),
++            "fiscal_cap_enabled": bool(c.get("fiscal_cap_enabled", True)),
++            "fiscal_cap_rate": pct(c.get("fiscal_cap_rate"), "Plafond fiscal CNSS"),
++            "employer_ceiling": amount(c.get("employer_ceiling"), "Plafond CNSS patronale"),
++            "employer_lines": [{"label": str(x.get("label") or "CNSS patronale").strip()[:80],
++                                "rate": pct(x.get("rate"), "CNSS patronale")} for x in (c.get("employer_lines") or [])]}
++    employer_taxes = [{"label": str(x.get("label") or "Taxe").strip()[:80], "rate": pct(x.get("rate"), "Taxe patronale")}
++                      for x in (p.get("employer_taxes") or [])]
++    # Abattement forfaitaire
++    f = p["flat_abatement"]
++    mode = f.get("mode") if f.get("mode") in ("single", "by_category") else "single"
++    cats, ck = [], set()
++    for i, cat in enumerate(f.get("categories") or [], start=1):
++        key = str(cat.get("key") or f"cat{i}").strip()[:40]
++        if key in ck:
++            raise ValueError(f"Catégorie « {key} » en double")
++        ck.add(key)
++        cats.append({"key": key, "label": str(cat.get("label") or key).strip()[:80], "rate": pct(cat.get("rate"), f"Catégorie {key}")})
++    if mode == "by_category" and not cats:
++        raise ValueError("Abattement par catégorie : ajoutez au moins une catégorie")
++    flat = {"mode": mode, "rate": pct(f.get("rate"), "Abattement forfaitaire"), "categories": cats}
++    # Barème IUTS : bornes croissantes, dernière tranche ouverte
++    brackets, last = [], -1.0
++    raw_b = p.get("iuts_brackets") or []
++    if not raw_b:
++        raise ValueError("Barème IUTS : au moins une tranche")
++    for i, b in enumerate(raw_b):
++        up = b.get("up_to")
++        is_last = i == len(raw_b) - 1
++        if up in (None, "") and not is_last:
++            raise ValueError("Barème IUTS : seule la dernière tranche peut être « au-delà »")
++        if up not in (None, ""):
++            up = _num(up, -1)
++            if up <= last:
++                raise ValueError("Barème IUTS : les bornes doivent être croissantes")
++            last = up
++        brackets.append({"up_to": None if up in (None, "") else up, "rate": pct(b.get("rate"), "Tranche IUTS")})
++    if brackets[-1]["up_to"] is not None:
++        brackets.append({"up_to": None, "rate": brackets[-1]["rate"]})
++    # Charges de famille : nombres croissants, sans doublon
++    fam, prev = [], 0
++    for row in sorted(p.get("family_abatement") or [], key=lambda r: int(_num(r.get("charges")))):
++        n = int(_num(row.get("charges"), 0))
++        if n < 1 or n == prev:
++            raise ValueError("Charges de famille : nombres de charges à partir de 1, sans doublon")
++        prev = n
++        fam.append({"charges": n, "rate": pct(row.get("rate"), f"Charges de famille ({n})")})
++    s = p["seniority"]
++    seniority = {"enabled": bool(s.get("enabled", True)), "start_years": int(_num(s.get("start_years"), 3)),
++                 "start_rate": pct(s.get("start_rate"), "Ancienneté (taux de départ)"),
++                 "step_rate": pct(s.get("step_rate"), "Ancienneté (pas annuel)"),
++                 "max_rate": pct(s.get("max_rate"), "Ancienneté (plafond)")}
++    if seniority["start_years"] < 0:
++        raise ValueError("Ancienneté : nombre d'années positif")
++    ps = p["patriotic_support"]
++    patriotic = {"enabled": bool(ps.get("enabled", True)), "rate": pct(ps.get("rate"), "Soutien patriotique"),
++                 "label": str(ps.get("label") or "Soutien patriotique").strip()[:80]}
++    rounding = {}
++    for rk, rv in p["rounding"].items():
++        if rk not in DEFAULT_PARAMS["rounding"]:
++            continue
++        step = _num((rv or {}).get("step"), 0)
++        if step < 0:
++            raise ValueError("Arrondi : pas positif")
++        m = (rv or {}).get("mode") or "nearest"
++        if m not in ROUND_MODES:
++            raise ValueError(f"Arrondi : mode inconnu « {m} »")
++        rounding[rk] = {"step": int(step) if float(step).is_integer() else step, "mode": m}
++    return {"country": str(p.get("country") or "Burkina Faso")[:60], "allowances": allowances, "exemptions": exemptions,
++            "cnss": cnss, "employer_taxes": employer_taxes, "flat_abatement": flat, "iuts_brackets": brackets,
++            "family_abatement": fam, "seniority": seniority, "patriotic_support": patriotic, "rounding": rounding}
++
++
++def years_of_service(hire_date: Optional[str], period_month: Optional[str]) -> int:
++    """Années complètes de service à la fin du mois de paie."""
++    if not hire_date or not period_month:
++        return 0
++    try:
++        h = date.fromisoformat(str(hire_date)[:10])
++        y, m = map(int, period_month.split("-"))
++        from datetime import timedelta
++        end = date(y + (m == 12), 1 if m == 12 else m + 1, 1) - timedelta(days=1)   # dernier jour du mois de paie
++    except ValueError:
++        return 0
++    years = end.year - h.year - ((end.month, end.day) < (h.month, h.day))
++    return max(0, years)
++
++
++def seniority_rate(years: int, s: Dict[str, Any]) -> float:
++    if not s.get("enabled") or years < s["start_years"]:
++        return 0.0
++    return min(s["max_rate"], s["start_rate"] + (years - s["start_years"]) * s["step_rate"])
++
++
++def progressive_tax(base: float, brackets: List[Dict[str, Any]]) -> float:
++    """Impôt par tranches (taux marginaux)."""
++    tax, lower = 0.0, 0.0
++    for b in brackets:
++        upper = b["up_to"] if b["up_to"] is not None else float("inf")
++        if base > lower:
++            tax += (min(base, upper) - lower) * b["rate"] / 100
++        lower = upper
++        if base <= upper:
++            break
++    return tax
++
++
++def family_rate(charges: int, table: List[Dict[str, Any]]) -> float:
++    """Taux de l'abattement pour charges de famille ; au-delà du tableau : dernière ligne."""
++    if charges <= 0 or not table:
++        return 0.0
++    rate = 0.0
++    for row in table:
++        if charges >= row["charges"]:
++            rate = row["rate"]
++    return rate
++
++
++def flat_rate(category: Optional[str], f: Dict[str, Any]) -> float:
++    if f["mode"] == "by_category":
++        for c in f["categories"]:
++            if c["key"] == category:
++                return c["rate"]
++        return f["categories"][0]["rate"] if f["categories"] else f["rate"]
++    return f["rate"]
++
++
++# ---------------------------------------------------------------------------
++# Calcul du bulletin
++# ---------------------------------------------------------------------------
++def compute_payslip(employee: Dict[str, Any], params: Optional[Dict[str, Any]] = None,
++                    period_month: Optional[str] = None) -> Dict[str, Any]:
++    """Bulletin calculé.
++
++    `employee` : base_salary, allowances {clé: montant}, non_exempt [clés],
++    category, dependents, hire_date, seniority_amount (facultatif : saisi),
++    extras [{label, amount}] (primes du mois, imposables),
++    deductions [{label, amount}] (acomptes, prêts, autres retenues).
++    """
++    p = normalize_params(params)
++    R = lambda v, k="amounts": round_rule(v, p["rounding"].get(k))  # noqa: E731
++    base = _num(employee.get("base_salary"))
++    allow_in = employee.get("allowances") or {}
++    non_exempt = set(employee.get("non_exempt") or [])
++    lines: List[Dict[str, Any]] = []
++
++    def line(code, label, amount, kind, base_=None, rate=None):
++        lines.append({"code": code, "label": label, "base": base_, "rate": rate, "amount": amount, "kind": kind})
++
++    line("base", "Salaire de base", base, "gain")
++    # 1. Ancienneté
++    years = years_of_service(employee.get("hire_date"), period_month)
++    s_rate = seniority_rate(years, p["seniority"])
++    if employee.get("seniority_amount") not in (None, ""):
++        seniority = _num(employee.get("seniority_amount"))
++    else:
++        seniority = R(base * s_rate / 100)
++    if seniority:
++        line("seniority", f"Prime d'ancienneté ({years} an{'s' if years > 1 else ''})", seniority, "gain", base, s_rate or None)
++    # 2. Indemnités (dans l'ordre du modèle) et primes du mois
++    allowances = []
++    for a in p["allowances"]:
++        amt = _num(allow_in.get(a["key"]))
++        if amt:
++            allowances.append({**a, "amount": amt})
++            line(f"allow_{a['key']}", a["label"], amt, "gain")
++    known = {a["key"] for a in p["allowances"]}
++    for k, v in allow_in.items():                       # rubrique retirée du modèle : gardée
++        if k not in known and _num(v):
++            allowances.append({"key": k, "label": k, "exemption": None, "amount": _num(v)})
++            line(f"allow_{k}", k, _num(v), "gain")
++    extras_total = 0.0
++    for i, x in enumerate(employee.get("extras") or []):
++        amt = _num(x.get("amount"))
++        if amt:
++            extras_total += amt
++            line(f"extra_{i}", str(x.get("label") or "Prime"), amt, "gain")
++    gross = base + seniority + sum(a["amount"] for a in allowances) + extras_total
++    # 3. CNSS
++    c = p["cnss"]
++    cnss_base = min(gross, c["ceiling"]) if c["ceiling"] else gross
++    cnss = R(cnss_base * c["employee_rate"] / 100)
++    line("cnss", "CNSS (part salariale)", cnss, "deduction", cnss_base, c["employee_rate"])
++    # 4-5. CNSS fiscale et imposable
++    cnss_fiscal = min(cnss, R(base * c["fiscal_cap_rate"] / 100)) if c["fiscal_cap_enabled"] else cnss
++    taxable = gross - cnss_fiscal
++    # 6. Exonérations
++    ex_rules = {e["key"]: e for e in p["exemptions"]}
++    exemptions = []
++    for a in allowances:
++        rule = ex_rules.get(a.get("exemption"))
++        if not rule or a["key"] in non_exempt:
++            continue
++        amt = min(a["amount"], R(taxable * rule["rate"] / 100), rule["cap"] if rule["cap"] else float("inf"))
++        exemptions.append({"key": a["key"], "label": a["label"], "amount": amt, "rate": rule["rate"], "cap": rule["cap"]})
++    ex_total = sum(e["amount"] for e in exemptions)
++    # 7. Abattement forfaitaire
++    f_rate = flat_rate(employee.get("category"), p["flat_abatement"])
++    flat = R(base * f_rate / 100)
++    # 8-10. IUTS
++    iuts_base = max(0, round_rule(taxable - ex_total - flat, p["rounding"].get("iuts_base")))
++    iuts_gross = R(progressive_tax(iuts_base, p["iuts_brackets"]))
++    charges = int(_num(employee.get("dependents")))
++    fam_rate = family_rate(charges, p["family_abatement"])
++    fam = R(iuts_gross * fam_rate / 100)
++    iuts = max(0, iuts_gross - fam)
++    line("iuts", "IUTS", iuts_gross, "deduction", iuts_base, None)
++    if fam:
++        line("iuts_family", f"Abattement charges de famille ({charges})", -fam, "deduction", iuts_gross, fam_rate)
++    # 11. Salaire net (arrondi)
++    net_raw = gross - cnss - iuts
++    net = round_rule(net_raw, p["rounding"].get("net"))
++    rounding_diff = net - net_raw
++    # 12. Soutien patriotique
++    ps = p["patriotic_support"]
++    patriotic = R(net * ps["rate"] / 100) if ps["enabled"] else 0
++    if patriotic:
++        line("patriotic", ps["label"], patriotic, "deduction", net, ps["rate"])
++    # 13. Retenues et net à payer
++    ded_total = 0.0
++    for i, d in enumerate(employee.get("deductions") or []):
++        amt = _num(d.get("amount"))
++        if amt:
++            ded_total += amt
++            line(f"ded_{i}", str(d.get("label") or "Retenue"), amt, "deduction")
++    net_to_pay = net - patriotic - ded_total
++    # Charges patronales (livre de paie)
++    emp_base = min(gross, c["employer_ceiling"]) if c["employer_ceiling"] else gross
++    employer = [{"label": x["label"], "base": emp_base, "rate": x["rate"], "amount": R(emp_base * x["rate"] / 100)}
++                for x in c["employer_lines"]]
++    employer += [{"label": x["label"], "base": gross, "rate": x["rate"], "amount": R(gross * x["rate"] / 100)}
++                 for x in p["employer_taxes"]]
++    employer_total = sum(x["amount"] for x in employer)
++    return {
++        "lines": lines,
++        "years_of_service": years, "seniority_rate": s_rate, "seniority": seniority,
++        "gross": gross, "cnss": cnss, "cnss_base": cnss_base, "cnss_fiscal": cnss_fiscal,
++        "taxable": taxable, "exemptions": exemptions, "exemptions_total": ex_total,
++        "flat_abatement_rate": f_rate, "flat_abatement": flat,
++        "iuts_base": iuts_base, "iuts_gross": iuts_gross, "family_charges": charges,
++        "family_rate": fam_rate, "family_abatement": fam, "iuts": iuts,
++        "net_raw": net_raw, "rounding_diff": rounding_diff, "net": net,
++        "patriotic_support": patriotic, "deductions_total": ded_total, "net_to_pay": net_to_pay,
++        "employer_charges": employer, "employer_total": employer_total, "employer_cost": gross + employer_total,
++    }
++
++
++def base_for_net(employee: Dict[str, Any], target_net: float, params: Optional[Dict[str, Any]] = None,
++                 period_month: Optional[str] = None) -> float:
++    """Mode « net négocié → brut » : plus petit salaire de base (au franc) dont le
++    salaire net (avant arrondi du net, soutien patriotique et retenues) atteint
++    `target_net`, les indemnités de la fiche restant fixes."""
++    target = _num(target_net)
++    if target <= 0:
++        return 0.0
++
++    def net_of(b):
++        return compute_payslip({**employee, "base_salary": b, "seniority_amount": None}, params, period_month)["net_raw"]
++    lo, hi = 0, max(1000, int(target * 3))
++    while net_of(hi) < target:          # agrandit l'intervalle si besoin (très fortes indemnités négatives impossibles)
++        hi *= 2
++        if hi > 10**10:
++            raise ValueError("Net demandé impossible à atteindre")
++    while lo < hi:                      # le net croît avec le salaire de base
++        mid = (lo + hi) // 2
++        if net_of(mid) >= target:
++            hi = mid
++        else:
++            lo = mid + 1
++    return float(lo)
+diff --git a/backend/albarka_payroll.py b/backend/albarka_payroll.py
+index a9cce66..e57237c 100644
+--- a/backend/albarka_payroll.py
++++ b/backend/albarka_payroll.py
+@@ -143,6 +143,16 @@ async def load_table(tenant_id: str, month: str) -> dict:
+             emps = await db.employees.find({"tenant_id": tenant_id}, {"_id": 0}).sort("full_name", 1).to_list(500)
+             rows = [{"employee_id": e["id"], "full_name": e.get("full_name"), "base_salary": e.get("base_salary") or 0} for e in emps]
+             source = "employees" if emps else "empty"
++    # Lot 8 : net (et ancienneté) repris des bulletins calculés du mois quand ils ne sont pas saisis
++    slips = {b["employee_id"]: b.get("result") or {} async for b in db.paie_bulletins.find(
++        {"employer_id": tenant_id, "period_month": month}, {"_id": 0, "employee_id": 1, "result": 1})}
++    for r in rows:
++        res = slips.get(r.get("employee_id"))
++        if res:
++            if r.get("net") in (None, "", 0):
++                r["net"] = res.get("net")
++            if not r.get("seniority"):
++                r["seniority"] = res.get("seniority") or 0
+     clean = []
+     for r in rows:
+         row = {k: r.get(k) for k in ("employee_id", "full_name", *[c for c, _ in AMOUNT_COLUMNS], "gross", "net")}
+diff --git a/backend/albarka_phase_c.py b/backend/albarka_phase_c.py
+index 97d2c99..ae3e820 100644
+--- a/backend/albarka_phase_c.py
++++ b/backend/albarka_phase_c.py
+@@ -261,6 +261,13 @@ class PaymentCreate(BaseModel):
+     reference: Optional[str] = None
+ 
+ 
++def round_franc(value: float) -> int:
++    """Lot 8 — arrondi au franc le plus proche, 0,5 vers le haut (9 473,5 -> 9 474).
++    (round() de Python arrondit « au pair » : 0,5 pouvait descendre.)"""
++    from decimal import ROUND_HALF_UP, Decimal
++    return int(Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
++
++
+ def _invoice_totals(items: list[dict], tva_rate: Optional[float] = None, withholding_rate: float = 0) -> dict:
+     """Totaux d'un document. Lignes de titre ("section") exclues.
+     Avec `tva_rate` (lot 7) : TVA unique calculée en fin de facture sur le
+@@ -269,12 +276,12 @@ def _invoice_totals(items: list[dict], tva_rate: Optional[float] = None, withhol
+     lines = [i for i in items if i.get("kind") != "section"]
+     subtotal = sum((i["quantity"] * i["unit_price"]) for i in lines)
+     if tva_rate is not None:
+-        subtotal = round(subtotal)
+-        tax = round(subtotal * tva_rate / 100.0)
++        subtotal = round_franc(subtotal)
++        tax = round_franc(subtotal * tva_rate / 100.0)
+     else:
+         tax = sum((i["quantity"] * i["unit_price"] * (i.get("tax_rate", 0) / 100.0)) for i in lines)
+     total = round(subtotal + tax, 2)
+-    withholding = round(subtotal * (withholding_rate or 0) / 100.0) if withholding_rate else 0
++    withholding = round_franc(subtotal * (withholding_rate or 0) / 100.0) if withholding_rate else 0
+     return {"subtotal": round(subtotal, 2), "tax": round(tax, 2), "total": total,
+             "withholding": withholding, "net_to_pay": round(total - withholding, 2)}
+ 
+diff --git a/backend/server.py b/backend/server.py
+index f4131c6..3ccad81 100644
+--- a/backend/server.py
++++ b/backend/server.py
+@@ -150,6 +150,9 @@ api_router.include_router(docgen_router)
+ api_router.include_router(docgen_public_router)
+ api_router.include_router(letters_router)
+ api_router.include_router(payroll_router)
++# Lot 8 : paie (modèles de configuration, bulletins, livre de paie)
++from albarka_paie import router as paie_router, ensure_paie_setup  # noqa: E402
++api_router.include_router(paie_router)
+ 
+ 
+ @api_router.get("/")
+@@ -229,6 +232,8 @@ async def _ensure_indexes():
+         await ensure_access_indexes()
+         # Notifications push
+         await ensure_push_indexes()
++        # Lot 8 : paie (index + modèle « Burkina Faso — standard »)
++        await ensure_paie_setup()
+     except Exception:
+         logger.exception("Échec création index Mongo (non bloquant)")
+ 
+diff --git a/backend/tests/test_paie_lot8.py b/backend/tests/test_paie_lot8.py
+new file mode 100644
+index 0000000..6523147
+--- /dev/null
++++ b/backend/tests/test_paie_lot8.py
+@@ -0,0 +1,235 @@
++"""Lot 8 — paie Burkina Faso entièrement paramétrable.
++
++- moteur : reproduction EXACTE du fichier du cabinet « Assistante_cardi_pro_ESSAI.xlsx »
++  (brut 341 672, CNSS 18 791,96, base IUTS 182 906, IUTS 24 870,60, abattement
++  famille 1 989,65, IUTS net 22 880,95) et, avec les arrondis par défaut
++  (franc, base IUTS à la centaine inférieure, net à la centaine), net 300 000
++  et net à payer 297 000 comme sur le bulletin ;
++- ancienneté à partir de 3 ans, charges de famille et abattement par catégorie
++  paramétrables, mode « net négocié → brut » ;
++- modèles de configuration (Appliquer, Restaurer les valeurs par défaut),
++  employeur cabinet ou client avec personnalisation (Restaurer les valeurs du
++  modèle), bulletins (préparation, variables, validation), PDF avec QR code,
++  livre de paie avec charges patronales ;
++- factures : TVA et retenue arrondies au franc (0,5 vers le haut), retenue
++  avec IFU 5 % / sans IFU 10 % et libellé modifiables.
++Tests autonomes : MongoDB simulé (mongomock-motor).
++"""
++from __future__ import annotations
++
++import asyncio
++import os
++import sys
++from pathlib import Path
++
++os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
++os.environ.setdefault("DB_NAME", "albarka_test")
++os.environ.setdefault("JWT_SECRET_KEY", "test-secret")
++
++import pytest
++from fastapi import APIRouter, FastAPI, Header, HTTPException
++from fastapi.testclient import TestClient
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++mongomock_motor = pytest.importorskip("mongomock_motor")
++fitz = pytest.importorskip("fitz")
++pytest.importorskip("reportlab")
++
++import db as db_module  # noqa: E402
++import albarka_docgen  # noqa: E402
++import albarka_paie  # noqa: E402
++import albarka_paie_moteur as moteur  # noqa: E402
++import albarka_phase_c  # noqa: E402
++from albarka_auth import get_current_user  # noqa: E402
++
++SANDRINE = {"base_salary": 231672, "allowances": {"housing": 50000, "transport": 30000, "function": 30000}, "dependents": 1}
++EXACT = {"rounding": {"amounts": {"step": 0}, "iuts_base": {"step": 1, "mode": "down"}, "net": {"step": 0}}}
++
++
++# ---------------------------------------------------------------- moteur
++def test_reproduces_excel_exactly():
++    r = moteur.compute_payslip(SANDRINE, EXACT, "2024-07")
++    assert r["gross"] == 341672
++    assert r["cnss"] == pytest.approx(18791.96) and r["cnss_fiscal"] == pytest.approx(18533.76)
++    assert r["taxable"] == pytest.approx(323138.24) and r["exemptions_total"] == pytest.approx(82313.824)
++    assert r["flat_abatement"] == pytest.approx(57918) and r["iuts_base"] == 182906
++    assert r["iuts_gross"] == pytest.approx(24870.602) and r["family_abatement"] == pytest.approx(1989.64816)
++    assert r["iuts"] == pytest.approx(22880.95384) and r["net_raw"] == pytest.approx(299999.08616)
++
++
++def test_default_rounding_gives_payslip_values():
++    r = moteur.compute_payslip(SANDRINE, None, "2024-07")
++    assert (r["cnss"], r["iuts_base"], r["iuts_gross"], r["family_abatement"], r["iuts"]) == (18792, 182900, 24869, 1990, 22879)
++    assert r["net"] == 300000 and r["patriotic_support"] == 3000 and r["net_to_pay"] == 297000
++    # Charges patronales : CNSS 16 % du brut plafonné + TPA 3 % du brut
++    # 7 % -> 23 917, 3,5 % -> 11 959, 5,5 % -> 18 792, TPA 3 % -> 10 250
++    assert [x["amount"] for x in r["employer_charges"]] == [23917, 11959, 18792, 10250] and r["employer_total"] == 64918
++    assert [x["label"] for x in r["employer_charges"]][-1].startswith("Taxe patronale")
++
++
++def test_rounding_rules():
++    rr = moteur.round_rule
++    assert rr(9473.5, {"step": 1, "mode": "nearest"}) == 9474 and rr(299999.09, {"step": 100, "mode": "nearest"}) == 300000
++    assert rr(182906, {"step": 100, "mode": "down"}) == 182900 and rr(101, {"step": 5, "mode": "up"}) == 105
++    assert rr(12.34, {"step": 0}) == 12.34
++
++
++def test_seniority_family_category_and_net_mode():
++    p = moteur.normalize_params(None)
++    assert moteur.years_of_service("2021-08-01", "2024-07") == 2 and moteur.years_of_service("2021-07-15", "2024-07") == 3
++    assert moteur.seniority_rate(2, p["seniority"]) == 0 and moteur.seniority_rate(3, p["seniority"]) == 5
++    assert moteur.seniority_rate(10, p["seniority"]) == 12 and moteur.seniority_rate(40, p["seniority"]) == 25
++    r = moteur.compute_payslip({**SANDRINE, "hire_date": "2020-01-10"}, None, "2024-07")    # 4 ans -> 6 %
++    assert r["seniority"] == round(231672 * 0.06) and r["gross"] == 341672 + r["seniority"]
++    # Charges de famille : table libre, la dernière ligne vaut au-delà
++    custom = {"family_abatement": [{"charges": 1, "rate": 8}, {"charges": 6, "rate": 18}, {"charges": 7, "rate": 25}]}
++    assert moteur.family_rate(9, moteur.normalize_params(custom)["family_abatement"]) == 25
++    assert moteur.family_rate(4, moteur.normalize_params(custom)["family_abatement"]) == 8
++    # Abattement forfaitaire par catégorie
++    cat = {"flat_abatement": {"mode": "by_category", "categories": [{"key": "cadre", "label": "Cadre", "rate": 20},
++                                                                   {"key": "nc", "label": "Non cadre", "rate": 25}]}}
++    assert moteur.compute_payslip({**SANDRINE, "category": "cadre"}, cat, "2024-07")["flat_abatement"] == round(231672 * 0.20)
++    # Net négocié -> salaire de base
++    base = moteur.base_for_net(SANDRINE, 300000, None, "2024-07")
++    assert 231600 < base < 231700
++    assert moteur.compute_payslip({**SANDRINE, "base_salary": base}, None, "2024-07")["net"] == 300000
++
++
++def test_invalid_params_rejected():
++    with pytest.raises(ValueError, match="croissantes"):
++        moteur.normalize_params({"iuts_brackets": [{"up_to": 50000, "rate": 10}, {"up_to": 30000, "rate": 12}, {"up_to": None, "rate": 25}]})
++    with pytest.raises(ValueError, match="doublon"):
++        moteur.normalize_params({"family_abatement": [{"charges": 1, "rate": 8}, {"charges": 1, "rate": 9}]})
++    with pytest.raises(ValueError, match="entre 0 et 100"):
++        moteur.normalize_params({"cnss": {"employee_rate": 150}})
++
++
++def test_invoice_rounding_half_up():
++    t = albarka_phase_c._invoice_totals([{"quantity": 1, "unit_price": 52632}], 18, 5)
++    assert t["tax"] == 9474 and t["withholding"] == 2632 and t["net_to_pay"] == 59474
++    assert albarka_phase_c.round_franc(2.5) == 3 and albarka_phase_c.round_franc(9473.5) == 9474
++
++
++# ---------------------------------------------------------------- API
++USERS = {
++    "rh": {"id": "u-rh", "email": "rh@albarka.bf", "full_name": "RH", "roles": ["rh"], "is_active": True},
++    "secr": {"id": "u-secr", "email": "s@albarka.bf", "full_name": "Secrétaire", "roles": ["secretariat"], "is_active": True},
++    "c1": {"id": "c1", "email": "card@exemple.bf", "full_name": "M. Yaolile", "company": "CARD-IPRO SARL", "roles": ["client"], "is_active": True},
++}
++
++
++@pytest.fixture()
++def env(monkeypatch):
++    mock_db = mongomock_motor.AsyncMongoMockClient()["albarka_lot8_test"]
++    real_db = db_module.db
++    for mod in list(sys.modules.values()):
++        if getattr(mod, "db", None) is real_db and getattr(mod, "__name__", "").startswith(("albarka_", "db")):
++            monkeypatch.setattr(mod, "db", mock_db)
++    asyncio.run(mock_db.users.insert_many([dict(u) for u in USERS.values()]))
++    asyncio.run(mock_db.client_kyc.insert_one({"tenant_id": "c1", "business_name": "CARD-IPRO SARL", "address": "13 BP 156 OUAGA 13"}))
++    app = FastAPI()
++    api = APIRouter(prefix="/api")
++    for r in (albarka_paie.router, albarka_docgen.router, albarka_docgen.public_router):
++        api.include_router(r)
++    app.include_router(api)
++
++    async def fake_user(x_user: str = Header(default="")):
++        if x_user not in USERS:
++            raise HTTPException(status_code=401, detail="Non connecté")
++        return USERS[x_user]
++    app.dependency_overrides[get_current_user] = fake_user
++    with TestClient(app) as client:
++        yield type("Env", (), {"c": client, "db": mock_db})
++
++
++H = {"X-User": "rh"}
++
++
++def test_templates_and_employer_config(env):
++    c = env.c
++    assert c.get("/api/hr/paie/modeles", headers={"X-User": "secr"}).status_code == 403
++    tpls = c.get("/api/hr/paie/modeles", headers=H).json()["items"]
++    assert len(tpls) == 1 and tpls[0]["name"] == albarka_paie.SYSTEM_TEMPLATE_NAME and tpls[0]["is_default"]
++    std = tpls[0]
++    # Nouveau modèle « par catégorie », modifié puis « Appliquer », puis restauré
++    t = c.post("/api/hr/paie/modeles", headers=H, json={"name": "Clients — cadres"}).json()
++    params = t["params"]
++    params["flat_abatement"]["mode"] = "by_category"
++    params["patriotic_support"]["rate"] = 2
++    t2 = c.put(f"/api/hr/paie/modeles/{t['id']}", headers=H, json={"name": "Clients — cadres", "params": params}).json()
++    assert t2["params"]["flat_abatement"]["mode"] == "by_category" and t2["params"]["patriotic_support"]["rate"] == 2
++    bad = dict(params, iuts_brackets=[{"up_to": 5, "rate": 10}, {"up_to": 1, "rate": 10}])
++    assert c.put(f"/api/hr/paie/modeles/{t['id']}", headers=H, json={"name": "X", "params": bad}).status_code == 400
++    t3 = c.post(f"/api/hr/paie/modeles/{t['id']}/restore-defaults", headers=H).json()
++    assert t3["params"]["patriotic_support"]["rate"] == 1 and t3["params"]["flat_abatement"]["mode"] == "single"
++    # Employeurs : cabinet + client ; le client utilise le modèle et le personnalise
++    emps = c.get("/api/hr/paie/employeurs", headers=H).json()["items"]
++    assert [e["employer_id"] for e in emps] == ["cabinet", "c1"] and emps[1]["template_id"] == std["id"]
++    cfg = c.put("/api/hr/paie/employeurs/c1", headers=H, json={"template_id": t["id"], "cnss_number": "123456"}).json()
++    assert cfg["template_name"] == "Clients — cadres" and not cfg["customized"] and cfg["name"] == "CARD-IPRO SARL"
++    custom = cfg["params"]
++    custom["seniority"]["start_years"] = 2
++    cfg = c.put("/api/hr/paie/employeurs/c1", headers=H, json={"template_id": t["id"], "custom_params": custom}).json()
++    assert cfg["customized"] and cfg["params"]["seniority"]["start_years"] == 2
++    cfg = c.post("/api/hr/paie/employeurs/c1/restore-template", headers=H).json()
++    assert not cfg["customized"] and cfg["params"]["seniority"]["start_years"] == 3
++    # Modèle utilisé : suppression refusée
++    assert c.delete(f"/api/hr/paie/modeles/{t['id']}", headers=H).status_code == 409
++
++
++def test_bulletins_ledger_pdf_and_verify(env):
++    c = env.c
++    e = c.post("/api/hr/paie/employees", headers=H, json={
++        "tenant_id": "c1", "full_name": "S.W.N. Sandrine YAOLILE", "role": "Assistante Administrative", "dependents": 1,
++        "base_salary": 231672, "allowances": {"housing": 50000, "transport": 30000, "function": 30000}}).json()
++    c.post("/api/hr/paie/employees", headers=H, json={
++        "tenant_id": "c1", "full_name": "Net négocié", "pay_mode": "net", "net_target": 300000, "dependents": 1,
++        "allowances": {"housing": 50000, "transport": 30000, "function": 30000}})
++    staff = c.post("/api/hr/paie/employees", headers=H, json={"tenant_id": "cabinet", "full_name": "Comptable du cabinet",
++                                                              "base_salary": 150000, "hire_date": "2019-03-01"}).json()
++    assert staff["tenant_id"] == "cabinet"
++    assert c.post("/api/hr/paie/employees", headers=H, json={"tenant_id": "inconnu", "full_name": "XX"}).status_code == 404
++
++    p = c.post("/api/hr/paie/bulletins/prepare", headers=H, json={"employer_id": "c1", "period_month": "2024-07"}).json()
++    assert p["created"] == 2
++    lst = c.get("/api/hr/paie/bulletins?employer_id=c1&period_month=2024-07", headers=H).json()
++    sandrine = next(b for b in lst["items"] if b["employee_id"] == e["id"])
++    assert sandrine["result"]["net"] == 300000 and sandrine["result"]["net_to_pay"] == 297000
++    nego = next(b for b in lst["items"] if b["employee_id"] != e["id"])
++    assert nego["result"]["net"] == 300000 and 231600 < nego["result"]["base_salary"] < 231700
++    # Éléments du mois : acompte -> net à payer diminué
++    b = c.put(f"/api/hr/paie/bulletins/{sandrine['id']}", headers=H, json={"deductions": [{"label": "Acompte", "amount": 50000}],
++                                                                           "extras": [], "notes": "Acompte du 15"}).json()
++    assert b["result"]["net_to_pay"] == 247000
++    # Validation : figé (la re-préparation ne le recalcule pas)
++    c.post(f"/api/hr/paie/bulletins/{sandrine['id']}/validate", headers=H)
++    assert c.put(f"/api/hr/paie/bulletins/{sandrine['id']}", headers=H, json={}).status_code == 409
++    assert c.post("/api/hr/paie/bulletins/prepare", headers=H, json={"employer_id": "c1", "period_month": "2024-07"}).json()["updated"] == 1
++    # PDF du bulletin
++    pdf = c.get(f"/api/hr/paie/bulletins/{sandrine['id']}/pdf", headers=H)
++    with fitz.open("pdf", pdf.content) as d:
++        text = " ".join(" ".join(pg.get_text() for pg in d).split())
++    assert "BULLETIN DE PAIE" in text and "CARD-IPRO SARL" in text and "YAOLILE" in text and "247 000" in text
++    assert "Soutien patriotique" in text and "sans limitation de durée" in text
++    # Vérification par QR code
++    tok = env_db_token(env, sandrine["id"])
++    v = c.get(f"/api/public/verify/{tok}").json()
++    assert v["valid"] and v["kind"] == "Bulletin de paie" and v["client"] == "CARD-IPRO SARL" and v["amount"] == 247000
++    # Livre de paie : charges patronales
++    lv = c.get("/api/hr/paie/livre?employer_id=c1&period_month=2024-07", headers=H).json()
++    assert lv["totals"]["count"] == 2 and lv["totals"]["employer_total"] > 0
++    assert {x["label"] for x in lv["totals"]["employer_detail"]} >= {"Prestations familiales", "Taxe patronale d'apprentissage (TPA)"}
++    csv = c.get("/api/hr/paie/livre/csv?employer_id=c1&period_month=2024-07", headers=H)
++    assert "YAOLILE" in csv.text and "Charges patronales" in csv.text
++    assert c.get("/api/hr/paie/livre/pdf?employer_id=c1&period_month=2024-07", headers=H).content[:4] == b"%PDF"
++    allp = c.get("/api/hr/paie/bulletins-pdf?employer_id=c1&period_month=2024-07", headers=H)
++    with fitz.open("pdf", allp.content) as d:
++        assert d.page_count == 2
++    # Personnel du cabinet : ancienneté (5 ans en juillet 2024 -> 7 %)
++    c.post("/api/hr/paie/bulletins/prepare", headers=H, json={"employer_id": "cabinet", "period_month": "2024-07"})
++    cab = c.get("/api/hr/paie/bulletins?employer_id=cabinet&period_month=2024-07", headers=H).json()["items"][0]
++    assert cab["result"]["seniority_rate"] == 7 and cab["result"]["seniority"] == 10500
++
++
++def env_db_token(env, bid):
++    return asyncio.run(env.db.paie_bulletins.find_one({"id": bid}))["verify_token"]
+diff --git a/frontend/src/components/paie/PaieBulletins.jsx b/frontend/src/components/paie/PaieBulletins.jsx
+new file mode 100644
+index 0000000..cae4f80
+--- /dev/null
++++ b/frontend/src/components/paie/PaieBulletins.jsx
+@@ -0,0 +1,258 @@
++/*
++  PaieBulletins — lot 8 : onglets « Bulletins » et « Livre de paie ».
++
++  Bulletins : employeur + mois →
++    - « Préparer / recalculer le mois » : un bulletin par salarié (les
++      brouillons sont recalculés avec la fiche et les paramètres actuels ; les
++      bulletins validés ne bougent plus) ;
++    - pour chaque bulletin : éléments du mois (primes imposables, acomptes,
++      prêts, autres retenues, ancienneté saisie, observations), rubriques
++      calculées, Valider / Rouvrir, PDF ; « Tout imprimer » en un seul PDF.
++  Livre de paie : tableau du mois (brut, CNSS, IUTS, soutien patriotique,
++  retenues, net à payer, charges patronales, coût total), détail des charges
++  patronales, PDF et Excel.
++*/
++import React, { useCallback, useEffect, useState } from "react";
++import { toast } from "sonner";
++import { apiClient, extractError } from "@/lib/api";
++import { RefreshCw, Printer, FileText, Lock, Unlock, Plus, Trash2, X, FileSpreadsheet } from "lucide-react";
++import { EmployerSelect, MonthInput, useEmployers, fcfa, previousMonth, GREEN } from "@/components/paie/paieCommon";
++
++const openPdf = async (url, params) => {
++  try {
++    const { data } = await apiClient.get(url, { params, responseType: "blob" });
++    window.open(URL.createObjectURL(data), "_blank");
++  } catch (e) { toast.error(extractError(e)); }
++};
++
++// Lignes « libellé / montant » (primes ou retenues du mois)
++function ItemsEditor({ items, onChange, placeholder, disabled, testId }) {
++  return (
++    <div className="space-y-1" data-testid={testId}>
++      {items.map((it, i) => (
++        <div key={i} className="flex gap-2">
++          <input value={it.label} disabled={disabled} placeholder={placeholder} onChange={(e) => onChange(items.map((x, k) => (k === i ? { ...x, label: e.target.value } : x)))}
++            className="h-8 flex-1 rounded border border-slate-300 px-2 text-sm" />
++          <input type="number" value={it.amount} disabled={disabled} onChange={(e) => onChange(items.map((x, k) => (k === i ? { ...x, amount: e.target.value } : x)))}
++            className="h-8 w-28 rounded border border-slate-300 px-2 text-sm text-right" />
++          {!disabled && <button type="button" onClick={() => onChange(items.filter((_, k) => k !== i))} className="p-1 text-slate-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /></button>}
++        </div>
++      ))}
++      {!disabled && <button type="button" onClick={() => onChange([...items, { label: "", amount: "" }])} className="inline-flex items-center gap-1 text-xs font-medium" style={{ color: GREEN }}><Plus className="h-3 w-3" /> Ajouter</button>}
++    </div>
++  );
++}
++
++function BulletinDrawer({ id, onClose, onChanged }) {
++  const [b, setB] = useState(null);
++  const [vars, setVars] = useState(null);
++  const [busy, setBusy] = useState(false);
++  const load = useCallback(async () => {
++    const { data } = await apiClient.get(`/hr/paie/bulletins/${id}`);
++    setB(data);
++    const v = data.variables || {};
++    setVars({ extras: v.extras || [], deductions: v.deductions || [], seniority_amount: v.seniority_amount ?? "", notes: v.notes || "" });
++  }, [id]);
++  useEffect(() => { load().catch((e) => toast.error(extractError(e))); }, [load]);
++  if (!b || !vars) return null;
++  const locked = b.status === "validated";
++  const r = b.result || {};
++
++  const save = async () => {
++    setBusy(true);
++    try {
++      await apiClient.put(`/hr/paie/bulletins/${id}`, { ...vars, seniority_amount: vars.seniority_amount === "" ? null : Number(vars.seniority_amount),
++        extras: vars.extras.map((x) => ({ ...x, amount: Number(x.amount) || 0 })), deductions: vars.deductions.map((x) => ({ ...x, amount: Number(x.amount) || 0 })) });
++      toast.success("Bulletin recalculé"); await load(); onChanged();
++    } catch (e) { toast.error(extractError(e)); } finally { setBusy(false); }
++  };
++  const toggle = async () => {
++    try { await apiClient.post(`/hr/paie/bulletins/${id}/${locked ? "reopen" : "validate"}`); await load(); onChanged(); toast.success(locked ? "Bulletin rouvert" : "Bulletin validé"); }
++    catch (e) { toast.error(extractError(e)); }
++  };
++  return (
++    <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={(e) => e.target === e.currentTarget && onClose()}>
++      <div className="h-full w-full max-w-2xl overflow-auto bg-white p-5 shadow-2xl space-y-4" data-testid="bulletin-drawer">
++        <div className="flex items-start justify-between gap-2">
++          <div>
++            <p className="text-xs uppercase tracking-wider text-slate-500">Bulletin {b.period_month} · {locked ? "validé" : "brouillon"}</p>
++            <h3 className="font-display text-xl">{b.employee?.full_name}</h3>
++            <p className="text-xs text-slate-500">{b.employer?.name} · modèle « {b.template_name} »{b.customized ? " (personnalisé)" : ""}</p>
++          </div>
++          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-slate-100" aria-label="Fermer"><X className="h-5 w-5" /></button>
++        </div>
++        <table className="w-full text-sm" data-testid="bulletin-lines">
++          <thead className="text-[11px] uppercase text-slate-500"><tr><th className="text-left">Rubrique</th><th className="text-right">Base</th><th className="text-right">Taux</th><th className="text-right">Gains</th><th className="text-right">Retenues</th></tr></thead>
++          <tbody>
++            {/* Même ordre que le PDF : gains, brut, CNSS et IUTS, net, puis soutien patriotique et retenues */}
++            {(() => {
++              const isAfter = (ln) => ln.code === "patriotic" || ln.code.startsWith("ded_");
++              const row = (ln, i) => (
++                <tr key={`${ln.code}-${i}`} className="border-t border-slate-100">
++                  <td className="py-1">{ln.label}</td><td className="text-right tabular-nums text-slate-500">{ln.base ? fcfa(ln.base) : ""}</td>
++                  <td className="text-right text-slate-500">{ln.rate ? `${String(ln.rate).replace(".", ",")} %` : ""}</td>
++                  <td className="text-right tabular-nums">{ln.kind === "gain" ? fcfa(ln.amount) : ""}</td>
++                  <td className="text-right tabular-nums">{ln.kind === "deduction" ? fcfa(ln.amount) : ""}</td>
++                </tr>
++              );
++              const lines = r.lines || [];
++              const gains = lines.filter((ln) => ln.kind === "gain");
++              const taxes = lines.filter((ln) => ln.kind === "deduction" && !isAfter(ln));
++              const after = lines.filter(isAfter);
++              return (
++                <>
++                  {gains.map(row)}
++                  <tr className="border-t font-semibold"><td className="py-1">Salaire brut</td><td /><td /><td className="text-right">{fcfa(r.gross)}</td><td /></tr>
++                  {taxes.map(row)}
++                  <tr className="font-semibold"><td className="py-1">IUTS net</td><td /><td /><td /><td className="text-right">{fcfa(r.iuts)}</td></tr>
++                  <tr className="border-t font-semibold"><td className="py-1">Salaire net</td><td /><td /><td className="text-right">{fcfa(r.net)}</td><td /></tr>
++                  {after.map(row)}
++                  <tr className="border-t font-bold text-lg" style={{ color: GREEN }}><td className="py-1">Net à payer</td><td /><td /><td className="text-right" data-testid="bulletin-net-to-pay">{fcfa(r.net_to_pay)}</td><td /></tr>
++                </>
++              );
++            })()}
++          </tbody>
++        </table>
++        <p className="text-[11px] text-slate-500">Base IUTS {fcfa(r.iuts_base)} · exonérations {fcfa(r.exemptions_total)} · abattement forfaitaire {fcfa(r.flat_abatement)} · charges patronales {fcfa(r.employer_total)}</p>
++        <div className="rounded-xl bg-slate-50 p-3 space-y-3 text-sm">
++          <p className="font-semibold">Éléments du mois</p>
++          <div><p className="text-xs text-slate-600 mb-1">Primes (imposables)</p><ItemsEditor items={vars.extras} disabled={locked} placeholder="Prime de rendement…" onChange={(extras) => setVars({ ...vars, extras })} testId="bulletin-extras" /></div>
++          <div><p className="text-xs text-slate-600 mb-1">Retenues (acomptes, prêts, autres)</p><ItemsEditor items={vars.deductions} disabled={locked} placeholder="Acompte…" onChange={(deductions) => setVars({ ...vars, deductions })} testId="bulletin-deductions" /></div>
++          <label className="block text-xs text-slate-600">Prime d'ancienneté saisie (vide = calculée : {fcfa(r.seniority)})
++            <input type="number" value={vars.seniority_amount} disabled={locked} onChange={(e) => setVars({ ...vars, seniority_amount: e.target.value })} className="mt-1 block h-8 w-40 rounded border border-slate-300 px-2 text-sm" /></label>
++          <label className="block text-xs text-slate-600">Observations
++            <input value={vars.notes} disabled={locked} onChange={(e) => setVars({ ...vars, notes: e.target.value })} className="mt-1 block h-8 w-full rounded border border-slate-300 px-2 text-sm" /></label>
++          {!locked && <button type="button" onClick={save} disabled={busy} className="rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50" style={{ background: GREEN }} data-testid="bulletin-save">Enregistrer et recalculer</button>}
++        </div>
++        <div className="flex flex-wrap gap-2">
++          <button type="button" onClick={toggle} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm" data-testid="bulletin-toggle">
++            {locked ? <><Unlock className="h-4 w-4" /> Rouvrir</> : <><Lock className="h-4 w-4" /> Valider le bulletin</>}</button>
++          <button type="button" onClick={() => openPdf(`/hr/paie/bulletins/${id}/pdf`)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm" data-testid="bulletin-pdf"><FileText className="h-4 w-4" /> PDF</button>
++        </div>
++      </div>
++    </div>
++  );
++}
++
++export function PaieBulletins() {
++  const employers = useEmployers();
++  const [eid, setEid] = useState("");
++  const [month, setMonth] = useState(previousMonth());
++  const [data, setData] = useState(null);
++  const [open, setOpen] = useState(null);
++  const [busy, setBusy] = useState(false);
++  const load = useCallback(async () => {
++    if (!eid || !month) { setData(null); return; }
++    const { data: d } = await apiClient.get("/hr/paie/bulletins", { params: { employer_id: eid, period_month: month } });
++    setData(d);
++  }, [eid, month]);
++  useEffect(() => { load().catch((e) => toast.error(extractError(e))); }, [load]);
++
++  const prepare = async () => {
++    setBusy(true);
++    try {
++      const { data: r } = await apiClient.post("/hr/paie/bulletins/prepare", { employer_id: eid, period_month: month });
++      toast.success(`${r.created} bulletin(s) créé(s), ${r.updated} recalculé(s)`); await load();
++    } catch (e) { toast.error(extractError(e)); } finally { setBusy(false); }
++  };
++  const t = data?.totals || {};
++  return (
++    <div className="space-y-3" data-testid="paie-bulletins">
++      <div className="flex flex-wrap items-center gap-3">
++        <EmployerSelect value={eid} onChange={setEid} employers={employers} testId="bulletins-employer" />
++        <MonthInput value={month} onChange={setMonth} testId="bulletins-month" />
++        {eid && <>
++          <button type="button" onClick={prepare} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-white disabled:opacity-50" style={{ background: GREEN }} data-testid="bulletins-prepare">
++            <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} /> Préparer / recalculer le mois</button>
++          {data?.items?.length > 0 && <button type="button" onClick={() => openPdf("/hr/paie/bulletins-pdf", { employer_id: eid, period_month: month })} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"><Printer className="h-4 w-4" /> Tout imprimer</button>}
++        </>}
++      </div>
++      {data && (
++        <div className="rounded-xl border border-slate-200 bg-white overflow-auto">
++          <table className="w-full text-sm">
++            <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
++              <tr><th className="px-3 py-2 text-left">Salarié</th><th className="text-right">Brut</th><th className="text-right">CNSS</th><th className="text-right">IUTS</th>
++                <th className="text-right">Net</th><th className="text-right">Net à payer</th><th className="text-left px-3">État</th></tr>
++            </thead>
++            <tbody>
++              {data.items.map((b) => (
++                <tr key={b.id} className="border-t border-slate-100 cursor-pointer hover:bg-slate-50" onClick={() => setOpen(b.id)} data-testid={`bulletin-row-${b.id}`}>
++                  <td className="px-3 py-2 font-medium">{b.employee?.full_name}</td>
++                  <td className="text-right tabular-nums">{fcfa(b.result?.gross)}</td><td className="text-right tabular-nums">{fcfa(b.result?.cnss)}</td>
++                  <td className="text-right tabular-nums">{fcfa(b.result?.iuts)}</td><td className="text-right tabular-nums">{fcfa(b.result?.net)}</td>
++                  <td className="text-right tabular-nums font-semibold">{fcfa(b.result?.net_to_pay)}</td>
++                  <td className="px-3">{b.status === "validated" ? <span className="rounded bg-emerald-100 px-1.5 text-xs text-emerald-800">validé</span> : <span className="rounded bg-amber-100 px-1.5 text-xs text-amber-800">brouillon</span>}</td>
++                </tr>
++              ))}
++              {!data.items.length && <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-500">Aucun bulletin : cliquez sur « Préparer / recalculer le mois ».</td></tr>}
++              {data.items.length > 0 && (
++                <tr className="border-t-2 font-semibold bg-slate-50"><td className="px-3 py-2">TOTAL ({t.count})</td><td className="text-right">{fcfa(t.gross)}</td><td className="text-right">{fcfa(t.cnss)}</td>
++                  <td className="text-right">{fcfa(t.iuts)}</td><td /><td className="text-right">{fcfa(t.net_to_pay)}</td><td /></tr>
++              )}
++            </tbody>
++          </table>
++        </div>
++      )}
++      {open && <BulletinDrawer id={open} onClose={() => setOpen(null)} onChanged={load} />}
++    </div>
++  );
++}
++
++export function PaieLivre() {
++  const employers = useEmployers();
++  const [eid, setEid] = useState("");
++  const [month, setMonth] = useState(previousMonth());
++  const [data, setData] = useState(null);
++  useEffect(() => {
++    if (!eid || !month) { setData(null); return; }
++    apiClient.get("/hr/paie/livre", { params: { employer_id: eid, period_month: month } }).then(({ data: d }) => setData(d)).catch((e) => toast.error(extractError(e)));
++  }, [eid, month]);
++  const downloadCsv = async () => {
++    try {
++      const { data: blob } = await apiClient.get("/hr/paie/livre/csv", { params: { employer_id: eid, period_month: month }, responseType: "blob" });
++      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `livre_de_paie_${month}.csv`; a.click();
++    } catch (e) { toast.error(extractError(e)); }
++  };
++  return (
++    <div className="space-y-3" data-testid="paie-livre">
++      <div className="flex flex-wrap items-center gap-3">
++        <EmployerSelect value={eid} onChange={setEid} employers={employers} testId="livre-employer" />
++        <MonthInput value={month} onChange={setMonth} testId="livre-month" />
++        {data?.rows?.length > 0 && <>
++          <button type="button" onClick={() => openPdf("/hr/paie/livre/pdf", { employer_id: eid, period_month: month })} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"><FileText className="h-4 w-4" /> PDF</button>
++          <button type="button" onClick={downloadCsv} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"><FileSpreadsheet className="h-4 w-4" /> Excel</button>
++        </>}
++      </div>
++      {data && (
++        <>
++          <div className="rounded-xl border border-slate-200 bg-white overflow-auto">
++            <table className="w-full text-sm" data-testid="livre-table">
++              <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
++                <tr><th className="px-3 py-2 text-left">Salarié</th>{data.columns.map((c) => <th key={c.key} className="text-right px-2">{c.label}</th>)}</tr>
++              </thead>
++              <tbody>
++                {data.rows.map((r) => (
++                  <tr key={r.id} className="border-t border-slate-100"><td className="px-3 py-1.5 font-medium">{r.full_name}</td>
++                    {data.columns.map((c) => <td key={c.key} className="text-right tabular-nums px-2">{fcfa(r[c.key])}</td>)}</tr>
++                ))}
++                {!data.rows.length && <tr><td colSpan={data.columns.length + 1} className="px-3 py-6 text-center text-slate-500">Aucun bulletin pour ce mois.</td></tr>}
++                {data.rows.length > 0 && (
++                  <tr className="border-t-2 font-semibold bg-slate-50"><td className="px-3 py-2">TOTAL</td>{data.columns.map((c) => <td key={c.key} className="text-right tabular-nums px-2">{fcfa(data.totals[c.key])}</td>)}</tr>
++                )}
++              </tbody>
++            </table>
++          </div>
++          {data.rows.length > 0 && (
++            <div className="rounded-xl border border-slate-200 bg-white p-3 max-w-md" data-testid="livre-employer-charges">
++              <p className="font-semibold text-sm mb-1">Charges patronales du mois</p>
++              <table className="w-full text-sm"><tbody>
++                {data.totals.employer_detail.map((x) => <tr key={x.label}><td className="text-slate-600">{x.label}</td><td className="text-right tabular-nums">{fcfa(x.amount)}</td></tr>)}
++                <tr className="border-t font-semibold"><td>Total</td><td className="text-right tabular-nums">{fcfa(data.totals.employer_total)}</td></tr>
++              </tbody></table>
++            </div>
++          )}
++        </>
++      )}
++    </div>
++  );
++}
+diff --git a/frontend/src/components/paie/PaieEmployees.jsx b/frontend/src/components/paie/PaieEmployees.jsx
+new file mode 100644
+index 0000000..6f4f20c
+--- /dev/null
++++ b/frontend/src/components/paie/PaieEmployees.jsx
+@@ -0,0 +1,186 @@
++/*
++  PaieEmployees — lot 8 : onglet « Salariés ».
++
++  Pour l'employeur choisi (personnel du cabinet ou un client) :
++    - liste des salariés, avec brut et net calculés ;
++    - fiche paie (création / modification) : identité, matricule, n° CNSS,
++      catégorie (si l'abattement dépend de la catégorie), charges de famille,
++      date d'embauche (prime d'ancienneté), indemnités (rubriques du modèle) et
++      « non exonérée » par indemnité, mode « brut → net » ou « net négocié → brut » ;
++    - calcul en direct avec les paramètres de l'employeur.
++*/
++import React, { useEffect, useState } from "react";
++import { toast } from "sonner";
++import { apiClient, extractError } from "@/lib/api";
++import { Plus, Pencil, Trash2, X } from "lucide-react";
++import { EmployerSelect, useEmployers, fcfa, GREEN } from "@/components/paie/paieCommon";
++
++const empty = { full_name: "", role: "", matricule: "", cnss_number: "", category: "", dependents: 0, hire_date: "",
++  pay_mode: "gross", base_salary: "", net_target: "", allowances: {}, non_exempt: [], email: "", phone: "" };
++const inp = "mt-1 block h-9 w-full rounded border border-slate-300 px-2 text-sm";
++
++function EmployeeDialog({ employerId, params, initial, onClose, onSaved }) {
++  const [f, setF] = useState({ ...empty, ...initial, hire_date: initial?.hire_date || "", allowances: initial?.allowances || {} });
++  const [calc, setCalc] = useState(null);
++  const [busy, setBusy] = useState(false);
++  const set = (patch) => setF((x) => ({ ...x, ...patch }));
++  const cats = params?.flat_abatement?.mode === "by_category" ? params.flat_abatement.categories : [];
++
++  // Calcul en direct (paramètres de l'employeur)
++  useEffect(() => {
++    const t = setTimeout(() => {
++      apiClient.post("/hr/paie/simulate", { employer_id: employerId, period_month: new Date().toISOString().slice(0, 7),
++        employee: { ...f, base_salary: Number(f.base_salary) || 0, net_target: Number(f.net_target) || null } })
++        .then(({ data }) => setCalc(data)).catch(() => setCalc(null));
++    }, 350);
++    return () => clearTimeout(t);
++  }, [f, employerId]);
++
++  const save = async () => {
++    if (!f.full_name.trim()) { toast.error("Nom du salarié requis"); return; }
++    setBusy(true);
++    const body = { ...f, tenant_id: employerId, base_salary: Number(f.base_salary) || 0, net_target: f.pay_mode === "net" ? Number(f.net_target) || null : null,
++      dependents: Number(f.dependents) || 0, hire_date: f.hire_date || null, category: f.category || null };
++    try {
++      if (initial?.id) await apiClient.put(`/hr/paie/employees/${initial.id}`, body);
++      else await apiClient.post("/hr/paie/employees", body);
++      toast.success("Fiche paie enregistrée"); onSaved();
++    } catch (e) { toast.error(extractError(e)); } finally { setBusy(false); }
++  };
++
++  return (
++    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={(e) => e.target === e.currentTarget && onClose()}>
++      <div className="w-full max-w-4xl max-h-[92vh] overflow-auto rounded-2xl bg-white p-5 shadow-2xl space-y-4" data-testid="paie-employee-dialog">
++        <div className="flex items-start justify-between">
++          <h3 className="font-display text-xl">{initial?.id ? "Fiche paie du salarié" : "Nouveau salarié"}</h3>
++          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-slate-100" aria-label="Fermer"><X className="h-5 w-5" /></button>
++        </div>
++        <div className="grid lg:grid-cols-[1fr_280px] gap-4">
++          <div className="space-y-3 text-xs text-slate-600">
++            <div className="grid sm:grid-cols-3 gap-3">
++              <label className="sm:col-span-2">Nom et prénoms<input value={f.full_name} onChange={(e) => set({ full_name: e.target.value })} className={inp} data-testid="emp-name" /></label>
++              <label>Fonction<input value={f.role || ""} onChange={(e) => set({ role: e.target.value })} className={inp} /></label>
++              <label>Matricule<input value={f.matricule || ""} onChange={(e) => set({ matricule: e.target.value })} className={inp} /></label>
++              <label>N° CNSS<input value={f.cnss_number || ""} onChange={(e) => set({ cnss_number: e.target.value })} className={inp} /></label>
++              <label>Date d'embauche<input type="date" value={f.hire_date || ""} onChange={(e) => set({ hire_date: e.target.value })} className={inp} data-testid="emp-hire" /></label>
++              <label>Charges de famille<input type="number" min="0" value={f.dependents} onChange={(e) => set({ dependents: e.target.value })} className={inp} data-testid="emp-dependents" /></label>
++              {cats.length > 0 && (
++                <label>Catégorie<select value={f.category || ""} onChange={(e) => set({ category: e.target.value })} className={inp} data-testid="emp-category">
++                  <option value="">—</option>{cats.map((c) => <option key={c.key} value={c.key}>{c.label} ({c.rate} %)</option>)}</select></label>
++              )}
++            </div>
++            {/* Mode de calcul */}
++            <div className="rounded-lg bg-slate-50 p-3 space-y-2">
++              <div className="flex flex-wrap gap-4 text-sm text-slate-700">
++                <label className="flex items-center gap-1"><input type="radio" checked={f.pay_mode === "gross"} onChange={() => set({ pay_mode: "gross" })} data-testid="emp-mode-gross" /> Brut → net (salaire de base saisi)</label>
++                <label className="flex items-center gap-1"><input type="radio" checked={f.pay_mode === "net"} onChange={() => set({ pay_mode: "net" })} data-testid="emp-mode-net" /> Net négocié → brut</label>
++              </div>
++              {f.pay_mode === "gross" ? (
++                <label className="block max-w-xs">Salaire de base<input type="number" value={f.base_salary} onChange={(e) => set({ base_salary: e.target.value })} className={inp} data-testid="emp-base" /></label>
++              ) : (
++                <label className="block max-w-xs">Salaire net négocié (avant soutien patriotique)
++                  <input type="number" value={f.net_target || ""} onChange={(e) => set({ net_target: e.target.value })} className={inp} data-testid="emp-net-target" /></label>
++              )}
++            </div>
++            {/* Indemnités du modèle */}
++            <div>
++              <p className="font-semibold text-slate-700 mb-1">Indemnités mensuelles</p>
++              <div className="grid sm:grid-cols-2 gap-2">
++                {(params?.allowances || []).map((a) => (
++                  <div key={a.key} className="flex items-end gap-2">
++                    <label className="flex-1">{a.label}
++                      <input type="number" value={f.allowances[a.key] || ""} data-testid={`emp-allow-${a.key}`}
++                        onChange={(e) => set({ allowances: { ...f.allowances, [a.key]: Number(e.target.value) || 0 } })} className={inp} /></label>
++                    {a.exemption && (
++                      <label className="flex items-center gap-1 pb-2 whitespace-nowrap" title="Ne pas appliquer l'exonération à ce salarié">
++                        <input type="checkbox" checked={f.non_exempt.includes(a.key)}
++                          onChange={(e) => set({ non_exempt: e.target.checked ? [...f.non_exempt, a.key] : f.non_exempt.filter((k) => k !== a.key) })} />
++                        non exonérée</label>
++                    )}
++                  </div>
++                ))}
++              </div>
++            </div>
++          </div>
++          {/* Calcul en direct */}
++          <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3 text-xs self-start" data-testid="emp-calc">
++            <p className="font-semibold text-emerald-900 mb-1">Calcul du mois en cours</p>
++            {calc ? (
++              <table className="w-full"><tbody>
++                {[["Salaire de base", calc.base_salary], [`Ancienneté (${calc.years_of_service} an(s), ${calc.seniority_rate} %)`, calc.seniority],
++                  ["Salaire brut", calc.gross, true], ["CNSS", calc.cnss], ["IUTS net", calc.iuts], ["Salaire net", calc.net, true],
++                  ["Soutien patriotique", calc.patriotic_support], ["Net à payer", calc.net_to_pay, true], ["Coût employeur", calc.employer_cost]].map(([l, v, b]) => (
++                  <tr key={l} className={b ? "font-semibold" : ""}><td className="py-0.5 text-slate-600">{l}</td><td className="text-right tabular-nums">{fcfa(v)}</td></tr>
++                ))}
++              </tbody></table>
++            ) : <p className="text-slate-500">Saisissez le salaire…</p>}
++          </div>
++        </div>
++        <div className="flex justify-end gap-2">
++          <button type="button" onClick={onClose} className="rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">Annuler</button>
++          <button type="button" onClick={save} disabled={busy} className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" style={{ background: GREEN }} data-testid="emp-save">Enregistrer</button>
++        </div>
++      </div>
++    </div>
++  );
++}
++
++export default function PaieEmployees() {
++  const [reload, setReload] = useState(0);
++  const employers = useEmployers(reload);
++  const [eid, setEid] = useState("");
++  const [list, setList] = useState([]);
++  const [params, setParams] = useState(null);
++  const [dialog, setDialog] = useState(null);     // null | {} (nouveau) | salarié
++
++  const load = async () => {
++    if (!eid) { setList([]); return; }
++    const [{ data: e }, { data: c }] = await Promise.all([apiClient.get("/hr/paie/employees", { params: { employer_id: eid } }), apiClient.get(`/hr/paie/employeurs/${eid}`)]);
++    setList(e.items || []); setParams(c.params);
++  };
++  // eslint-disable-next-line react-hooks/exhaustive-deps
++  useEffect(() => { load().catch((err) => toast.error(extractError(err))); }, [eid]);
++
++  const remove = async (e) => {
++    if (!window.confirm(`Supprimer ${e.full_name} ?`)) return;
++    try { await apiClient.delete(`/hr/paie/employees/${e.id}`); load(); setReload((k) => k + 1); } catch (err) { toast.error(extractError(err)); }
++  };
++
++  return (
++    <div className="space-y-3" data-testid="paie-employees">
++      <div className="flex flex-wrap items-center gap-3">
++        <EmployerSelect value={eid} onChange={setEid} employers={employers} />
++        {eid && <button type="button" onClick={() => setDialog({})} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-white" style={{ background: GREEN }} data-testid="emp-new">
++          <Plus className="h-4 w-4" /> Nouveau salarié</button>}
++      </div>
++      {eid && (
++        <div className="rounded-xl border border-slate-200 bg-white overflow-auto">
++          <table className="w-full text-sm">
++            <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
++              <tr><th className="px-3 py-2 text-left">Nom</th><th className="text-left">Fonction</th><th className="text-right">Charges</th>
++                <th className="text-left">Embauche</th><th className="text-right">Salaire de base / net négocié</th><th className="px-3" /></tr>
++            </thead>
++            <tbody>
++              {list.map((e) => (
++                <tr key={e.id} className="border-t border-slate-100">
++                  <td className="px-3 py-2 font-medium">{e.full_name}</td>
++                  <td className="text-slate-600">{e.role || "—"}</td>
++                  <td className="text-right">{e.dependents || 0}</td>
++                  <td className="text-slate-600">{e.hire_date ? new Date(e.hire_date).toLocaleDateString("fr-FR") : "—"}</td>
++                  <td className="text-right tabular-nums">{e.pay_mode === "net" ? <>net {fcfa(e.net_target)}</> : fcfa(e.base_salary)}</td>
++                  <td className="px-3 text-right whitespace-nowrap">
++                    <button type="button" onClick={() => setDialog(e)} className="p-1.5 rounded hover:bg-slate-100" title="Modifier" data-testid={`emp-edit-${e.id}`}><Pencil className="h-4 w-4" /></button>
++                    <button type="button" onClick={() => remove(e)} className="p-1.5 rounded hover:bg-rose-50 text-rose-600" title="Supprimer"><Trash2 className="h-4 w-4" /></button>
++                  </td>
++                </tr>
++              ))}
++              {!list.length && <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-500">Aucun salarié pour cet employeur.</td></tr>}
++            </tbody>
++          </table>
++        </div>
++      )}
++      {dialog && <EmployeeDialog employerId={eid} params={params} initial={dialog.id ? dialog : null}
++        onClose={() => setDialog(null)} onSaved={() => { setDialog(null); load(); setReload((k) => k + 1); }} />}
++    </div>
++  );
++}
+diff --git a/frontend/src/components/paie/PaieParamsEditor.jsx b/frontend/src/components/paie/PaieParamsEditor.jsx
+new file mode 100644
+index 0000000..24751be
+--- /dev/null
++++ b/frontend/src/components/paie/PaieParamsEditor.jsx
+@@ -0,0 +1,241 @@
++/*
++  PaieParamsEditor — lot 8 : édition d'un jeu complet de paramètres de paie.
++
++  Utilisé pour un MODÈLE de configuration et pour la PERSONNALISATION d'un
++  employeur. Tout est modifiable :
++    - barème IUTS (tranches et taux), CNSS salariale (taux, plafond, limite
++      fiscale de 8 % du salaire de base), CNSS patronale par branche, taxes
++      patronales (TPA…) ;
++    - rubriques d'indemnités et leurs règles d'exonération (taux, plafond) ;
++    - abattement forfaitaire : taux unique OU taux selon la catégorie ;
++    - charges de famille : lignes « nombre de charges → taux » (ajout /
++      suppression ; la dernière ligne vaut au-delà) ;
++    - prime d'ancienneté (à partir de 3 ans par défaut), soutien patriotique ;
++    - arrondis (pas : franc, 5, 10, 25, 50, 100… ; au plus proche / inférieur / supérieur).
++  À droite : APERÇU du calcul en direct sur un salarié d'exemple (bulletin du
++  fichier du cabinet), modifiable.
++
++  Props : value (params), onChange(params)
++*/
++import React, { useEffect, useState } from "react";
++import { apiClient } from "@/lib/api";
++import { Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
++import { fcfa, GREEN } from "@/components/paie/paieCommon";
++
++const STEPS = [[0, "Aucun (décimales)"], [1, "Au franc"], [5, "5 F"], [10, "10 F"], [25, "25 F"], [50, "50 F"], [100, "Centaine"], [1000, "Millier"]];
++const MODES = [["nearest", "Au plus proche"], ["down", "Inférieur"], ["up", "Supérieur"]];
++const ROUNDING_LABELS = { amounts: "Montants (CNSS, IUTS, primes…)", iuts_base: "Base IUTS", net: "Salaire net" };
++
++const num = "w-24 h-8 rounded border border-slate-300 px-2 text-sm text-right";
++const txt = "h-8 rounded border border-slate-300 px-2 text-sm";
++
++// Section repliable
++function Section({ title, hint, children, open: defaultOpen = false, testId }) {
++  const [open, setOpen] = useState(defaultOpen);
++  return (
++    <div className="rounded-xl border border-slate-200 bg-white" data-testid={testId}>
++      <button type="button" onClick={() => setOpen(!open)} className="w-full flex items-center gap-2 px-4 py-2.5 text-left">
++        {open ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
++        <span className="font-semibold text-sm text-slate-800">{title}</span>
++        {hint && <span className="text-xs text-slate-500 truncate">— {hint}</span>}
++      </button>
++      {open && <div className="border-t border-slate-100 px-4 py-3 space-y-2 text-sm">{children}</div>}
++    </div>
++  );
++}
++
++// Tableau de lignes éditables (ajout / suppression)
++function Rows({ rows, onChange, columns, newRow, addLabel = "Ajouter une ligne", testId }) {
++  const set = (i, patch) => onChange(rows.map((r, k) => (k === i ? { ...r, ...patch } : r)));
++  return (
++    <div className="space-y-1" data-testid={testId}>
++      {rows.map((r, i) => (
++        <div key={i} className="flex flex-wrap items-center gap-2">
++          {columns.map((c) => (
++            <label key={c.key} className="flex items-center gap-1 text-xs text-slate-600">
++              {c.label}
++              {c.render ? c.render(r, (v) => set(i, { [c.key]: v }), i) : (
++                <input type={c.type || "number"} value={r[c.key] ?? ""} placeholder={c.placeholder}
++                  onChange={(e) => set(i, { [c.key]: c.type === "text" ? e.target.value : (e.target.value === "" ? "" : Number(e.target.value)) })}
++                  className={c.type === "text" ? `${txt} ${c.width || "w-48"}` : num} />
++              )}
++              {c.suffix}
++            </label>
++          ))}
++          <button type="button" onClick={() => onChange(rows.filter((_, k) => k !== i))} className="p-1 text-slate-400 hover:text-rose-600" title="Supprimer">
++            <Trash2 className="h-3.5 w-3.5" />
++          </button>
++        </div>
++      ))}
++      <button type="button" onClick={() => onChange([...rows, newRow(rows)])} className="inline-flex items-center gap-1 text-xs font-medium" style={{ color: GREEN }}>
++        <Plus className="h-3 w-3" /> {addLabel}
++      </button>
++    </div>
++  );
++}
++
++// Salarié d'exemple de l'aperçu (bulletin du fichier Excel du cabinet)
++const SAMPLE = { base_salary: 231672, dependents: 1, category: "", hire_date: "", allowances: { housing: 50000, transport: 30000, function: 30000 } };
++
++function Preview({ params }) {
++  const [emp, setEmp] = useState(SAMPLE);
++  const [res, setRes] = useState(null);
++  const [err, setErr] = useState("");
++  useEffect(() => {
++    const t = setTimeout(() => {
++      apiClient.post("/hr/paie/simulate", { params, employee: emp, period_month: new Date().toISOString().slice(0, 7) })
++        .then(({ data }) => { setRes(data); setErr(""); })
++        .catch((e) => setErr(e?.response?.data?.detail || "Paramètres invalides"));
++    }, 350);                                   // attend la fin de la saisie
++    return () => clearTimeout(t);
++  }, [params, emp]);
++  const setAllow = (k, v) => setEmp({ ...emp, allowances: { ...emp.allowances, [k]: Number(v) || 0 } });
++  const cats = params?.flat_abatement?.mode === "by_category" ? params.flat_abatement.categories : [];
++  return (
++    <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3 text-sm space-y-2" data-testid="paie-preview">
++      <p className="font-semibold text-emerald-900">Aperçu du calcul</p>
++      <div className="grid grid-cols-2 gap-1.5 text-xs">
++        <label>Salaire de base<input type="number" value={emp.base_salary} onChange={(e) => setEmp({ ...emp, base_salary: Number(e.target.value) || 0 })} className={`${txt} w-full`} /></label>
++        <label>Charges de famille<input type="number" value={emp.dependents} onChange={(e) => setEmp({ ...emp, dependents: Number(e.target.value) || 0 })} className={`${txt} w-full`} /></label>
++        {(params?.allowances || []).slice(0, 4).map((a) => (
++          <label key={a.key}>{a.label.replace("Indemnité de ", "Ind. ")}<input type="number" value={emp.allowances[a.key] || 0} onChange={(e) => setAllow(a.key, e.target.value)} className={`${txt} w-full`} /></label>
++        ))}
++        <label>Date d'embauche<input type="date" value={emp.hire_date} onChange={(e) => setEmp({ ...emp, hire_date: e.target.value })} className={`${txt} w-full`} /></label>
++        {cats.length > 0 && (
++          <label>Catégorie<select value={emp.category} onChange={(e) => setEmp({ ...emp, category: e.target.value })} className={`${txt} w-full`}>
++            {cats.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}</select></label>
++        )}
++      </div>
++      {err ? <p className="text-xs text-rose-600">{err}</p> : res && (
++        <table className="w-full text-xs" data-testid="paie-preview-result">
++          <tbody>
++            {[["Prime d'ancienneté", res.seniority], ["Salaire brut", res.gross, true], ["CNSS", res.cnss], ["Imposable IUTS", res.taxable],
++              ["Exonérations", res.exemptions_total], [`Abattement forfaitaire (${res.flat_abatement_rate} %)`, res.flat_abatement],
++              ["Base IUTS", res.iuts_base], ["IUTS brut", res.iuts_gross], [`Abattement famille (${res.family_rate} %)`, res.family_abatement],
++              ["IUTS net", res.iuts], ["Salaire net", res.net, true], ["Soutien patriotique", res.patriotic_support],
++              ["Net à payer", res.net_to_pay, true], ["Charges patronales", res.employer_total]].map(([l, v, b]) => (
++              <tr key={l} className={b ? "font-semibold" : ""}><td className="py-0.5 text-slate-600">{l}</td><td className="text-right tabular-nums">{fcfa(v)}</td></tr>
++            ))}
++          </tbody>
++        </table>
++      )}
++    </div>
++  );
++}
++
++export default function PaieParamsEditor({ value, onChange }) {
++  const p = value;
++  if (!p) return null;
++  const set = (patch) => onChange({ ...p, ...patch });
++  const setIn = (key, patch) => onChange({ ...p, [key]: { ...p[key], ...patch } });
++  const exKeys = (p.exemptions || []).map((e) => e.key);
++  return (
++    <div className="grid xl:grid-cols-[1fr_320px] gap-4" data-testid="paie-params-editor">
++      <div className="space-y-2">
++        <Section title="Barème IUTS" hint="tranches et taux marginaux" open testId="sec-iuts">
++          <Rows testId="rows-iuts" rows={p.iuts_brackets} onChange={(rows) => set({ iuts_brackets: rows })}
++            newRow={(rows) => ({ up_to: null, rate: rows.length ? rows[rows.length - 1].rate : 0 })} addLabel="Ajouter une tranche"
++            columns={[
++              { key: "up_to", label: "Jusqu'à", render: (r, v, i) => (
++                <input type="number" value={r.up_to ?? ""} placeholder={i === p.iuts_brackets.length - 1 ? "au-delà" : ""}
++                  onChange={(e) => v(e.target.value === "" ? null : Number(e.target.value))} className={num} />) },
++              { key: "rate", label: "taux", suffix: "%" },
++            ]} />
++          <p className="text-[11px] text-slate-500">Laissez vide la borne de la dernière tranche (« au-delà »).</p>
++        </Section>
++
++        <Section title="CNSS" hint={`${p.cnss.employee_rate} % plafonnée à ${fcfa(p.cnss.ceiling)}`} testId="sec-cnss">
++          <div className="flex flex-wrap gap-4">
++            <label className="flex items-center gap-1">Part salariale <input type="number" value={p.cnss.employee_rate} onChange={(e) => setIn("cnss", { employee_rate: Number(e.target.value) })} className={num} /> %</label>
++            <label className="flex items-center gap-1">Plafond du brut <input type="number" value={p.cnss.ceiling} onChange={(e) => setIn("cnss", { ceiling: Number(e.target.value) })} className={num} /></label>
++            <label className="flex items-center gap-1"><input type="checkbox" checked={p.cnss.fiscal_cap_enabled} onChange={(e) => setIn("cnss", { fiscal_cap_enabled: e.target.checked })} />
++              CNSS déductible de l'IUTS limitée à <input type="number" value={p.cnss.fiscal_cap_rate} onChange={(e) => setIn("cnss", { fiscal_cap_rate: Number(e.target.value) })} className={num} /> % du salaire de base</label>
++          </div>
++          <p className="text-xs font-semibold text-slate-700 pt-2">CNSS patronale (livre de paie)</p>
++          <label className="flex items-center gap-1 text-xs">Plafond <input type="number" value={p.cnss.employer_ceiling} onChange={(e) => setIn("cnss", { employer_ceiling: Number(e.target.value) })} className={num} /></label>
++          <Rows rows={p.cnss.employer_lines} onChange={(rows) => setIn("cnss", { employer_lines: rows })} newRow={() => ({ label: "", rate: 0 })}
++            columns={[{ key: "label", label: "Branche", type: "text" }, { key: "rate", label: "taux", suffix: "%" }]} />
++        </Section>
++
++        <Section title="Taxes patronales" hint="sur le brut, non plafonnées (livre de paie)" testId="sec-taxes">
++          <Rows rows={p.employer_taxes} onChange={(rows) => set({ employer_taxes: rows })} newRow={() => ({ label: "", rate: 0 })}
++            columns={[{ key: "label", label: "Taxe", type: "text", width: "w-72" }, { key: "rate", label: "taux", suffix: "%" }]} />
++        </Section>
++
++        <Section title="Exonérations" hint="min(montant versé, taux × imposable, plafond)" testId="sec-exemptions">
++          <Rows rows={p.exemptions} onChange={(rows) => set({ exemptions: rows })}
++            newRow={(rows) => ({ key: `ex${rows.length + 1}`, label: "", rate: 0, cap: 0 })}
++            columns={[{ key: "label", label: "Nom", type: "text", width: "w-32" }, { key: "rate", label: "taux", suffix: "% de l'imposable" },
++              { key: "cap", label: "plafond" }]} />
++        </Section>
++
++        <Section title="Indemnités" hint="rubriques de la fiche salarié" testId="sec-allowances">
++          <Rows rows={p.allowances} onChange={(rows) => set({ allowances: rows })}
++            newRow={(rows) => ({ key: `ind${rows.length + 1}`, label: "", exemption: null })} addLabel="Ajouter une indemnité"
++            columns={[{ key: "label", label: "Libellé", type: "text", width: "w-56" },
++              { key: "exemption", label: "exonération", render: (r, v) => (
++                <select value={r.exemption || ""} onChange={(e) => v(e.target.value || null)} className={txt}>
++                  <option value="">Aucune (imposable)</option>
++                  {(p.exemptions || []).map((e) => <option key={e.key} value={e.key}>{e.label}</option>)}
++                </select>) }]} />
++          {p.allowances.some((a) => a.exemption && !exKeys.includes(a.exemption)) && <p className="text-xs text-rose-600">Une indemnité pointe vers une exonération supprimée.</p>}
++        </Section>
++
++        <Section title="Abattement forfaitaire" hint={p.flat_abatement.mode === "single" ? `${p.flat_abatement.rate} % pour tous` : "selon la catégorie"} testId="sec-flat">
++          <div className="flex flex-wrap gap-4">
++            <label className="flex items-center gap-1"><input type="radio" checked={p.flat_abatement.mode === "single"} onChange={() => setIn("flat_abatement", { mode: "single" })} data-testid="flat-single" />
++              Taux unique <input type="number" value={p.flat_abatement.rate} onChange={(e) => setIn("flat_abatement", { rate: Number(e.target.value) })} className={num} /> % du salaire de base</label>
++            <label className="flex items-center gap-1"><input type="radio" checked={p.flat_abatement.mode === "by_category"} onChange={() => setIn("flat_abatement", { mode: "by_category" })} data-testid="flat-category" />
++              Selon la catégorie du salarié</label>
++          </div>
++          {p.flat_abatement.mode === "by_category" && (
++            <Rows rows={p.flat_abatement.categories} onChange={(rows) => setIn("flat_abatement", { categories: rows })}
++              newRow={(rows) => ({ key: `cat${rows.length + 1}`, label: "", rate: 25 })} addLabel="Ajouter une catégorie"
++              columns={[{ key: "label", label: "Catégorie", type: "text", width: "w-40" }, { key: "rate", label: "taux", suffix: "%" }]} />
++          )}
++        </Section>
++
++        <Section title="Charges de famille" hint="abattement sur l'IUTS" testId="sec-family">
++          <Rows testId="rows-family" rows={p.family_abatement} onChange={(rows) => set({ family_abatement: rows })}
++            newRow={(rows) => ({ charges: (rows[rows.length - 1]?.charges || 0) + 1, rate: rows[rows.length - 1]?.rate || 0 })} addLabel="Ajouter un nombre de charges"
++            columns={[{ key: "charges", label: "Charges" }, { key: "rate", label: "taux", suffix: "% de l'IUTS" }]} />
++          <p className="text-[11px] text-slate-500">Au-delà de la dernière ligne, son taux s'applique.</p>
++        </Section>
++
++        <Section title="Prime d'ancienneté" hint={p.seniority.enabled ? `à partir de ${p.seniority.start_years} ans` : "désactivée"} testId="sec-seniority">
++          <label className="flex items-center gap-1"><input type="checkbox" checked={p.seniority.enabled} onChange={(e) => setIn("seniority", { enabled: e.target.checked })} /> Calculer la prime d'ancienneté</label>
++          <div className="flex flex-wrap gap-4">
++            <label className="flex items-center gap-1">À partir de <input type="number" value={p.seniority.start_years} onChange={(e) => setIn("seniority", { start_years: Number(e.target.value) })} className={num} /> ans</label>
++            <label className="flex items-center gap-1">taux <input type="number" value={p.seniority.start_rate} onChange={(e) => setIn("seniority", { start_rate: Number(e.target.value) })} className={num} /> %</label>
++            <label className="flex items-center gap-1">puis + <input type="number" value={p.seniority.step_rate} onChange={(e) => setIn("seniority", { step_rate: Number(e.target.value) })} className={num} /> point(s) par an</label>
++            <label className="flex items-center gap-1">plafond <input type="number" value={p.seniority.max_rate} onChange={(e) => setIn("seniority", { max_rate: Number(e.target.value) })} className={num} /> %</label>
++          </div>
++          <p className="text-[11px] text-slate-500">Calculée sur le salaire de base, d'après la date d'embauche (années complètes à la fin du mois).</p>
++        </Section>
++
++        <Section title="Soutien patriotique" hint={p.patriotic_support.enabled ? `${p.patriotic_support.rate} % du net` : "désactivé"} testId="sec-patriotic">
++          <div className="flex flex-wrap gap-4">
++            <label className="flex items-center gap-1"><input type="checkbox" checked={p.patriotic_support.enabled} onChange={(e) => setIn("patriotic_support", { enabled: e.target.checked })} /> Appliquer</label>
++            <label className="flex items-center gap-1">Taux <input type="number" value={p.patriotic_support.rate} onChange={(e) => setIn("patriotic_support", { rate: Number(e.target.value) })} className={num} /> % du salaire net</label>
++            <label className="flex items-center gap-1">Libellé <input value={p.patriotic_support.label} onChange={(e) => setIn("patriotic_support", { label: e.target.value })} className={`${txt} w-56`} /></label>
++          </div>
++        </Section>
++
++        <Section title="Arrondis" hint="pas de décimales ; centaine par défaut pour la base IUTS et le net" testId="sec-rounding">
++          {Object.entries(ROUNDING_LABELS).map(([k, l]) => (
++            <div key={k} className="flex flex-wrap items-center gap-2">
++              <span className="w-56 text-slate-700">{l}</span>
++              <select value={p.rounding[k]?.step ?? 1} onChange={(e) => set({ rounding: { ...p.rounding, [k]: { ...p.rounding[k], step: Number(e.target.value) } } })} className={txt} data-testid={`round-step-${k}`}>
++                {STEPS.map(([v, lbl]) => <option key={v} value={v}>{lbl}</option>)}
++              </select>
++              <select value={p.rounding[k]?.mode || "nearest"} onChange={(e) => set({ rounding: { ...p.rounding, [k]: { ...p.rounding[k], mode: e.target.value } } })} className={txt}>
++                {MODES.map(([v, lbl]) => <option key={v} value={v}>{lbl}</option>)}
++              </select>
++            </div>
++          ))}
++        </Section>
++      </div>
++      <div className="xl:sticky xl:top-4 self-start"><Preview params={p} /></div>
++    </div>
++  );
++}
+diff --git a/frontend/src/components/paie/PaieSettings.jsx b/frontend/src/components/paie/PaieSettings.jsx
+new file mode 100644
+index 0000000..53066ba
+--- /dev/null
++++ b/frontend/src/components/paie/PaieSettings.jsx
+@@ -0,0 +1,197 @@
++/*
++  PaieSettings — lot 8 : onglet « Paramètres de paie ».
++
++  1. MODÈLES DE CONFIGURATION (indépendants du cabinet et des clients) :
++     nouveau, dupliquer, supprimer, « par défaut » ; édition des paramètres puis
++     « Appliquer » ; « Restaurer les valeurs par défaut » (Burkina Faso).
++  2. EMPLOYEURS : le cabinet (son personnel) et chaque client.
++     - choix du modèle ;
++     - « Personnaliser pour cet employeur » : copie modifiable des paramètres,
++       « Appliquer », puis « Restaurer les valeurs du modèle » pour revenir au modèle ;
++     - en-tête du bulletin : raison sociale, adresse, téléphone, n° CNSS employeur.
++*/
++import React, { useEffect, useState } from "react";
++import { toast } from "sonner";
++import { apiClient, extractError } from "@/lib/api";
++import { Plus, Copy, Trash2, Star, RotateCcw, Check, Settings2, Building2 } from "lucide-react";
++import PaieParamsEditor from "@/components/paie/PaieParamsEditor";
++import { EmployerSelect, useEmployers, GREEN } from "@/components/paie/paieCommon";
++
++const btn = "inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-50";
++const primary = `${btn} text-white hover:opacity-90`;
++const outline = `${btn} border border-slate-300 bg-white hover:bg-slate-50`;
++
++function Templates({ onChanged }) {
++  const [items, setItems] = useState([]);
++  const [sel, setSel] = useState(null);         // modèle en cours d'édition
++  const [dirty, setDirty] = useState(false);
++  const [busy, setBusy] = useState(false);
++
++  const load = async (keepId) => {
++    const { data } = await apiClient.get("/hr/paie/modeles");
++    setItems(data.items || []);
++    const pick = (data.items || []).find((t) => t.id === (keepId || sel?.id)) || data.items?.[0];
++    if (pick) { setSel(JSON.parse(JSON.stringify(pick))); setDirty(false); }
++  };
++  // eslint-disable-next-line react-hooks/exhaustive-deps
++  useEffect(() => { load().catch((e) => toast.error(extractError(e))); }, []);
++
++  const open = (t) => {
++    if (dirty && !window.confirm("Abandonner les modifications non appliquées ?")) return;
++    setSel(JSON.parse(JSON.stringify(t))); setDirty(false);
++  };
++  const apply = async () => {
++    setBusy(true);
++    try {
++      const { data } = await apiClient.put(`/hr/paie/modeles/${sel.id}`, { name: sel.name, description: sel.description || "", params: sel.params });
++      toast.success("Modèle appliqué : pris en compte pour les prochains calculs");
++      await load(data.id); onChanged?.();
++    } catch (e) { toast.error(extractError(e)); } finally { setBusy(false); }
++  };
++  const restore = async () => {
++    if (!window.confirm(`Remettre les valeurs par défaut dans « ${sel.name} » ?`)) return;
++    try { await apiClient.post(`/hr/paie/modeles/${sel.id}/restore-defaults`); toast.success("Valeurs par défaut restaurées"); await load(sel.id); onChanged?.(); }
++    catch (e) { toast.error(extractError(e)); }
++  };
++  const create = async () => {
++    const name = window.prompt("Nom du nouveau modèle (il part des valeurs par défaut) :");
++    if (!name?.trim()) return;
++    try { const { data } = await apiClient.post("/hr/paie/modeles", { name: name.trim() }); toast.success("Modèle créé"); await load(data.id); onChanged?.(); }
++    catch (e) { toast.error(extractError(e)); }
++  };
++  const duplicate = async (t) => {
++    try { const { data } = await apiClient.post(`/hr/paie/modeles/${t.id}/duplicate`); await load(data.id); onChanged?.(); }
++    catch (e) { toast.error(extractError(e)); }
++  };
++  const remove = async (t) => {
++    if (!window.confirm(`Supprimer le modèle « ${t.name} » ?`)) return;
++    try { await apiClient.delete(`/hr/paie/modeles/${t.id}`); toast.success("Modèle supprimé"); setSel(null); await load(); onChanged?.(); }
++    catch (e) { toast.error(extractError(e)); }
++  };
++  const makeDefault = async (t) => {
++    try { await apiClient.post(`/hr/paie/modeles/${t.id}/set-default`); await load(sel?.id); onChanged?.(); } catch (e) { toast.error(extractError(e)); }
++  };
++
++  return (
++    <div className="space-y-3" data-testid="paie-templates">
++      <div className="flex flex-wrap items-center gap-2">
++        {items.map((t) => (
++          <button key={t.id} type="button" onClick={() => open(t)} data-testid={`tpl-${t.id}`}
++            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm ring-1 ${sel?.id === t.id ? "text-white ring-transparent" : "bg-white ring-slate-200 hover:ring-slate-300"}`}
++            style={sel?.id === t.id ? { background: GREEN } : {}}>
++            {t.is_default && <Star className="h-3.5 w-3.5 fill-current" />} {t.name}
++            <span className="text-[11px] opacity-75">· {t.employers_count} employeur(s)</span>
++          </button>
++        ))}
++        <button type="button" onClick={create} className={outline} data-testid="tpl-new"><Plus className="h-4 w-4" /> Nouveau modèle</button>
++      </div>
++      {sel && (
++        <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
++          <div className="flex flex-wrap items-end gap-3">
++            <label className="text-xs text-slate-600">Nom du modèle
++              <input value={sel.name} onChange={(e) => { setSel({ ...sel, name: e.target.value }); setDirty(true); }} className="mt-1 block h-9 w-72 rounded border border-slate-300 px-2 text-sm" data-testid="tpl-name" /></label>
++            <label className="text-xs text-slate-600 flex-1 min-w-[16rem]">Description
++              <input value={sel.description || ""} onChange={(e) => { setSel({ ...sel, description: e.target.value }); setDirty(true); }} className="mt-1 block h-9 w-full rounded border border-slate-300 px-2 text-sm" /></label>
++          </div>
++          <div className="flex flex-wrap gap-2">
++            <button type="button" onClick={apply} disabled={busy} className={primary} style={{ background: GREEN }} data-testid="tpl-apply"><Check className="h-4 w-4" /> Appliquer</button>
++            <button type="button" onClick={restore} className={outline} data-testid="tpl-restore"><RotateCcw className="h-4 w-4" /> Restaurer les valeurs par défaut</button>
++            <button type="button" onClick={() => duplicate(sel)} className={outline}><Copy className="h-4 w-4" /> Dupliquer</button>
++            {!sel.is_default && <button type="button" onClick={() => makeDefault(sel)} className={outline}><Star className="h-4 w-4" /> Modèle par défaut</button>}
++            {!sel.is_default && <button type="button" onClick={() => remove(sel)} className={`${outline} text-rose-600`}><Trash2 className="h-4 w-4" /> Supprimer</button>}
++            {dirty && <span className="self-center text-xs text-amber-700">Modifications non appliquées</span>}
++          </div>
++          <PaieParamsEditor value={sel.params} onChange={(params) => { setSel({ ...sel, params }); setDirty(true); }} />
++        </div>
++      )}
++    </div>
++  );
++}
++
++function Employers({ reloadKey }) {
++  const employers = useEmployers(reloadKey);
++  const [templates, setTemplates] = useState([]);
++  const [eid, setEid] = useState("");
++  const [cfg, setCfg] = useState(null);
++  const [custom, setCustom] = useState(null);     // paramètres personnalisés en cours d'édition
++  const [busy, setBusy] = useState(false);
++
++  useEffect(() => { apiClient.get("/hr/paie/modeles").then(({ data }) => setTemplates(data.items || [])).catch(() => {}); }, [reloadKey]);
++  useEffect(() => {
++    if (!eid) { setCfg(null); return; }
++    apiClient.get(`/hr/paie/employeurs/${eid}`).then(({ data }) => { setCfg(data); setCustom(data.customized ? data.custom_params : null); })
++      .catch((e) => toast.error(extractError(e)));
++  }, [eid]);
++
++  const save = async (customParams = custom) => {
++    setBusy(true);
++    try {
++      const { data } = await apiClient.put(`/hr/paie/employeurs/${eid}`, {
++        template_id: cfg.template_id, custom_params: customParams, display_name: cfg.display_name || "",
++        address: cfg.address || "", phone: cfg.phone || "", cnss_number: cfg.cnss_number || "" });
++      setCfg(data); setCustom(data.customized ? data.custom_params : null);
++      toast.success("Configuration de l'employeur appliquée");
++    } catch (e) { toast.error(extractError(e)); } finally { setBusy(false); }
++  };
++  const restoreTemplate = async () => {
++    if (!window.confirm("Abandonner la personnalisation et revenir aux valeurs du modèle ?")) return;
++    try { const { data } = await apiClient.post(`/hr/paie/employeurs/${eid}/restore-template`); setCfg(data); setCustom(null); toast.success("Valeurs du modèle restaurées"); }
++    catch (e) { toast.error(extractError(e)); }
++  };
++
++  return (
++    <div className="space-y-3" data-testid="paie-employers">
++      <div className="flex flex-wrap items-center gap-3">
++        <EmployerSelect value={eid} onChange={setEid} employers={employers} testId="paie-settings-employer" />
++        {cfg && <span className="text-sm text-slate-600">Modèle : <b>{cfg.template_name}</b>{cfg.customized && <span className="ml-1 rounded bg-amber-100 px-1.5 text-xs text-amber-800">personnalisé</span>}</span>}
++      </div>
++      {cfg && (
++        <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
++          <div className="grid md:grid-cols-5 gap-3 text-xs text-slate-600">
++            <label>Modèle de configuration
++              <select value={cfg.template_id} onChange={(e) => setCfg({ ...cfg, template_id: e.target.value })} className="mt-1 block h-9 w-full rounded border border-slate-300 px-2 text-sm" data-testid="employer-template">
++                {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
++            <label>Raison sociale (bulletin)
++              <input value={cfg.display_name || ""} placeholder={cfg.default_name} onChange={(e) => setCfg({ ...cfg, display_name: e.target.value })} className="mt-1 block h-9 w-full rounded border border-slate-300 px-2 text-sm" /></label>
++            <label>Adresse<input value={cfg.address || ""} onChange={(e) => setCfg({ ...cfg, address: e.target.value })} className="mt-1 block h-9 w-full rounded border border-slate-300 px-2 text-sm" /></label>
++            <label>Téléphone<input value={cfg.phone || ""} onChange={(e) => setCfg({ ...cfg, phone: e.target.value })} className="mt-1 block h-9 w-full rounded border border-slate-300 px-2 text-sm" /></label>
++            <label>N° CNSS employeur<input value={cfg.cnss_number || ""} onChange={(e) => setCfg({ ...cfg, cnss_number: e.target.value })} className="mt-1 block h-9 w-full rounded border border-slate-300 px-2 text-sm" data-testid="employer-cnss" /></label>
++          </div>
++          <div className="flex flex-wrap gap-2">
++            <button type="button" onClick={() => save()} disabled={busy} className={primary} style={{ background: GREEN }} data-testid="employer-apply"><Check className="h-4 w-4" /> Appliquer</button>
++            {!custom ? (
++              <button type="button" onClick={() => setCustom(JSON.parse(JSON.stringify(cfg.params)))} className={outline} data-testid="employer-customize">
++                <Settings2 className="h-4 w-4" /> Personnaliser pour cet employeur</button>
++            ) : (
++              <button type="button" onClick={restoreTemplate} className={outline} data-testid="employer-restore"><RotateCcw className="h-4 w-4" /> Restaurer les valeurs du modèle</button>
++            )}
++          </div>
++          {custom ? (
++            <div className="space-y-2">
++              <p className="text-xs text-amber-700">Paramètres propres à cet employeur (le modèle n'est pas modifié). Cliquez sur « Appliquer » pour les prendre en compte.</p>
++              <PaieParamsEditor value={custom} onChange={setCustom} />
++            </div>
++          ) : <p className="text-xs text-slate-500 flex items-center gap-1"><Building2 className="h-3.5 w-3.5" /> Cet employeur utilise les paramètres du modèle « {cfg.template_name} » sans modification.</p>}
++        </div>
++      )}
++    </div>
++  );
++}
++
++export default function PaieSettings() {
++  const [reloadKey, setReloadKey] = useState(0);
++  return (
++    <div className="space-y-6" data-testid="paie-settings">
++      <section className="space-y-2">
++        <h3 className="font-display text-lg">Modèles de configuration</h3>
++        <p className="text-sm text-muted-foreground">Indépendants du cabinet et des clients. Chaque employeur utilise un modèle, qu'il peut personnaliser.</p>
++        <Templates onChanged={() => setReloadKey((k) => k + 1)} />
++      </section>
++      <section className="space-y-2">
++        <h3 className="font-display text-lg">Configuration par employeur</h3>
++        <p className="text-sm text-muted-foreground">Le personnel du cabinet et chaque client : modèle utilisé, personnalisation et en-tête des bulletins.</p>
++        <Employers reloadKey={reloadKey} />
++      </section>
++    </div>
++  );
++}
+diff --git a/frontend/src/components/paie/paieCommon.jsx b/frontend/src/components/paie/paieCommon.jsx
+new file mode 100644
+index 0000000..ac94f76
+--- /dev/null
++++ b/frontend/src/components/paie/paieCommon.jsx
+@@ -0,0 +1,51 @@
++/*
++  Paie (lot 8) — petits éléments communs aux écrans de paie :
++    - fcfa()          : montant en francs CFA sans décimales (« 297 000 ») ;
++    - useEmployers()  : liste des employeurs (personnel du cabinet + clients) ;
++    - EmployerSelect  : liste déroulante de l'employeur ;
++    - MonthInput      : mois de paie (AAAA-MM), par défaut le mois précédent.
++*/
++import React, { useEffect, useState } from "react";
++import { apiClient } from "@/lib/api";
++
++export const GREEN = "#0F6B4A";
++
++// Montant sans décimales, espaces de milliers
++export const fcfa = (v) => (v === null || v === undefined || v === "" ? "—" : Math.round(Number(v)).toLocaleString("fr-FR"));
++
++// Mois précédent au format AAAA-MM (période de paie la plus courante)
++export const previousMonth = () => {
++  const d = new Date();
++  d.setDate(1);
++  d.setMonth(d.getMonth() - 1);
++  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
++};
++
++export function useEmployers(reloadKey = 0) {
++  const [items, setItems] = useState([]);
++  useEffect(() => {
++    apiClient.get("/hr/paie/employeurs").then(({ data }) => setItems(data.items || [])).catch(() => setItems([]));
++  }, [reloadKey]);
++  return items;
++}
++
++export function EmployerSelect({ value, onChange, employers, testId = "paie-employer" }) {
++  return (
++    <select value={value} onChange={(e) => onChange(e.target.value)} data-testid={testId}
++      className="h-10 rounded-md border border-input bg-white px-3 text-sm min-w-[16rem]">
++      <option value="">— Choisir l'employeur —</option>
++      {employers.map((e) => (
++        <option key={e.employer_id} value={e.employer_id}>
++          {e.kind === "cabinet" ? `🏢 ${e.name} (personnel du cabinet)` : e.name} · {e.employees_count} salarié(s)
++        </option>
++      ))}
++    </select>
++  );
++}
++
++export function MonthInput({ value, onChange, testId = "paie-month" }) {
++  return (
++    <input type="month" value={value} onChange={(e) => onChange(e.target.value)} data-testid={testId}
++      className="h-10 rounded-md border border-input bg-white px-3 text-sm" />
++  );
++}
+diff --git a/frontend/src/pages/admin/AdminBilling.jsx b/frontend/src/pages/admin/AdminBilling.jsx
+index 1cb0ce6..3976921 100644
+--- a/frontend/src/pages/admin/AdminBilling.jsx
++++ b/frontend/src/pages/admin/AdminBilling.jsx
+@@ -34,7 +34,8 @@ const CLIENT_SPACE_ROLES = ["administrateur", "direction", "dg", "secretariat",
+ // detail = texte sur plusieurs lignes sous la description (lot 7)
+ const emptyItem = () => ({ kind: "line", label: "", detail: "", quantity: 1, unit_price: "", tax_rate: 18 });
+ // Réglages du format « modèle » d'une facture / proforma (lot 7)
+-const emptyModel = () => ({ tva_rate: 18, withholding: false, withholding_rate: 5, bill_to: "", letterhead_id: "", issue_date: "" });
++// Lot 8 — retenue : type de prestataire (avec IFU / sans IFU / autre taux) et libellé modifiable
++const emptyModel = () => ({ tva_rate: 18, withholding: false, withholding_rate: 5, withholding_kind: "ifu", withholding_label: "retenue", bill_to: "", letterhead_id: "", issue_date: "" });
+ const fcfa = (v) => Math.round(Number(v) || 0).toLocaleString("fr-FR");
+ 
+ function fmtDateTime(iso) {
+@@ -64,7 +65,7 @@ export default function AdminBilling() {
+   const [payTarget, setPayTarget] = useState(null);
+   const [invForm, setInvForm] = useState({ tenant_id: "", title: "", document_type: "facture", client_visible: false, items: [emptyItem()], ...emptyModel() });
+   const [letterheads, setLetterheads] = useState([]);
+-  const [docDefaults, setDocDefaults] = useState({ tva: 18, withholding: 5 });
++  const [docDefaults, setDocDefaults] = useState({ tva: 18, withholding: 5, rateIfu: 5, rateNoIfu: 10, label: "retenue" });
+   const [payForm, setPayForm] = useState({ amount: "", method: "cash", reference: "" });
+   const [filterTenantId, setFilterTenantId] = useState("");
+   // Résout tenant_id -> {company, full_name} pour la colonne Client à
+@@ -204,7 +205,13 @@ export default function AdminBilling() {
+   // Papiers à en-tête et taux par défaut (Paramètres → Documents)
+   useEffect(() => {
+     apiClient.get("/admin/letterheads").then(({ data }) => setLetterheads(data)).catch(() => {});
+-    apiClient.get("/admin/doc-settings").then(({ data }) => setDocDefaults({ tva: data.default_tva_rate ?? 18, withholding: data.default_withholding_rate || 5 })).catch(() => {});
++    apiClient.get("/admin/doc-settings").then(({ data }) => {
++      const d = { tva: data.default_tva_rate ?? 18, rateIfu: data.withholding_rate_ifu ?? 5, rateNoIfu: data.withholding_rate_no_ifu ?? 10,
++        label: data.withholding_label || "retenue" };
++      d.withholding = d.rateIfu;
++      setDocDefaults(d);
++      setInvForm((f) => ({ ...f, tva_rate: d.tva, withholding_rate: d.rateIfu, withholding_label: d.label }));
++    }).catch(() => {});
+   }, []);
+   // Facture et proforma : format du modèle (TVA unique en fin de document)
+   const isModel = invForm.document_type !== "recu";
+@@ -237,12 +244,13 @@ export default function AdminBilling() {
+         ...(isModel ? {
+           tva_rate: Number(invForm.tva_rate) || 0,
+           withholding_rate: invForm.withholding ? Number(invForm.withholding_rate) || 0 : 0,
++          withholding_label: (invForm.withholding_label || "").trim() || docDefaults.label,
+           bill_to: invForm.bill_to || null, letterhead_id: invForm.letterhead_id || null, issue_date: invForm.issue_date || null,
+         } : {}),
+       });
+       toast.success(`${invForm.document_type === "recu" ? "Reçu" : invForm.document_type === "proforma" ? "Proforma" : "Facture"} créé(e)`);
+       setOpenInv(false);
+-      setInvForm({ tenant_id: "", title: "", document_type: "facture", client_visible: false, items: [emptyItem()], ...emptyModel(), tva_rate: docDefaults.tva, withholding_rate: docDefaults.withholding });
++      setInvForm({ tenant_id: "", title: "", document_type: "facture", client_visible: false, items: [emptyItem()], ...emptyModel(), tva_rate: docDefaults.tva, withholding_rate: docDefaults.rateIfu, withholding_label: docDefaults.label });
+       await load();
+     } catch (err) { toast.error(extractError(err)); }
+   };
+@@ -577,15 +585,34 @@ export default function AdminBilling() {
+                           <Input type="number" value={invForm.tva_rate} onChange={(e) => setInvForm({ ...invForm, tva_rate: e.target.value })} className="w-20 h-8" data-testid="invoice-tva-rate" /> %</label>
+                         <label className="flex items-center gap-2 cursor-pointer">
+                           <input type="checkbox" checked={invForm.withholding} onChange={(e) => setInvForm({ ...invForm, withholding: e.target.checked })} data-testid="invoice-withholding" />
+-                          Retenue à la source
+-                          <Input type="number" value={invForm.withholding_rate} disabled={!invForm.withholding} onChange={(e) => setInvForm({ ...invForm, withholding_rate: e.target.value })} className="w-20 h-8" data-testid="invoice-withholding-rate" /> % du hors-taxe</label>
++                          Retenue à la source</label>
++                        {invForm.withholding && (
++                          <div className="pl-6 space-y-2" data-testid="invoice-withholding-options">
++                            {/* Taux selon le prestataire : avec IFU / sans IFU (Paramètres → Documents), ou autre taux */}
++                            <select value={invForm.withholding_kind} data-testid="invoice-withholding-kind"
++                              onChange={(e) => {
++                                const kind = e.target.value;
++                                const rate = kind === "ifu" ? docDefaults.rateIfu : kind === "no_ifu" ? docDefaults.rateNoIfu : invForm.withholding_rate;
++                                setInvForm({ ...invForm, withholding_kind: kind, withholding_rate: rate });
++                              }}
++                              className="h-8 rounded-md border border-input bg-white px-2 text-sm">
++                              <option value="ifu">Prestataire avec IFU ({docDefaults.rateIfu} %)</option>
++                              <option value="no_ifu">Prestataire sans IFU ({docDefaults.rateNoIfu} %)</option>
++                              <option value="custom">Autre taux</option>
++                            </select>
++                            <label className="flex items-center gap-2">Taux
++                              <Input type="number" value={invForm.withholding_rate} onChange={(e) => setInvForm({ ...invForm, withholding_rate: e.target.value, withholding_kind: "custom" })} className="w-20 h-8" data-testid="invoice-withholding-rate" /> % du hors-taxe</label>
++                            <label className="flex items-center gap-2">Libellé
++                              <Input value={invForm.withholding_label} onChange={(e) => setInvForm({ ...invForm, withholding_label: e.target.value })} className="h-8 w-48" data-testid="invoice-withholding-label" /></label>
++                          </div>
++                        )}
+                       </div>
+                       <table className="text-sm min-w-[240px]" data-testid="invoice-live-totals">
+                         <tbody>
+                           <tr><td className="pr-6 text-slate-500">Sous-total</td><td className="text-right tabular-nums">{fcfa(liveTotals.subtotal)}</td></tr>
+                           <tr><td className="pr-6 text-slate-500">TVA {invForm.tva_rate || 0} %</td><td className="text-right tabular-nums">{fcfa(liveTotals.tax)}</td></tr>
+                           <tr className="font-semibold"><td className="pr-6">TOTAL</td><td className="text-right tabular-nums">{fcfa(liveTotals.total)}</td></tr>
+-                          {invForm.withholding && <tr><td className="pr-6 text-slate-500">Retenue {invForm.withholding_rate || 0} %</td><td className="text-right tabular-nums">− {fcfa(liveTotals.withholding)}</td></tr>}
++                          {invForm.withholding && <tr><td className="pr-6 text-slate-500">{invForm.withholding_label || "retenue"} {invForm.withholding_rate || 0} %</td><td className="text-right tabular-nums">− {fcfa(liveTotals.withholding)}</td></tr>}
+                           {invForm.withholding && <tr className="font-bold text-[#0F6B4A]"><td className="pr-6">NET À PAYER</td><td className="text-right tabular-nums">{fcfa(liveTotals.net)}</td></tr>}
+                         </tbody>
+                       </table>
+diff --git a/frontend/src/pages/admin/AdminHR.jsx b/frontend/src/pages/admin/AdminHR.jsx
+index 257597e..19f43e4 100644
+--- a/frontend/src/pages/admin/AdminHR.jsx
++++ b/frontend/src/pages/admin/AdminHR.jsx
+@@ -8,16 +8,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
+ import { Input } from "@/components/ui/input";
+ import { Label } from "@/components/ui/label";
+ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+-import EntitySelect from "@/components/EntitySelect";
+ import PayrollTable from "@/components/PayrollTable";
+-import { Table2 } from "lucide-react";
++import { Table2, BookOpen, SlidersHorizontal, Receipt } from "lucide-react";
++// Lot 8 : paie Burkina Faso paramétrable (cabinet + clients)
++import PaieEmployees from "@/components/paie/PaieEmployees";
++import { PaieBulletins, PaieLivre } from "@/components/paie/PaieBulletins";
++import PaieSettings from "@/components/paie/PaieSettings";
+ 
+ export default function AdminHR() {
+   const [employees, setEmployees] = useState([]);
+   const [payslips, setPayslips] = useState([]);
+-  const [openEmp, setOpenEmp] = useState(false);
+   const [openPay, setOpenPay] = useState(false);
+-  const [empForm, setEmpForm] = useState({ tenant_id: "", full_name: "", role: "", base_salary: "", email: "", phone: "" });
+   const [payForm, setPayForm] = useState({ employee_id: "", period_month: "", gross_salary: "", deductions: 0, bonuses: 0, notes: "" });
+ 
+   const load = async () => {
+@@ -31,23 +32,6 @@ export default function AdminHR() {
+   };
+   useEffect(() => { load(); }, []);
+ 
+-  const submitEmp = async () => {
+-    if (!empForm.tenant_id || !empForm.full_name || !empForm.base_salary) {
+-      toast.error("Client, nom et salaire de base requis"); return;
+-    }
+-    try {
+-      await apiClient.post("/hr/employees", {
+-        tenant_id: empForm.tenant_id, full_name: empForm.full_name,
+-        role: empForm.role || null, base_salary: Number(empForm.base_salary),
+-        email: empForm.email || null, phone: empForm.phone || null,
+-      });
+-      toast.success("Employé ajouté");
+-      setOpenEmp(false);
+-      setEmpForm({ tenant_id: "", full_name: "", role: "", base_salary: "", email: "", phone: "" });
+-      await load();
+-    } catch (err) { toast.error(extractError(err)); }
+-  };
+-
+   const submitPay = async () => {
+     if (!payForm.employee_id || !payForm.period_month || !payForm.gross_salary) {
+       toast.error("Employé, période et brut requis"); return;
+@@ -72,65 +56,29 @@ export default function AdminHR() {
+       <div>
+         <div className="text-xs uppercase tracking-[0.2em] text-[#0F6B4A] mb-2">Cabinet</div>
+         <h1 className="font-display text-3xl md:text-4xl">Paie & RH</h1>
+-        <p className="text-muted-foreground mt-1">Employés des clients, bulletins de paie et tableau mensuel du personnel.</p>
++        <p className="text-muted-foreground mt-1">Paie du personnel du cabinet et des clients : salariés, bulletins, livre de paie, tableau mensuel et paramètres (modèles de configuration).</p>
+       </div>
+ 
+       <Tabs defaultValue="employees">
+-        <TabsList>
+-          <TabsTrigger value="employees" data-testid="tab-hr-employees"><Users className="w-4 h-4 mr-2" />Employés</TabsTrigger>
+-          <TabsTrigger value="payslips" data-testid="tab-hr-payslips"><FileText className="w-4 h-4 mr-2" />Bulletins</TabsTrigger>
++        <TabsList className="flex-wrap h-auto">
++          <TabsTrigger value="employees" data-testid="tab-hr-employees"><Users className="w-4 h-4 mr-2" />Salariés</TabsTrigger>
++          <TabsTrigger value="bulletins" data-testid="tab-hr-bulletins"><Receipt className="w-4 h-4 mr-2" />Bulletins de paie</TabsTrigger>
++          <TabsTrigger value="livre" data-testid="tab-hr-livre"><BookOpen className="w-4 h-4 mr-2" />Livre de paie</TabsTrigger>
+           {/* Lot 7 : liste actualisée du personnel (fiche de renseignement) */}
+           <TabsTrigger value="table" data-testid="tab-hr-table"><Table2 className="w-4 h-4 mr-2" />Tableau de paie</TabsTrigger>
++          <TabsTrigger value="settings" data-testid="tab-hr-settings"><SlidersHorizontal className="w-4 h-4 mr-2" />Paramètres de paie</TabsTrigger>
++          {payslips.length > 0 && <TabsTrigger value="payslips" data-testid="tab-hr-payslips"><FileText className="w-4 h-4 mr-2" />Anciens bulletins</TabsTrigger>}
+         </TabsList>
+ 
++        <TabsContent value="bulletins" className="pt-4"><PaieBulletins /></TabsContent>
++        <TabsContent value="livre" className="pt-4"><PaieLivre /></TabsContent>
++        <TabsContent value="settings" className="pt-4"><PaieSettings /></TabsContent>
++
+         <TabsContent value="table" className="pt-4">
+           <PayrollTable />
+         </TabsContent>
+ 
+-        <TabsContent value="employees" className="pt-4 space-y-3">
+-          <div className="flex justify-end">
+-            <Dialog open={openEmp} onOpenChange={setOpenEmp}>
+-              <DialogTrigger asChild>
+-                <Button className="bg-[#0F6B4A] hover:bg-[#0A4E36] text-white" data-testid="new-employee-btn"><Plus className="w-4 h-4 mr-2" />Nouvel employé</Button>
+-              </DialogTrigger>
+-              <DialogContent data-testid="employee-dialog">
+-                <DialogHeader><DialogTitle>Nouvel employé</DialogTitle></DialogHeader>
+-                <div className="space-y-3">
+-                  <div><Label>Client</Label><EntitySelect value={empForm.tenant_id} onChange={(v) => setEmpForm({ ...empForm, tenant_id: v })} testId="employee-tenant-input" /></div>
+-                  <div><Label>Nom complet</Label><Input value={empForm.full_name} onChange={(e) => setEmpForm({ ...empForm, full_name: e.target.value })} data-testid="employee-name-input" /></div>
+-                  <div className="grid grid-cols-2 gap-3">
+-                    <div><Label>Fonction</Label><Input value={empForm.role} onChange={(e) => setEmpForm({ ...empForm, role: e.target.value })} data-testid="employee-role-input" /></div>
+-                    <div><Label>Salaire de base</Label><Input type="number" value={empForm.base_salary} onChange={(e) => setEmpForm({ ...empForm, base_salary: e.target.value })} data-testid="employee-salary-input" /></div>
+-                  </div>
+-                  <div className="grid grid-cols-2 gap-3">
+-                    <div><Label>Email</Label><Input type="email" value={empForm.email} onChange={(e) => setEmpForm({ ...empForm, email: e.target.value })} data-testid="employee-email-input" /></div>
+-                    <div><Label>Téléphone</Label><Input value={empForm.phone} onChange={(e) => setEmpForm({ ...empForm, phone: e.target.value })} data-testid="employee-phone-input" /></div>
+-                  </div>
+-                </div>
+-                <DialogFooter>
+-                  <Button variant="outline" onClick={() => setOpenEmp(false)}>Annuler</Button>
+-                  <Button onClick={submitEmp} className="bg-[#0F6B4A] hover:bg-[#0A4E36] text-white" data-testid="employee-submit-btn">Ajouter</Button>
+-                </DialogFooter>
+-              </DialogContent>
+-            </Dialog>
+-          </div>
+-          <div className="albarka-card overflow-hidden">
+-            <Table>
+-              <TableHeader><TableRow><TableHead>Nom</TableHead><TableHead>Fonction</TableHead><TableHead className="text-right">Salaire base</TableHead><TableHead>Contact</TableHead></TableRow></TableHeader>
+-              <TableBody>
+-                {employees.length === 0 && <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">Aucun employé.</TableCell></TableRow>}
+-                {employees.map((e) => (
+-                  <TableRow key={e.id}>
+-                    <TableCell className="font-medium">{e.full_name}</TableCell>
+-                    <TableCell>{e.role || "—"}</TableCell>
+-                    <TableCell className="text-right">{Number(e.base_salary).toLocaleString()}</TableCell>
+-                    <TableCell className="text-sm">{e.email || e.phone || "—"}</TableCell>
+-                  </TableRow>
+-                ))}
+-              </TableBody>
+-            </Table>
+-          </div>
+-        </TabsContent>
++        <TabsContent value="employees" className="pt-4"><PaieEmployees /></TabsContent>
+ 
+         <TabsContent value="payslips" className="pt-4 space-y-3">
+           <div className="flex justify-end">
+diff --git a/frontend/src/pages/admin/DocSettingsPanel.jsx b/frontend/src/pages/admin/DocSettingsPanel.jsx
+index e6e53a6..e0d26e6 100644
+--- a/frontend/src/pages/admin/DocSettingsPanel.jsx
++++ b/frontend/src/pages/admin/DocSettingsPanel.jsx
+@@ -81,6 +81,8 @@ export default function DocSettingsPanel() {
+     try {
+       const { data } = await apiClient.put("/admin/doc-settings", {
+         ...settings, default_tva_rate: Number(settings.default_tva_rate) || 0, default_withholding_rate: Number(settings.default_withholding_rate) || 0,
++        withholding_rate_ifu: Number(settings.withholding_rate_ifu ?? 5) || 0, withholding_rate_no_ifu: Number(settings.withholding_rate_no_ifu ?? 10) || 0,
++        withholding_label: (settings.withholding_label || "").trim() || "retenue",
+       });
+       setSettings(data); toast.success("Réglages enregistrés");
+     } catch (e) { toast.error(extractError(e)); } finally { setSaving(false); }
+@@ -146,8 +148,13 @@ export default function DocSettingsPanel() {
+             ))}
+             <label className="block"><span className={ui.label}>TVA par défaut (%)</span>
+               <input type="number" value={settings.default_tva_rate ?? 18} disabled={!canWrite} onChange={(e) => setSettings({ ...settings, default_tva_rate: e.target.value })} className={ui.input} /></label>
+-            <label className="block"><span className={ui.label}>Retenue proposée (%)</span>
+-              <input type="number" value={settings.default_withholding_rate ?? 0} disabled={!canWrite} onChange={(e) => setSettings({ ...settings, default_withholding_rate: e.target.value })} className={ui.input} /></label>
++            {/* Lot 8 — retenue à la source : taux selon le prestataire et libellé imprimé */}
++            <label className="block"><span className={ui.label}>Retenue — prestataire avec IFU (%)</span>
++              <input type="number" value={settings.withholding_rate_ifu ?? 5} disabled={!canWrite} onChange={(e) => setSettings({ ...settings, withholding_rate_ifu: e.target.value })} className={ui.input} data-testid="doc-setting-withholding-ifu" /></label>
++            <label className="block"><span className={ui.label}>Retenue — prestataire sans IFU (%)</span>
++              <input type="number" value={settings.withholding_rate_no_ifu ?? 10} disabled={!canWrite} onChange={(e) => setSettings({ ...settings, withholding_rate_no_ifu: e.target.value })} className={ui.input} data-testid="doc-setting-withholding-no-ifu" /></label>
++            <label className="block"><span className={ui.label}>Libellé de la retenue</span>
++              <input value={settings.withholding_label ?? "retenue"} disabled={!canWrite} onChange={(e) => setSettings({ ...settings, withholding_label: e.target.value })} className={ui.input} data-testid="doc-setting-withholding-label" /></label>
+           </div>
+           <p className="text-[11px] text-slate-400">La signature manuscrite du DG (Paramètres → Branding) est ajoutée sur les factures si l'option « signature du DG » est activée.</p>
+           {canWrite && <div className="flex justify-end"><button type="button" onClick={saveSettings} disabled={saving} className={ui.btnPrimary} data-testid="doc-settings-save">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Enregistrer</button></div>}
+diff --git a/frontend/src/version.js b/frontend/src/version.js
+index 12aa88e..a1071a7 100644
+--- a/frontend/src/version.js
++++ b/frontend/src/version.js
+@@ -3,4 +3,4 @@
+   de la sidebar (SidebarInfoBar). À modifier ici à chaque nouvelle livraison.
+   Format : v<année>.<n° de lot>  (ex. v2026.7 = lot 5 de 2026)
+ */
+-export const APP_VERSION = "v2026.7";
++export const APP_VERSION = "v2026.8";
+-- 
+2.43.0
+
