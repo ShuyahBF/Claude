@@ -205,7 +205,10 @@ concerné.
   Doublons auto-liluvine : auto_add_new_contact_if_enabled cherchait « +digits »
   exact -> reconnaissance sur 8 derniers chiffres. 107 tests autonomes, E2E navigateur OK. Ensuite : découpage de server.py par lots. Lot 26 : 395/395 sondes OK sur 15 min.
 - **Sawali lot 29 — Centre de Messagerie plus rapide + mesure des temps de réponse**
-  — **livré, en attente de publication** (base `ec599b9` = lot 28 publié ;
+  — **en production le 2026-09-27** (deploy_seq 56 ; GitHub PAS encore enregistré, toujours ec599b9).
+  Mesure réelle (361 contacts, X-Process-Time, 3 essais) : /me/contacts 407 → 193 ms (−53 %) ;
+  /me/whatsapp/unread 110 → 21 ms (−81 %) ; /me/wa-pending-imports 17 → 10 ms ;
+  /me/clients-roster inchangé (~15 ms, un essai à 54 ms) (base `ec599b9` = lot 28 publié ;
   `sawali-portal-livraisons/sawali-portal-corrections_29_1ca6c11.patch` (32 Ko) +
   `sawali-portal-prompt_29.md` ; dev `claude/lot29` 1ca6c11). /me/contacts :
   last_interaction par agrégation Mongo ($sort+$limit 20000+$group sur
