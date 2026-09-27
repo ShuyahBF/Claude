@@ -66,7 +66,7 @@ namespace HFSQL_Shared
                 colonnes.Add(new InfoColonne
                 {
                     Nom = ligne["COLUMN_NAME"]?.ToString() ?? string.Empty,
-                    Type = ligne["TYPE_NAME"]?.ToString() ?? string.Empty,
+                    Type = schemaColonnes.Columns.Contains("TYPE_NAME") ? ligne["TYPE_NAME"]?.ToString() ?? string.Empty : string.Empty,
                     Taille = schemaColonnes.Columns.Contains("COLUMN_SIZE") && ligne["COLUMN_SIZE"] != DBNull.Value
                         ? Convert.ToInt32(ligne["COLUMN_SIZE"])
                         : null,
