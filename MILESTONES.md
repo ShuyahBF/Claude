@@ -204,6 +204,12 @@ concerné.
   (même modèle de données) ; Production : Recette -> Formulation.
   Doublons auto-liluvine : auto_add_new_contact_if_enabled cherchait « +digits »
   exact -> reconnaissance sur 8 derniers chiffres. 107 tests autonomes, E2E navigateur OK. Ensuite : découpage de server.py par lots. Lot 26 : 395/395 sondes OK sur 15 min.
+- **Sawali lot 28 — zone de saisie de la conversation en pleine largeur**
+  — **livré, en attente de publication** (base `ce753a0` = lot 27 publié ;
+  `sawali-portal-livraisons/sawali-portal-corrections_28_8fbeb16.patch` +
+  `sawali-portal-prompt_28.md` ; dev `claude/lot28` 8fbeb16). Contacts.jsx :
+  barre d'outils au-dessus du champ, champ pleine largeur 3 lignes redimensionnable.
+  Recette lots 27 et 8 terminée par l'utilisateur le 2026-09-27 : « très bon ».
 - **Albarka lot 8 — paie Burkina Faso paramétrable (cabinet + clients), retenue et arrondis des factures**
   — **publié le 2026-09-27** (v2026.8 ; GitHub 34ae308→b7eee01, code identique hors `.emergent`) (base `7b86f23` = lot 7 publié ;
   `albarka-portal-livraisons/albarka-portal-corrections_8_20283d5.patch` +
