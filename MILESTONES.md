@@ -204,11 +204,23 @@ concerné.
   (même modèle de données) ; Production : Recette -> Formulation.
   Doublons auto-liluvine : auto_add_new_contact_if_enabled cherchait « +digits »
   exact -> reconnaissance sur 8 derniers chiffres. 107 tests autonomes, E2E navigateur OK. Ensuite : découpage de server.py par lots. Lot 26 : 395/395 sondes OK sur 15 min.
-- **Sawali lot 28 — zone de saisie de la conversation en pleine largeur**
+- **Sawali lot 28 — zone de saisie pleine largeur + découpage de server.py**
   — **livré, en attente de publication** (base `ce753a0` = lot 27 publié ;
-  `sawali-portal-livraisons/sawali-portal-corrections_28_8fbeb16.patch` +
-  `sawali-portal-prompt_28.md` ; dev `claude/lot28` 8fbeb16). Contacts.jsx :
-  barre d'outils au-dessus du champ, champ pleine largeur 3 lignes redimensionnable.
+  `sawali-portal-livraisons/sawali-portal-corrections_28_057b712.patch` +
+  `sawali-portal-prompt_28.md`, remplace 8fbeb16 non publié ; dev `claude/lot28`
+  057b712 ; étiquette locale `sauvegarde-avant-decoupage-serverpy`).
+  Contacts.jsx : barre d'outils au-dessus du champ, champ pleine largeur.
+  server.py 26 464 → ~1 110 lignes : 20 parties recopiées à l'identique dans
+  backend/server_parts/ (p01…p20 + README), exécutées par `_inclure_partie()`
+  dans l'espace de noms de server.py (exec, globals()). Preuves : reconstruction
+  octet pour octet (hors ajout empreinte p06) ; photo identique (986 routes,
+  OpenAPI, startup, middlewares, globaux) ; démarrage réel base simulée : 19
+  réponses identiques ; suite complète 330 fichiers comparée test par test :
+  aucun écart (hors nouveau test de garde). Empreinte /api/version inclut
+  server_parts. Tests lisant server.py → tests/_source_serveur.py. Patch testé :
+  git am sans avertissement + retour arrière (git revert) = ce753a0 exact.
+  Prompt avec procédure de retour arrière. Étapes suivantes : transformer une
+  partie à la fois en vrai module (petits lots, mêmes contrôles).
   Recette lots 27 et 8 terminée par l'utilisateur le 2026-09-27 : « très bon ».
 - **Albarka lot 8 — paie Burkina Faso paramétrable (cabinet + clients), retenue et arrondis des factures**
   — **publié le 2026-09-27** (v2026.8 ; GitHub 34ae308→b7eee01, code identique hors `.emergent`) (base `7b86f23` = lot 7 publié ;
