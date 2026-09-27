@@ -117,3 +117,21 @@ exception .NET catchable).
 RETIRÉ ENTIÈREMENT de `ConstruireChaineConnexion()` — ce fournisseur ne
 le supporte manifestement pas. `--timeout` reste une option acceptée
 (compatibilité), mais documentée comme actuellement SANS EFFET.
+
+## 2026-09-24 — Correctif : joker "*" retiré (ne fonctionne pas), nom réel de table utilisé + affichage de la chaîne de connexion
+
+Suite à l'erreur 70114 ("Aucune analyse n'est ouverte et le fichier de
+données <Utilisateur> n'a pas été décrit") sur une base où CHAQUE
+fichier est protégé — confirmé : le joker "*" pour le mot de passe de
+protection des fichiers NE FONCTIONNE PAS avec ce fournisseur (déjà
+établi par test PowerShell isolé plus tôt : seul le nom EXACT du
+fichier ciblé déverrouille l'accès).
+
+`ConstruireChaineConnexion()` utilise désormais le nom RÉEL de la
+table demandée (`--table`) comme cible du mot de passe fichier, au
+lieu du joker "*". Nouveau champ `MotDePasseFichiers` ajouté à
+`appsettings.json` (vide par défaut, à renseigner).
+
+"affiche-moi aussi la chaîne de connexion utilisée dans la fenêtre de
+résultats" — affichée désormais au démarrage, mots de passe MASQUÉS
+(`Password=***`, jamais en clair même dans cet outil de diagnostic).

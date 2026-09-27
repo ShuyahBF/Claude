@@ -68,6 +68,12 @@ namespace HFSQL_SchemaExplorer
                 using var connexion = new OleDbConnection(chaineConnexion);
 
                 Console.WriteLine($"Connexion à {options.Serveur}:{options.Port} (base \"{options.Base}\", fournisseur OLE-DB \"{options.ProviderOleDb}\")...");
+                // § demande utilisateur (24/09) : "affiche-moi aussi la
+                // chaîne de connexion utilisée dans la fenêtre de
+                // résultats" — mots de passe MASQUÉS (jamais affichés
+                // en clair, même dans un outil de diagnostic — une
+                // capture d'écran de cette fenêtre pourrait circuler).
+                Console.WriteLine($"Chaîne de connexion : {MasquerMotsDePasse(chaineConnexion)}");
                 connexion.Open();
                 Console.WriteLine("Connexion réussie.");
                 Console.WriteLine();
@@ -192,6 +198,10 @@ namespace HFSQL_SchemaExplorer
 
         private static readonly string[] MotsClesSensibles = { "PASS", "PWD", "MDP", "MOTDEPASSE" };
 
+        /// <summary>§ remplace toute occurrence de "Password=..." (le mot de passe de connexion ET celui, imbriqué, de protection des fichiers dans Extended Properties) par "Password=***" — jamais affiché en clair, même dans cet outil de diagnostic.</summary>
+        private static string MasquerMotsDePasse(string chaineConnexion) =>
+            System.Text.RegularExpressions.Regex.Replace(chaineConnexion, @"Password=[^;""]*", "Password=***");
+
         private static bool EstColonneSensible(string nomColonne)
         {
             string nomNormalise = nomColonne.Replace("_", "").Replace(" ", "").ToUpperInvariant();
@@ -291,10 +301,16 @@ namespace HFSQL_SchemaExplorer
         /// <summary>
         /// § MÊME format EXACT que Loois (ParametresApp.ChaineConnexionHFSQLPour) — voir
         /// ShuyahBF/Loois, Loois/Configuration/ParametresApp.cs. Le mot de passe de
-        /// protection des fichiers utilise le joker "*" (s'applique à TOUS les fichiers de
-        /// la connexion — "option A, mono-fichier par connexion", confirmée par test réel
-        /// sur Loois) plutôt qu'un nom de fichier précis, puisque cet outil explore des
-        /// tables variées d'un appel à l'autre.
+        /// protection des fichiers utilisait initialement le joker "*"
+        /// (censé s'appliquer à TOUS les fichiers) — § BUG RÉEL
+        /// CONFIRMÉ (24/09) : "Erreur 70114 : Aucune analyse n'est
+        /// ouverte et le fichier de données &lt;Utilisateur&gt; n'a pas
+        /// été décrit" avec une base où CHAQUE fichier est protégé — le
+        /// joker "*" ne fonctionne PAS avec ce fournisseur (confirmé
+        /// par test PowerShell isolé plus tôt : seul le nom EXACT du
+        /// fichier ciblé déverrouille l'accès, jamais un joker
+        /// générique). REMPLACÉ par le nom RÉEL de la table demandée
+        /// (`--table`), quand il y en a une.
         /// </summary>
         public string ConstruireChaineConnexion()
         {
@@ -307,7 +323,15 @@ namespace HFSQL_SchemaExplorer
 
             if (!string.IsNullOrEmpty(MotDePasseFichiers))
             {
-                chaine += $"Extended Properties=\"Language=ISO-8859-1;Password=*:{MotDePasseFichiers}\";";
+                // § "*" retiré — remplacé par le nom réel de la table
+                // ciblée (voir docstring ci-dessus). Sans --table
+                // (mode liste/export), le joker reste utilisé en
+                // dernier recours, MAIS on sait déjà qu'il ne
+                // débloquera qu'un fichier au mieux, jamais toute la
+                // base (voir le test réel du 24/09 : "Nombre de
+                // tables : 1", uniquement le fichier ciblé).
+                var nomFichierCible = !string.IsNullOrWhiteSpace(Table) ? Table : "*";
+                chaine += $"Extended Properties=\"Language=ISO-8859-1;Password={nomFichierCible}:{MotDePasseFichiers}\";";
             }
 
             return chaine;
