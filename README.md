@@ -135,3 +135,24 @@ lieu du joker "*". Nouveau champ `MotDePasseFichiers` ajouté à
 "affiche-moi aussi la chaîne de connexion utilisée dans la fenêtre de
 résultats" — affichée désormais au démarrage, mots de passe MASQUÉS
 (`Password=***`, jamais en clair même dans cet outil de diagnostic).
+
+## 2026-09-24 — Script explorer_aizenta.ps1 : tout automatiser en un seul lancement
+
+"Fais moi un fichier de commande pour gérer tout ça. J'ai demandé de
+me faciliter la tâche avec le moins de manipulations" — nouveau script
+`HFSQL_LoginApp/HFSQL_SchemaExplorer/explorer_aizenta.ps1` :
+
+- Tous les paramètres de connexion passés directement en ligne de
+  commande (jamais besoin de toucher `appsettings.json`).
+- Utilise `dotnet run --project .` — reconstruit TOUJOURS depuis les
+  fichiers source avant d'exécuter (élimine le risque de lancer une
+  vieille copie compilée périmée dans `bin\...`).
+- Enchaîne AUTOMATIQUEMENT les 9 tables clés identifiées (Vente,
+  AAcheté, Prestations, ProduitClinique, Pièces_Scannées,
+  Pièces_Scannées2, Utilisateur, MédecinT, Clinique) en UN SEUL
+  lancement.
+- Regroupe TOUS les résultats dans UN SEUL fichier texte
+  (`aizenta_resultats.txt`) — un seul fichier à transmettre, plutôt que
+  neuf captures d'écran séparées.
+
+Usage : `.\explorer_aizenta.ps1` depuis le dossier `HFSQL_SchemaExplorer`.
