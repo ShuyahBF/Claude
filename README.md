@@ -103,3 +103,17 @@ défaut).
 
 appsettings.json et le code par défaut de HFSQL_SchemaExplorer
 corrigés en conséquence ("PCSoft.HFSQL" au lieu de "HFSQLOLEDB").
+
+## 2026-09-24 — 🎯 Correctif RÉEL confirmé : "Connect Timeout" fait planter le fournisseur PCSoft.HFSQL
+
+Suite au débogage avec l'utilisateur (test PowerShell isolé, chaîne de
+connexion identique testée avec puis sans le paramètre) : le paramètre
+"Connect Timeout=..." dans la chaîne de connexion fait ÉCHOUER le
+fournisseur OLE-DB PCSoft.HFSQL ("Une opération OLE-DB en plusieurs
+étapes a généré des erreurs" — parfois un crash NATIF 0xC0000409 dans
+l'exécutable compilé, reproduit à l'identique en PowerShell comme une
+exception .NET catchable).
+
+RETIRÉ ENTIÈREMENT de `ConstruireChaineConnexion()` — ce fournisseur ne
+le supporte manifestement pas. `--timeout` reste une option acceptée
+(compatibilité), mais documentée comme actuellement SANS EFFET.

@@ -230,7 +230,9 @@ namespace HFSQL_SchemaExplorer
                                           Mot de passe de PROTECTION DES FICHIERS (si vos fichiers
                                           HFSQL sont protégés individuellement — optionnel, laissez
                                           vide si vos fichiers n'ont pas de mot de passe séparé).
-                  --timeout <secondes>    Délai d'attente de connexion (par défaut 10s)
+                  --timeout <secondes>    (Actuellement sans effet — "Connect Timeout" fait
+                                          échouer le fournisseur PCSoft.HFSQL, retiré de la
+                                          chaîne de connexion suite à un plantage confirmé.)
                   --help                  Affiche cette aide
 
                 Par défaut, les paramètres de connexion sont lus dans appsettings.json
@@ -267,10 +269,18 @@ namespace HFSQL_SchemaExplorer
         // (ChaineConnexionHFSQLPour), optionnel : laissé vide si non utilisé.
         public string MotDePasseFichiers { get; set; } = "";
 
-        // § CORRECTIF : `OleDbConnection.ConnectionTimeout` est en LECTURE SEULE
-        // (contrairement à `OdbcConnection.ConnectionTimeout`, modifiable après
-        // construction dans la version précédente de cet outil) — le délai se règle
-        // désormais via la chaîne de connexion elle-même ("Connect Timeout=...").
+        // § BUG RÉEL CONFIRMÉ (24/09) : "N'oublie pas que chaque
+        // fichier de la base de données est protégé par mot de passe"
+        // puis reproduction du plantage en PowerShell — le paramètre
+        // "Connect Timeout=..." dans la chaîne de connexion fait
+        // ÉCHOUER le fournisseur PCSoft.HFSQL ("Une opération OLE-DB en
+        // plusieurs étapes a généré des erreurs", parfois un crash
+        // natif 0xC0000409 dans l'exécutable compilé) — CONFIRMÉ par
+        // test PowerShell isolé (même chaîne, +/- ce seul paramètre).
+        // RETIRÉ ENTIÈREMENT de la chaîne de connexion — ce fournisseur
+        // ne le supporte manifestement pas. `TimeoutSecondes` reste
+        // configurable (compatibilité), mais n'a plus aucun effet tant
+        // qu'aucune AUTRE méthode fiable (non testée) n'est trouvée.
         public int TimeoutSecondes { get; set; } = 10;
 
         public string? Table { get; set; }
@@ -293,8 +303,7 @@ namespace HFSQL_SchemaExplorer
                 $"Data Source={Serveur}:{Port};" +
                 $"Initial Catalog={Base};" +
                 $"User ID={Utilisateur};" +
-                $"Password={MotDePasse};" +
-                $"Connect Timeout={TimeoutSecondes};";
+                $"Password={MotDePasse};";
 
             if (!string.IsNullOrEmpty(MotDePasseFichiers))
             {
