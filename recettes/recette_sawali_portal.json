@@ -1,0 +1,1386 @@
+[
+ {
+  "id": "p-dashboard",
+  "title": "Tableau de bord",
+  "who": "Client → Tableau de bord (/portal) — visible par : tous les comptes client, sauf profils à menu réduit (Comptable, Médecin suivi, Pharmacien suivi, Secrétaire médicale, Fabricant, Traducteur) si « Visibilité personnalisée » n'impose pas « Toujours afficher »",
+  "prep": "Compte client standard + compte Superviseur. Pour la synthèse IA : cocher « Génération IA » (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer »).",
+  "items": [
+   {
+    "id": "p-dashboard-1",
+    "do": "Se connecter avec un compte client standard et ouvrir « Tableau de bord ».",
+    "expect": [
+     "Le titre « Bonjour, … » et la phrase « Voici l'état de votre compte aujourd'hui. » s'affichent.",
+     "Quatre cartes : « Rendez-vous », « Interventions », « Documents », « Statut » (valeur « Actif »).",
+     "Les cartes « notes » et « tâches » et le bloc « Médias WhatsApp reçus » sont visibles."
+    ]
+   },
+   {
+    "id": "p-dashboard-2",
+    "do": "Cliquer sur « Demander un rendez-vous ».",
+    "expect": [
+     "La page « Mes rendez-vous » s'ouvre."
+    ]
+   },
+   {
+    "id": "p-dashboard-3",
+    "do": "Avec « Génération IA » désactivée pour le client, survoler puis cliquer « Synthèse IA ».",
+    "expect": [
+     "Le bouton est grisé et n'ouvre rien.",
+     "L'infobulle indique « Fonctionnalité Génération IA non activée — contactez votre administrateur »."
+    ]
+   },
+   {
+    "id": "p-dashboard-4",
+    "do": "Activer « Génération IA », recharger, cliquer « Synthèse IA », choisir une période puis « Générer la synthèse ».",
+    "expect": [
+     "La fenêtre « Synthèse IA des conversations WhatsApp » s'ouvre avec les onglets « Générer » et « Mes synthèses ».",
+     "Un message « Synthèse générée via … » apparaît et le texte s'affiche (ou « Aucun message dans la fenêtre sélectionnée »).",
+     "La synthèse apparaît ensuite dans l'onglet « Mes synthèses »."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-rendez-vous",
+  "title": "Mes rendez-vous",
+  "who": "Client → Mes rendez-vous (/portal/appointments) — visible par : tous les comptes client (hors menus réduits)",
+  "prep": "Des créneaux doivent être ouverts dans le planning global (Admin → Rendez-vous). Pour « Synchroniser », Google Agenda doit être configuré côté admin.",
+  "items": [
+   {
+    "id": "p-rendez-vous-1",
+    "do": "Cliquer « Nouveau rendez-vous », choisir un jour, un créneau, saisir un « Sujet * », un numéro WhatsApp dans « Participants », un rappel « 1 heure avant », puis « Confirmer ».",
+    "expect": [
+     "Le message « Rendez-vous demandé » s'affiche.",
+     "Le rendez-vous apparaît dans le tableau (Sujet, Date, Statut).",
+     "Le participant reçoit une invitation WhatsApp."
+    ]
+   },
+   {
+    "id": "p-rendez-vous-2",
+    "do": "Cliquer « Confirmer » sans avoir choisi de créneau.",
+    "expect": [
+     "Le message « Choisissez un créneau » s'affiche et rien n'est créé."
+    ]
+   },
+   {
+    "id": "p-rendez-vous-3",
+    "do": "Cliquer « Supprimer » sur le rendez-vous créé.",
+    "expect": [
+     "Le message « Supprimé » s'affiche et la ligne disparaît."
+    ]
+   },
+   {
+    "id": "p-rendez-vous-4",
+    "do": "Cliquer « Synchroniser ».",
+    "expect": [
+     "Soit « Synchronisation réussie : x ajout(s)… », soit un message d'erreur clair « Google Calendar non configuré »."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-documentation",
+  "title": "Documentation",
+  "who": "Client → Documentation (/portal/documents) — visible par : tous les comptes client, MAIS le lien est masqué si aucun document n'est accessible au client (sauf Admin/Superviseur)",
+  "prep": "Préparer au moins un document pour le client (Admin → Documents). Création réservée au Superviseur et aux suivis Moderation / Administrateur / Superviseur ; suppression réservée au Superviseur et aux suivis Administrateur / Superviseur.",
+  "items": [
+   {
+    "id": "p-documentation-1",
+    "do": "Se connecter en client standard et ouvrir « Documentation ».",
+    "expect": [
+     "Le titre « Documentation des logiciels » s'affiche avec la liste des documents.",
+     "Le bouton « Nouveau document » n'apparaît pas.",
+     "« Aperçu » ouvre le document ; l'icône permet de le télécharger."
+    ]
+   },
+   {
+    "id": "p-documentation-2",
+    "do": "Se connecter en Superviseur, cliquer « Nouveau document », saisir un « Titre * », choisir la catégorie « Catalogue », joindre un PDF, puis « Créer ».",
+    "expect": [
+     "Le message « Document créé » s'affiche.",
+     "Le document apparaît dans la liste avec son fichier."
+    ]
+   },
+   {
+    "id": "p-documentation-3",
+    "do": "Cliquer « Créer » sans titre.",
+    "expect": [
+     "Le message « Le titre est requis » s'affiche."
+    ]
+   },
+   {
+    "id": "p-documentation-4",
+    "do": "En Superviseur, supprimer le document de test.",
+    "expect": [
+     "Le message « Document supprimé » s'affiche."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-interventions",
+  "title": "Historique interventions",
+  "who": "Client → Historique interventions (/portal/interventions) — visible par : tous les comptes client (hors menus réduits)",
+  "prep": "Création réservée au Superviseur et aux suivis Moderation / Administrateur / Superviseur. Impression PDF et facturation : Superviseur ou suivi Administrateur / Superviseur. Renseigner un taux horaire sur la fiche client (Admin → Clients).",
+  "items": [
+   {
+    "id": "p-interventions-1",
+    "do": "En Superviseur, cliquer « Nouvelle intervention », remplir « Titre * », « Date * », le rapporteur, le statut « Terminée », une durée, puis « Créer ».",
+    "expect": [
+     "Le message « Intervention créée » s'affiche.",
+     "La ligne apparaît avec une Référence, la durée (h) et le statut."
+    ]
+   },
+   {
+    "id": "p-interventions-2",
+    "do": "Utiliser les filtres « Du », « Au », « Statut », puis « Réinitialiser ».",
+    "expect": [
+     "La liste et le « Total affiché » changent selon les filtres.",
+     "« Réinitialiser » remet la liste complète."
+    ]
+   },
+   {
+    "id": "p-interventions-3",
+    "do": "Cocher deux interventions terminées, cliquer « Générer facture(s) (2) ».",
+    "expect": [
+     "Le message « 1 facture(s) générée(s) — téléchargement… » s'affiche et un PDF se télécharge.",
+     "La facture apparaît dans le bloc « Factures émises » avec le « Total (XOF) » = durée × taux horaire."
+    ]
+   },
+   {
+    "id": "p-interventions-4",
+    "do": "Cliquer « Imprimer (PDF) », puis se reconnecter en client standard.",
+    "expect": [
+     "Un PDF avec colonne coût et total cumulé est produit.",
+     "En client standard, les boutons « Nouvelle intervention », « Imprimer (PDF) » et « Générer facture(s) » sont absents."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-suivi-utilisateurs",
+  "title": "Suivi utilisateurs",
+  "who": "Client → Suivi utilisateurs (/portal/users) — visible par : tous les comptes client (hors menus réduits)",
+  "prep": "Avoir déclaré des utilisateurs pour le client.",
+  "items": [
+   {
+    "id": "p-suivi-utilisateurs-1",
+    "do": "Ouvrir « Suivi utilisateurs ».",
+    "expect": [
+     "Le titre « Suivi de vos utilisateurs » s'affiche.",
+     "La carte de présence du mois et le tableau (Nom, Email, Rôle, Service, Dernière activité, Statut) sont visibles.",
+     "Sans donnée : « Aucun utilisateur enregistré. »"
+    ]
+   },
+   {
+    "id": "p-suivi-utilisateurs-2",
+    "do": "Vérifier qu'on ne voit que les utilisateurs de son propre client.",
+    "expect": [
+     "Aucun utilisateur d'une autre société n'apparaît."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-formations",
+  "title": "Formations Spécialisées",
+  "who": "Client → Formations Spécialisées (/portal/formations) — visible par : utilisateurs suivis uniquement, et seulement si au moins une formation est accessible au client",
+  "prep": "Créer une formation gratuite et une payante (Admin → Formations) ouvertes au client ; un utilisateur suivi avec mot de passe (Admin → Utilisateurs suivis → icône clé « Définir un mot de passe »).",
+  "items": [
+   {
+    "id": "p-formations-1",
+    "do": "Se connecter avec un utilisateur suivi et ouvrir « Formations Spécialisées ».",
+    "expect": [
+     "Le catalogue des formations s'affiche avec « libre » ou le prix en XOF.",
+     "Un compte client non suivi ne voit pas ce lien."
+    ]
+   },
+   {
+    "id": "p-formations-2",
+    "do": "Sur une formation gratuite, cliquer « M'inscrire ».",
+    "expect": [
+     "Le message « Inscription enregistrée » s'affiche.",
+     "Le bouton devient « Continuer » et l'état d'avancement (modules, crédits) apparaît."
+    ]
+   },
+   {
+    "id": "p-formations-3",
+    "do": "Cliquer « Continuer », choisir un module, poser une question et cliquer « Envoyer ».",
+    "expect": [
+     "Le contenu du module s'affiche.",
+     "Une réponse apparaît sous la question."
+    ]
+   },
+   {
+    "id": "p-formations-4",
+    "do": "Sur une formation payante, cliquer « Acheter (… XOF) ».",
+    "expect": [
+     "La page de paiement sécurisé s'ouvre, ou « Lien de paiement non disponible » si le paiement n'est pas configuré."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-rapports",
+  "title": "Mes rapports",
+  "who": "Client → Mes rapports (/portal/notes/reports) — visible par : tous les comptes client (hors menus réduits)",
+  "prep": "Création réservée au Superviseur et aux suivis Moderation / Administrateur / Superviseur. Pour « Note Service », le client doit avoir des utilisateurs suivis avec un numéro WhatsApp.",
+  "items": [
+   {
+    "id": "p-rapports-1",
+    "do": "En client standard, ouvrir « Mes rapports ».",
+    "expect": [
+     "Le titre « Mes Rapports » s'affiche.",
+     "Pas de bouton « Nouveau rapport » ; un encadré indique que la création est réservée aux rôles Modération, Administrateur ou Superviseur."
+    ]
+   },
+   {
+    "id": "p-rapports-2",
+    "do": "En Superviseur, cliquer « Nouveau rapport », saisir un titre et un contenu, puis « Enregistrer ».",
+    "expect": [
+     "Le message « Enregistré » s'affiche.",
+     "Le rapport apparaît avec un numéro automatique et la date."
+    ]
+   },
+   {
+    "id": "p-rapports-3",
+    "do": "Utiliser les filtres « Tous », « Les miens », « 📥 Partagés avec moi ».",
+    "expect": [
+     "La liste change selon le filtre choisi."
+    ]
+   },
+   {
+    "id": "p-rapports-4",
+    "do": "Sur un rapport public numéroté, cliquer « Note Service » puis « Envoyer ».",
+    "expect": [
+     "Le message « Note de Service … envoyée à x/y suivi(s) » s'affiche.",
+     "Les utilisateurs suivis reçoivent le WhatsApp."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-suivis",
+  "title": "Mes suivis",
+  "who": "Client → Mes suivis (/portal/notes/suivis) — visible par : tous les comptes client (hors menus réduits)",
+  "prep": "Mêmes droits que « Mes rapports ». Avoir au moins un client lié.",
+  "items": [
+   {
+    "id": "p-suivis-1",
+    "do": "En Superviseur, cliquer « Nouveau suivi » et « Enregistrer » sans choisir de client.",
+    "expect": [
+     "Le message « Client requis pour un suivi » s'affiche."
+    ]
+   },
+   {
+    "id": "p-suivis-2",
+    "do": "Choisir un client, sans date d'événement, puis « Enregistrer ».",
+    "expect": [
+     "Le message « Date de l'événement requise pour un suivi » s'affiche."
+    ]
+   },
+   {
+    "id": "p-suivis-3",
+    "do": "Compléter titre, client et date, puis « Enregistrer ».",
+    "expect": [
+     "Le message « Enregistré » s'affiche.",
+     "Le suivi apparaît avec un numéro automatique ; le filtre par client le retrouve."
+    ]
+   },
+   {
+    "id": "p-suivis-4",
+    "do": "Donner 4 étoiles au suivi.",
+    "expect": [
+     "Le message « Note 4/5 enregistrée » s'affiche."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-formulaires",
+  "title": "Formulaires",
+  "who": "Client → Formulaires (/portal/forms) — visible par : tous les comptes client (hors menus réduits), si au moins un formulaire est accessible (du client ou public)",
+  "prep": "Aucune fonctionnalité à activer.",
+  "items": [
+   {
+    "id": "p-formulaires-1",
+    "do": "Cliquer « Nouveau formulaire », saisir un titre, puis « Créer ».",
+    "expect": [
+     "Le message « Formulaire F… créé » s'affiche et l'éditeur s'ouvre."
+    ]
+   },
+   {
+    "id": "p-formulaires-2",
+    "do": "Dans l'éditeur, cliquer « Ajouter un champ » deux fois, cocher « Public », puis « Sauvegarder ».",
+    "expect": [
+     "Le message « Formulaire sauvegardé » s'affiche.",
+     "La mention « Public — importable par les autres clients » apparaît."
+    ]
+   },
+   {
+    "id": "p-formulaires-3",
+    "do": "Revenir à la liste, cliquer « Remplir », saisir des valeurs, puis « Sauvegarder » et « Exporter CSV ».",
+    "expect": [
+     "Le message « Saisie enregistrée » s'affiche.",
+     "Un fichier CSV se télécharge.",
+     "Dans la liste, le compteur « soumission(s) reçue(s) » augmente."
+    ]
+   },
+   {
+    "id": "p-formulaires-4",
+    "do": "Avec un autre client, onglet « Formulaires publics », cliquer « Importer ».",
+    "expect": [
+     "Le message « Importé sous F… » s'affiche et la copie apparaît dans « Mes formulaires »."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-messagerie",
+  "title": "Centre de Messagerie",
+  "who": "Client → Centre de Messagerie (/portal/contacts) — visible par : tous les comptes client (hors menus réduits)",
+  "prep": "Cocher « Messages WhatsApp » et « Messages SMS » (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer »). WhatsApp Business et templates configurés côté admin. Bouton « Doublons » : compte Superviseur.",
+  "items": [
+   {
+    "id": "p-messagerie-1",
+    "do": "Cliquer « Nouveau contact », saisir nom, WhatsApp et téléphone, puis « Enregistrer ».",
+    "expect": [
+     "Le contact apparaît dans le répertoire.",
+     "Les icônes WhatsApp, SMS, planification et historique sont actives."
+    ]
+   },
+   {
+    "id": "p-messagerie-2",
+    "do": "Désactiver « Messages WhatsApp » pour le client, recharger et survoler l'icône WhatsApp.",
+    "expect": [
+     "L'icône est inactive avec l'infobulle « Fonctionnalité WhatsApp non activée — contactez votre administrateur »."
+    ]
+   },
+   {
+    "id": "p-messagerie-3",
+    "do": "Réactiver, cliquer l'icône WhatsApp, choisir un « Template » puis « Envoyer ».",
+    "expect": [
+     "La fenêtre « Envoyer un WhatsApp » affiche « Envoyé ! ».",
+     "Le message apparaît dans la conversation (icône « Voir les messages échangés »)."
+    ]
+   },
+   {
+    "id": "p-messagerie-4",
+    "do": "Cliquer « Exporter » → « CSV (Excel) », puis dans la conversation « Générer un ticket ».",
+    "expect": [
+     "Le message « Export CSV téléchargé » s'affiche.",
+     "Un ticket est créé et visible dans « Tickets ».",
+     "Le badge rouge du lien = nombre de messages non lus (identique à la cloche)."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-groupes-contacts",
+  "title": "Groupes de contacts",
+  "who": "Client → Groupes de contacts (/portal/contact-groups) — visible par : tous les comptes client (hors menus réduits)",
+  "prep": "Avoir quelques contacts dans le Centre de Messagerie.",
+  "items": [
+   {
+    "id": "p-groupes-contacts-1",
+    "do": "Cliquer « Nouveau groupe », saisir un nom, puis « Enregistrer ».",
+    "expect": [
+     "Le message « Groupe créé » s'affiche et la carte du groupe apparaît."
+    ]
+   },
+   {
+    "id": "p-groupes-contacts-2",
+    "do": "Cliquer « Ajouter » sur le groupe, cocher 2 contacts, valider.",
+    "expect": [
+     "Le message « 2 ajouté(s) · 2 au total » s'affiche.",
+     "Les contacts apparaissent dans la carte."
+    ]
+   },
+   {
+    "id": "p-groupes-contacts-3",
+    "do": "Supprimer le groupe.",
+    "expect": [
+     "Le message « Groupe supprimé » s'affiche.",
+     "Le groupe est proposé dans « SMS — Masse & Planif. » avant suppression."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-registre-erreurs",
+  "title": "Registre des erreurs",
+  "who": "Client → Registre des erreurs (/portal/error-registry) — lien visible par tous, mais données accessibles seulement aux rôles Superviseur, Admin et Modérateur (rôle système)",
+  "prep": "Compte Superviseur + compte client standard. Des erreurs doivent avoir été envoyées par un logiciel via le webhook (POST /api/errors/ingest).",
+  "items": [
+   {
+    "id": "p-registre-erreurs-1",
+    "do": "En client standard, ouvrir « Registre des erreurs ».",
+    "expect": [
+     "Un message d'erreur « Accès réservé Modérateur/Admin/Superviseur » s'affiche et la liste reste vide (point à signaler : le lien ne devrait pas être visible)."
+    ]
+   },
+   {
+    "id": "p-registre-erreurs-2",
+    "do": "En Superviseur, ouvrir la page et filtrer par sévérité « 🔴 Critical » et « 7 jours ».",
+    "expect": [
+     "Le titre « Registre des erreurs » s'affiche.",
+     "La liste se filtre ; les pastilles orange/rouges du lien indiquent les erreurs non lues."
+    ]
+   },
+   {
+    "id": "p-registre-erreurs-3",
+    "do": "Cocher 2 erreurs puis « Marquer la sélection comme lue ».",
+    "expect": [
+     "Le message « 2 erreur(s) marquée(s) comme lue(s) » s'affiche.",
+     "Les pastilles du menu diminuent."
+    ]
+   },
+   {
+    "id": "p-registre-erreurs-4",
+    "do": "Cliquer « Purger par date », choisir une période, puis « Confirmer la purge ».",
+    "expect": [
+     "Le message « x erreur(s) purgée(s) » s'affiche.",
+     "Ce bouton n'existe que pour le Superviseur."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-inbox",
+  "title": "Inbox unifiée",
+  "who": "Client → Inbox unifiée (/portal/inbox) — visible par : tous les comptes client (hors menus réduits)",
+  "prep": "WhatsApp activé (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer ») ; Messenger nécessite « Meta — Messenger ». Avoir reçu au moins un message.",
+  "items": [
+   {
+    "id": "p-inbox-1",
+    "do": "Ouvrir « Inbox unifiée ».",
+    "expect": [
+     "Le titre « Inbox unifiée » s'affiche.",
+     "Les conversations sont listées avec une étiquette WA, SMS, SMS Bird ou MSG (sinon « Aucune conversation. »)."
+    ]
+   },
+   {
+    "id": "p-inbox-2",
+    "do": "Ouvrir une conversation WhatsApp, taper une réponse, cliquer « Envoyer ».",
+    "expect": [
+     "Le message « Message envoyé » s'affiche et le message apparaît dans le fil.",
+     "Le contact le reçoit sur WhatsApp."
+    ]
+   },
+   {
+    "id": "p-inbox-3",
+    "do": "Dans les 15 minutes, cliquer l'icône de rappel sur ce message et confirmer.",
+    "expect": [
+     "Le message « Message rappelé » s'affiche et le message est marqué « Message rappelé »."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-sms",
+  "title": "SMS — Masse & Planif.",
+  "who": "Client → SMS — Masse & Planif. (/portal/sms) — visible par : tous les comptes client (hors menus réduits)",
+  "prep": "Cocher « Messages SMS » (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer ») ; au moins un fournisseur SMS actif côté admin.",
+  "items": [
+   {
+    "id": "p-sms-1",
+    "do": "Avec SMS désactivé, ouvrir la page.",
+    "expect": [
+     "L'encadré « La fonctionnalité SMS n'est pas activée pour votre compte. » s'affiche.",
+     "Le bouton d'envoi est grisé."
+    ]
+   },
+   {
+    "id": "p-sms-2",
+    "do": "SMS activé : cocher 2 contacts (ou un groupe), écrire un message avec une variable, cliquer « Envoyer maintenant (2) ».",
+    "expect": [
+     "Le message « 2 envoyés, 0 échoués » s'affiche.",
+     "Les destinataires reçoivent le SMS avec la variable remplacée."
+    ]
+   },
+   {
+    "id": "p-sms-3",
+    "do": "Choisir une date future puis « Planifier l'envoi (2 contacts) ».",
+    "expect": [
+     "Le message « Planifié pour … (2 destinataires) » s'affiche.",
+     "La planification apparaît « En attente » dans la liste."
+    ]
+   },
+   {
+    "id": "p-sms-4",
+    "do": "Cliquer « Annuler » sur la planification.",
+    "expect": [
+     "Le message « Planification annulée » s'affiche et le statut passe à « Annulé »."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-whatsapp-masse",
+  "title": "WhatsApp — Masse & Planif.",
+  "who": "Client → WhatsApp — Masse & Planif. (/portal/whatsapp-bulk) — visible par : tous les comptes client (hors menus réduits)",
+  "prep": "Cocher « Messages WhatsApp » (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer ») ; templates WhatsApp approuvés configurés côté admin. Pour le secours SMS : « Messages SMS » aussi.",
+  "items": [
+   {
+    "id": "p-whatsapp-masse-1",
+    "do": "Avec WhatsApp désactivé, ouvrir la page.",
+    "expect": [
+     "L'encadré « La fonctionnalité WhatsApp n'est pas activée pour votre compte. Contactez votre administrateur. » s'affiche."
+    ]
+   },
+   {
+    "id": "p-whatsapp-masse-2",
+    "do": "WhatsApp activé : cocher des contacts sans choisir de template et cliquer sur envoyer.",
+    "expect": [
+     "Le bouton reste grisé ou le message « Choisissez un template » s'affiche."
+    ]
+   },
+   {
+    "id": "p-whatsapp-masse-3",
+    "do": "Choisir un template, remplir ses variables, cliquer « Envoyer maintenant (n) ».",
+    "expect": [
+     "Le message « n envoyé(s), 0 échec(s) » s'affiche.",
+     "Les destinataires reçoivent le WhatsApp."
+    ]
+   },
+   {
+    "id": "p-whatsapp-masse-4",
+    "do": "Planifier un envoi à une date future.",
+    "expect": [
+     "Le message « Planifié pour … » s'affiche et la ligne apparaît « En attente » ; l'option SMS de secours affiche « (SMS non activé) » si SMS est coupé."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-caisse",
+  "title": "Caisse/Facturation",
+  "who": "Client → Caisse/Facturation (/portal/cash) — visible par : Superviseur, comptes avec « Rôle Caissier » coché, et suivis Comptable",
+  "prep": "Admin → Clients → fiche du compte → cocher « 💰 Rôle Caissier ». Côté Superviseur, créer au moins un « Client en compte » et un « Mode de paiement » (onglets de la page).",
+  "items": [
+   {
+    "id": "p-caisse-1",
+    "do": "Avec un compte caissier, cliquer « Nouveau reçu », choisir le client en compte, « Montant (FCFA) * », « Mode de paiement * », « Motif * », puis « Encaisser & imprimer ».",
+    "expect": [
+     "Le message « Reçu R… créé » s'affiche et la page d'impression du reçu s'ouvre.",
+     "Le reçu apparaît dans la liste avec le bon montant."
+    ]
+   },
+   {
+    "id": "p-caisse-2",
+    "do": "Onglet « Facturation » : « Nouvelle », type « Proforma », 2 lignes (Qté, P.U. HT, TVA %), une remise en %, puis « Créer & imprimer ».",
+    "expect": [
+     "« Sous-total HT », « TVA », « Total TTC » et « Net à payer » sont justes.",
+     "Le message « Proforma … créée » s'affiche."
+    ]
+   },
+   {
+    "id": "p-caisse-3",
+    "do": "Sur la proforma, cliquer « Convertir en facture », puis « Marquer réglée ».",
+    "expect": [
+     "« Convertie en … » puis « Réglée — reçu … généré ».",
+     "Un reçu correspondant apparaît dans l'onglet « Caisse »."
+    ]
+   },
+   {
+    "id": "p-caisse-4",
+    "do": "Cliquer « CSV » puis « PDF » ; puis se connecter avec un compte client sans rôle caissier.",
+    "expect": [
+     "Les fichiers factures.csv et factures.pdf se téléchargent.",
+     "Le compte sans rôle caissier ne voit pas le lien.",
+     "Seul le Superviseur voit les onglets « Catalogue », « Clients en compte », « Modes de paiement », « Relance auto »."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-catalogue",
+  "title": "Catalogue",
+  "who": "Client → Catalogue (/portal/catalog) — visible par : Superviseur uniquement (et Admin)",
+  "prep": "Compte Superviseur. Créer au moins une catégorie dans l'onglet « Catégories produits ».",
+  "items": [
+   {
+    "id": "p-catalogue-1",
+    "do": "Ouvrir « Catalogue », créer un produit : nom en minuscules, « Prix unitaire HT », « TVA % » 18, puis enregistrer.",
+    "expect": [
+     "Le produit apparaît avec une référence (SKU) générée.",
+     "Le nom est passé en MAJUSCULES."
+    ]
+   },
+   {
+    "id": "p-catalogue-2",
+    "do": "Créer une facture dans « Facturation » et choisir ce produit sur une ligne.",
+    "expect": [
+     "Désignation, prix et TVA se remplissent automatiquement."
+    ]
+   },
+   {
+    "id": "p-catalogue-3",
+    "do": "Se connecter avec un compte caissier non Superviseur.",
+    "expect": [
+     "Le lien « Catalogue » est absent."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-grh",
+  "title": "GRH — Ressources Humaines",
+  "who": "Client → GRH — Ressources Humaines (/portal/hr) — visible par : Superviseur et suivis Comptable",
+  "prep": "Compte Superviseur et un utilisateur suivi « Comptable » avec mot de passe.",
+  "items": [
+   {
+    "id": "p-grh-1",
+    "do": "Onglet « Personnel » : « Ajouter un employé », choisir un utilisateur, valider.",
+    "expect": [
+     "Le message « Employé ajouté » s'affiche et l'employé apparaît dans la liste."
+    ]
+   },
+   {
+    "id": "p-grh-2",
+    "do": "Onglet « Avances » : « Nouvelle avance » pour cet employé.",
+    "expect": [
+     "L'avance apparaît avec « Montant », « Remboursé », « Restant »."
+    ]
+   },
+   {
+    "id": "p-grh-3",
+    "do": "Onglet « Paie » : choisir l'employé et le mois.",
+    "expect": [
+     "Le détail « Gains », « Retenues », « Avances déduites » et « Net à payer » s'affiche.",
+     "« Télécharger PDF » produit le bulletin."
+    ]
+   },
+   {
+    "id": "p-grh-4",
+    "do": "Se connecter avec le suivi Comptable.",
+    "expect": [
+     "Le menu ne montre que « Caisse/Facturation » et « GRH — Ressources Humaines ».",
+     "La GRH est pleinement utilisable."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-production",
+  "title": "Production",
+  "who": "Client → Production (/portal/production) — visible par : Superviseur d'un client au profil Fabricant",
+  "prep": "Admin → Clients → fiche → « Profil d'entreprise » = « Fabricant — Caisse + GRH + Officines (consultation) + Catalogue + Production », sur un compte de rôle « Superviseur ».",
+  "items": [
+   {
+    "id": "p-production-1",
+    "do": "Ouvrir « Production », onglet « Intrants (0) », cliquer « Nouvel intrant », remplir et « Enregistrer ».",
+    "expect": [
+     "L'intrant apparaît ; le compteur de l'onglet augmente."
+    ]
+   },
+   {
+    "id": "p-production-2",
+    "do": "Onglet « Recettes » : « Nouvelle recette », « Nom du produit », dosage, cocher des intrants, puis « Enregistrer ».",
+    "expect": [
+     "Le message « Recette enregistrée » s'affiche.",
+     "Prix de revient, marge et prix public sont calculés."
+    ]
+   },
+   {
+    "id": "p-production-3",
+    "do": "Enregistrer sans cocher d'intrant, puis sans dosage.",
+    "expect": [
+     "« Cochez au moins un intrant » puis « Le dosage doit être supérieur à 0 »."
+    ]
+   },
+   {
+    "id": "p-production-4",
+    "do": "Onglet « Paramètres » : changer la marge par défaut puis « Enregistrer » ; cliquer « Exporter tout (PDF) ».",
+    "expect": [
+     "Le message « Marge par défaut enregistrée » s'affiche.",
+     "Un PDF des recettes se télécharge."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-planning",
+  "title": "Planning consultations",
+  "who": "Client → Planning consultations (/portal/planning) — visible par : tous les comptes client ; seul lien pour Médecin suivi (avec VIDAL) et Secrétaire médicale suivie",
+  "prep": "Utilisateurs suivis « Médecin » et « Secrétaire médicale » avec mot de passe. Webhook de RDV configuré côté admin pour recevoir de vrais RDV.",
+  "items": [
+   {
+    "id": "p-planning-1",
+    "do": "Ouvrir « Planning consultations », choisir un médecin, naviguer avec les flèches puis « Aujourd'hui ».",
+    "expect": [
+     "Le titre « Planning des consultations » s'affiche.",
+     "Les RDV du jour s'affichent (sinon « Aucun rendez-vous »)."
+    ]
+   },
+   {
+    "id": "p-planning-2",
+    "do": "En Secrétaire médicale, cliquer « Walk-in », saisir le patient, puis « Créer ».",
+    "expect": [
+     "La fenêtre « Nouveau walk-in (sans RDV) » se ferme et le patient apparaît dans la liste du jour.",
+     "Le badge vert du lien augmente de 1."
+    ]
+   },
+   {
+    "id": "p-planning-3",
+    "do": "Rouvrir le walk-in (icône « Modifier ce walk-in »), changer le motif, « Enregistrer », puis « Supprimer ».",
+    "expect": [
+     "La modification est visible, puis le walk-in disparaît."
+    ]
+   },
+   {
+    "id": "p-planning-4",
+    "do": "En client standard sans rôle médical.",
+    "expect": [
+     "Le bouton « Walk-in » est absent."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-meta",
+  "title": "Meta",
+  "who": "Client → Meta (/portal/meta) — visible par : clients ayant au moins une fonctionnalité Meta, et Superviseur",
+  "prep": "Cocher « Meta — Pages Facebook », « Meta — Messenger » et/ou « Meta — Ads Manager » (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer »). L'application Meta doit être configurée dans Admin → Paramètres.",
+  "items": [
+   {
+    "id": "p-meta-1",
+    "do": "Client sans fonctionnalité Meta : vérifier le menu.",
+    "expect": [
+     "Le lien « Meta » est absent."
+    ]
+   },
+   {
+    "id": "p-meta-2",
+    "do": "Activer « Meta — Pages Facebook », ouvrir « Meta », cliquer « Connecter Facebook » et autoriser.",
+    "expect": [
+     "Retour sur la page avec « Connexion Meta réussie ! n Page(s)… ».",
+     "Les onglets correspondant aux fonctionnalités activées apparaissent (« Pages », « Messenger », « Ads »)."
+    ]
+   },
+   {
+    "id": "p-meta-3",
+    "do": "Onglet « Pages » : écrire un texte puis « Publier ».",
+    "expect": [
+     "Le message « Post publié » s'affiche et le post apparaît sur la Page Facebook."
+    ]
+   },
+   {
+    "id": "p-meta-4",
+    "do": "Cliquer « Déconnecter ».",
+    "expect": [
+     "Le message « Compte Meta déconnecté » s'affiche."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-tickets",
+  "title": "Tickets",
+  "who": "Client → Tickets (/portal/tickets) — visible par : tous les comptes client (hors menus réduits)",
+  "prep": "Pour la bulle flottante : cocher « Bulle « Nouveau ticket » (flottante) » (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer »). Sinon créer un ticket depuis une conversation du Centre de Messagerie (« Générer un ticket »).",
+  "items": [
+   {
+    "id": "p-tickets-1",
+    "do": "Créer un ticket via la bulle « Nouveau ticket d'intervention » : « Client lié * », « Motif * », un numéro, « Date/heure incident * », puis « Créer le ticket ».",
+    "expect": [
+     "Le ticket apparaît dans « Tickets » avec un numéro CLIENT-année-NNNN.",
+     "Le badge jaune du lien « Tickets » augmente."
+    ]
+   },
+   {
+    "id": "p-tickets-2",
+    "do": "Cliquer « → En cours » puis « ⏸ Suspendre ».",
+    "expect": [
+     "Le message « Statut mis à jour » s'affiche à chaque fois ; le ticket passe dans le filtre « Suspendus »."
+    ]
+   },
+   {
+    "id": "p-tickets-3",
+    "do": "Cliquer « Clôturer (Terminé) » et confirmer « Clôturer comme TERMINÉ ? ».",
+    "expect": [
+     "Le message « Ticket clôturé » s'affiche ; le badge jaune diminue.",
+     "Le contact reçoit le WhatsApp de clôture."
+    ]
+   },
+   {
+    "id": "p-tickets-4",
+    "do": "Sur le ticket terminé, cliquer « Rouvrir (créer un ticket lié) ».",
+    "expect": [
+     "Le message « Ticket rouvert : … » s'affiche avec un nouveau numéro."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-mediatheque",
+  "title": "Bibliothèque de médias",
+  "who": "Client → Bibliothèque de médias (/portal/media-library) — visible par : tous les comptes client (hors menus réduits)",
+  "prep": "",
+  "items": [
+   {
+    "id": "p-mediatheque-1",
+    "do": "Cliquer « Ajouter un média » et choisir une image.",
+    "expect": [
+     "L'image apparaît dans la grille."
+    ]
+   },
+   {
+    "id": "p-mediatheque-2",
+    "do": "Cliquer « URL » sur le média.",
+    "expect": [
+     "Le message « URL copiée » s'affiche ; l'URL collée ouvre l'image."
+    ]
+   },
+   {
+    "id": "p-mediatheque-3",
+    "do": "Filtrer par « Images » puis rechercher par nom ; supprimer le média.",
+    "expect": [
+     "Le filtre et la recherche réduisent la liste.",
+     "Le message « Supprimé » s'affiche."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-generateur-medias",
+  "title": "Générateur d'Images et Vidéos",
+  "who": "Client → Générateur d'Images et Vidéos (/portal/media-generator) — visible par : tous les comptes client (hors menus réduits)",
+  "prep": "Cocher « Génération d'Image IA (Nano Banana) » et/ou « Génération de Vidéo IA (Sora 2) » (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer »). Attention : crédits IA payants.",
+  "items": [
+   {
+    "id": "p-generateur-medias-1",
+    "do": "Sans ces fonctionnalités, ouvrir la page.",
+    "expect": [
+     "Le message « Génération IA désactivée pour ce client. » s'affiche."
+    ]
+   },
+   {
+    "id": "p-generateur-medias-2",
+    "do": "Activer l'image, saisir une description, cliquer « Générer l'image ».",
+    "expect": [
+     "Le bouton affiche « Génération… (5-10 s) » puis « Image générée ! ».",
+     "L'image apparaît dans l'historique."
+    ]
+   },
+   {
+    "id": "p-generateur-medias-3",
+    "do": "Activer la vidéo, onglet « Vidéo (Sora 2) », choisir une durée, « Générer la vidéo ».",
+    "expect": [
+     "Le bouton affiche « Génération vidéo… (2-5 min) » puis « Vidéo générée ! »."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-voice-studio",
+  "title": "Voice Studio",
+  "who": "Client → Voice Studio (/portal/voice-studio) — visible par : tous les comptes client (hors menus réduits)",
+  "prep": "Cocher « Génération de Voix / Son (ElevenLabs) » (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer »). Préparer un enregistrement audio de 30 s à 1 min (10 Mo max).",
+  "items": [
+   {
+    "id": "p-voice-studio-1",
+    "do": "Sans la fonctionnalité, tenter « Cloner la voix ».",
+    "expect": [
+     "Un message d'erreur indique que la génération vocale IA n'est pas activée (le lien reste pourtant visible)."
+    ]
+   },
+   {
+    "id": "p-voice-studio-2",
+    "do": "Fonctionnalité active : saisir un nom, joindre l'audio, cliquer « Cloner la voix ».",
+    "expect": [
+     "Le message « Voix « … » créée » s'affiche et la voix apparaît dans la liste."
+    ]
+   },
+   {
+    "id": "p-voice-studio-3",
+    "do": "Dans « Générer un audio », choisir la voix, taper un texte, cliquer « Générer ».",
+    "expect": [
+     "Le message « Audio généré (… Ko) » s'affiche et l'audio peut être écouté."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-stats-catalogue",
+  "title": "Statistiques catalogue",
+  "who": "Client → Statistiques catalogue (/portal/catalog-stats) — visible par : Superviseur et utilisateurs suivis",
+  "prep": "Avoir des produits publics consultés ou partagés (catalogue public).",
+  "items": [
+   {
+    "id": "p-stats-catalogue-1",
+    "do": "Ouvrir la page et changer la période.",
+    "expect": [
+     "Le titre « Statistiques catalogue » s'affiche.",
+     "Les indicateurs « Aperçus produits », « Partages », « Devis demandés » se mettent à jour."
+    ]
+   },
+   {
+    "id": "p-stats-catalogue-2",
+    "do": "Télécharger les événements en CSV.",
+    "expect": [
+     "Un fichier CSV se télécharge."
+    ]
+   },
+   {
+    "id": "p-stats-catalogue-3",
+    "do": "S'il y a une alerte de devis non traités, cliquer « Marquer traitées ».",
+    "expect": [
+     "Le message « Demandes marquées comme traitées » s'affiche."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-liluvine",
+  "title": "Liluvine PRO",
+  "who": "Client → Liluvine PRO (/portal/liluvine) — visible par : tous les comptes client et le Régulateur ; grisé avec « OFF » si non activé",
+  "prep": "Cocher « Liluvine PRO (Assistant IA interne) » (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer »).",
+  "items": [
+   {
+    "id": "p-liluvine-1",
+    "do": "Sans la fonctionnalité, cliquer sur le lien grisé.",
+    "expect": [
+     "Le badge « OFF » est visible.",
+     "Le message « Fonctionnalité « Liluvine PRO » non activée — contactez votre administrateur SAWALI. » s'affiche."
+    ]
+   },
+   {
+    "id": "p-liluvine-2",
+    "do": "Fonctionnalité active : poser une question et appuyer sur Entrée.",
+    "expect": [
+     "La réponse de l'assistant s'affiche.",
+     "La conversation apparaît dans la liste à gauche."
+    ]
+   },
+   {
+    "id": "p-liluvine-3",
+    "do": "Joindre une capture d'écran (JPEG/PNG) et envoyer ; puis cliquer « Nouvelle ».",
+    "expect": [
+     "L'image est prise en compte dans la réponse.",
+     "Une nouvelle conversation vide s'ouvre."
+    ]
+   },
+   {
+    "id": "p-liluvine-4",
+    "do": "Cliquer « Demander de l'aide », décrire le besoin, envoyer.",
+    "expect": [
+     "Le message « Demande envoyée à l'administrateur via WhatsApp. » s'affiche."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-vidal",
+  "title": "VIDAL France et Numéros AMM",
+  "who": "Client → VIDAL France (/portal/vidal) et Numéros AMM (/portal/amm) — visibles par : Superviseur, Pharmacien, Médecin, Éditeur VIDAL ; Régulateur : Numéros AMM seulement ; grisés « OFF » si VIDAL non activé",
+  "prep": "1) Admin → Paramètres → section VIDAL : activer et saisir les identifiants. 2) Cocher « Module VIDAL France (médicaments) » (Admin → Clients → icône bouclier « SMART Communications » de la ligne du client → cocher la case puis « Enregistrer »). Comptes de rôle Pharmacien, Régulateur (AMM) et Éditeur VIDAL (lecture).",
+  "items": [
+   {
+    "id": "p-vidal-1",
+    "do": "Client sans VIDAL : cliquer sur « VIDAL France ».",
+    "expect": [
+     "Le lien est grisé avec « OFF » et un message « Fonctionnalité … non activée » s'affiche."
+    ]
+   },
+   {
+    "id": "p-vidal-2",
+    "do": "En Pharmacien, onglet « Recherche », taper « amoxicilline », cliquer « Rechercher », puis « Voir la fiche → ».",
+    "expect": [
+     "Une liste de médicaments s'affiche.",
+     "La fiche montre les « Informations produit » et le « Statut réglementaire »."
+    ]
+   },
+   {
+    "id": "p-vidal-3",
+    "do": "Ajouter le produit aux favoris puis ouvrir l'onglet « Favoris ».",
+    "expect": [
+     "Le message « ⭐ Ajouté aux favoris » s'affiche et le produit est dans « Favoris »."
+    ]
+   },
+   {
+    "id": "p-vidal-4",
+    "do": "Numéros AMM : en Régulateur, « Nouvelle AMM » puis « Enregistrer » ; en Éditeur VIDAL, ouvrir la même page.",
+    "expect": [
+     "La nouvelle AMM apparaît dans la liste.",
+     "Le Régulateur ne voit que « Numéros AMM » et « Liluvine PRO » dans son menu.",
+     "L'Éditeur VIDAL voit « Vous êtes en lecture seule » et aucun bouton de modification."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-vidal-clinique",
+  "title": "Fiche produit VIDAL, Posologie, Sécurisation",
+  "who": "Client → Fiche produit VIDAL (/portal/vidal-fiche), Posologie (/portal/vidal-posologie), Sécurisation (/portal/vidal-securisation) — visibles par : Superviseur, Pharmacien, Médecin, Éditeur VIDAL, Médecin suivi (les 3) et Pharmacien suivi (Fiche + Posologie)",
+  "prep": "Mêmes activations que VIDAL France. Utilisateurs suivis « Médecin » et « Pharmacien » avec mot de passe.",
+  "items": [
+   {
+    "id": "p-vidal-clinique-1",
+    "do": "Fiche produit VIDAL : rechercher « Efferalgan 500 », ouvrir le produit, cliquer « Voir les équivalents (même DCI + dosage) ».",
+    "expect": [
+     "Voies d'administration et documents s'affichent (ou « Aucun document renvoyé par VIDAL pour ce produit. »).",
+     "La liste des équivalents apparaît (ou « Aucun produit équivalent trouvé. »)."
+    ]
+   },
+   {
+    "id": "p-vidal-clinique-2",
+    "do": "Posologie : cliquer le profil « Enceinte », choisir un médicament, cliquer « Rechercher la posologie indiquée ».",
+    "expect": [
+     "Le profil patient se remplit (genre, poids…).",
+     "Un « Résultat (expérimental) » s'affiche."
+    ]
+   },
+   {
+    "id": "p-vidal-clinique-3",
+    "do": "Sécurisation : remplir le « Profil du patient », « Ajouter un médicament » (2 lignes à risque), cliquer « Sécuriser ».",
+    "expect": [
+     "Le bloc « Résultat de l'analyse VIDAL » liste des alertes classées (Critique, Élevée…) ou « Aucune alerte détectée ».",
+     "L'analyse est visible dans « Historique »."
+    ]
+   },
+   {
+    "id": "p-vidal-clinique-4",
+    "do": "Cliquer « Imprimer Ordonnance » puis « Envoi WA » (numéro WhatsApp patient renseigné).",
+    "expect": [
+     "L'ordonnance s'ouvre pour impression.",
+     "Le message « Ordonnance envoyée sur WhatsApp. » s'affiche."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-pv-reunions",
+  "title": "PV de réunions",
+  "who": "Client → PV de réunions (/portal/meetings) — visible par : tous les comptes client (hors menus réduits)",
+  "prep": "",
+  "items": [
+   {
+    "id": "p-pv-reunions-1",
+    "do": "Cliquer « Nouveau PV », saisir un titre, des participants et le contenu, puis enregistrer.",
+    "expect": [
+     "Le message « PV … créé » s'affiche avec un numéro automatique."
+    ]
+   },
+   {
+    "id": "p-pv-reunions-2",
+    "do": "Enregistrer un PV sans titre.",
+    "expect": [
+     "Le message « Donnez un titre au PV. » s'affiche."
+    ]
+   },
+   {
+    "id": "p-pv-reunions-3",
+    "do": "Ouvrir le PV, cliquer « Valider et signer ».",
+    "expect": [
+     "Le message « PV signé par … » s'affiche.",
+     "Le PV n'est plus modifiable."
+    ]
+   },
+   {
+    "id": "p-pv-reunions-4",
+    "do": "Cliquer « Voir PDF » puis « Imprimer ».",
+    "expect": [
+     "Le PDF du PV s'ouvre ; l'impression propose le document."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-liluvine-historique",
+  "title": "Liluvine PRO — Historique",
+  "who": "Client → Liluvine PRO — Historique (/portal/liluvine-history) — visible par : Superviseur et utilisateurs suivis « Moderation »",
+  "prep": "Liluvine PRO activé et quelques conversations existantes (web ou WhatsApp).",
+  "items": [
+   {
+    "id": "p-liluvine-historique-1",
+    "do": "Ouvrir la page, filtrer « WhatsApp » et une période.",
+    "expect": [
+     "Le titre « Liluvine PRO — Historique » s'affiche.",
+     "Seules les conversations du canal et de la période choisis apparaissent."
+    ]
+   },
+   {
+    "id": "p-liluvine-historique-2",
+    "do": "Ouvrir une conversation et « reprendre » la main, puis la libérer.",
+    "expect": [
+     "« Conversation reprise — Liluvine se tait, à vous de répondre 👋 » puis « Conversation libérée — Liluvine PRO reprend la main »."
+    ]
+   },
+   {
+    "id": "p-liluvine-historique-3",
+    "do": "Se connecter en client standard.",
+    "expect": [
+     "Le lien est absent."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-brochures",
+  "title": "Brochures & Guides",
+  "who": "Client → Brochures & Guides (/portal/brochures) — visible par : Superviseur et utilisateurs suivis « Moderation »",
+  "prep": "Des brochures publiées côté admin.",
+  "items": [
+   {
+    "id": "p-brochures-1",
+    "do": "Ouvrir « Brochures & Guides » et cliquer « Consulter en ligne » sur une brochure.",
+    "expect": [
+     "La visionneuse PDF interne s'ouvre.",
+     "« Retour à la liste » ramène à la liste."
+    ]
+   },
+   {
+    "id": "p-brochures-2",
+    "do": "Se connecter en client standard.",
+    "expect": [
+     "Le lien est absent."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-ocr-pieces",
+  "title": "OCR sur Pièces",
+  "who": "Client → OCR sur Pièces (/portal/ocr-pieces) — visible par : rôle Pharmacien, Pharmacien suivi, Superviseur",
+  "prep": "Compte de rôle Pharmacien (ou Pharmacien suivi) ; une facture fournisseur en PDF ou photo (20 Mo max).",
+  "items": [
+   {
+    "id": "p-ocr-pieces-1",
+    "do": "En pharmacien, choisir le fichier, le type « Facture », cliquer « Déposer et analyser ».",
+    "expect": [
+     "Le message « Pièce déposée — analyse en cours… » s'affiche.",
+     "La pièce passe de « Analyse en cours » à « Analysée » avec le « Type reconnu »."
+    ]
+   },
+   {
+    "id": "p-ocr-pieces-2",
+    "do": "Télécharger puis supprimer la pièce.",
+    "expect": [
+     "Le fichier se télécharge ; la pièce disparaît de la liste."
+    ]
+   },
+   {
+    "id": "p-ocr-pieces-3",
+    "do": "En Superviseur : choisir une pharmacie et un « Modèle d'IA » avant dépôt, puis ouvrir « Tableau de bord OCR ».",
+    "expect": [
+     "Sans pharmacie choisie : « Choisissez la pharmacie concernée ».",
+     "Le filtre « Toutes les pharmacies » et le tableau de bord sont visibles (pas pour le pharmacien)."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-gestion-stocks",
+  "title": "Gestion de Stocks",
+  "who": "Client → Gestion de Stocks (/portal/gestion-stocks) — visible par : utilisateurs suivis « Pharmacien » uniquement",
+  "prep": "Le client de rattachement doit avoir un « code client » (Admin → Clients → fiche). Pharmacien suivi avec mot de passe.",
+  "items": [
+   {
+    "id": "p-gestion-stocks-1",
+    "do": "Ouvrir « Gestion de Stocks », cliquer « Nouveau dossier », saisir un nom, « Créer ».",
+    "expect": [
+     "Le message « Dossier « … » créé » s'affiche."
+    ]
+   },
+   {
+    "id": "p-gestion-stocks-2",
+    "do": "Ouvrir le dossier, cliquer « Déposer des fichiers » et choisir 2 fichiers.",
+    "expect": [
+     "La progression s'affiche puis les fichiers apparaissent dans le dossier."
+    ]
+   },
+   {
+    "id": "p-gestion-stocks-3",
+    "do": "Utiliser la recherche de documents, puis poser une question dans l'« Explorateur BD MongoDB Atlas » (ex. « Analyseur Ruptures »).",
+    "expect": [
+     "Les documents correspondants sont listés.",
+     "Une réponse fondée sur les stocks du seul client s'affiche."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-officines",
+  "title": "Officines",
+  "who": "Client → Officines (/admin/officines-registry) — visible par : comptes délégués (emails listés côté admin) ; affiché grisé « N/A » pour le profil Fabricant",
+  "prep": "Admin → Paramètres → « 🏥 Délégation menu Officines (comptes autorisés) » → ajouter l'email du compte test → enregistrer.",
+  "items": [
+   {
+    "id": "p-officines-1",
+    "do": "Se connecter avec le compte délégué et cliquer « Officines ».",
+    "expect": [
+     "Le registre des officines s'ouvre sans renvoi vers le portail."
+    ]
+   },
+   {
+    "id": "p-officines-2",
+    "do": "Modifier une officine existante.",
+    "expect": [
+     "Seuls intitulé, téléphone, WhatsApp, géolocalisation, indication de localisation et activité principale sont modifiables ; le reste est grisé."
+    ]
+   },
+   {
+    "id": "p-officines-3",
+    "do": "Avec un Superviseur Fabricant, cliquer « Officines ».",
+    "expect": [
+     "Le lien est grisé avec « N/A » et le message « Non disponible pour votre profil Fabricant » s'affiche."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-compte",
+  "title": "Bas du menu : Mon compte, Alerte WhatsApp, Réglages",
+  "who": "Client → bloc « Connecté en tant que » (/portal/my-account) et réglages du bas du menu — visible par : tous les comptes client",
+  "prep": "",
+  "items": [
+   {
+    "id": "p-compte-1",
+    "do": "Cliquer sur « Connecté en tant que … → Voir mon compte ».",
+    "expect": [
+     "La page « Mon compte » affiche les informations en lecture seule."
+    ]
+   },
+   {
+    "id": "p-compte-2",
+    "do": "Dans « Demande de modification », décrire un changement et cliquer « Envoyer à l'admin » ; puis « Exporter mes données (RGPD) ».",
+    "expect": [
+     "Le message « Demande envoyée à l'administrateur » s'affiche.",
+     "Le message « Export téléchargé » s'affiche et un fichier se télécharge."
+    ]
+   },
+   {
+    "id": "p-compte-3",
+    "do": "Dans « Réglages », basculer « Mode sombre » ; en Superviseur, vérifier « Notes VIDAL (admin) ».",
+    "expect": [
+     "L'interface passe en sombre puis revient en clair.",
+     "« Notes VIDAL (admin) » n'apparaît que pour le Superviseur."
+    ]
+   },
+   {
+    "id": "p-compte-4",
+    "do": "Dans « Alerte WhatsApp », basculer « Notif » / « Son », puis « Se déconnecter ».",
+    "expect": [
+     "Les boutons changent d'état (« Off », « Muet » ou « Bloqué » si l'admin a coupé le son).",
+     "La déconnexion ramène à l'accueil."
+    ]
+   }
+  ]
+ },
+ {
+  "id": "p-roles",
+  "title": "Variantes du menu par profil",
+  "who": "Client → menu latéral selon le profil du compte",
+  "prep": "Préparer un compte par profil ci-dessous (Admin → Clients pour les rôles système et le profil Fabricant ; Admin → Utilisateurs suivis → « Nouvel utilisateur » + icône clé « Définir un mot de passe » pour les suivis).",
+  "items": [
+   {
+    "id": "p-roles-1",
+    "do": "Se connecter avec un compte client standard (rôle Client, sans caisse).",
+    "expect": [
+     "Liens : Tableau de bord, Mes rendez-vous, Historique interventions, Suivi utilisateurs, Mes rapports, Mes suivis, Centre de Messagerie, Groupes de contacts, Registre des erreurs, Inbox unifiée, SMS, WhatsApp, Planning consultations, Tickets, Bibliothèque de médias, Générateur, Voice Studio, Liluvine PRO, PV de réunions (+ Documentation / Formulaires si du contenu existe).",
+     "Absents : Caisse, Catalogue, GRH, Production, Meta (sauf activé), VIDAL, Statistiques catalogue, Brochures, OCR."
+    ]
+   },
+   {
+    "id": "p-roles-2",
+    "do": "Se connecter avec un compte Superviseur.",
+    "expect": [
+     "Tous les liens standard + Caisse/Facturation, Catalogue, GRH, Meta, Statistiques catalogue, les 5 liens VIDAL, Liluvine PRO — Historique, Brochures & Guides, OCR sur Pièces.",
+     "« Notes VIDAL (admin) » apparaît dans « Réglages »."
+    ]
+   },
+   {
+    "id": "p-roles-3",
+    "do": "Se connecter avec un compte « Rôle Caissier » coché (rôle Client).",
+    "expect": [
+     "Le lien « Caisse/Facturation » apparaît en plus du menu standard ; « Catalogue » reste absent."
+    ]
+   },
+   {
+    "id": "p-roles-4",
+    "do": "Se connecter avec un utilisateur suivi « Comptable ».",
+    "expect": [
+     "Uniquement « Caisse/Facturation » et « GRH — Ressources Humaines » (pas de Tableau de bord par défaut).",
+     "À vérifier : la page Caisse peut afficher « Vous n'avez pas les permissions pour accéder à la caisse » si le rôle caissier n'est pas coché."
+    ]
+   },
+   {
+    "id": "p-roles-5",
+    "do": "Se connecter avec un Superviseur au profil Fabricant.",
+    "expect": [
+     "Arrivée directe sur « Caisse/Facturation » (pas de Tableau de bord ni de message de bienvenue).",
+     "Liens : Caisse/Facturation, Catalogue, GRH, Production, et « Officines » grisé « N/A »."
+    ]
+   },
+   {
+    "id": "p-roles-6",
+    "do": "Se connecter avec un compte de rôle Pharmacien (non suivi).",
+    "expect": [
+     "Menu standard + les 5 liens VIDAL + « OCR sur Pièces »."
+    ]
+   },
+   {
+    "id": "p-roles-7",
+    "do": "Se connecter avec un utilisateur suivi « Pharmacien ».",
+    "expect": [
+     "Arrivée sur « Posologie ».",
+     "Liens : Posologie, Fiche produit VIDAL, Gestion de Stocks, OCR sur Pièces (les liens VIDAL sont « OFF » si VIDAL n'est pas activé)."
+    ]
+   },
+   {
+    "id": "p-roles-8",
+    "do": "Se connecter avec un compte de rôle Médecin (non suivi).",
+    "expect": [
+     "Menu standard + les 5 liens VIDAL (pas d'OCR)."
+    ]
+   },
+   {
+    "id": "p-roles-9",
+    "do": "Se connecter avec un utilisateur suivi « Médecin ».",
+    "expect": [
+     "Arrivée sur « Planning consultations » avec badge vert des walk-ins du jour.",
+     "Liens : Planning consultations, Sécurisation, Fiche produit VIDAL, Posologie."
+    ]
+   },
+   {
+    "id": "p-roles-10",
+    "do": "Se connecter avec un utilisateur suivi « Secrétaire médicale ».",
+    "expect": [
+     "Un seul lien : « Planning consultations », avec le bouton « Walk-in »."
+    ]
+   },
+   {
+    "id": "p-roles-11",
+    "do": "Se connecter avec un compte Régulateur (AMM) puis un Éditeur VIDAL.",
+    "expect": [
+     "Régulateur : « Numéros AMM » et « Liluvine PRO » seulement.",
+     "Éditeur VIDAL : VIDAL France, Numéros AMM, Fiche produit VIDAL, Posologie, Sécurisation, Liluvine PRO (AMM en lecture seule)."
+    ]
+   },
+   {
+    "id": "p-roles-12",
+    "do": "Se connecter avec un utilisateur suivi « Moderation ».",
+    "expect": [
+     "Menu standard + Formations Spécialisées (si formations), Statistiques catalogue, Liluvine PRO — Historique, Brochures & Guides.",
+     "À noter : « Registre des erreurs » renvoie une erreur d'accès pour ce profil."
+    ]
+   },
+   {
+    "id": "p-roles-13",
+    "do": "Se connecter avec un utilisateur suivi « Traducteur ».",
+    "expect": [
+     "Attendu : arrivée sur « Régionalisation » avec ce seul lien.",
+     "À vérifier en priorité : risque de renvoi en boucle vers le portail (voir rapport)."
+    ]
+   },
+   {
+    "id": "p-roles-14",
+    "do": "Pour un utilisateur suivi, régler « Visibilité personnalisée » → Tableau de bord « Toujours afficher » (Admin → Utilisateurs suivis → Modifier), puis se reconnecter.",
+    "expect": [
+     "Le lien « Tableau de bord » apparaît même pour un profil à menu réduit (ex. Médecin suivi)."
+    ]
+   }
+  ]
+ }
+]

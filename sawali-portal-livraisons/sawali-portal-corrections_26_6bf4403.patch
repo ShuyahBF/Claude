@@ -1,0 +1,1218 @@
+From 6bf440321de5dd97a11db83a4db51d3d6df4160a Mon Sep 17 00:00:00 2001
+From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
+Date: Sat, 26 Sep 2026 18:17:37 +0000
+Subject: [PATCH] =?UTF-8?q?Lot=2026=20:=20le=20serveur=20ne=20se=20fige=20?=
+ =?UTF-8?q?plus=20(erreurs=20Cloudflare=20al=C3=A9atoires)=20+=20mod=C3=A8?=
+ =?UTF-8?q?les=20WhatsApp?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+J'ai corrigé les blocages du serveur qui provoquaient, pour tous les
+utilisateurs et sur n'importe quelle page (connexion comprise), l'erreur
+« The origin web server sent a response that Cloudflare could not parse » :
+- stockage Emergent : plus aucun appel réseau bloquant sur le serveur
+  principal (initialisation en arrière-plan, envois et lectures dans un
+  thread, objet absent non redemandé pendant 10 minutes) ;
+- messagerie interne en temps réel : la boucle ne peut plus tourner à vide ;
+- numéro de version : empreinte du code calculée une seule fois ;
+- Google Agenda, base de connaissances Liluvine (Qdrant) et VIDAL, mot de
+  passe à la connexion : exécutés dans un thread ;
+- météo injoignable : réponse « indisponible » au lieu d'une erreur 502 ;
+- noms de fichiers avec caractères spéciaux : téléchargement sans erreur.
+Modèles WhatsApp : les valeurs sont nettoyées avant l'envoi (retours à la
+ligne, tabulations, espaces multiples, valeur vide), ce qui supprime
+l'erreur Meta #132018 des relais de messages.
+---
+ backend/google_calendar.py                    |  18 +-
+ backend/routes/ai_media.py                    |   8 +-
+ backend/routes/auth.py                        |   6 +-
+ backend/routes/google_calendar_watch.py       |   9 +-
+ backend/routes/internal_chat.py               |  27 ++-
+ backend/routes/qdrant_rag.py                  |  26 +--
+ backend/routes/story_studio.py                |   4 +-
+ backend/routes/tenant_kyc.py                  |   4 +-
+ backend/routes/vidal_rag.py                   |   7 +-
+ backend/routes/wa_notification_sound.py       |   4 +-
+ backend/routes/weather.py                     |  21 ++-
+ backend/routes/whatsapp_helpers.py            |  47 ++++-
+ backend/server.py                             |  97 ++++++----
+ backend/storage.py                            | 100 ++++++++++-
+ backend/tests/test_nonblocking_lot26.py       | 167 ++++++++++++++++++
+ frontend/src/components/WeatherWidget.jsx     |   3 +-
+ .../admin/sections/WeatherWidgetSection.jsx   |   2 +
+ 17 files changed, 453 insertions(+), 97 deletions(-)
+ create mode 100644 backend/tests/test_nonblocking_lot26.py
+
+diff --git a/backend/google_calendar.py b/backend/google_calendar.py
+index 9a6f3f6..0d873bb 100644
+--- a/backend/google_calendar.py
++++ b/backend/google_calendar.py
+@@ -4,6 +4,7 @@ Credentials (client_id, client_secret, refresh_token) are stored in the
+ `settings` collection. The admin obtains the refresh_token by completing the
+ OAuth flow via /api/admin/google/auth-url + /api/admin/google/callback.
+ """
++import asyncio
+ import logging
+ from datetime import datetime, timezone
+ from typing import Optional
+@@ -51,7 +52,8 @@ async def _build_service():
+     )
+     if not creds.valid:
+         try:
+-            creds.refresh(GoogleRequest())
++            # Lot 26 : appel réseau exécuté dans un thread (ne fige plus le serveur)
++            await asyncio.to_thread(creds.refresh, GoogleRequest())
+             await db.settings.update_one(
+                 {"_id": "global"},
+                 {"$set": {"google_access_token": creds.token}},
+@@ -59,7 +61,7 @@ async def _build_service():
+         except Exception as e:
+             logger.error("Google token refresh failed: %s", e)
+             return None
+-    return build("calendar", "v3", credentials=creds, cache_discovery=False)
++    return await asyncio.to_thread(lambda: build("calendar", "v3", credentials=creds, cache_discovery=False))
+ 
+ 
+ def _build_oauth_flow(client_id: str, client_secret: str, redirect_uri: str):
+@@ -194,7 +196,7 @@ async def create_event(
+         body["attendees"] = [{"email": attendee_email}]
+ 
+     try:
+-        event = service.events().insert(calendarId=calendar_id, body=body).execute()
++        event = await asyncio.to_thread(service.events().insert(calendarId=calendar_id, body=body).execute)
+         return event.get("id")
+     except Exception as e:
+         logger.error("GCal create_event failed: %s", e)
+@@ -210,7 +212,7 @@ async def freebusy(start_iso: str, end_iso: str) -> list[dict]:
+     calendar_id = s.get("google_calendar_email") or "primary"
+     try:
+         body = {"timeMin": start_iso, "timeMax": end_iso, "items": [{"id": calendar_id}]}
+-        res = service.freebusy().query(body=body).execute()
++        res = await asyncio.to_thread(service.freebusy().query(body=body).execute)
+         return res.get("calendars", {}).get(calendar_id, {}).get("busy", [])
+     except Exception as e:
+         logger.error("GCal freebusy failed: %s", e)
+@@ -236,13 +238,13 @@ async def list_upcoming_events(max_results: int = 3) -> list[dict]:
+     s = await _get_settings()
+     calendar_id = s.get("google_calendar_email") or "primary"
+     now_iso = datetime.now(timezone.utc).isoformat()
+-    res = service.events().list(
++    res = await asyncio.to_thread(service.events().list(
+         calendarId=calendar_id,
+         timeMin=now_iso,
+         maxResults=int(max_results),
+         singleEvents=True,
+         orderBy="startTime",
+-    ).execute()
++    ).execute)
+     items = res.get("items", []) or []
+     # Return a compact, JSON-serializable summary (not the raw bloated Google obj)
+     return [
+@@ -284,7 +286,7 @@ async def update_event(
+     if not body:
+         return True
+     try:
+-        service.events().patch(calendarId=calendar_id, eventId=event_id, body=body).execute()
++        await asyncio.to_thread(service.events().patch(calendarId=calendar_id, eventId=event_id, body=body).execute)
+         return True
+     except Exception as e:
+         logger.error("GCal update_event failed: %s", e)
+@@ -298,7 +300,7 @@ async def delete_event(event_id: str) -> bool:
+     s = await _get_settings()
+     calendar_id = s.get("google_calendar_email") or "primary"
+     try:
+-        service.events().delete(calendarId=calendar_id, eventId=event_id).execute()
++        await asyncio.to_thread(service.events().delete(calendarId=calendar_id, eventId=event_id).execute)
+         return True
+     except Exception as e:
+         logger.error("GCal delete_event failed: %s", e)
+diff --git a/backend/routes/ai_media.py b/backend/routes/ai_media.py
+index 87a72c4..2b2793a 100644
+--- a/backend/routes/ai_media.py
++++ b/backend/routes/ai_media.py
+@@ -104,8 +104,8 @@ def setup_ai_media_routes(*, db, api, get_current_user):
+             tenant_dir = UPLOAD_ROOT / (tenant_id or "_global")
+             fname = f"{int(time.time())}-{secrets.token_urlsafe(6)}-{slug}.png"
+             # 2026-02 fork iter108 — Deploy-safe local fallback via storage helper.
+-            from storage import save_upload_and_cache
+-            target, _sp, _err = save_upload_and_cache(
++            from storage import asave_upload_and_cache  # lot 26 : dans un thread
++            target, _sp, _err = await asave_upload_and_cache(
+                 upload_dir=tenant_dir, filename=fname, data=image_bytes,
+                 content_type="image/png", remote_prefix=f"ai/{tenant_id or '_global'}",
+             )
+@@ -335,8 +335,8 @@ def setup_ai_media_routes(*, db, api, get_current_user):
+         if not video_bytes:
+             raise HTTPException(status_code=502, detail="Aucune vidéo générée. Reformulez le prompt.")
+         # 2026-02 fork iter108 — Deploy-safe local write via storage helper.
+-        from storage import save_upload_and_cache
+-        target, _sp, _err = save_upload_and_cache(
++        from storage import asave_upload_and_cache  # lot 26 : dans un thread
++        target, _sp, _err = await asave_upload_and_cache(
+             upload_dir=tenant_dir, filename=fname, data=video_bytes,
+             content_type="video/mp4", remote_prefix=f"ai/{tid or '_global'}",
+         )
+diff --git a/backend/routes/auth.py b/backend/routes/auth.py
+index 28c67fd..b58e6c5 100644
+--- a/backend/routes/auth.py
++++ b/backend/routes/auth.py
+@@ -13,6 +13,7 @@ Provided endpoints (under /api/auth/*):
+ """
+ from __future__ import annotations
+ 
++import asyncio
+ import logging
+ from datetime import datetime, timedelta, timezone
+ from typing import Any, Awaitable, Callable, Dict
+@@ -79,7 +80,8 @@ def attach_auth_routes(
+     @api.post("/auth/login", response_model=LoginResponse, tags=["Authentification"])
+     async def auth_login(payload: LoginRequest, request: Request):
+         user = await db.users.find_one({"email": payload.email.lower()})
+-        if not user or not verify_password(payload.password, user["password_hash"]):
++        # Lot 26 : bcrypt (~0,25 s) calculé dans un thread, sans figer le serveur
++        if not user or not await asyncio.to_thread(verify_password, payload.password, user["password_hash"]):
+             raise HTTPException(status_code=401, detail="Identifiants invalides")
+         if user.get("account_status") != "active":
+             # 2026-02 fork iter108 — S159 : Friendlier message when the account
+@@ -186,7 +188,7 @@ def attach_auth_routes(
+         payload: ChangePasswordRequest, user: dict = Depends(get_current_user),
+     ):
+         db_user = await db.users.find_one({"id": user["id"]})
+-        if not verify_password(payload.current_password, db_user["password_hash"]):
++        if not await asyncio.to_thread(verify_password, payload.current_password, db_user["password_hash"]):
+             raise HTTPException(status_code=400, detail="Mot de passe actuel incorrect")
+         await db.users.update_one(
+             {"id": user["id"]},
+diff --git a/backend/routes/google_calendar_watch.py b/backend/routes/google_calendar_watch.py
+index 6bfa8ad..6ccb4ab 100644
+--- a/backend/routes/google_calendar_watch.py
++++ b/backend/routes/google_calendar_watch.py
+@@ -28,6 +28,7 @@ Cron :
+ """
+ from __future__ import annotations
+ 
++import asyncio
+ import logging
+ import secrets as pysecrets
+ from datetime import datetime, timedelta, timezone
+@@ -75,7 +76,7 @@ async def _start_watch(db, calendar_id: str, webhook_url: str) -> Dict[str, Any]
+         "params": {"ttl": "604800"},  # 7 days max for Calendar events watch
+     }
+     try:
+-        resp = service.events().watch(calendarId=calendar_id, body=body).execute()
++        resp = await asyncio.to_thread(service.events().watch(calendarId=calendar_id, body=body).execute)
+     except Exception as exc:  # noqa: BLE001
+         raise HTTPException(status_code=502, detail=f"Échec watch Google : {exc}") from exc
+ 
+@@ -85,7 +86,7 @@ async def _start_watch(db, calendar_id: str, webhook_url: str) -> Dict[str, Any]
+ 
+     # Initialize sync token via events.list (full sync), then store nextSyncToken
+     try:
+-        ev = service.events().list(calendarId=calendar_id, maxResults=1, showDeleted=False, singleEvents=True).execute()
++        ev = await asyncio.to_thread(service.events().list(calendarId=calendar_id, maxResults=1, showDeleted=False, singleEvents=True).execute)
+         sync_token = ev.get("nextSyncToken") or ""
+     except Exception as exc:  # noqa: BLE001
+         logger.warning("[gcal.watch] events.list initial sync failed: %s", exc)
+@@ -124,7 +125,7 @@ async def _stop_watch(db) -> bool:
+     if not service:
+         return False
+     try:
+-        service.channels().stop(body={"id": cid, "resourceId": rid}).execute()
++        await asyncio.to_thread(service.channels().stop(body={"id": cid, "resourceId": rid}).execute)
+     except Exception as exc:  # noqa: BLE001
+         logger.warning("[gcal.watch] stop failed (channel may already be expired): %s", exc)
+     await db.settings.update_one(
+@@ -166,7 +167,7 @@ async def _sync_events_incremental(db, calendar_id: str) -> Dict[str, Any]:
+             kwargs["showDeleted"] = True
+ 
+         try:
+-            resp = service.events().list(**kwargs).execute()
++            resp = await asyncio.to_thread(service.events().list(**kwargs).execute)
+         except Exception as exc:  # noqa: BLE001
+             # 410 Gone = sync_token expired → restart full sync
+             msg = str(exc)
+diff --git a/backend/routes/internal_chat.py b/backend/routes/internal_chat.py
+index 81f32e4..5dbdd3b 100644
+--- a/backend/routes/internal_chat.py
++++ b/backend/routes/internal_chat.py
+@@ -58,6 +58,7 @@ from datetime import datetime, timezone
+ from typing import Any, Dict, List, Optional, Set
+ 
+ from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Response, UploadFile, WebSocket, WebSocketDisconnect
++from starlette.websockets import WebSocketState  # lot 26 : état de la connexion temps réel
+ from pydantic import BaseModel, Field
+ 
+ log = logging.getLogger("sawali.internal_chat")
+@@ -475,10 +476,10 @@ def make_router(*, db, get_current_user, decode_token):
+                         "image/heic": ".heic", "image/heif": ".heif"}.get(mime, ".bin")
+         storage_path = None
+         try:
+-            from storage import upload_bytes, storage_available
+-            if not storage_available():
++            from storage import aupload_bytes, astorage_available  # lot 26 : non bloquant
++            if not await astorage_available():
+                 raise HTTPException(status_code=503, detail="Stockage indisponible — réessayez plus tard.")
+-            storage_path = upload_bytes(
++            storage_path = await aupload_bytes(
+                 f"chat/{client_id}/{msg_id}{ext_for_path}",
+                 data,
+                 mime,
+@@ -543,8 +544,8 @@ def make_router(*, db, get_current_user, decode_token):
+         if not m.get("storage_path"):
+             raise HTTPException(status_code=404, detail="Média introuvable")
+         try:
+-            from storage import fetch_bytes
+-            data, ct = fetch_bytes(m["storage_path"])
++            from storage import afetch_bytes  # lot 26 : dans un thread
++            data, ct = await afetch_bytes(m["storage_path"])
+         except Exception:
+             log.exception("chat media fetch failed")
+             raise HTTPException(status_code=502, detail="Échec récupération média")
+@@ -649,13 +650,25 @@ def make_router(*, db, get_current_user, decode_token):
+         try:
+             await websocket.send_json({"type": "hello", "user_id": uid, "ts": _now_iso()})
+             # Listen for client-side events (ping, typing, etc.)
++            bad_frames = 0
+             while True:
++                # Lot 26 — la connexion n'est plus ouverte : on sort. Avant, une
++                # erreur répétée faisait tourner cette boucle sans jamais rendre
++                # la main (« continue » immédiat), ce qui figeait TOUT le serveur.
++                if websocket.application_state != WebSocketState.CONNECTED or \
++                        websocket.client_state != WebSocketState.CONNECTED:
++                    break
+                 try:
+                     data = await websocket.receive_json()
+-                except WebSocketDisconnect:
++                    bad_frames = 0
++                except (WebSocketDisconnect, RuntimeError):
+                     break
+                 except Exception:
+-                    # Bad frame, ignore
++                    # Message illisible : ignoré, mais on abandonne après 20 d'affilée
++                    bad_frames += 1
++                    if bad_frames > 20:
++                        break
++                    await asyncio.sleep(0)
+                     continue
+                 msg_type = (data or {}).get("type")
+                 if msg_type == "ping":
+diff --git a/backend/routes/qdrant_rag.py b/backend/routes/qdrant_rag.py
+index 70aa86e..7bea0a3 100644
+--- a/backend/routes/qdrant_rag.py
++++ b/backend/routes/qdrant_rag.py
+@@ -35,6 +35,7 @@ Notes :
+ """
+ from __future__ import annotations
+ 
++import asyncio
+ import logging
+ import os
+ import re
+@@ -330,7 +331,7 @@ async def upsert_text_documents(db, *, collection: str, docs: List[dict]) -> dic
+         if not text:
+             continue
+         chunks = chunk_text(text, max_chars=1200, overlap=150)
+-        vectors = _embed_texts(chunks)
++        vectors = await asyncio.to_thread(_embed_texts, chunks)  # lot 26 : calcul hors du serveur principal
+         for chunk, vec in zip(chunks, vectors):
+             points.append(PointStruct(
+                 id=str(uuid.uuid4()),
+@@ -348,7 +349,7 @@ async def upsert_text_documents(db, *, collection: str, docs: List[dict]) -> dic
+     if not points:
+         raise HTTPException(status_code=400, detail="Tous les documents sont vides.")
+     try:
+-        client.upsert(collection_name=collection, points=points)
++        await asyncio.to_thread(lambda: client.upsert(collection_name=collection, points=points))
+     except Exception as exc:  # noqa: BLE001
+         raise HTTPException(status_code=500, detail=f"Upsert échoué : {exc}") from exc
+     return {"ok": True, "inserted_chunks": inserted_chunks, "documents": len(docs)}
+@@ -456,9 +457,10 @@ async def upsert_image(
+     url, key = await _resolve_credentials(db)
+     client = _make_client(url, key)
+     from qdrant_client.models import PointStruct
+-    vec = _embed_texts([embed_text])[0]
++    vec = (await asyncio.to_thread(_embed_texts, [embed_text]))[0]  # lot 26
+     point_id = str(uuid.uuid4())
+-    client.upsert(
++    # lot 26 : envoi à Qdrant dans un thread
++    await asyncio.to_thread(lambda: client.upsert(
+         collection_name=collection,
+         points=[PointStruct(
+             id=point_id,
+@@ -476,7 +478,7 @@ async def upsert_image(
+                 "created_at": datetime.now(timezone.utc).isoformat(),
+             },
+         )],
+-    )
++    ))
+     return {
+         "ok": True,
+         "id": point_id,
+@@ -532,10 +534,10 @@ async def search_points(db, *, collection: str, query: str, top_k: int = 5) -> d
+         raise HTTPException(status_code=400, detail="Requête vide")
+     url, key = await _resolve_credentials(db)
+     client = _make_client(url, key)
+-    qvec = _embed_query(query)
++    qvec = await asyncio.to_thread(_embed_query, query)  # lot 26
+     top_k = min(max(1, int(top_k or 5)), 50)
+     try:
+-        hits = client.query_points(collection_name=collection, query=qvec, limit=top_k, with_payload=True).points
++        hits = (await asyncio.to_thread(lambda: client.query_points(collection_name=collection, query=qvec, limit=top_k, with_payload=True))).points
+     except Exception as exc:  # noqa: BLE001
+         raise HTTPException(status_code=500, detail=f"Recherche échouée : {exc}") from exc
+     items = []
+@@ -589,16 +591,16 @@ async def search_similar_images(db, *, query: str, top_k: int = 4) -> list[dict]
+     try:
+         url, key = await _resolve_credentials(db)
+         client = _make_client(url, key)
+-        qvec = _embed_query(query)
++        qvec = await asyncio.to_thread(_embed_query, query)  # lot 26
+     except Exception:  # noqa: BLE001
+         logger.exception("[qdrant_rag] search_similar_images credentials/embed failed")
+         return []
+     all_hits: list[dict] = []
+     for cname in enabled:
+         try:
+-            hits = client.query_points(
++            hits = (await asyncio.to_thread(lambda: client.query_points(
+                 collection_name=cname, query=qvec, limit=top_k * 2, with_payload=True,
+-            ).points
++            ))).points
+             for h in hits:
+                 payload = h.payload or {}
+                 if (payload.get("kind") or "text") != "image":
+@@ -640,14 +642,14 @@ async def build_rag_context(db, *, query: str, max_chars: int = 6000) -> str:
+     try:
+         url, key = await _resolve_credentials(db)
+         client = _make_client(url, key)
+-        qvec = _embed_query(query)
++        qvec = await asyncio.to_thread(_embed_query, query)  # lot 26
+     except Exception:  # noqa: BLE001
+         logger.exception("[qdrant_rag] build_rag_context credentials/embed failed")
+         return ""
+     all_hits = []
+     for cname in enabled:
+         try:
+-            hits = client.query_points(collection_name=cname, query=qvec, limit=4, with_payload=True).points
++            hits = (await asyncio.to_thread(lambda: client.query_points(collection_name=cname, query=qvec, limit=4, with_payload=True))).points
+             for h in hits:
+                 payload = h.payload or {}
+                 all_hits.append({
+diff --git a/backend/routes/story_studio.py b/backend/routes/story_studio.py
+index ee25e16..3220e49 100644
+--- a/backend/routes/story_studio.py
++++ b/backend/routes/story_studio.py
+@@ -575,8 +575,8 @@ def attach_story_studio_routes(
+         target_path = STORY_DIR / f"{asset_id}.{safe_ext}"
+         # 2026-02 fork iter108 — Deploy-safe local write via storage helper.
+         try:
+-            from storage import save_upload_and_cache
+-            save_upload_and_cache(
++            from storage import asave_upload_and_cache  # lot 26 : dans un thread
++            await asave_upload_and_cache(
+                 upload_dir=STORY_DIR, filename=target_path.name, data=raw_bytes,
+                 content_type=content_type or f"{kind}/{safe_ext}", remote_prefix="stories",
+             )
+diff --git a/backend/routes/tenant_kyc.py b/backend/routes/tenant_kyc.py
+index f283fc2..c764d15 100644
+--- a/backend/routes/tenant_kyc.py
++++ b/backend/routes/tenant_kyc.py
+@@ -197,8 +197,8 @@ def attach_tenant_kyc_routes(*, api, db, get_current_user, get_current_admin, up
+                 status_code=413,
+                 detail=f"Fichier trop volumineux (>{MAX_UPLOAD_BYTES // 1024 // 1024} MB)",
+             )
+-        from storage import save_upload_and_cache
+-        target, storage_path, _err = save_upload_and_cache(
++        from storage import asave_upload_and_cache  # lot 26 : dans un thread
++        target, storage_path, _err = await asave_upload_and_cache(
+             upload_dir=upload_dir, filename=safe_name, data=raw, content_type=content_type,
+         )
+         if _err:
+diff --git a/backend/routes/vidal_rag.py b/backend/routes/vidal_rag.py
+index 23939eb..f56ccae 100644
+--- a/backend/routes/vidal_rag.py
++++ b/backend/routes/vidal_rag.py
+@@ -14,6 +14,7 @@ collection `VIDAL_db` existe et que `qdrant_enabled = True`.
+ """
+ from __future__ import annotations
+ 
++import asyncio
+ import logging
+ from typing import Any, Dict, List, Optional
+ 
+@@ -79,17 +80,17 @@ async def _ensure_vidal_collection(db) -> bool:
+         url, key = await _resolve_credentials(db)
+         client = _make_client(url, key)
+         try:
+-            existing = client.get_collections()
++            existing = await asyncio.to_thread(client.get_collections)  # lot 26 : hors du serveur principal
+             names = {c.name for c in (existing.collections or [])}
+         except Exception:  # noqa: BLE001
+             names = set()
+         if VIDAL_COLLECTION not in names:
+             from qdrant_client.models import VectorParams, Distance
+             try:
+-                client.create_collection(
++                await asyncio.to_thread(lambda: client.create_collection(
+                     collection_name=VIDAL_COLLECTION,
+                     vectors_config=VectorParams(size=_EMBED_VECTOR_SIZE, distance=Distance.COSINE),
+-                )
++                ))
+                 logger.info(f"[vidal_rag] created Qdrant collection {VIDAL_COLLECTION}")
+             except Exception as exc:  # noqa: BLE001
+                 logger.warning(f"[vidal_rag] could not create collection: {exc}")
+diff --git a/backend/routes/wa_notification_sound.py b/backend/routes/wa_notification_sound.py
+index a41b708..fabff67 100644
+--- a/backend/routes/wa_notification_sound.py
++++ b/backend/routes/wa_notification_sound.py
+@@ -129,8 +129,8 @@ def attach_notification_sound_routes(*, api, db, get_current_admin, upload_dir:
+                 status_code=413,
+                 detail=f"Fichier trop volumineux (>{MAX_UPLOAD_BYTES // 1024} KB)",
+             )
+-        from storage import save_upload_and_cache
+-        target, storage_path, storage_error = save_upload_and_cache(
++        from storage import asave_upload_and_cache  # lot 26 : dans un thread
++        target, storage_path, storage_error = await asave_upload_and_cache(
+             upload_dir=upload_dir, filename=safe_name, data=raw,
+             content_type=content_type or "audio/mpeg",
+         )
+diff --git a/backend/routes/weather.py b/backend/routes/weather.py
+index 8c16ed7..7f3a22c 100644
+--- a/backend/routes/weather.py
++++ b/backend/routes/weather.py
+@@ -34,15 +34,16 @@ def _cache_get(key: str):
+     item = _CACHE.get(key)
+     if not item:
+         return None
+-    ts, val = item
+-    if time.time() - ts > _CACHE_TTL:
++    ts, val, ttl = item if len(item) == 3 else (*item, _CACHE_TTL)
++    if time.time() - ts > ttl:
+         _CACHE.pop(key, None)
+         return None
+     return val
+ 
+ 
+-def _cache_set(key: str, val: Any):
+-    _CACHE[key] = (time.time(), val)
++def _cache_set(key: str, val: Any, ttl: int = _CACHE_TTL):
++    """Mémorise une valeur (durée propre possible : lot 26, « indisponible » 5 min)."""
++    _CACHE[key] = (time.time(), val, ttl)
+ 
+ 
+ def _anonymize_ip(ip: str) -> str:
+@@ -238,10 +239,16 @@ def setup_weather_routes(*, db, api):
+                     },
+                 )
+                 if r.status_code >= 300:
+-                    raise HTTPException(status_code=502, detail=f"Open-Meteo HTTP {r.status_code}")
++                    raise httpx.HTTPError(f"Open-Meteo HTTP {r.status_code}")
+                 d = r.json() or {}
+-        except httpx.HTTPError as exc:
+-            raise HTTPException(status_code=502, detail=f"Open-Meteo erreur réseau: {exc}") from exc
++        except (httpx.HTTPError, ValueError) as exc:
++            # Lot 26 — service météo injoignable : réponse normale « indisponible »
++            # (le widget se masque) au lieu d'une erreur 502, que Cloudflare
++            # transformait en page d'erreur. Mémorisé 5 min pour ne pas insister.
++            logger.warning("[weather] Open-Meteo indisponible : %s", exc)
++            unavailable = {"available": False, "lat": lat, "lon": lon, "fetched_at": int(time.time())}
++            _cache_set(cache_key, unavailable, ttl=300)
++            return unavailable
+ 
+         cur = d.get("current") or {}
+         code = int(cur.get("weather_code") or 0)
+diff --git a/backend/routes/whatsapp_helpers.py b/backend/routes/whatsapp_helpers.py
+index ee8f23e..3b84e63 100644
+--- a/backend/routes/whatsapp_helpers.py
++++ b/backend/routes/whatsapp_helpers.py
+@@ -268,6 +268,44 @@ def _wa_apply_image_watermark_qr(
+ # ---------------------------------------------------------------------------
+ # FACTORY — DB-BOUND HELPERS
+ # ---------------------------------------------------------------------------
++def _wa_clean_template_param(text) -> str:
++    """Lot 26 — valeur d'un modèle WhatsApp acceptée par Meta.
++    Meta refuse (erreur #132018) une valeur contenant un retour à la ligne, une
++    tabulation ou plus de 4 espaces consécutifs, et (#131008) une valeur vide.
++    Ex. un message client écrit sur deux lignes, relayé à l'admin. On remplace
++    les retours à la ligne par « · » (le sens est gardé), les tabulations par
++    un espace, on réduit les suites d'espaces, et une valeur vide devient « — »."""
++    import re as _re
++    s = str(text if text is not None else "")
++    s = _re.sub(r"\s*(\r\n|\r|\n)+\s*", " · ", s)     # retours à la ligne -> séparateur
++    s = s.replace("\t", " ")
++    s = _re.sub(r" {4,}", "   ", s).strip(" ·")
++    return s or "—"
++
++
++def _wa_clean_template_components(components: Optional[list]) -> Optional[list]:
++    """Nettoie toutes les valeurs texte des composants d'un modèle (en-tête,
++    corps, boutons) avant l'envoi à Meta. Les médias ne sont pas touchés."""
++    if not components:
++        return components
++    cleaned = []
++    for comp in components:
++        if not isinstance(comp, dict):
++            cleaned.append(comp)
++            continue
++        comp = dict(comp)
++        params = comp.get("parameters")
++        if isinstance(params, list):
++            new_params = []
++            for prm in params:
++                if isinstance(prm, dict) and prm.get("type") == "text":
++                    prm = {**prm, "text": _wa_clean_template_param(prm.get("text"))}
++                new_params.append(prm)
++            comp["parameters"] = new_params
++        cleaned.append(comp)
++    return cleaned
++
++
+ def attach_whatsapp_helpers(
+     *,
+     db,
+@@ -344,7 +382,8 @@ def attach_whatsapp_helpers(
+             "template": {"name": template_name, "language": {"code": language_code}},
+         }
+         if components:
+-            body["template"]["components"] = components
++            # Lot 26 : valeurs nettoyées (retours à la ligne, tabulations, espaces)
++            body["template"]["components"] = _wa_clean_template_components(components)
+         try:
+             async with httpx.AsyncClient(timeout=12) as http:
+                 r = await http.post(url, json=body, headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"})
+@@ -693,9 +732,9 @@ def attach_whatsapp_helpers(
+                 storage_path = None
+                 storage_error = None
+                 try:
+-                    from storage import upload_bytes, storage_available
+-                    if storage_available():
+-                        storage_path = upload_bytes(f"files/{stored_name}", raw, mime)
++                    from storage import aupload_bytes, astorage_available  # lot 26 : non bloquant
++                    if await astorage_available():
++                        storage_path = await aupload_bytes(f"files/{stored_name}", raw, mime)
+                 except Exception as exc:  # noqa: BLE001
+                     storage_error = str(exc)[:300]
+                     logger.warning("[wa_inbound_media] storage mirror failed: %s", storage_error)
+diff --git a/backend/server.py b/backend/server.py
+index 6495107..2ffb81a 100644
+--- a/backend/server.py
++++ b/backend/server.py
+@@ -8785,10 +8785,10 @@ async def admin_upload(request: Request, file: UploadFile = File(...), user: dic
+     safe_name = f"{file_id}{suffix}"
+     content_type = file.content_type or mimetypes.guess_type(file.filename or "")[0] or "application/octet-stream"
+     # 2026-02 fork iter108 — Deploy-safe upload helper (storage-first, local cache).
+-    from storage import save_upload_and_cache
++    from storage import asave_upload_and_cache  # lot 26 : dans un thread, sans figer le serveur
+     data = file.file.read()
+     size = len(data)
+-    target, storage_path, storage_error = save_upload_and_cache(
++    target, storage_path, storage_error = await asave_upload_and_cache(
+         upload_dir=UPLOAD_DIR, filename=safe_name, data=data, content_type=content_type,
+     )
+     if storage_error:
+@@ -8859,8 +8859,8 @@ async def admin_files_orphans(_: dict = Depends(get_current_admin)):
+ async def admin_files_backfill(_: dict = Depends(get_current_admin)):
+     """For every file row that has its binary on disk but no `storage_path`,
+     push it to Emergent storage and update the DB row. Best-effort."""
+-    from storage import upload_bytes, storage_available
+-    if not storage_available():
++    from storage import aupload_bytes, astorage_available  # lot 26 : non bloquant
++    if not await astorage_available():
+         raise HTTPException(status_code=503, detail="Stockage objet non disponible.")
+     mirrored = 0
+     skipped = 0
+@@ -8872,8 +8872,8 @@ async def admin_files_backfill(_: dict = Depends(get_current_admin)):
+             if not target.exists():
+                 skipped += 1
+                 continue
+-            sp = upload_bytes(
+-                f"files/{f['stored_name']}", target.read_bytes(),
++            sp = await aupload_bytes(
++                f"files/{f['stored_name']}", await asyncio.to_thread(target.read_bytes),
+                 f.get("content_type") or "application/octet-stream",
+             )
+             await db.files.update_one({"id": f["id"]}, {"$set": {"storage_path": sp}})
+@@ -8951,8 +8951,8 @@ async def admin_upload_policy(
+         raise HTTPException(status_code=413, detail=f"Fichier trop volumineux (max {POLICY_MAX_SIZE // (1024*1024)} Mo)")
+     if size == 0:
+         raise HTTPException(status_code=400, detail="Fichier vide")
+-    from storage import save_upload_and_cache
+-    save_upload_and_cache(
++    from storage import asave_upload_and_cache  # lot 26 : dans un thread, sans figer le serveur
++    await asave_upload_and_cache(
+         upload_dir=target.parent, filename=target.name, data=raw,
+         content_type="application/pdf", remote_prefix="policies",
+     )
+@@ -9006,7 +9006,7 @@ async def public_policy(slot: str, request: Request):
+             headers={
+                 "Content-Type": "application/pdf",
+                 "Content-Length": str(p.stat().st_size),
+-                "Content-Disposition": f'inline; filename="{download_name}"',
++                "Content-Disposition": _content_disposition("inline", download_name),
+                 "Cache-Control": "public, max-age=3600",
+                 "X-Robots-Tag": "all",
+             },
+@@ -9016,13 +9016,26 @@ async def public_policy(slot: str, request: Request):
+         media_type="application/pdf",
+         filename=download_name,
+         headers={
+-            "Content-Disposition": f'inline; filename="{download_name}"',
++            "Content-Disposition": _content_disposition("inline", download_name),
+             "Cache-Control": "public, max-age=3600",
+             "X-Robots-Tag": "all",
+         },
+     )
+ 
+ 
++def _content_disposition(kind: str, name: str) -> str:
++    """Lot 26 — en-tête Content-Disposition sûr pour tout nom de fichier.
++    Un nom avec des caractères hors latin-1 (’, œ, €, emoji, arabe…) faisait
++    échouer la réponse (erreur 500). On envoie un nom ASCII de secours ET le
++    vrai nom encodé (RFC 6266 : filename*=UTF-8'')."""
++    import unicodedata
++    from urllib.parse import quote
++    name = (name or "").replace('"', "").replace("\r", " ").replace("\n", " ").strip()
++    if not name:
++        return kind
++    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii") or "fichier"
++    return f"{kind}; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name)}"
++
+ @api.api_route("/files/{file_id}", methods=["GET", "HEAD"], tags=["Public"])
+ async def serve_file(request: Request, file_id: str):
+     # Allow the URL to embed an extension hint (e.g. /api/files/abc-123.pdf) so external
+@@ -9040,8 +9053,8 @@ async def serve_file(request: Request, file_id: str):
+         rehydrated = False
+         storage_path = meta.get("storage_path") or f"files/{meta['stored_name']}"
+         try:
+-            from storage import rehydrate_from_storage
+-            rehydrated = rehydrate_from_storage(local_path=path, remote_path=storage_path)
++            from storage import arehydrate_from_storage  # lot 26 : dans un thread
++            rehydrated = await arehydrate_from_storage(local_path=path, remote_path=storage_path)
+             if rehydrated:
+                 logger.info("[serve_file] rehydrated %s from storage", file_id)
+         except Exception as exc:  # noqa: BLE001
+@@ -9099,9 +9112,7 @@ async def serve_file(request: Request, file_id: str):
+     file_size = path.stat().st_size
+     range_header = request.headers.get("range") or request.headers.get("Range")
+     safe_name = (meta.get("filename") or "").replace('"', "")
+-    inline_disposition = (
+-        f'inline; filename="{safe_name}"' if safe_name else "inline"
+-    )
++    inline_disposition = _content_disposition("inline", safe_name)  # lot 26 : tout nom de fichier
+     common_headers = {
+         "Accept-Ranges": "bytes",
+         "Content-Type": content_type,
+@@ -9109,7 +9120,7 @@ async def serve_file(request: Request, file_id: str):
+     if is_inline_media:
+         common_headers["Content-Disposition"] = inline_disposition
+     elif safe_name:
+-        common_headers["Content-Disposition"] = f'attachment; filename="{safe_name}"'
++        common_headers["Content-Disposition"] = _content_disposition("attachment", safe_name)
+ 
+     if range_header and range_header.startswith("bytes="):
+         try:
+@@ -9257,10 +9268,10 @@ async def me_media_library_create(
+     kind = "image" if content_type.startswith("image") else ("video" if content_type.startswith("video") else "document")
+     public_url = f"{(_public_base_url(request) or str(request.base_url).rstrip('/'))}{public_path}"
+     # 2026-02 fork iter108 — Deploy-safe upload helper (storage-first, local cache).
+-    from storage import save_upload_and_cache
++    from storage import asave_upload_and_cache  # lot 26 : dans un thread, sans figer le serveur
+     data = file.file.read()
+     size = len(data)
+-    target, storage_path, storage_error = save_upload_and_cache(
++    target, storage_path, storage_error = await asave_upload_and_cache(
+         upload_dir=UPLOAD_DIR, filename=safe_name, data=data, content_type=content_type,
+     )
+     if storage_error:
+@@ -9774,6 +9785,26 @@ async def _bump_deployment_counter_if_needed() -> Dict[str, Any]:
+     Stored in `db.app_deployments` (single doc with `_id="current"`).
+     Returns the current `{seq, fingerprint, git_head, deploy_id}` snapshot.
+     """
++    import os
++
++    # Lot 26 — l'empreinte du code (lecture de ~1,5 Mo de fichiers + commande
++    # git) était recalculée à CHAQUE appel de /api/version, c'est-à-dire à
++    # chaque ouverture de page (connexion comprise) et toutes les 5 minutes
++    # par onglet, en bloquant le serveur. Le code ne change pas sans
++    # redémarrage : on la calcule une seule fois (dans un thread) et on la garde.
++    global _DEPLOY_FP_CACHE
++    if _DEPLOY_FP_CACHE is None:
++        _DEPLOY_FP_CACHE = await asyncio.to_thread(_compute_deploy_fingerprint)
++    deploy_id, files_hash, git_head, env_ver = _DEPLOY_FP_CACHE
++    return await _store_deploy_fingerprint(deploy_id, files_hash, git_head, env_ver)
++
++
++_DEPLOY_FP_CACHE: Optional[tuple] = None
++
++
++def _compute_deploy_fingerprint() -> tuple:
++    """(deploy_id, files_hash, git_head, env_ver) — calcul synchrone, lancé
++    dans un thread une seule fois par démarrage du serveur."""
+     import hashlib
+     import subprocess
+     import os
+@@ -9824,7 +9855,12 @@ async def _bump_deployment_counter_if_needed() -> Dict[str, Any]:
+ 
+     # 4) APP_VERSION env var — manual override for the major version prefix.
+     env_ver = (os.environ.get("APP_VERSION") or "").strip()
++    return deploy_id, files_hash, git_head, env_ver
++
+ 
++async def _store_deploy_fingerprint(deploy_id: str, files_hash: Optional[str], git_head: Optional[str],
++                                    env_ver: str) -> Dict[str, Any]:
++    """Compare l'empreinte à celle enregistrée et incrémente le numéro de déploiement."""
+     # Compose the fingerprint (priority = DEPLOY_ID > files_hash > git > env).
+     fingerprint_parts: List[str] = []
+     if deploy_id:
+@@ -11456,13 +11492,13 @@ async def me_upload(request: Request, file: UploadFile = File(...), user: dict =
+     safe_name = f"{file_id}{suffix}"
+     content_type = file.content_type or mimetypes.guess_type(file.filename or "")[0] or "application/octet-stream"
+     # 2026-02 fork iter108 — Deploy-safe upload helper (storage-first, local cache).
+-    from storage import save_upload_and_cache
++    from storage import asave_upload_and_cache  # lot 26 : dans un thread, sans figer le serveur
+     data = file.file.read()
+     size = len(data)
+     # Iter35h — demo storage cap (post-read check to avoid disk waste on abort).
+     if _is_demo(user):
+         await _enforce_demo_quota(user, QUOTA_KEY_STORAGE, increment=size)
+-    target, storage_path, storage_error = save_upload_and_cache(
++    target, storage_path, storage_error = await asave_upload_and_cache(
+         upload_dir=UPLOAD_DIR, filename=safe_name, data=data, content_type=content_type,
+     )
+     ext_suffix = (suffix.lstrip(".") or "").lower()
+@@ -14649,12 +14685,12 @@ async def me_upload_contact_photo(cid: str, request: Request, file: UploadFile =
+     suffix = Path(file.filename or "").suffix.lower() or ".png"
+     safe_name = f"{file_id}{suffix}"
+     # 2026-02 fork iter108 — Deploy-safe upload helper (storage-first, local cache).
+-    from storage import save_upload_and_cache
++    from storage import asave_upload_and_cache  # lot 26 : dans un thread, sans figer le serveur
+     data = await file.read()
+     size = len(data)
+     if size > 5 * 1024 * 1024:
+         raise HTTPException(status_code=413, detail="Photo trop lourde (max 5 Mo)")
+-    target, storage_path, storage_error = save_upload_and_cache(
++    target, storage_path, storage_error = await asave_upload_and_cache(
+         upload_dir=UPLOAD_DIR, filename=safe_name, data=data, content_type=ctype,
+     )
+     ext_suffix = suffix.lstrip(".")
+@@ -15251,8 +15287,8 @@ async def me_whatsapp_send_media(
+     file_id = _uuid()
+     safe_name = f"{file_id}{suffix}"
+     # 2026-02 fork iter108 — Deploy-safe upload helper (storage-first, local cache).
+-    from storage import save_upload_and_cache
+-    target, _wa_storage_path, _wa_storage_error = save_upload_and_cache(
++    from storage import asave_upload_and_cache  # lot 26 : dans un thread, sans figer le serveur
++    target, _wa_storage_path, _wa_storage_error = await asave_upload_and_cache(
+         upload_dir=UPLOAD_DIR, filename=safe_name, data=raw, content_type=content_type,
+     )
+     if _wa_storage_error:
+@@ -15302,9 +15338,9 @@ async def me_whatsapp_send_media(
+     storage_path = None
+     storage_error = None
+     try:
+-        from storage import upload_bytes, storage_available
+-        if storage_available():
+-            storage_path = upload_bytes(f"files/{safe_name}", target.read_bytes(), content_type)
++        from storage import aupload_bytes, astorage_available  # lot 26 : non bloquant
++        if await astorage_available():
++            storage_path = await aupload_bytes(f"files/{safe_name}", await asyncio.to_thread(target.read_bytes), content_type)
+     except Exception as exc:  # noqa: BLE001
+         storage_error = str(exc)[:300]
+         logger.warning("[wa_send_media] storage mirror failed: %s", storage_error)
+@@ -20591,8 +20627,8 @@ async def me_form_upload_file(
+     content_type = file.content_type or mimetypes.guess_type(file.filename or "")[0] or "application/octet-stream"
+     public_url = f"{(_public_base_url(request) or str(request.base_url).rstrip('/'))}{public_path}"
+     # 2026-02 fork iter108 — Deploy-safe upload helper (storage-first, local cache).
+-    from storage import save_upload_and_cache
+-    target, storage_path, storage_error = save_upload_and_cache(
++    from storage import asave_upload_and_cache  # lot 26 : dans un thread, sans figer le serveur
++    target, storage_path, storage_error = await asave_upload_and_cache(
+         upload_dir=UPLOAD_DIR, filename=safe_name, data=raw, content_type=content_type,
+     )
+     if storage_error:
+@@ -21729,7 +21765,8 @@ async def me_module_ask(fid: str, mid: str, payload: FormationModuleQuestion, us
+ 
+ @app.on_event("startup")
+ async def on_startup():
+-    # Iter35q — Initialize Emergent Object Storage (best-effort, non-blocking).
++    # Iter35q — Initialize Emergent Object Storage (best-effort, non-blocking :
++    # lot 26, l'initialisation part dans un thread d'arrière-plan).
+     try:
+         from storage import init_storage as _init_storage
+         _init_storage()
+diff --git a/backend/storage.py b/backend/storage.py
+index 9e26949..f8aa846 100644
+--- a/backend/storage.py
++++ b/backend/storage.py
+@@ -16,13 +16,26 @@ Public API:
+   upload_bytes(path, data, content_type)    -> str (storage path)
+   fetch_bytes(path)                         -> (bytes, content_type)
+   storage_available()                       -> bool
++
++Lot 26 — NE JAMAIS BLOQUER LE SERVEUR : les fonctions ci-dessus font des
++appels réseau synchrones (jusqu'à 30 s pour l'init, 120 s pour un envoi).
++Appelées directement dans une route `async`, elles figeaient TOUT le serveur
++(erreurs Cloudflare 502/520 aléatoires pour tous les utilisateurs). Désormais :
++  - `storage_available()` ne fait plus aucun appel réseau : si la clé n'est
++    pas encore obtenue, l'initialisation part en arrière-plan (thread) ;
++  - les routes utilisent les versions asynchrones `astorage_available()`,
++    `aupload_bytes()`, `afetch_bytes()`, `asave_upload_and_cache()`,
++    `arehydrate_from_storage()`, qui exécutent le travail dans un thread ;
++  - un objet absent du stockage n'est pas redemandé pendant 10 minutes.
+ """
+ from __future__ import annotations
+ 
++import asyncio
+ import logging
+ import os
++import threading
+ import time
+-from typing import Optional, Tuple
++from typing import Dict, Optional, Tuple
+ 
+ import httpx
+ 
+@@ -38,9 +51,40 @@ _storage_key_attempts: int = 0
+ _storage_key_last_attempt_ts: float = 0.0
+ 
+ 
++# Verrou : une seule initialisation à la fois (threads d'arrière-plan)
++_init_lock = threading.Lock()
++# Objets absents du stockage : chemin -> heure du dernier échec (cache négatif)
++_missing: Dict[str, float] = {}
++_MISSING_TTL = 600.0
++
++
++def _ensure_ready() -> bool:
++    """Clé disponible, en l'obtenant si besoin (BLOQUANT : à n'appeler que
++    dans un thread, jamais directement dans une route async)."""
++    return bool(EMERGENT_KEY) and (_storage_key is not None or _locked_init())
++
++
++def _locked_init() -> bool:
++    with _init_lock:
++        return _try_init()
++
++
++def _start_background_init() -> None:
++    """Lance l'initialisation dans un thread sans attendre le résultat."""
++    if _init_lock.locked():
++        return
++    threading.Thread(target=_locked_init, name="storage-init", daemon=True).start()
++
++
+ def storage_available() -> bool:
+-    """Returns True when the integration is reachable + auth works."""
+-    return bool(EMERGENT_KEY) and (_storage_key is not None or _try_init())
++    """True si la clé de stockage est déjà obtenue. NE BLOQUE JAMAIS : sinon
++    l'initialisation part en arrière-plan et on répond False cette fois-ci."""
++    if not EMERGENT_KEY:
++        return False
++    if _storage_key is not None:
++        return True
++    _start_background_init()
++    return False
+ 
+ 
+ def _try_init() -> bool:
+@@ -74,8 +118,8 @@ def _try_init() -> bool:
+ 
+ 
+ def init_storage() -> None:
+-    """Public init entry-point for startup hooks."""
+-    _try_init()
++    """Public init entry-point for startup hooks (lance l'init en arrière-plan)."""
++    _start_background_init()
+ 
+ 
+ def _normalize_path(path: str) -> str:
+@@ -91,7 +135,7 @@ def upload_bytes(path: str, data: bytes, content_type: str = "application/octet-
+     path as returned by the upstream service (which is the same as input but
+     we use the server's response to keep it in sync if it ever normalizes).
+     """
+-    if not _try_init() or not _storage_key:
++    if not _ensure_ready() or not _storage_key:
+         raise RuntimeError("Emergent storage non disponible (init impossible)")
+     full_path = _normalize_path(path)
+     r = httpx.put(
+@@ -117,7 +161,7 @@ def upload_bytes(path: str, data: bytes, content_type: str = "application/octet-
+ 
+ def fetch_bytes(path: str) -> Tuple[bytes, str]:
+     """Synchronous download. Returns (data, content_type). Raises on failure."""
+-    if not _try_init() or not _storage_key:
++    if not _ensure_ready() or not _storage_key:
+         raise RuntimeError("Emergent storage non disponible")
+     full_path = _normalize_path(path)
+     r = httpx.get(
+@@ -169,7 +213,7 @@ def save_upload_and_cache(
+     storage_path = None
+     storage_error = None
+     # 1) Try to mirror to object storage first (source of truth on prod).
+-    if storage_available():
++    if _ensure_ready():
+         try:
+             storage_path = upload_bytes(f"{remote_prefix}/{filename}", data, content_type)
+         except Exception as exc:  # noqa: BLE001
+@@ -185,19 +229,57 @@ def rehydrate_from_storage(*, local_path, remote_path: str) -> bool:
+     or the object isn't there."""
+     from pathlib import Path as _Path
+     local_path = _Path(local_path)
+-    if not storage_available():
++    # Objet déjà constaté absent il y a moins de 10 min : on ne redemande pas
++    last_miss = _missing.get(remote_path)
++    if last_miss and time.time() - last_miss < _MISSING_TTL:
++        return False
++    if not _ensure_ready():
+         return False
+     try:
+         data, _ct = fetch_bytes(remote_path)
+         if not data:
++            _missing[remote_path] = time.time()
+             return False
+         local_path.parent.mkdir(parents=True, exist_ok=True)
+         _write_local_bytes(local_path, data)
++        _missing.pop(remote_path, None)
+         return True
+     except Exception:  # noqa: BLE001
++        _missing[remote_path] = time.time()
++        if len(_missing) > 5000:   # borne la mémoire du cache négatif
++            _missing.clear()
+         return False
+ 
+ 
++# ---------------------------------------------------------------------------
++# Versions asynchrones (lot 26) : le travail réseau et disque part dans un
++# thread, le serveur continue de répondre aux autres requêtes pendant ce temps.
++# ---------------------------------------------------------------------------
++async def astorage_available() -> bool:
++    """Comme storage_available(), mais obtient la clé si besoin (dans un thread)."""
++    if not EMERGENT_KEY:
++        return False
++    if _storage_key is not None:
++        return True
++    return await asyncio.to_thread(_locked_init)
++
++
++async def aupload_bytes(path: str, data: bytes, content_type: str = "application/octet-stream") -> str:
++    return await asyncio.to_thread(upload_bytes, path, data, content_type)
++
++
++async def afetch_bytes(path: str) -> Tuple[bytes, str]:
++    return await asyncio.to_thread(fetch_bytes, path)
++
++
++async def asave_upload_and_cache(**kwargs):
++    return await asyncio.to_thread(lambda: save_upload_and_cache(**kwargs))
++
++
++async def arehydrate_from_storage(**kwargs) -> bool:
++    return await asyncio.to_thread(lambda: rehydrate_from_storage(**kwargs))
++
++
+ def _write_local_bytes(local_path, data: bytes) -> None:
+     """Internal: write `data` to `local_path` using a low-level file descriptor.
+     Used by helpers above; kept private so callers can't misuse it as an
+diff --git a/backend/tests/test_nonblocking_lot26.py b/backend/tests/test_nonblocking_lot26.py
+new file mode 100644
+index 0000000..d1799ac
+--- /dev/null
++++ b/backend/tests/test_nonblocking_lot26.py
+@@ -0,0 +1,167 @@
++"""Lot 26 — le serveur ne doit plus se figer (erreurs Cloudflare 502/520 aléatoires).
++
++- stockage Emergent : `storage_available()` ne fait plus d'appel réseau ; les
++  versions asynchrones travaillent dans un thread et laissent le serveur
++  répondre aux autres requêtes pendant ce temps ; un objet absent n'est pas
++  redemandé pendant 10 minutes ;
++- météo : Open-Meteo injoignable -> réponse normale « indisponible » (pas 502) ;
++- noms de fichiers avec caractères spéciaux : en-tête Content-Disposition sûr.
++Tests autonomes : aucun réseau.
++"""
++from __future__ import annotations
++
++import asyncio
++import sys
++import time
++from pathlib import Path
++
++import httpx
++import pytest
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++import storage  # noqa: E402
++
++
++@pytest.fixture()
++def slow_storage(monkeypatch):
++    """Stockage configuré mais dont l'initialisation met 0,6 s (réseau lent)."""
++    monkeypatch.setattr(storage, "EMERGENT_KEY", "cle-test")
++    monkeypatch.setattr(storage, "_storage_key", None)
++    monkeypatch.setattr(storage, "_storage_key_attempts", 0)
++    monkeypatch.setattr(storage, "_storage_key_last_attempt_ts", 0.0)
++    calls = []
++
++    class _Resp:
++        def raise_for_status(self):
++            return None
++
++        def json(self):
++            return {"storage_key": "k-123"}
++
++    def slow_post(*a, **k):
++        calls.append(time.time())
++        time.sleep(0.6)
++        return _Resp()
++    monkeypatch.setattr(storage.httpx, "post", slow_post)
++    return calls
++
++
++def test_storage_available_never_blocks(slow_storage):
++    t0 = time.time()
++    assert storage.storage_available() is False          # pas encore de clé : réponse immédiate
++    assert time.time() - t0 < 0.2
++    # L'initialisation s'est faite en arrière-plan
++    for _ in range(40):
++        if storage._storage_key:
++            break
++        time.sleep(0.05)
++    assert storage._storage_key == "k-123" and storage.storage_available() is True
++    assert len(slow_storage) == 1
++
++
++def test_async_init_keeps_event_loop_responsive(slow_storage):
++    """Pendant l'initialisation lente, la boucle continue de tourner."""
++    async def scenario():
++        ticks = 0
++        done = False
++
++        async def ticker():
++            nonlocal ticks
++            while not done:
++                ticks += 1
++                await asyncio.sleep(0.02)
++        t = asyncio.create_task(ticker())
++        ok = await storage.astorage_available()
++        done = True
++        await t
++        return ok, ticks
++    ok, ticks = asyncio.run(scenario())
++    assert ok is True
++    assert ticks >= 10          # ~0,6 s de travail : la boucle a tourné au moins 10 fois
++
++
++def test_asave_upload_and_cache_without_storage(monkeypatch, tmp_path):
++    monkeypatch.setattr(storage, "EMERGENT_KEY", None)
++    path, sp, err = asyncio.run(storage.asave_upload_and_cache(upload_dir=tmp_path, filename="a.txt", data=b"bonjour"))
++    assert path.read_bytes() == b"bonjour" and sp is None and err is None
++
++
++def test_rehydrate_negative_cache(monkeypatch, tmp_path):
++    monkeypatch.setattr(storage, "EMERGENT_KEY", "cle")
++    monkeypatch.setattr(storage, "_storage_key", "k")
++    storage._missing.clear()
++    calls = []
++
++    def missing(path):
++        calls.append(path)
++        raise RuntimeError("404")
++    monkeypatch.setattr(storage, "fetch_bytes", missing)
++    target = tmp_path / "x.png"
++    assert asyncio.run(storage.arehydrate_from_storage(local_path=target, remote_path="files/x.png")) is False
++    assert asyncio.run(storage.arehydrate_from_storage(local_path=target, remote_path="files/x.png")) is False
++    assert calls == ["files/x.png"]                      # redemandé une seule fois
++    storage._missing.clear()
++
++
++def test_weather_unavailable_is_not_an_error(monkeypatch):
++    from fastapi import APIRouter, FastAPI
++    from fastapi.testclient import TestClient
++    import routes.weather as weather
++
++    class _Boom:
++        def __init__(self, *a, **k):
++            pass
++
++        async def __aenter__(self):
++            return self
++
++        async def __aexit__(self, *a):
++            return False
++
++        async def get(self, *a, **k):
++            raise httpx.ConnectTimeout("injoignable")
++    monkeypatch.setattr(weather.httpx, "AsyncClient", _Boom)
++    weather._CACHE.clear()
++    app = FastAPI()
++    api = APIRouter(prefix="/api")
++    weather.setup_weather_routes(db=None, api=api)
++    app.include_router(api)
++    r = TestClient(app).get("/api/public/weather/current?lat=12.37&lon=-1.52")
++    assert r.status_code == 200 and r.json()["available"] is False
++    # Mémorisé : pas de nouvel essai immédiat
++    monkeypatch.setattr(weather.httpx, "AsyncClient", lambda *a, **k: (_ for _ in ()).throw(AssertionError("rappel")))
++    assert TestClient(app).get("/api/public/weather/current?lat=12.37&lon=-1.52").json()["available"] is False
++    weather._CACHE.clear()
++
++
++def test_content_disposition_accepts_any_name():
++    import importlib.util
++    src = (Path(__file__).resolve().parents[1] / "server.py").read_text(encoding="utf-8")
++    start = src.index("def _content_disposition(")
++    import re
++    m = re.compile(r"\n(?=[@A-Za-z_])").search(src, start + 10)   # fin : prochaine ligne non indentée
++    end = m.start()
++    ns: dict = {}
++    exec(compile(src[start:end], "cd", "exec"), ns)   # la fonction seule, sans démarrer le serveur
++    h = ns["_content_disposition"]("attachment", "Devis d’œuvre – 2026 €.pdf")
++    h.encode("latin-1")                                  # ne lève plus d'erreur
++    assert h.startswith('attachment; filename="') and "filename*=UTF-8''Devis%20d%E2%80%99%C5%93uvre" in h
++    assert ns["_content_disposition"]("inline", "") == "inline"
++    assert importlib.util is not None
++
++
++def test_whatsapp_template_params_are_cleaned():
++    """#132018 : pas de retour à la ligne, tabulation ni plus de 4 espaces ; pas de valeur vide."""
++    from routes.whatsapp_helpers import _wa_clean_template_components, _wa_clean_template_param
++    msg = "Je suis la directrice de Deli GROCERY\nNotre machine nous a lâché hier après un délestage"
++    assert _wa_clean_template_param(msg) == ("Je suis la directrice de Deli GROCERY · Notre machine nous a "
++                                            "lâché hier après un délestage")
++    assert _wa_clean_template_param("a\t\tb      c") == "a  b   c"
++    assert _wa_clean_template_param("") == "—" and _wa_clean_template_param(None) == "—"
++    comps = _wa_clean_template_components([
++        {"type": "header", "parameters": [{"type": "image", "image": {"link": "https://x/y.png"}}]},
++        {"type": "body", "parameters": [{"type": "text", "text": "ligne 1\r\n\r\nligne 2"}, {"type": "text", "text": ""}]},
++    ])
++    assert comps[0]["parameters"][0]["image"]["link"] == "https://x/y.png"
++    assert [p["text"] for p in comps[1]["parameters"]] == ["ligne 1 · ligne 2", "—"]
+diff --git a/frontend/src/components/WeatherWidget.jsx b/frontend/src/components/WeatherWidget.jsx
+index 8db8445..c1f666c 100644
+--- a/frontend/src/components/WeatherWidget.jsx
++++ b/frontend/src/components/WeatherWidget.jsx
+@@ -147,7 +147,8 @@ export default function WeatherWidget({
+       </div>
+     );
+   }
+-  if (error || !data) {
++  // Lot 26 : service météo indisponible (réponse available: false) -> widget masqué
++  if (error || !data || data.available === false) {
+     return null; // Échec silencieux pour ne pas polluer l'UI publique.
+   }
+ 
+diff --git a/frontend/src/pages/admin/sections/WeatherWidgetSection.jsx b/frontend/src/pages/admin/sections/WeatherWidgetSection.jsx
+index 0fb4658..64633f9 100644
+--- a/frontend/src/pages/admin/sections/WeatherWidgetSection.jsx
++++ b/frontend/src/pages/admin/sections/WeatherWidgetSection.jsx
+@@ -70,6 +70,8 @@ const WeatherWidgetSection = () => {
+       const { lat, lon } = geo.data || {};
+       if (lat == null || lon == null) throw new Error("Ville introuvable");
+       const w = await apiClient.get(`/public/weather/current?lat=${lat}&lon=${lon}&units=celsius`);
++      // Lot 26 : le serveur répond « indisponible » quand Open-Meteo ne répond pas
++      if (w.data?.available === false) throw new Error("Service météo (Open-Meteo) injoignable pour le moment");
+       setPreview({ city: geo.data.name, country: geo.data.country, ...w.data });
+       toast.success("Données météo récupérées");
+     } catch (e) {
+-- 
+2.43.0
+

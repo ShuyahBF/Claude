@@ -1,0 +1,1786 @@
+From 65b42c1088b1bb32e7762e53ca6442c71b40a270 Mon Sep 17 00:00:00 2001
+From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
+Date: Wed, 23 Sep 2026 09:48:10 +0000
+Subject: [PATCH] =?UTF-8?q?Lot=201=20OCR=20:=20choix=20du=20mod=C3=A8le,?=
+ =?UTF-8?q?=20co=C3=BBt=20r=C3=A9el=20en=20FCFA,=20=C3=A9valuation=20?=
+ =?UTF-8?q?=C3=A9toiles=20+=20corrections,=20tableau=20de=20bord?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+J'ajoute sur la page Pièces la mesure et l'optimisation de l'analyse IA :
+- je choisis le modèle avant le dépôt (Opus 5, Sonnet 5, Haiku 4.5) et je
+  vois le coût réel de chaque analyse en FCFA, calculé sur les tokens
+  réellement consommés (USD_TO_XOF_RATE) ;
+- les PDF scannés, qui finissaient en « PDF illisible », sont désormais
+  convertis en images page par page ; les PDF avec une vraie couche texte
+  restent envoyés en texte (moins cher) ; les photos sont redressées et
+  réduites à 1568 px ;
+- chaque analyse est conservée dans document_ocr_runs : je peux relancer
+  une pièce avec un autre modèle pour comparer ; document_syntheses garde
+  une synthèse par pièce, comme avant, pour les rapports ;
+- je note chaque analyse de 1 à 5 étoiles et je corrige les champs, ce qui
+  donne la précision réelle, distincte de la confiance du modèle ;
+- un onglet « Tableau de bord OCR » compare les modèles par période ;
+- mes clients ne voient ni le modèle, ni le coût, ni les évaluations, et
+  leurs listes (lignes de facture) s'affichent lisiblement.
+---
+ backend/albarka_ai.py                        | 358 ++++++++++++++-----
+ backend/albarka_documents.py                 | 260 +++++++++++++-
+ backend/tests/test_ocr_lot1.py               | 278 ++++++++++++++
+ frontend/src/components/ocr/OcrDashboard.jsx | 126 +++++++
+ frontend/src/components/ocr/OcrRunsPanel.jsx | 260 ++++++++++++++
+ frontend/src/components/ocr/StarRating.jsx   |  38 ++
+ frontend/src/components/ocr/format.js        |  43 +++
+ frontend/src/pages/portal/Documents.jsx      |  90 ++++-
+ 8 files changed, 1340 insertions(+), 113 deletions(-)
+ create mode 100644 backend/tests/test_ocr_lot1.py
+ create mode 100644 frontend/src/components/ocr/OcrDashboard.jsx
+ create mode 100644 frontend/src/components/ocr/OcrRunsPanel.jsx
+ create mode 100644 frontend/src/components/ocr/StarRating.jsx
+ create mode 100644 frontend/src/components/ocr/format.js
+
+diff --git a/backend/albarka_ai.py b/backend/albarka_ai.py
+index 0965a86..763fe51 100644
+--- a/backend/albarka_ai.py
++++ b/backend/albarka_ai.py
+@@ -1,73 +1,195 @@
+-"""Analyse IA des pièces via Claude Sonnet 5 (clé LLM universelle Emergent).
++"""Analyse IA des pièces via Claude (clé LLM universelle Emergent).
+ 
+-Pour les PDF : extraction texte via PyMuPDF puis analyse Claude (texte).
+-Pour les images : envoi direct à Claude via ImageContent (vision multi-modale).
++Le cabinet choisit le modèle (Opus 5 / Sonnet 5 / Haiku 4.5) et chaque
++analyse renvoie, en plus de l'extraction, son coût réel :
++  - les tokens réellement consommés sont lus dans la réponse du proxy
++    (`LlmChat.send_message_with_tools()` d'emergentintegrations 0.2.0 renvoie
++    un `ChatResponse` avec `usage`), jamais estimés d'après la longueur du texte ;
++  - coût = tokens × tarif officiel du modèle × taux USD→FCFA (USD_TO_XOF_RATE).
++
++Préparation de la pièce (optimisation OCR) :
++  - PDF avec une vraie couche texte (généré par un logiciel) : on envoie le
++    texte extrait par PyMuPDF — le moins cher ;
++  - PDF scanné (pas ou peu de texte) : chaque page est convertie en image et
++    envoyée en vision — avant ce lot, ces pièces échouaient en « PDF illisible » ;
++  - photo : redressée (EXIF) et réduite à 1568 px sur le grand côté, taille
++    à laquelle Claude la réduit de toute façon (requête plus légère, même lisibilité).
+ """
+ from __future__ import annotations
+ 
+-import asyncio
+ import base64
++import io
+ import json
+ import logging
+ import os
+ import secrets
+-from typing import Any, Dict
++import time
++from dataclasses import dataclass
++from typing import Any, Dict, List, Optional, Tuple
+ 
+ from emergentintegrations.llm.chat import ImageContent, LlmChat, UserMessage
+ 
+ logger = logging.getLogger("albarka.ai")
+ 
+ MODEL_PROVIDER = "anthropic"
+-MODEL_ID = "claude-sonnet-5"
+-EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
++
++
++# ---------------------------------------------------------------------
++# Catalogue des modèles proposés au cabinet (liste déroulante).
++# Tarifs officiels Anthropic en USD pour 1 million de tokens (2026-09).
++# Ajouter un modèle = ajouter une entrée ici, rien d'autre à modifier.
++# ---------------------------------------------------------------------
++@dataclass(frozen=True)
++class OcrModel:
++    id: str                       # identifiant exact transmis au proxy Emergent
++    label: str                    # libellé affiché dans la liste déroulante
++    price_input_per_mtok: float   # USD / 1M tokens en entrée (images/texte + consigne)
++    price_output_per_mtok: float  # USD / 1M tokens en sortie (JSON + réflexion)
++    note: str                     # conseil d'usage affiché sous la liste
++
++    def public(self) -> Dict[str, Any]:
++        """Version sérialisable renvoyée au frontend."""
++        return {
++            "id": self.id, "label": self.label, "note": self.note,
++            "price_input_per_mtok": self.price_input_per_mtok,
++            "price_output_per_mtok": self.price_output_per_mtok,
++        }
++
++
++OCR_MODELS: Dict[str, OcrModel] = {
++    "claude-opus-5": OcrModel(
++        id="claude-opus-5",
++        label="Claude Opus 5 — le plus précis (manuscrit, tampons)",
++        price_input_per_mtok=5.00, price_output_per_mtok=25.00,
++        note="Meilleure précision, notamment sur l'écriture manuscrite. Coût le plus élevé.",
++    ),
++    "claude-sonnet-5": OcrModel(
++        id="claude-sonnet-5",
++        label="Claude Sonnet 5 — bon compromis coût/précision",
++        price_input_per_mtok=2.00, price_output_per_mtok=10.00,
++        note="Modèle utilisé jusqu'ici par le site. Environ 2,5x moins cher qu'Opus 5.",
++    ),
++    # Identifiant daté : c'est celui déjà utilisé et éprouvé en production via
++    # le proxy Emergent sur la plateforme Sawali.
++    "claude-haiku-4-5-20251001": OcrModel(
++        id="claude-haiku-4-5-20251001",
++        label="Claude Haiku 4.5 — le moins cher (imprimé net, gros volume)",
++        price_input_per_mtok=1.00, price_output_per_mtok=5.00,
++        note="Le plus économique. À réserver aux pièces imprimées nettes, sans manuscrit.",
++    ),
++}
++
++# Modèle par défaut : dépôts des clients eux-mêmes et pré-remplissage KYC
++# (albarka_myaccount.py). Inchangé par rapport à avant ce lot (Sonnet 5),
++# surchargeable sans toucher au code via ALBARKA_OCR_DEFAULT_MODEL.
++DEFAULT_MODEL_ID = os.environ.get("ALBARKA_OCR_DEFAULT_MODEL", "claude-sonnet-5")
++if DEFAULT_MODEL_ID not in OCR_MODELS:
++    DEFAULT_MODEL_ID = "claude-sonnet-5"
++MODEL_ID = DEFAULT_MODEL_ID  # compatibilité avec l'ancien nom de constante
++
++# Taux USD → FCFA (XOF). Le FCFA est arrimé à l'EURO (655,957 XOF/EUR), pas
++# au dollar : ce taux suit l'EUR/USD et doit être ajusté périodiquement.
++DEFAULT_USD_TO_XOF = 600.0
++
++MAX_IMAGE_EDGE_PX = 1568       # au-delà, Claude réduit lui-même l'image : inutile d'envoyer plus
++PDF_RENDER_DPI = 150           # suffisant pour lire un scan A4
++MAX_PDF_PAGES = 10             # pages suivantes non analysées (une alerte le signale)
++MIN_TEXT_CHARS_PER_PAGE = 200  # en dessous : PDF considéré comme scanné → envoi en images
++MAX_TEXT_CHARS = 20000
++JPEG_QUALITY = 85
++
++IMAGE_MIMES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
+ 
+ SYSTEM_PROMPT = (
+     "Tu es l'assistant d'analyse documentaire du cabinet ALBARKA (cabinet "
+     "d'assistance fiscale et comptable au Burkina Faso). On te soumet une pièce "
+-    "téléversée par un client : facture, relevé bancaire, contrat de bail, "
++    "téléversée par un client : facture, reçu, relevé bancaire, contrat de bail, "
+     "déclaration fiscale, bulletin de paie, pièce d'identité, registre du "
+-    "commerce, etc. Analyse le document et réponds UNIQUEMENT avec un objet "
+-    "JSON strict, sans aucun texte avant ou après ni bloc de code, au format :\n"
++    "commerce, etc., souvent scannée ou photographiée, parfois manuscrite, avec "
++    "tampon, cachet ou filigrane. Si le document a plusieurs pages, elles te sont "
++    "transmises dans l'ordre. Analyse le document et réponds UNIQUEMENT avec un "
++    "objet JSON strict, sans aucun texte avant ou après ni bloc de code, au format :\n"
+     "{\n"
+     '  "document_type": "<type précis en français>",\n'
+     '  "summary": "<synthèse claire en 3-6 phrases, en français>",\n'
+-    '  "extracted_fields": { <clés/valeurs pertinents : montants, dates, IFU/RCCM, noms, périodes...> },\n'
+-    '  "flags": ["<alerte éventuelle : pièce illisible, information manquante, incohérence...>"]\n'
++    '  "extracted_fields": { <clés/valeurs pertinents : numéro, date, émetteur, IFU, RCCM, client, '
++    "lignes, sous-total, taxes, montant total, période... — montants en nombres sans séparateur "
++    'de milliers, dates au format AAAA-MM-JJ> },\n'
++    '  "flags": ["<alerte éventuelle : pièce illisible, information manquante, incohérence...>"],\n'
++    '  "confidence": <nombre entre 0 et 1 : ta confiance globale dans l\'extraction>,\n'
++    '  "uncertain_fields": ["<clés de extracted_fields dont tu n\'es pas sûr (écriture peu lisible, tampon...)>"]\n'
+     "}\n"
+-    "Si le document est illisible ou d'un type non reconnaissable, dis-le dans \"flags\" plutôt que d'inventer."
++    "Si une information est illisible, mets null plutôt que de la deviner et cite la clé dans "
++    "\"uncertain_fields\". Si le document est illisible ou d'un type non reconnaissable, dis-le "
++    "dans \"flags\" plutôt que d'inventer."
+ )
+ 
+-IMAGE_MIMES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
++
++# ---------------------------------------------------------------------
++# Helpers publics (utilisés aussi par albarka_documents.py)
++# ---------------------------------------------------------------------
++def get_model(model_id: Optional[str]) -> Optional[OcrModel]:
++    """Modèle du catalogue, ou None si l'identifiant est inconnu."""
++    return OCR_MODELS.get(model_id or "")
+ 
+ 
+-def _extract_pdf_text(data: bytes, max_chars: int = 20000) -> str:
+-    """Best-effort PDF text extraction with PyMuPDF; empty on failure."""
++def usd_to_xof_rate() -> float:
++    """Taux USD→XOF lu à chaque appel (modifiable sans toucher au code)."""
+     try:
+-        import fitz  # PyMuPDF
++        rate = float(os.environ.get("USD_TO_XOF_RATE", DEFAULT_USD_TO_XOF))
++        return rate if rate > 0 else DEFAULT_USD_TO_XOF
++    except ValueError:
++        return DEFAULT_USD_TO_XOF
+ 
+-        buf = []
+-        with fitz.open(stream=data, filetype="pdf") as doc:
+-            for page in doc:
+-                buf.append(page.get_text())
+-                if sum(len(b) for b in buf) > max_chars:
+-                    break
+-        return "\n".join(buf)[:max_chars].strip()
+-    except Exception:
+-        logger.exception("Échec extraction texte PDF")
+-        return ""
+ 
++def compute_cost(model: OcrModel, input_tokens: int, output_tokens: int) -> Tuple[float, float]:
++    """Coût réel d'un appel : (USD, FCFA), à partir des tokens effectivement consommés."""
++    cost_usd = (input_tokens * model.price_input_per_mtok + output_tokens * model.price_output_per_mtok) / 1_000_000
++    return round(cost_usd, 6), round(cost_usd * usd_to_xof_rate(), 2)
+ 
+-def _empty(flag: str) -> Dict[str, Any]:
+-    return {
+-        "summary": "",
+-        "extracted_fields": {},
+-        "document_type": None,
+-        "flags": [flag],
+-        "model": MODEL_ID,
+-    }
+ 
++# ---------------------------------------------------------------------
++# Préparation de la pièce
++# ---------------------------------------------------------------------
++def _shrink_image(data: bytes) -> bytes:
++    """Redresse (EXIF), réduit à MAX_IMAGE_EDGE_PX et ré-encode en JPEG."""
++    from PIL import Image, ImageOps
++
++    with Image.open(io.BytesIO(data)) as img:
++        img = ImageOps.exif_transpose(img)          # photos de téléphone prises « de côté »
++        if img.mode not in ("RGB", "L"):
++            img = img.convert("RGB")                # JPEG : ni transparence ni palette
++        img.thumbnail((MAX_IMAGE_EDGE_PX, MAX_IMAGE_EDGE_PX))  # proportions gardées, jamais agrandie
++        out = io.BytesIO()
++        img.save(out, format="JPEG", quality=JPEG_QUALITY, optimize=True)
++        return out.getvalue()
+ 
++
++def prepare_pdf(data: bytes) -> Tuple[str, List[bytes], List[str]]:
++    """PDF → (texte, [], notes) si la couche texte est exploitable, sinon
++    ("", [pages en JPEG], notes) pour un PDF scanné."""
++    import fitz  # PyMuPDF
++
++    notes: List[str] = []
++    with fitz.open(stream=data, filetype="pdf") as pdf:
++        total = pdf.page_count
++        pages = list(pdf.pages(0, min(total, MAX_PDF_PAGES)))
++        if total > MAX_PDF_PAGES:
++            notes.append(f"Seules les {MAX_PDF_PAGES} premières pages sur {total} ont été analysées.")
++        text = "\n".join(p.get_text() for p in pages).strip()
++        if pages and len(text) / len(pages) >= MIN_TEXT_CHARS_PER_PAGE:
++            return text[:MAX_TEXT_CHARS], [], notes
++        images = [_shrink_image(p.get_pixmap(dpi=PDF_RENDER_DPI).tobytes("png")) for p in pages]
++    if not images:
++        raise ValueError("PDF vide ou illisible")
++    return "", images, notes
++
++
++# ---------------------------------------------------------------------
++# Lecture de la réponse du modèle
++# ---------------------------------------------------------------------
+ def _parse_json(text: str) -> Dict[str, Any]:
++    """Tolère un éventuel bloc ```json``` ou du texte parasite autour du JSON."""
+     text = (text or "").strip()
+     if text.startswith("```"):
+         text = text.strip("`")
+@@ -82,73 +204,121 @@ def _parse_json(text: str) -> Dict[str, Any]:
+         return json.loads(text[start:end + 1])
+ 
+ 
+-async def _analyze_text(text: str, filename: str) -> Dict[str, Any]:
++def _clamp_confidence(value: Any) -> Optional[float]:
++    """Ramène la confiance auto-déclarée dans [0, 1] (None si absente/illisible)."""
++    try:
++        return max(0.0, min(1.0, float(value)))
++    except (TypeError, ValueError):
++        return None
++
++
++def _empty(model_id: str, flag: str, error: Optional[str] = None) -> Dict[str, Any]:
++    """Résultat vide (analyse impossible) — même forme qu'un résultat normal."""
++    result: Dict[str, Any] = {
++        "summary": "", "extracted_fields": {}, "document_type": None, "flags": [flag],
++        "confidence": None, "uncertain_fields": [], "model": model_id, "input_mode": None,
++        "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0, "cost_xof": 0.0,
++        "pages_analyzed": 0, "duration_ms": 0,
++    }
++    if error:
++        result["error"] = error
++    return result
++
++
++# ---------------------------------------------------------------------
++# Appel au modèle via le proxy Emergent
++# ---------------------------------------------------------------------
++async def _call_llm(model: OcrModel, text: str, images: List[bytes], filename: str) -> Tuple[str, int, int]:
++    """Envoie texte ou images au modèle ; renvoie (réponse, tokens_entrée, tokens_sortie).
++
++    `send_message_with_tools()` (sans outil déclaré) est la méthode publique
++    d'emergentintegrations 0.2.0 qui expose l'usage réel en tokens ;
++    `send_message()` ne renvoie que le texte."""
++    api_key = os.environ.get("EMERGENT_LLM_KEY", "")
++    if not api_key:
++        raise RuntimeError("Clé LLM non configurée (EMERGENT_LLM_KEY)")
+     chat = LlmChat(
+-        api_key=EMERGENT_LLM_KEY,
++        api_key=api_key,
+         session_id=f"albarka-doc-{secrets.token_urlsafe(8)}",
+         system_message=SYSTEM_PROMPT,
+-    ).with_model(MODEL_PROVIDER, MODEL_ID)
+-    prompt = (
+-        f"Nom du fichier : {filename}\n\n"
+-        f"Contenu extrait du document :\n---\n{text}\n---\n\n"
+-        "Analyse ce document et réponds uniquement en JSON strict."
+-    )
+-    reply = await chat.send_message(UserMessage(text=prompt))
+-    reply_text = getattr(reply, "text", None) or str(reply)
+-    return _parse_json(reply_text)
+-
+-
+-async def _analyze_image(data: bytes, content_type: str, filename: str) -> Dict[str, Any]:
+-    chat = LlmChat(
+-        api_key=EMERGENT_LLM_KEY,
+-        session_id=f"albarka-img-{secrets.token_urlsafe(8)}",
+-        system_message=SYSTEM_PROMPT,
+-    ).with_model(MODEL_PROVIDER, MODEL_ID)
+-    b64 = base64.standard_b64encode(data).decode("utf-8")
+-    image = ImageContent(image_base64=b64)
+-    reply = await chat.send_message(UserMessage(
+-        text=f"Nom du fichier : {filename}. Analyse cette image comme pièce comptable.",
+-        file_contents=[image],
+-    ))
+-    reply_text = getattr(reply, "text", None) or str(reply)
+-    return _parse_json(reply_text)
+-
+-
+-async def analyze_document(data: bytes, content_type: str, filename: str) -> Dict[str, Any]:
+-    """Router principal ; ne lève jamais — retourne toujours un dict."""
+-    if not EMERGENT_LLM_KEY:
+-        return _empty("Clé LLM non configurée")
++    ).with_model(MODEL_PROVIDER, model.id).with_params(max_tokens=8192)
++
++    if images:
++        message = UserMessage(
++            text=f"Nom du fichier : {filename}. Analyse cette pièce ({len(images)} page(s)).",
++            file_contents=[ImageContent(image_base64=base64.b64encode(img).decode("ascii")) for img in images],
++        )
++    else:
++        message = UserMessage(text=(
++            f"Nom du fichier : {filename}\n\nContenu extrait du document :\n---\n{text}\n---\n\n"
++            "Analyse ce document et réponds uniquement en JSON strict."
++        ))
++    response = await chat.send_message_with_tools(message)
++    usage = response.usage
++    return response.content or "", int(usage.input_tokens or 0), int(usage.output_tokens or 0)
++
++
++async def analyze_document(
++    data: bytes, content_type: str, filename: str, model_id: Optional[str] = None,
++) -> Dict[str, Any]:
++    """Router principal ; ne lève jamais — retourne toujours un dict.
+ 
++    Compatible avec les appels existants (albarka_myaccount.py) : sans
++    `model_id`, le modèle par défaut est utilisé."""
++    model = get_model(model_id) or OCR_MODELS[DEFAULT_MODEL_ID]
++
++    # 1. Préparation : texte, images ou refus (format non analysable)
++    notes: List[str] = []
++    text, images = "", []
+     try:
+         if content_type == "application/pdf":
+-            text = _extract_pdf_text(data)
+-            if not text:
+-                return _empty("PDF illisible (extraction texte vide)")
+-            parsed = await _analyze_text(text, filename)
++            text, images, notes = prepare_pdf(data)
+         elif content_type in IMAGE_MIMES:
+-            parsed = await _analyze_image(data, content_type, filename)
++            images = [_shrink_image(data)]
+         else:
+-            # Best-effort for text-like files
+-            try:
+-                text = data.decode("utf-8", errors="ignore")[:20000]
+-            except Exception:
+-                return _empty(f"Type non pris en charge pour l'analyse : {content_type}")
++            text = data.decode("utf-8", errors="ignore")[:MAX_TEXT_CHARS]   # txt / csv
+             if not text.strip():
+-                return _empty("Contenu vide")
+-            parsed = await _analyze_text(text, filename)
++                return _empty(model.id, f"Type non pris en charge pour l'analyse : {content_type}")
++    except Exception as exc:  # noqa: BLE001 — image corrompue, PDF protégé...
++        logger.exception("Préparation impossible pour %s", filename)
++        return _empty(model.id, f"Fichier illisible : {exc}", error=str(exc))
++    input_mode = "images" if images else "texte"
+ 
+-        return {
+-            "summary": parsed.get("summary", ""),
+-            "extracted_fields": parsed.get("extracted_fields", {}) or {},
+-            "document_type": parsed.get("document_type"),
+-            "flags": parsed.get("flags", []) or [],
+-            "model": MODEL_ID,
+-        }
+-    except json.JSONDecodeError:
+-        logger.exception("Réponse IA non-JSON")
+-        return _empty("Réponse de l'IA au format inattendu")
+-    except Exception as exc:  # noqa: BLE001
+-        logger.exception("Erreur analyse IA")
+-        result = _empty(f"Erreur d'analyse : {exc}")
+-        result["error"] = str(exc)
++    # 2. Appel au modèle
++    started = time.monotonic()
++    try:
++        reply, input_tokens, output_tokens = await _call_llm(model, text, images, filename)
++    except Exception as exc:  # noqa: BLE001 — réseau, quota, clé absente, modèle inconnu du proxy...
++        logger.exception("Erreur analyse IA (%s) pour %s", model.id, filename)
++        return _empty(model.id, f"Erreur d'analyse : {exc}", error=str(exc))
++
++    # 3. Coût calculé AVANT le parsing : les tokens sont facturés même si la
++    #    réponse est inexploitable.
++    cost_usd, cost_xof = compute_cost(model, input_tokens, output_tokens)
++    metrics = {
++        "model": model.id, "input_mode": input_mode,
++        "input_tokens": input_tokens, "output_tokens": output_tokens,
++        "cost_usd": cost_usd, "cost_xof": cost_xof,
++        "pages_analyzed": len(images) if images else 1,
++        "duration_ms": int((time.monotonic() - started) * 1000),
++    }
++    try:
++        parsed = _parse_json(reply)
++    except json.JSONDecodeError as exc:
++        logger.exception("Réponse IA non-JSON (%s) pour %s", model.id, filename)
++        result = _empty(model.id, "Réponse de l'IA au format inattendu", error=str(exc))
++        result.update(metrics)
+         return result
++
++    fields = parsed.get("extracted_fields") or {}
++    if not isinstance(fields, dict):
++        fields = {"valeur": fields}
++    return {
++        "summary": parsed.get("summary", ""),
++        "extracted_fields": fields,
++        "document_type": parsed.get("document_type"),
++        "flags": list(parsed.get("flags") or []) + notes,
++        "confidence": _clamp_confidence(parsed.get("confidence")),
++        "uncertain_fields": [k for k in (parsed.get("uncertain_fields") or []) if isinstance(k, str)],
++        **metrics,
++    }
+diff --git a/backend/albarka_documents.py b/backend/albarka_documents.py
+index 96693a9..6f8a038 100644
+--- a/backend/albarka_documents.py
++++ b/backend/albarka_documents.py
+@@ -1,18 +1,33 @@
+-"""Documents (pièces client) — upload, listing, download, analyse IA."""
++"""Documents (pièces client) — upload, listing, download, analyse IA.
++
++Mesure et optimisation de l'OCR (staff uniquement) :
++  - choix du modèle Claude avant téléversement (Opus / Sonnet / Haiku) ;
++  - chaque analyse est une « exécution » conservée dans `document_ocr_runs`
++    (une pièce peut être relancée avec un autre modèle pour comparer), avec
++    son coût réel en FCFA (tokens réellement consommés) ;
++  - `document_syntheses` garde, comme avant, UNE synthèse par pièce (la plus
++    récente) : les rapports PDF qui la lisent ne changent pas ;
++  - évaluation humaine : 1 à 5 étoiles + corrections des champs → précision
++    réelle, distincte de la confiance que le modèle s'attribue ;
++  - tableau de bord par période et par modèle.
++Les clients ne voient jamais le modèle, le coût ni les évaluations.
++"""
+ from __future__ import annotations
+ 
+ import asyncio
+ import base64
++import json
+ import logging
+-from datetime import datetime, timezone
++import uuid
++from datetime import datetime, timedelta, timezone
+ from html import escape as _esc
+-from typing import Optional
++from typing import Any, Dict, List, Optional
+ 
+ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+ from fastapi.responses import Response
+-from pydantic import BaseModel
++from pydantic import BaseModel, Field
+ 
+-from albarka_ai import analyze_document
++from albarka_ai import DEFAULT_MODEL_ID, OCR_MODELS, analyze_document, get_model, usd_to_xof_rate
+ from albarka_auth import get_current_user, require_staff
+ from albarka_models import (
+     DOCS_DELETE_ROLES,
+@@ -88,11 +103,34 @@ def _resolve_tenant_id(user: dict, requested: Optional[str]) -> str:
+     return requested
+ 
+ 
++def _resolve_model_id(user: dict, requested: Optional[str]) -> str:
++    """Le staff choisit le modèle d'IA ; un client utilise toujours le modèle par défaut."""
++    if is_client(user) or not requested:
++        return DEFAULT_MODEL_ID
++    if not get_model(requested):
++        raise HTTPException(status_code=400, detail=f"Modèle d'IA inconnu : {requested}")
++    return requested
++
++
++# Champs internes au cabinet, jamais renvoyés à un compte client.
++_INTERNAL_SYNTHESIS_FIELDS = {
++    "run_id", "model", "input_mode", "input_tokens", "output_tokens", "cost_usd", "cost_xof",
++    "pages_analyzed", "duration_ms", "confidence", "uncertain_fields", "error", "requested_by",
++}
++
++
++def _for_client(synthesis: Optional[dict]) -> Optional[dict]:
++    if not synthesis:
++        return synthesis
++    return {k: v for k, v in synthesis.items() if k not in _INTERNAL_SYNTHESIS_FIELDS}
++
++
+ @router.post("")
+ async def upload_document(
+     file: UploadFile = File(...),
+     kind: str = Form("piece_comptable"),
+     tenant_id: Optional[str] = Form(None),
++    model: Optional[str] = Form(None),
+     user: dict = Depends(get_current_user),
+ ):
+     if kind not in DOCUMENT_KINDS:
+@@ -106,6 +144,7 @@ async def upload_document(
+         raise HTTPException(status_code=413, detail="Fichier trop volumineux (max 20 Mo)")
+ 
+     resolved_tenant_id = _resolve_tenant_id(user, tenant_id)
++    model_id = _resolve_model_id(user, model)
+     content_type = guess_content_type(ext, file.content_type or "application/octet-stream")
+ 
+     stored = await save_and_log(
+@@ -149,13 +188,19 @@ async def upload_document(
+         if tenant:
+             asyncio.create_task(notify_upload(db, document=doc, tenant=tenant))
+ 
+-    asyncio.create_task(_analyze_and_store(doc["id"], data, content_type, file.filename or "", resolved_tenant_id))
++    asyncio.create_task(_analyze_and_store(
++        doc["id"], data, content_type, file.filename or "", resolved_tenant_id, model_id, user["id"],
++    ))
+     return serialize(doc.copy())
+ 
+ 
+-async def _analyze_and_store(document_id: str, data: bytes, content_type: str, filename: str, tenant_id: str) -> None:
++async def _analyze_and_store(
++    document_id: str, data: bytes, content_type: str, filename: str, tenant_id: str,
++    model_id: Optional[str] = None, requested_by: Optional[str] = None,
++) -> None:
+     try:
+-        result = await analyze_document(data, content_type, filename)
++        result = await analyze_document(data, content_type, filename, model_id)
++        now = datetime.now(timezone.utc).isoformat()
+         synthesis = {
+             "id": document_id,
+             "document_id": document_id,
+@@ -165,8 +210,27 @@ async def _analyze_and_store(document_id: str, data: bytes, content_type: str, f
+             "document_type_guess": result.get("document_type"),
+             "flags": result.get("flags", []),
+             "model": result.get("model"),
+-            "created_at": datetime.now(timezone.utc).isoformat(),
++            "created_at": now,
++            # Mesure OCR (interne au cabinet, masquée aux clients)
++            "confidence": result.get("confidence"),
++            "uncertain_fields": result.get("uncertain_fields", []),
++            "input_mode": result.get("input_mode"),
++            "input_tokens": result.get("input_tokens", 0),
++            "output_tokens": result.get("output_tokens", 0),
++            "cost_usd": result.get("cost_usd", 0.0),
++            "cost_xof": result.get("cost_xof", 0.0),
++            "pages_analyzed": result.get("pages_analyzed", 0),
++            "duration_ms": result.get("duration_ms", 0),
++            "error": result.get("error"),
++            "requested_by": requested_by,
+         }
++        # 1. Historique : chaque analyse est une exécution conservée (id propre),
++        #    pour comparer les modèles et porter l'évaluation humaine.
++        run = {**synthesis, "id": str(uuid.uuid4()), "review": None}
++        await db.document_ocr_runs.insert_one(run.copy())
++        # 2. Synthèse « courante » : toujours UNE par pièce (id = document_id),
++        #    exactement comme avant ce lot — lue par les rapports PDF.
++        synthesis["run_id"] = run["id"]
+         await db.document_syntheses.update_one(
+             {"id": document_id}, {"$set": synthesis}, upsert=True,
+         )
+@@ -204,9 +268,156 @@ async def list_documents(tenant_id: Optional[str] = None, user: dict = Depends(g
+             d["client_company"] = (c or {}).get("company")
+             d["client_whatsapp_verified"] = is_whatsapp_verified(c or {})
+ 
++        # Résumé des analyses IA (modèle, coût, note) affiché dans le tableau.
++        runs = await db.document_ocr_runs.find(
++            {"document_id": {"$in": [d["id"] for d in docs]}},
++            {"_id": 0, "id": 1, "document_id": 1, "model": 1, "cost_xof": 1, "review": 1, "created_at": 1},
++        ).sort("created_at", 1).to_list(5000)
++        runs_by_doc: Dict[str, List[dict]] = {}
++        for r in runs:
++            runs_by_doc.setdefault(r["document_id"], []).append({
++                "id": r["id"], "model": r.get("model"), "cost_xof": r.get("cost_xof"),
++                "rating": (r.get("review") or {}).get("rating"),
++            })
++        for d in docs:
++            d["ocr_runs"] = runs_by_doc.get(d["id"], [])
++
+     return docs
+ 
+ 
++# ---------------------------------------------------------------------
++# Mesure OCR : modèles, tableau de bord, évaluation humaine (staff).
++# Déclarés AVANT /{document_id} pour ne pas être capturés par cette route.
++# ---------------------------------------------------------------------
++_OCR_PERIODS = {"today", "7d", "30d", "all"}
++
++
++@router.get("/ocr-models")
++async def list_ocr_models(user: dict = Depends(require_staff())):
++    """Liste déroulante des modèles + taux USD→FCFA appliqué aux coûts."""
++    return {
++        "models": [m.public() for m in OCR_MODELS.values()],
++        "default_model": DEFAULT_MODEL_ID,
++        "usd_to_xof_rate": usd_to_xof_rate(),
++    }
++
++
++def _period_start(period: str) -> Optional[str]:
++    now = datetime.now(timezone.utc)
++    if period == "today":
++        return now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
++    if period == "7d":
++        return (now - timedelta(days=7)).isoformat()
++    if period == "30d":
++        return (now - timedelta(days=30)).isoformat()
++    return None
++
++
++def _avg(values: List[float]) -> Optional[float]:
++    return round(sum(values) / len(values), 4) if values else None
++
++
++def _ocr_stats_block(rows: List[dict]) -> Dict[str, Any]:
++    """Indicateurs d'un groupe d'analyses (un modèle, ou le total)."""
++    reviews = [r["review"] for r in rows if r.get("review")]
++    ok_rows = [r for r in rows if not r.get("error")]
++    total_cost = sum(float(r.get("cost_xof") or 0) for r in rows)
++    return {
++        "runs": len(rows),
++        "errors": len(rows) - len(ok_rows),
++        "total_cost_xof": round(total_cost, 2),
++        "avg_cost_xof": round(total_cost / len(rows), 2) if rows else None,
++        "total_input_tokens": sum(int(r.get("input_tokens") or 0) for r in rows),
++        "total_output_tokens": sum(int(r.get("output_tokens") or 0) for r in rows),
++        "avg_duration_ms": _avg([float(r.get("duration_ms") or 0) for r in ok_rows]),
++        # Confiance auto-déclarée par le modèle — indicative seulement
++        "avg_confidence": _avg([float(r["confidence"]) for r in ok_rows if r.get("confidence") is not None]),
++        # Mesures humaines (seules à faire foi)
++        "reviewed": len(reviews),
++        "avg_rating": _avg([float(rv["rating"]) for rv in reviews if rv.get("rating")]),
++        "avg_accuracy": _avg([float(rv["accuracy"]) for rv in reviews if rv.get("accuracy") is not None]),
++    }
++
++
++@router.get("/ocr-stats")
++async def ocr_stats(period: str = "30d", user: dict = Depends(require_staff())):
++    """Coût cumulé/moyen, note et précision moyennes, par modèle et au total."""
++    if period not in _OCR_PERIODS:
++        raise HTTPException(status_code=400, detail=f"period invalide (attendu : {sorted(_OCR_PERIODS)})")
++    query: dict = {}
++    start = _period_start(period)
++    if start:
++        query["created_at"] = {"$gte": start}
++    rows = await db.document_ocr_runs.find(
++        query, {"_id": 0, "extracted_fields": 0, "summary": 0},
++    ).to_list(20000)
++    by_model: Dict[str, List[dict]] = {}
++    for r in rows:
++        by_model.setdefault(r.get("model") or "inconnu", []).append(r)
++    models = []
++    for model_id, model_rows in by_model.items():
++        cfg = get_model(model_id)
++        models.append({"model": model_id, "label": cfg.label if cfg else model_id, **_ocr_stats_block(model_rows)})
++    models.sort(key=lambda m: m["runs"], reverse=True)
++    return {"period": period, "usd_to_xof_rate": usd_to_xof_rate(), "models": models, "total": _ocr_stats_block(rows)}
++
++
++class OcrReviewPayload(BaseModel):
++    rating: int = Field(..., ge=1, le=5, description="Note de 1 à 5 étoiles")
++    comment: Optional[str] = Field(None, max_length=2000)
++    # Valeurs corrigées, clé = nom du champ extrait. Une clé absente de
++    # l'extraction = champ oublié par le modèle (compte comme une erreur).
++    corrected_fields: Dict[str, Any] = Field(default_factory=dict)
++
++
++def _normalize_value(value: Any) -> Any:
++    """Forme comparable : ignore espaces, casse et format des nombres
++    ("150 000", "150000" et 150000.0 sont égaux)."""
++    if value is None:
++        return ""
++    if isinstance(value, (dict, list)):
++        return json.dumps(value, sort_keys=True, ensure_ascii=False)
++    text = " ".join(str(value).split())
++    compact = text.replace(" ", "").replace("\u202f", "").replace(",", ".")
++    try:
++        return float(compact)
++    except ValueError:
++        return text.lower()
++
++
++def compute_accuracy(extracted: Dict[str, Any], corrected: Dict[str, Any]) -> Dict[str, Any]:
++    """Précision réelle = part des champs que le comptable n'a PAS eu à corriger."""
++    changed = {
++        k: v for k, v in corrected.items()
++        if k not in extracted or _normalize_value(v) != _normalize_value(extracted.get(k))
++    }
++    total = len(set(extracted) | set(corrected))
++    accuracy = round((total - len(changed)) / total, 4) if total else None
++    return {"changed": changed, "fields_total": total, "fields_corrected": len(changed), "accuracy": accuracy}
++
++
++@router.post("/ocr-runs/{run_id}/review")
++async def review_ocr_run(run_id: str, payload: OcrReviewPayload, user: dict = Depends(require_staff())):
++    run = await db.document_ocr_runs.find_one({"id": run_id}, {"_id": 0})
++    if not run:
++        raise HTTPException(status_code=404, detail="Analyse introuvable")
++    acc = compute_accuracy(run.get("extracted_fields") or {}, payload.corrected_fields)
++    review = {
++        "rating": payload.rating,
++        "comment": (payload.comment or "").strip() or None,
++        "corrected_fields": acc["changed"],      # seulement ce qui a vraiment changé
++        "fields_total": acc["fields_total"],
++        "fields_corrected": acc["fields_corrected"],
++        "accuracy": acc["accuracy"],
++        "reviewed_by": user["id"],
++        "reviewed_by_name": user.get("full_name"),
++        "reviewed_at": datetime.now(timezone.utc).isoformat(),
++    }
++    # Une nouvelle évaluation remplace la précédente (correction d'une erreur de saisie).
++    await db.document_ocr_runs.update_one({"id": run_id}, {"$set": {"review": review}})
++    return review
++
++
+ async def _get_owned_document(document_id: str, user: dict) -> dict:
+     doc = await db.documents.find_one({"id": document_id}, {"_id": 0})
+     if not doc:
+@@ -220,10 +431,40 @@ async def _get_owned_document(document_id: str, user: dict) -> dict:
+ async def get_document(document_id: str, user: dict = Depends(get_current_user)):
+     doc = await _get_owned_document(document_id, user)
+     synthesis = await db.document_syntheses.find_one({"document_id": document_id}, {"_id": 0})
++    if is_client(user):
++        # Le client ne voit que la synthèse, sans modèle/coût/évaluation.
++        doc["synthesis"] = _for_client(synthesis)
++        return doc
+     doc["synthesis"] = synthesis
++    # Staff : toutes les analyses de la pièce, pour comparer les modèles.
++    doc["ocr_runs"] = await db.document_ocr_runs.find(
++        {"document_id": document_id}, {"_id": 0},
++    ).sort("created_at", 1).to_list(200)
+     return doc
+ 
+ 
++class ReanalyzePayload(BaseModel):
++    model: str
++
++
++@router.post("/{document_id}/reanalyze")
++async def reanalyze_document(document_id: str, payload: ReanalyzePayload, user: dict = Depends(require_staff())):
++    """Relance l'analyse de la même pièce avec un autre modèle (comparaison)."""
++    doc = await _get_owned_document(document_id, user)
++    model_id = _resolve_model_id(user, payload.model)
++    try:
++        data, _ct = await get_object(doc["storage_path"])
++    except Exception as exc:  # noqa: BLE001
++        logger.exception("Lecture de la pièce impossible pour %s", document_id)
++        raise HTTPException(status_code=502, detail=f"Pièce introuvable dans le stockage : {exc}") from exc
++    await db.documents.update_one({"id": document_id}, {"$set": {"status": "en_analyse"}})
++    asyncio.create_task(_analyze_and_store(
++        document_id, data, doc.get("content_type") or "application/octet-stream",
++        doc.get("original_filename") or "", doc["tenant_id"], model_id, user["id"],
++    ))
++    return {"status": "en_analyse", "model": model_id}
++
++
+ @router.get("/{document_id}/download-url")
+ async def get_download_url(document_id: str, user: dict = Depends(get_current_user)):
+     doc = await _get_owned_document(document_id, user)
+@@ -254,6 +495,7 @@ async def delete_document(document_id: str, user: dict = Depends(get_current_use
+     _require_delete_access(user)
+     await db.documents.delete_one({"id": document_id})
+     await db.document_syntheses.delete_one({"document_id": document_id})
++    await db.document_ocr_runs.delete_many({"document_id": document_id})
+     return {"ok": True, "id": document_id}
+ 
+ 
+diff --git a/backend/tests/test_ocr_lot1.py b/backend/tests/test_ocr_lot1.py
+new file mode 100644
+index 0000000..324d689
+--- /dev/null
++++ b/backend/tests/test_ocr_lot1.py
+@@ -0,0 +1,278 @@
++"""Lot 1 OCR — choix du modèle, coût réel FCFA, évaluation, tableau de bord.
++
++Tests unitaires autonomes : MongoDB simulé (mongomock-motor), stockage et
++appel IA remplacés par des doublures — aucun serveur, aucune clé, aucun
++réseau, dans le même esprit que test_documents_permissions.py.
++"""
++from __future__ import annotations
++
++import asyncio
++import io
++import json
++import os
++import sys
++from pathlib import Path
++from types import SimpleNamespace
++
++os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
++os.environ.setdefault("DB_NAME", "albarka_test")
++os.environ.setdefault("JWT_SECRET_KEY", "test-secret")
++os.environ.setdefault("USD_TO_XOF_RATE", "600")
++
++import pytest
++from fastapi import FastAPI
++from fastapi.testclient import TestClient
++from PIL import Image
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++import albarka_ai  # noqa: E402
++import albarka_documents as ad  # noqa: E402
++from albarka_auth import get_current_user  # noqa: E402
++
++mongomock_motor = pytest.importorskip("mongomock_motor")
++
++STAFF = {"id": "staff-1", "full_name": "Comptable Test", "roles": ["superviseur"], "is_active": True}
++CLIENT = {"id": "client-1", "full_name": "Client Test", "roles": ["client"], "is_active": True}
++HAIKU = "claude-haiku-4-5-20251001"
++
++
++def _png(width: int, height: int) -> bytes:
++    buf = io.BytesIO()
++    Image.new("RGB", (width, height), "white").save(buf, format="PNG")
++    return buf.getvalue()
++
++
++def _pdf(pages: int, text: str = "") -> bytes:
++    import fitz
++
++    doc = fitz.open()
++    for i in range(pages):
++        page = doc.new_page()
++        if text:
++            page.insert_textbox(fitz.Rect(40, 40, 560, 800), f"{text} — page {i + 1}")
++    data = doc.tobytes()
++    doc.close()
++    return data
++
++
++def _run(coro):
++    return asyncio.run(coro)
++
++
++# ---------------------------------------------------------------------
++# albarka_ai : coût, préparation, lecture de la réponse
++# ---------------------------------------------------------------------
++class TestAiModule:
++    def test_cost_uses_real_tokens_and_rate(self):
++        usd, xof = albarka_ai.compute_cost(albarka_ai.OCR_MODELS["claude-opus-5"], 1000, 500)
++        assert usd == pytest.approx(0.0175) and xof == pytest.approx(10.5)
++
++    def test_default_model_is_unchanged_sonnet(self):
++        assert albarka_ai.DEFAULT_MODEL_ID == "claude-sonnet-5"
++
++    def test_photo_is_shrunk_to_1568(self):
++        with Image.open(io.BytesIO(albarka_ai._shrink_image(_png(4000, 3000)))) as img:
++            assert img.format == "JPEG" and max(img.size) == albarka_ai.MAX_IMAGE_EDGE_PX
++
++    def test_scanned_pdf_is_sent_as_images(self):
++        text, images, notes = albarka_ai.prepare_pdf(_pdf(12))
++        assert text == "" and len(images) == albarka_ai.MAX_PDF_PAGES and "12" in notes[0]
++
++    def test_text_pdf_is_sent_as_text(self):
++        text, images, _ = albarka_ai.prepare_pdf(_pdf(2, "Facture numéro F-12 montant 150000 FCFA " * 20))
++        assert images == [] and "F-12" in text
++
++    def test_extract_parses_json_and_computes_cost(self, monkeypatch):
++        answer = {"document_type": "Facture", "summary": "ok", "flags": [],
++                  "extracted_fields": {"numero": "F-12", "montant_total": 150000},
++                  "confidence": 1.7, "uncertain_fields": ["numero", 3]}
++
++        async def fake(model, text, images, filename):
++            return json.dumps(answer), 2000, 400
++
++        monkeypatch.setattr(albarka_ai, "_call_llm", fake)
++        r = _run(albarka_ai.analyze_document(_png(800, 600), "image/png", "f.png", "claude-sonnet-5"))
++        assert r["model"] == "claude-sonnet-5" and r["input_mode"] == "images"
++        assert r["confidence"] == 1.0 and r["uncertain_fields"] == ["numero"]
++        assert r["cost_usd"] == pytest.approx(0.008) and r["cost_xof"] == pytest.approx(4.8)
++        assert "error" not in r
++
++    def test_cost_kept_when_answer_is_not_json(self, monkeypatch):
++        async def fake(model, text, images, filename):
++            return "désolé", 1000, 10
++
++        monkeypatch.setattr(albarka_ai, "_call_llm", fake)
++        r = _run(albarka_ai.analyze_document(_png(100, 100), "image/png", "f.png", HAIKU))
++        assert r["error"] and r["cost_xof"] > 0
++
++    def test_backward_compatible_call_without_model(self, monkeypatch):
++        """albarka_myaccount.py appelle analyze_document(data, ct, filename)."""
++        async def fake(model, text, images, filename):
++            return '{"summary": "ok"}', 10, 10
++
++        monkeypatch.setattr(albarka_ai, "_call_llm", fake)
++        r = _run(albarka_ai.analyze_document(_png(100, 100), "image/png", "f.png"))
++        assert r["model"] == albarka_ai.DEFAULT_MODEL_ID
++
++    def test_call_llm_reads_usage_from_public_api(self, monkeypatch):
++        """Branchement réel sur emergentintegrations 0.2.0 : modèle transmis,
++        images en ImageContent, tokens lus dans ChatResponse.usage."""
++        from emergentintegrations.llm.chat import LlmChat
++
++        captured = {}
++
++        async def fake_send(self, message):
++            captured.update(model=self.model, provider=self.provider, params=self.extra_params, message=message)
++            return SimpleNamespace(content='{"summary": "x"}',
++                                   usage=SimpleNamespace(input_tokens=1234, output_tokens=56))
++
++        monkeypatch.setenv("EMERGENT_LLM_KEY", "sk-emergent-test")
++        monkeypatch.setattr(LlmChat, "send_message_with_tools", fake_send)
++        out = _run(albarka_ai._call_llm(albarka_ai.OCR_MODELS["claude-opus-5"], "", [b"a", b"b"], "f.pdf"))
++        assert out == ('{"summary": "x"}', 1234, 56)
++        assert captured["provider"] == "anthropic" and captured["model"] == "claude-opus-5"
++        assert captured["params"]["max_tokens"] == 8192
++        assert len(captured["message"].file_contents) == 2
++
++    def test_missing_key_is_reported(self, monkeypatch):
++        monkeypatch.delenv("EMERGENT_LLM_KEY", raising=False)
++        r = _run(albarka_ai.analyze_document(_png(100, 100), "image/png", "f.png"))
++        assert "EMERGENT_LLM_KEY" in r["flags"][0]
++
++
++# ---------------------------------------------------------------------
++# Précision réelle
++# ---------------------------------------------------------------------
++class TestAccuracy:
++    def test_formatting_is_not_an_error(self):
++        acc = ad.compute_accuracy(
++            {"numero": "F-12", "montant_total": 150000, "date": "2026-09-01", "client": "SARL X"},
++            {"numero": " f-12 ", "montant_total": "150 000", "date": "2026-09-02", "ifu": "00012345A"},
++        )
++        assert (acc["fields_total"], acc["fields_corrected"]) == (5, 2)
++        assert set(acc["changed"]) == {"date", "ifu"} and acc["accuracy"] == pytest.approx(0.6)
++
++    def test_no_fields(self):
++        assert ad.compute_accuracy({}, {})["accuracy"] is None
++
++
++# ---------------------------------------------------------------------
++# API (FastAPI + Mongo simulé)
++# ---------------------------------------------------------------------
++_ORIGINAL_ANALYZE = ad._analyze_and_store
++
++
++@pytest.fixture()
++def api(monkeypatch):
++    mock_db = mongomock_motor.AsyncMongoMockClient()["albarka_test"]
++    monkeypatch.setattr(ad, "db", mock_db)
++    stored = {}
++
++    async def fake_save_and_log(db, *, data, kind, tenant_id, ext, content_type=None,
++                                original_filename=None, user_id=None, metadata=None):
++        path = f"{kind}/{tenant_id}/{original_filename}"
++        stored[path] = data
++        return {"id": f"doc-{len(stored)}", "path": path, "size": len(data), "content_type": content_type}
++
++    async def fake_get_object(path):
++        return stored[path], "image/png"
++
++    async def noop(*args, **kwargs):
++        return None
++
++    scheduled = []
++
++    async def fake_analyze(*args):
++        scheduled.append(args)
++
++    monkeypatch.setattr(ad, "save_and_log", fake_save_and_log)
++    monkeypatch.setattr(ad, "get_object", fake_get_object)
++    monkeypatch.setattr(ad, "notify_upload", noop)
++    monkeypatch.setattr(ad, "_analyze_and_store", fake_analyze)
++    import albarka_phase_c
++    monkeypatch.setattr(albarka_phase_c, "_auto_archive", noop)
++
++    app = FastAPI()
++    app.include_router(ad.router, prefix="/api")
++    state = {"user": STAFF}
++    app.dependency_overrides[get_current_user] = lambda: state["user"]
++    return SimpleNamespace(client=TestClient(app), db=mock_db, scheduled=scheduled, state=state)
++
++
++def _upload(api, **form):
++    return api.client.post("/api/documents", files={"file": ("facture.png", _png(200, 100), "image/png")}, data=form)
++
++
++class TestApi:
++    def test_staff_upload_with_chosen_model(self, api):
++        assert _upload(api, kind="piece_comptable", tenant_id=CLIENT["id"], model=HAIKU).status_code == 200
++        assert api.scheduled[-1][5] == HAIKU and api.scheduled[-1][6] == STAFF["id"]
++
++    def test_staff_upload_rejects_unknown_model(self, api):
++        assert _upload(api, kind="piece_comptable", tenant_id=CLIENT["id"], model="gpt-4o").status_code == 400
++
++    def test_client_cannot_choose_model(self, api):
++        api.state["user"] = CLIENT
++        assert _upload(api, kind="piece_comptable", model=HAIKU).status_code == 200
++        assert api.scheduled[-1][5] == albarka_ai.DEFAULT_MODEL_ID
++
++    def test_client_is_forbidden_from_ocr_tools(self, api):
++        api.state["user"] = CLIENT
++        assert api.client.get("/api/documents/ocr-stats").status_code == 403
++        assert api.client.get("/api/documents/ocr-models").status_code == 403
++
++    def test_full_cycle(self, api, monkeypatch):
++        doc_id = _upload(api, kind="piece_comptable", tenant_id=CLIENT["id"], model="claude-opus-5").json()["id"]
++        base = {"document_type": "Facture", "summary": "ok", "flags": [], "confidence": 0.9,
++                "uncertain_fields": [], "input_mode": "images", "input_tokens": 3000, "output_tokens": 600,
++                "pages_analyzed": 1, "duration_ms": 1500}
++        for model, cost, fields in (("claude-opus-5", 18.0, {"numero": "F-1", "montant_total": 1000}),
++                                    (HAIKU, 3.0, {"numero": "F-7", "montant_total": 1000})):
++            result = dict(base, model=model, cost_xof=cost, cost_usd=cost / 600, extracted_fields=fields)
++
++            async def fake_analyze_document(*a, _r=result):
++                return dict(_r)
++
++            monkeypatch.setattr(ad, "analyze_document", fake_analyze_document)
++            _run(_ORIGINAL_ANALYZE(doc_id, b"x", "image/png", "facture.png", CLIENT["id"], model, STAFF["id"]))
++
++        # Synthèse courante : toujours UNE par pièce (id = document_id), la plus récente
++        syntheses = _run(api.db.document_syntheses.find({"document_id": doc_id}).to_list(10))
++        assert len(syntheses) == 1 and syntheses[0]["id"] == doc_id and syntheses[0]["model"] == HAIKU
++
++        staff_view = api.client.get(f"/api/documents/{doc_id}").json()
++        assert [r["model"] for r in staff_view["ocr_runs"]] == ["claude-opus-5", HAIKU]
++        assert staff_view["status"] == "analyse"
++        assert [r["model"] for r in api.client.get("/api/documents").json()[0]["ocr_runs"]] == ["claude-opus-5", HAIKU]
++
++        api.state["user"] = CLIENT
++        client_view = api.client.get(f"/api/documents/{doc_id}").json()
++        assert "ocr_runs" not in client_view
++        assert "cost_xof" not in client_view["synthesis"] and "model" not in client_view["synthesis"]
++        api.state["user"] = STAFF
++
++        opus_run, haiku_run = (r["id"] for r in staff_view["ocr_runs"])
++        assert api.client.post(f"/api/documents/ocr-runs/{haiku_run}/review", json={"rating": 6}).status_code == 422
++        review = api.client.post(f"/api/documents/ocr-runs/{haiku_run}/review", json={
++            "rating": 2, "comment": "numéro faux",
++            "corrected_fields": {"numero": "F-1", "montant_total": "1 000"},
++        }).json()
++        assert review["accuracy"] == pytest.approx(0.5) and review["corrected_fields"] == {"numero": "F-1"}
++        api.client.post(f"/api/documents/ocr-runs/{opus_run}/review", json={"rating": 5, "corrected_fields": {}})
++
++        stats = api.client.get("/api/documents/ocr-stats?period=today").json()
++        by_model = {m["model"]: m for m in stats["models"]}
++        assert by_model["claude-opus-5"]["avg_rating"] == 5 and by_model["claude-opus-5"]["avg_accuracy"] == 1
++        assert by_model[HAIKU]["avg_rating"] == 2
++        assert stats["total"]["runs"] == 2 and stats["total"]["total_cost_xof"] == pytest.approx(21.0)
++        assert api.client.get("/api/documents/ocr-stats?period=hier").status_code == 400
++
++    def test_reanalyze_and_delete(self, api):
++        doc_id = _upload(api, kind="piece_comptable", tenant_id=CLIENT["id"], model="claude-opus-5").json()["id"]
++        res = api.client.post(f"/api/documents/{doc_id}/reanalyze", json={"model": "claude-sonnet-5"})
++        assert res.status_code == 200 and api.scheduled[-1][5] == "claude-sonnet-5"
++        assert api.client.post(f"/api/documents/{doc_id}/reanalyze", json={"model": "x"}).status_code == 400
++        _run(api.db.document_ocr_runs.insert_one({"id": "r1", "document_id": doc_id}))
++        assert api.client.delete(f"/api/documents/{doc_id}").status_code == 200
++        assert _run(api.db.document_ocr_runs.count_documents({"document_id": doc_id})) == 0
+diff --git a/frontend/src/components/ocr/OcrDashboard.jsx b/frontend/src/components/ocr/OcrDashboard.jsx
+new file mode 100644
+index 0000000..1c44750
+--- /dev/null
++++ b/frontend/src/components/ocr/OcrDashboard.jsx
+@@ -0,0 +1,126 @@
++// Tableau de bord OCR (cabinet) : par période et par modèle — nombre de
++// pièces analysées, coût cumulé et moyen en FCFA, note et précision
++// moyennes (évaluations humaines), confiance déclarée, durée moyenne.
++// Sert à choisir le modèle au meilleur rapport précision / coût.
++import React, { useCallback, useEffect, useState } from "react";
++import { toast } from "sonner";
++import { apiClient, extractError } from "@/lib/api";
++import {
++  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
++} from "@/components/ui/select";
++import {
++  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
++} from "@/components/ui/table";
++import StarRating from "@/components/ocr/StarRating";
++import { formatDuration, formatPercent, formatXof } from "@/components/ocr/format";
++
++const PERIODS = [
++  { value: "today", label: "Aujourd'hui" },
++  { value: "7d", label: "7 derniers jours" },
++  { value: "30d", label: "30 derniers jours" },
++  { value: "all", label: "Depuis le début" },
++];
++
++export default function OcrDashboard() {
++  const [period, setPeriod] = useState("30d");
++  const [stats, setStats] = useState(null);
++
++  const load = useCallback(async () => {
++    try {
++      const { data } = await apiClient.get("/documents/ocr-stats", { params: { period } });
++      setStats(data);
++    } catch (err) {
++      toast.error(extractError(err));
++    }
++  }, [period]);
++
++  useEffect(() => { load(); }, [load]);
++  const total = stats?.total;
++
++  return (
++    <div className="space-y-4" data-testid="ocr-dashboard">
++      <div className="flex flex-wrap items-center justify-between gap-3">
++        <p className="text-sm text-muted-foreground">
++          Coûts calculés sur les tokens réellement consommés · 1 USD = {stats?.usd_to_xof_rate ?? "…"} FCFA
++        </p>
++        <Select value={period} onValueChange={setPeriod}>
++          <SelectTrigger className="w-56 bg-white" data-testid="ocr-period"><SelectValue /></SelectTrigger>
++          <SelectContent>
++            {PERIODS.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
++          </SelectContent>
++        </Select>
++      </div>
++
++      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
++        <Kpi title="Pièces analysées" value={total ? total.runs : "—"}
++          hint={total ? `${total.reviewed} évaluée(s) · ${total.errors} en erreur` : ""} />
++        <Kpi title="Coût cumulé" value={formatXof(total?.total_cost_xof)} />
++        <Kpi title="Coût moyen par pièce" value={formatXof(total?.avg_cost_xof)} />
++        <Kpi title="Précision réelle moyenne" value={formatPercent(total?.avg_accuracy)}
++          hint={total?.avg_rating ? `Note moyenne ${total.avg_rating.toFixed(1)} / 5` : "Aucune évaluation"} />
++      </div>
++
++      <div className="albarka-card overflow-x-auto">
++        <div className="p-4 border-b border-border">
++          <div className="font-semibold">Comparaison des modèles</div>
++          <div className="text-xs text-muted-foreground mt-1">
++            La note et la précision réelle viennent uniquement de vos évaluations. La confiance est
++            celle que le modèle s'attribue lui-même : elle n'est pas une garantie.
++          </div>
++        </div>
++        <Table>
++          <TableHeader>
++            <TableRow>
++              <TableHead>Modèle</TableHead>
++              <TableHead className="text-right">Pièces</TableHead>
++              <TableHead className="text-right">Coût cumulé</TableHead>
++              <TableHead className="text-right">Coût moyen</TableHead>
++              <TableHead>Note moyenne</TableHead>
++              <TableHead className="text-right">Précision réelle</TableHead>
++              <TableHead className="text-right">Confiance déclarée</TableHead>
++              <TableHead className="text-right">Durée moy.</TableHead>
++            </TableRow>
++          </TableHeader>
++          <TableBody>
++            {(stats?.models || []).map((m) => (
++              <TableRow key={m.model}>
++                <TableCell className="font-medium">{m.label}</TableCell>
++                <TableCell className="text-right">{m.runs}{m.errors ? ` (${m.errors} err.)` : ""}</TableCell>
++                <TableCell className="text-right">{formatXof(m.total_cost_xof)}</TableCell>
++                <TableCell className="text-right">{formatXof(m.avg_cost_xof)}</TableCell>
++                <TableCell>
++                  {m.avg_rating ? (
++                    <span className="inline-flex items-center gap-2">
++                      <StarRating value={m.avg_rating} size={14} />
++                      <span className="text-xs text-muted-foreground">{m.avg_rating.toFixed(1)} ({m.reviewed})</span>
++                    </span>
++                  ) : <span className="text-xs text-muted-foreground">non évalué</span>}
++                </TableCell>
++                <TableCell className="text-right">{formatPercent(m.avg_accuracy)}</TableCell>
++                <TableCell className="text-right">{formatPercent(m.avg_confidence)}</TableCell>
++                <TableCell className="text-right">{formatDuration(m.avg_duration_ms)}</TableCell>
++              </TableRow>
++            ))}
++            {stats && stats.models.length === 0 && (
++              <TableRow>
++                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
++                  Aucune analyse sur cette période.
++                </TableCell>
++              </TableRow>
++            )}
++          </TableBody>
++        </Table>
++      </div>
++    </div>
++  );
++}
++
++function Kpi({ title, value, hint }) {
++  return (
++    <div className="albarka-card p-4">
++      <div className="text-xs text-muted-foreground">{title}</div>
++      <div className="text-xl font-semibold">{value}</div>
++      {hint && <div className="text-xs text-muted-foreground mt-1">{hint}</div>}
++    </div>
++  );
++}
+diff --git a/frontend/src/components/ocr/OcrRunsPanel.jsx b/frontend/src/components/ocr/OcrRunsPanel.jsx
+new file mode 100644
+index 0000000..5be364c
+--- /dev/null
++++ b/frontend/src/components/ocr/OcrRunsPanel.jsx
+@@ -0,0 +1,260 @@
++// Panneau « Analyses IA » d'une pièce, côté cabinet (staff) :
++//  - une puce par analyse (modèle · coût FCFA · note) pour comparer les modèles ;
++//  - relance de la même pièce avec un autre modèle ;
++//  - détail de l'analyse choisie + évaluation humaine (étoiles, corrections).
++// Le serveur calcule la précision réelle à partir des corrections ; les
++// simples différences de format ("150 000" vs 150000) ne comptent pas.
++import React, { useCallback, useEffect, useMemo, useState } from "react";
++import { RefreshCw } from "lucide-react";
++import { toast } from "sonner";
++import { apiClient, extractError } from "@/lib/api";
++import { Button } from "@/components/ui/button";
++import { Input } from "@/components/ui/input";
++import { Textarea } from "@/components/ui/textarea";
++import {
++  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
++} from "@/components/ui/select";
++import StarRating from "@/components/ocr/StarRating";
++import { displayValue, formatDuration, formatPercent, formatXof, shortModel } from "@/components/ocr/format";
++
++// Valeur éditable (texte) d'un champ : listes/objets en JSON.
++function toEditable(value) {
++  if (value === null || value === undefined) return "";
++  return typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
++}
++
++// Texte saisi → valeur : JSON si le champ d'origine était une liste/un objet.
++function fromEditable(text, original) {
++  if (original !== null && typeof original === "object") {
++    try {
++      return JSON.parse(text);
++    } catch {
++      return text;
++    }
++  }
++  return text;
++}
++
++export default function OcrRunsPanel({ doc, models, defaultModel, onChanged }) {
++  const [runs, setRuns] = useState([]);
++  const [selectedId, setSelectedId] = useState(null);
++  const [rerunModel, setRerunModel] = useState(defaultModel || "");
++
++  // Recharge les analyses de la pièce ; garde l'analyse affichée si elle
++  // existe encore, sinon montre la plus récente.
++  const load = useCallback(async (keepId = null) => {
++    try {
++      const { data } = await apiClient.get(`/documents/${doc.id}`);
++      const list = data.ocr_runs || [];
++      setRuns(list);
++      const stillThere = keepId && list.some((r) => r.id === keepId);
++      setSelectedId(stillThere ? keepId : list.length ? list[list.length - 1].id : null);
++    } catch (err) {
++      toast.error(extractError(err));
++    }
++  }, [doc.id]);
++
++  // Rechargé à l'ouverture et à chaque changement de statut (fin d'analyse).
++  useEffect(() => { load(); }, [load, doc.status]);
++  useEffect(() => { if (!rerunModel && defaultModel) setRerunModel(defaultModel); }, [defaultModel, rerunModel]);
++
++  const rerun = async () => {
++    try {
++      await apiClient.post(`/documents/${doc.id}/reanalyze`, { model: rerunModel });
++      toast.success(`Analyse relancée avec ${shortModel(rerunModel)}…`);
++      onChanged?.();
++    } catch (err) {
++      toast.error(extractError(err, "Impossible de relancer l'analyse"));
++    }
++  };
++
++  const selected = runs.find((r) => r.id === selectedId);
++
++  return (
++    <div className="space-y-4" data-testid={`ocr-panel-${doc.id}`}>
++      {/* Puces des analyses + relance avec un autre modèle */}
++      <div className="flex flex-wrap items-center gap-2">
++        {runs.map((run, i) => (
++          <button
++            key={run.id}
++            type="button"
++            onClick={() => setSelectedId(run.id)}
++            className={`text-xs rounded-full border px-3 py-1 ${run.id === selectedId
++              ? "bg-[#0F6B4A] text-white border-[#0F6B4A]" : "bg-white hover:bg-[#0F6B4A]/5"}`}
++          >
++            #{i + 1} {shortModel(run.model)} · {formatXof(run.cost_xof)}
++            {run.review ? ` · ${run.review.rating}★` : " · à évaluer"}
++          </button>
++        ))}
++        <div className="flex flex-wrap items-center gap-2 md:ml-auto">
++          <Select value={rerunModel} onValueChange={setRerunModel}>
++            <SelectTrigger className="w-64 h-9 bg-white" data-testid={`ocr-rerun-model-${doc.id}`}>
++              <SelectValue placeholder="Modèle d'IA" />
++            </SelectTrigger>
++            <SelectContent>
++              {models.map((m) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}
++            </SelectContent>
++          </Select>
++          <Button size="sm" variant="outline" onClick={rerun} disabled={doc.status === "en_analyse" || !rerunModel}
++            data-testid={`ocr-rerun-${doc.id}`}>
++            <RefreshCw className="w-4 h-4 mr-1" /> Relancer avec ce modèle
++          </Button>
++        </div>
++      </div>
++
++      {doc.status === "en_analyse" && (
++        <div className="text-sm text-muted-foreground">Analyse IA en cours…</div>
++      )}
++      {selected ? (
++        <RunReview key={selected.id} run={selected} onReviewed={() => { load(selected.id); onChanged?.(); }} />
++      ) : (
++        doc.status !== "en_analyse" && <div className="text-sm text-muted-foreground">Aucune analyse disponible.</div>
++      )}
++    </div>
++  );
++}
++
++// Détail d'UNE analyse + formulaire d'évaluation.
++function RunReview({ run, onReviewed }) {
++  const extracted = useMemo(() => run.extracted_fields || {}, [run]);
++  const uncertain = useMemo(() => new Set(run.uncertain_fields || []), [run]);
++  const review = run.review;
++
++  const [rating, setRating] = useState(review?.rating || 0);
++  const [comment, setComment] = useState(review?.comment || "");
++  const [values, setValues] = useState(() => {
++    const corrected = review?.corrected_fields || {};
++    const init = {};
++    Object.entries(extracted).forEach(([k, v]) => { init[k] = toEditable(k in corrected ? corrected[k] : v); });
++    return init;
++  });
++  // Champs oubliés par l'IA (comptent comme erreurs dans la précision).
++  const [extra, setExtra] = useState(() => Object.entries(review?.corrected_fields || {})
++    .filter(([k]) => !(k in extracted)).map(([key, value]) => ({ key, value: toEditable(value) })));
++  const [saving, setSaving] = useState(false);
++
++  const submit = async () => {
++    if (!rating) {
++      toast.error("Choisissez une note de 1 à 5 étoiles");
++      return;
++    }
++    // Tous les champs sont envoyés : le serveur ne retient que ceux qui ont changé.
++    const corrected = {};
++    Object.entries(values).forEach(([k, text]) => { corrected[k] = fromEditable(text, extracted[k]); });
++    extra.forEach(({ key, value }) => { if (key.trim()) corrected[key.trim()] = value; });
++    setSaving(true);
++    try {
++      const { data } = await apiClient.post(`/documents/ocr-runs/${run.id}/review`, {
++        rating, comment, corrected_fields: corrected,
++      });
++      toast.success(`Évaluation enregistrée — précision réelle : ${formatPercent(data.accuracy)}`);
++      onReviewed?.();
++    } catch (err) {
++      toast.error(extractError(err, "Échec de l'enregistrement"));
++    } finally {
++      setSaving(false);
++    }
++  };
++
++  return (
++    <div className="space-y-4">
++      {/* Métriques : modèle, coût réel, tokens, durée, mode d'envoi */}
++      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
++        <Metric label="Modèle" value={shortModel(run.model)} />
++        <Metric label="Coût réel" value={formatXof(run.cost_xof)} />
++        <Metric label="Tokens (entrée / sortie)" value={`${run.input_tokens ?? 0} / ${run.output_tokens ?? 0}`} />
++        <Metric label="Durée · envoi" value={`${formatDuration(run.duration_ms)} · ${run.input_mode === "texte" ? "texte" : `${run.pages_analyzed || 0} image(s)`}`} />
++      </div>
++
++      {run.document_type_guess && (
++        <div className="text-sm"><span className="text-muted-foreground">Type détecté : </span>
++          <span className="font-medium">{run.document_type_guess}</span></div>
++      )}
++      {run.summary && <div className="text-sm leading-relaxed">{run.summary}</div>}
++      <div className="text-xs text-muted-foreground">
++        Confiance déclarée par le modèle : {formatPercent(run.confidence)} — indicative ; seule votre
++        relecture ci-dessous mesure la précision réelle.
++      </div>
++      {run.flags?.length > 0 && (
++        <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
++          ⚠︎ {run.flags.join(" · ")}
++        </div>
++      )}
++
++      {/* Champs extraits, corrigeables — orange = jugé incertain par le modèle */}
++      {Object.keys(extracted).length > 0 && (
++        <div className="space-y-2">
++          <div className="text-sm font-semibold">Champs extraits (corrigez ce qui est faux)</div>
++          {Object.entries(extracted).map(([key, original]) => {
++            const isObject = original !== null && typeof original === "object";
++            const changed = (values[key] ?? "") !== toEditable(original);
++            const setVal = (e) => setValues((v) => ({ ...v, [key]: e.target.value }));
++            return (
++              <div key={key} className="grid grid-cols-1 md:grid-cols-3 gap-1 md:gap-3 items-start">
++                <label className={`text-xs uppercase tracking-wider pt-2 ${uncertain.has(key) ? "text-amber-700 font-semibold" : "text-muted-foreground"}`}>
++                  {key}{uncertain.has(key) && " (incertain)"}
++                </label>
++                <div className="md:col-span-2">
++                  {isObject ? (
++                    <Textarea rows={4} value={values[key] ?? ""} onChange={setVal}
++                      className={`font-mono text-xs bg-white ${changed ? "border-blue-500" : ""}`} />
++                  ) : (
++                    <Input value={values[key] ?? ""} onChange={setVal}
++                      className={`${uncertain.has(key) ? "bg-amber-50" : "bg-white"} ${changed ? "border-blue-500" : ""}`} />
++                  )}
++                  {changed && (
++                    <div className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">
++                      Extrait par l'IA : {displayValue(original)}
++                    </div>
++                  )}
++                </div>
++              </div>
++            );
++          })}
++        </div>
++      )}
++
++      <div className="space-y-2">
++        {extra.map((f, i) => (
++          <div key={i} className="grid grid-cols-1 md:grid-cols-3 gap-2">
++            <Input placeholder="Nom du champ (ex. ifu)" value={f.key} className="bg-white"
++              onChange={(e) => setExtra((l) => l.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)))} />
++            <Input placeholder="Valeur correcte" value={f.value} className="md:col-span-2 bg-white"
++              onChange={(e) => setExtra((l) => l.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} />
++          </div>
++        ))}
++        <Button type="button" variant="outline" size="sm" onClick={() => setExtra((l) => [...l, { key: "", value: "" }])}>
++          + Champ oublié par l'IA
++        </Button>
++      </div>
++
++      {/* Note globale + commentaire */}
++      <div className="border-t border-border pt-3 space-y-3">
++        <div className="flex flex-wrap items-center gap-3">
++          <span className="text-sm font-semibold">Votre note :</span>
++          <StarRating value={rating} onChange={setRating} size={22} />
++          {review && (
++            <span className="albarka-chip bg-emerald-100 text-emerald-800">
++              Évaluée · précision {formatPercent(review.accuracy)} ({review.fields_corrected}/{review.fields_total} corrigés)
++            </span>
++          )}
++        </div>
++        <Textarea rows={2} className="bg-white" value={comment} onChange={(e) => setComment(e.target.value)}
++          placeholder="Commentaire (facultatif) : ce qui est faux, manuscrit mal lu, tampon…" />
++        <Button onClick={submit} disabled={saving} className="bg-[#0F6B4A] hover:bg-[#0A4E36] text-white"
++          data-testid={`ocr-review-submit-${run.id}`}>
++          {saving ? "Enregistrement…" : review ? "Mettre à jour l'évaluation" : "Enregistrer l'évaluation"}
++        </Button>
++      </div>
++    </div>
++  );
++}
++
++function Metric({ label, value }) {
++  return (
++    <div className="rounded border border-border bg-white px-3 py-2">
++      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
++      <div className="font-medium">{value}</div>
++    </div>
++  );
++}
+diff --git a/frontend/src/components/ocr/StarRating.jsx b/frontend/src/components/ocr/StarRating.jsx
+new file mode 100644
+index 0000000..fd4d436
+--- /dev/null
++++ b/frontend/src/components/ocr/StarRating.jsx
+@@ -0,0 +1,38 @@
++// Note de 1 à 5 étoiles. Cliquable si `onChange` est fourni, sinon simple
++// affichage (ex. note moyenne dans le tableau des pièces).
++import { Star } from "lucide-react";
++
++export default function StarRating({ value = 0, onChange, size = 20 }) {
++  const readOnly = !onChange;
++  return (
++    <div className="inline-flex items-center gap-0.5" role={readOnly ? "img" : "radiogroup"}
++      aria-label={`${value || 0} sur 5 étoiles`}>
++      {[1, 2, 3, 4, 5].map((n) => {
++        const filled = n <= Math.round(value || 0);
++        const star = (
++          <Star
++            width={size}
++            height={size}
++            className={filled ? "fill-amber-400 text-amber-400" : "text-slate-300"}
++          />
++        );
++        return readOnly ? (
++          <span key={n}>{star}</span>
++        ) : (
++          <button
++            key={n}
++            type="button"
++            role="radio"
++            aria-checked={n === value}
++            aria-label={`${n} étoile${n > 1 ? "s" : ""}`}
++            onClick={() => onChange(n)}
++            className="p-0.5 rounded hover:scale-110 transition-transform"
++            data-testid={`ocr-star-${n}`}
++          >
++            {star}
++          </button>
++        );
++      })}
++    </div>
++  );
++}
+diff --git a/frontend/src/components/ocr/format.js b/frontend/src/components/ocr/format.js
+new file mode 100644
+index 0000000..f5c285a
+--- /dev/null
++++ b/frontend/src/components/ocr/format.js
+@@ -0,0 +1,43 @@
++// Petites fonctions d'affichage partagées par les écrans OCR du cabinet.
++
++// Montant en FCFA, avec 2 décimales sous 100 FCFA (le coût d'une pièce est
++// souvent de quelques FCFA : l'arrondir à l'entier ferait perdre l'info).
++export function formatXof(value) {
++  if (value === null || value === undefined) return "—";
++  const n = Number(value);
++  const digits = Math.abs(n) < 100 ? 2 : 0;
++  return `${n.toLocaleString("fr-FR", { minimumFractionDigits: digits, maximumFractionDigits: digits })} FCFA`;
++}
++
++// Ratio 0-1 affiché en pourcentage entier ("—" si pas encore mesuré).
++export function formatPercent(ratio) {
++  if (ratio === null || ratio === undefined) return "—";
++  return `${Math.round(Number(ratio) * 100)} %`;
++}
++
++// Durée en secondes avec une décimale.
++export function formatDuration(ms) {
++  if (!ms) return "—";
++  return `${(Number(ms) / 1000).toFixed(1)} s`;
++}
++
++// Nom court d'un modèle pour les tableaux ("claude-sonnet-5" → "Sonnet 5",
++// "claude-haiku-4-5-20251001" → "Haiku 4.5" : la date de version est masquée).
++export function shortModel(modelId) {
++  if (!modelId) return "—";
++  return modelId
++    .replace(/^claude-/, "")
++    .replace(/-\d{8}$/, "")
++    .split("-")
++    .map((part, i) => (i === 0 ? part.charAt(0).toUpperCase() + part.slice(1) : part))
++    .join(" ")
++    .replace(/(\d) (\d)/, "$1.$2");
++}
++
++// Valeur d'un champ extrait affichée lisiblement (listes/objets en JSON
++// indenté au lieu de "[object Object]").
++export function displayValue(value) {
++  if (value === null || value === undefined || value === "") return "—";
++  if (typeof value === "object") return JSON.stringify(value, null, 2);
++  return String(value);
++}
+diff --git a/frontend/src/pages/portal/Documents.jsx b/frontend/src/pages/portal/Documents.jsx
+index b71550b..fe63d7d 100644
+--- a/frontend/src/pages/portal/Documents.jsx
++++ b/frontend/src/pages/portal/Documents.jsx
+@@ -20,6 +20,10 @@ import {
+ } from "@/components/ui/table";
+ import { useAuth } from "@/contexts/AuthContext";
+ import EntitySelect from "@/components/EntitySelect";
++import OcrRunsPanel from "@/components/ocr/OcrRunsPanel";
++import OcrDashboard from "@/components/ocr/OcrDashboard";
++import StarRating from "@/components/ocr/StarRating";
++import { displayValue, formatXof, shortModel } from "@/components/ocr/format";
+ 
+ const KINDS = [
+   { value: "piece_comptable", label: "Pièce comptable" },
+@@ -60,6 +64,11 @@ export default function Documents({ tenantIdOverride = null, hideUpload = false
+   const fileRef = useRef(null);
+   const { isClient, user } = useAuth();
+   const [tenantId, setTenantId] = useState(tenantIdOverride || "");
++  // Mesure OCR (cabinet uniquement) : modèles proposés, modèle choisi pour
++  // le prochain dépôt, et vue « Pièces » / « Tableau de bord OCR ».
++  const [ocrModels, setOcrModels] = useState({ models: [], default_model: "" });
++  const [model, setModel] = useState("");
++  const [view, setView] = useState("pieces");
+ 
+   // Côté staff uniquement : le client garde son accès Download/Delete inchangé
+   // sur ses propres pièces, ces restrictions ne s'appliquent qu'à /admin/documents.
+@@ -84,6 +93,15 @@ export default function Documents({ tenantIdOverride = null, hideUpload = false
+ 
+   useEffect(() => { load(); }, [tenantIdOverride]);
+ 
++  // Liste des modèles d'IA (staff uniquement — route refusée aux clients).
++  useEffect(() => {
++    if (isClient) return;
++    apiClient.get("/documents/ocr-models").then(({ data }) => {
++      setOcrModels(data);
++      setModel((m) => m || data.default_model);
++    }).catch(() => {});
++  }, [isClient]);
++
+   // Poll analyses while any doc is pending
+   useEffect(() => {
+     const pending = docs.some((d) => d.status === "en_analyse");
+@@ -103,6 +121,7 @@ export default function Documents({ tenantIdOverride = null, hideUpload = false
+     form.append("file", file);
+     form.append("kind", kind);
+     if (!isClient) form.append("tenant_id", tenantIdOverride || tenantId);
++    if (!isClient && model) form.append("model", model);
+     try {
+       await apiClient.post("/documents", form, {
+         headers: { "Content-Type": "multipart/form-data" },
+@@ -123,7 +142,7 @@ export default function Documents({ tenantIdOverride = null, hideUpload = false
+       return;
+     }
+     setExpanded(doc.id);
+-    if (!synth[doc.id]) {
++    if (isClient && !synth[doc.id]) {  // côté staff, OcrRunsPanel charge lui-même les analyses
+       try {
+         const { data } = await apiClient.get(`/documents/${doc.id}`);
+         setSynth((s) => ({ ...s, [doc.id]: data.synthesis }));
+@@ -204,6 +223,20 @@ export default function Documents({ tenantIdOverride = null, hideUpload = false
+         </p>
+       </div>
+ 
++      {/* Bascule Pièces / Tableau de bord OCR (cabinet, hors fiche client) */}
++      {!isClient && !tenantIdOverride && (
++        <div className="inline-flex rounded-lg border border-border bg-white p-1" data-testid="ocr-view-toggle">
++          {[["pieces", "Pièces"], ["ocr", "Tableau de bord OCR"]].map(([value, label]) => (
++            <button key={value} type="button" onClick={() => setView(value)}
++              className={`px-4 py-1.5 text-sm rounded-md ${view === value ? "bg-[#0F6B4A] text-white" : "hover:bg-[#0F6B4A]/5"}`}
++              data-testid={`ocr-view-${value}`}>
++              {label}
++            </button>
++          ))}
++        </div>
++      )}
++
++      {view === "ocr" && !isClient ? <OcrDashboard /> : (<>
+       {!hideUpload && (
+         <div className="albarka-card p-6" data-testid="upload-card">
+           <div className="flex flex-col md:flex-row md:items-end gap-4">
+@@ -220,6 +253,21 @@ export default function Documents({ tenantIdOverride = null, hideUpload = false
+                 </SelectContent>
+               </Select>
+             </div>
++            {!isClient && (
++              <div className="flex-1 min-w-[240px]">
++                <label className="text-sm font-medium mb-1.5 block">Modèle d'IA</label>
++                <Select value={model} onValueChange={setModel}>
++                  <SelectTrigger data-testid="upload-model-select">
++                    <SelectValue placeholder="Modèle d'IA" />
++                  </SelectTrigger>
++                  <SelectContent>
++                    {ocrModels.models.map((m) => (
++                      <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>
++                    ))}
++                  </SelectContent>
++                </Select>
++              </div>
++            )}
+             {!isClient && !tenantIdOverride && (
+               <div className="flex-1 min-w-[240px]">
+                 <label className="text-sm font-medium mb-1.5 block">Client</label>
+@@ -253,6 +301,9 @@ export default function Documents({ tenantIdOverride = null, hideUpload = false
+           </div>
+           <p className="text-xs text-muted-foreground mt-3">
+             PDF, image (JPG/PNG/WEBP), Word, Excel — 20 Mo max.
++            {!isClient && ocrModels.models.find((m) => m.id === model) && (
++              <> {" "}· {ocrModels.models.find((m) => m.id === model).note}</>
++            )}
+           </p>
+         </div>
+       )}
+@@ -268,15 +319,16 @@ export default function Documents({ tenantIdOverride = null, hideUpload = false
+               <TableHead className="text-right">Taille</TableHead>
+               <TableHead>Déposé le</TableHead>
+               <TableHead>Statut</TableHead>
++              {!isClient && <TableHead>Analyses IA</TableHead>}
+               <TableHead className="text-right">Actions</TableHead>
+             </TableRow>
+           </TableHeader>
+           <TableBody>
+             {loading && (
+-              <TableRow><TableCell colSpan={isClient ? 7 : 8} className="text-center text-muted-foreground py-8">Chargement…</TableCell></TableRow>
++              <TableRow><TableCell colSpan={isClient ? 7 : 9} className="text-center text-muted-foreground py-8">Chargement…</TableCell></TableRow>
+             )}
+             {!loading && docs.length === 0 && (
+-              <TableRow><TableCell colSpan={isClient ? 7 : 8} className="text-center text-muted-foreground py-10">
++              <TableRow><TableCell colSpan={isClient ? 7 : 9} className="text-center text-muted-foreground py-10">
+                 Aucune pièce déposée pour le moment.
+               </TableCell></TableRow>
+             )}
+@@ -313,6 +365,18 @@ export default function Documents({ tenantIdOverride = null, hideUpload = false
+                       {STATUS_LABEL[d.status] || d.status}
+                     </span>
+                   </TableCell>
++                  {!isClient && (
++                    <TableCell>
++                      <div className="flex flex-wrap gap-1">
++                        {(d.ocr_runs || []).map((run) => (
++                          <span key={run.id} className="albarka-chip bg-slate-100 text-slate-700 inline-flex items-center gap-1">
++                            {shortModel(run.model)} · {formatXof(run.cost_xof)} ·{" "}
++                            {run.rating ? <StarRating value={run.rating} size={10} /> : "à évaluer"}
++                          </span>
++                        ))}
++                      </div>
++                    </TableCell>
++                  )}
+                   <TableCell className="text-right whitespace-nowrap">
+                     {isClient ? (
+                       <>
+@@ -349,18 +413,22 @@ export default function Documents({ tenantIdOverride = null, hideUpload = false
+                 </TableRow>
+                 {expanded === d.id && (
+                   <TableRow>
+-                    <TableCell colSpan={isClient ? 7 : 8} className="bg-[var(--albarka-paper)]/50 border-t border-border">
++                    <TableCell colSpan={isClient ? 7 : 9} className="bg-[var(--albarka-paper)]/50 border-t border-border">
+                       <div className="p-4">
+                         <div className="flex items-center gap-2 mb-3">
+                           <Sparkles className="w-4 h-4 text-[#0F6B4A]" />
+-                          <span className="text-sm font-semibold">Synthèse IA</span>
++                          <span className="text-sm font-semibold">{isClient ? "Synthèse IA" : "Analyses IA"}</span>
+                         </div>
+-                        {!synth[d.id] && d.status === "en_analyse" && (
++                        {/* Cabinet : analyses par modèle, coût, évaluation, relance */}
++                        {!isClient && (
++                          <OcrRunsPanel doc={d} models={ocrModels.models} defaultModel={ocrModels.default_model} onChanged={load} />
++                        )}
++                        {isClient && !synth[d.id] && d.status === "en_analyse" && (
+                           <div className="text-sm text-muted-foreground">
+-                            Analyse en cours par Claude Sonnet 5…
++                            Analyse IA en cours…
+                           </div>
+                         )}
+-                        {synth[d.id] && (
++                        {isClient && synth[d.id] && (
+                           <div className="space-y-3">
+                             {synth[d.id].document_type_guess && (
+                               <div className="text-sm">
+@@ -378,7 +446,8 @@ export default function Documents({ tenantIdOverride = null, hideUpload = false
+                                 {Object.entries(synth[d.id].extracted_fields).map(([k, v]) => (
+                                   <div key={k} className="text-xs bg-white border border-border rounded p-2">
+                                     <div className="uppercase tracking-wider text-muted-foreground text-[10px] mb-0.5">{k}</div>
+-                                    <div className="font-mono truncate">{String(v)}</div>
++                                    {/* displayValue : listes (lignes de facture) en JSON lisible, "—" si vide — au lieu de "[object Object]" / "null" */}
++                                    <div className="font-mono whitespace-pre-wrap break-words">{displayValue(v)}</div>
+                                   </div>
+                                 ))}
+                               </div>
+@@ -390,7 +459,7 @@ export default function Documents({ tenantIdOverride = null, hideUpload = false
+                             )}
+                           </div>
+                         )}
+-                        {!synth[d.id] && d.status !== "en_analyse" && (
++                        {isClient && !synth[d.id] && d.status !== "en_analyse" && (
+                           <div className="text-sm text-muted-foreground">Aucune synthèse disponible.</div>
+                         )}
+                       </div>
+@@ -402,6 +471,7 @@ export default function Documents({ tenantIdOverride = null, hideUpload = false
+           </TableBody>
+         </Table>
+       </div>
++      </>)}
+     </div>
+   );
+ }
+-- 
+2.43.0
+

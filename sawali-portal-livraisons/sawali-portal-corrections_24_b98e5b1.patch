@@ -1,0 +1,1242 @@
+From b98e5b1484c568f9e5fe5ca0111933e532a74768 Mon Sep 17 00:00:00 2001
+From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
+Date: Fri, 25 Sep 2026 22:28:55 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20lot=2024=20=E2=80=94=20messagerie=20(non?=
+ =?UTF-8?q?-lus,=20doublons,=20colonne),=20Liluvine=20(fil,=20diagnostic),?=
+ =?UTF-8?q?=20fen=C3=AAtres=20d=C3=A9filantes?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Centre de Messagerie :
+- les messages WhatsApp non lus de plus de 30 jours ne sont plus comptés
+  comme nouveaux (badge, cloche, pastilles) ; bouton « Tout marquer comme
+  lu » (POST /me/whatsapp/mark-all-read) pour tous les non-lus des contacts ;
+- « Dernière interaction » en colonne du tableau des contacts ;
+- plus de doublon à l'enregistrement d'un numéro inconnu : enregistrement
+  idempotent (numéro déjà présent → messages rattachés, aucune création),
+  entrées « inconnu » retirées dès que le numéro existe (ajout automatique
+  Liluvine, autre entrée du même numéro), webhook qui reconnaît un contact
+  saisi sans indicatif ou avec des espaces (8 derniers chiffres) ;
+- outil « Doublons », réservé au superviseur : contacts de même numéro
+  regroupés, fiche la plus complète gardée (à égalité la plus ancienne),
+  autres proposées et pré-cochées, suppression après confirmation des seules
+  fiches cochées, messages rattachés à la fiche gardée ;
+- tag « Relayé » sur fond blanc, texte vert.
+
+Liluvine (auto-réponse WhatsApp) :
+- réponses aux modèles d'annonce, messages de correction de commande et
+  !reactions désormais copiés dans le fil de discussion ;
+- journal de chaque décision (répondu ou motif du silence) écrit par le
+  webhook (liluvine_wa_autoreply_log) et écran « Pourquoi Liluvine n'a pas
+  répondu ? » dans Paramètres → Auto-réponse WhatsApp (GET
+  /admin/liluvine-pro/wa-autoreply/decisions).
+
+Interface : les fenêtres modales plus hautes que l'écran défilent (règle
+globale pour les fenêtres « maison », boîtes de dialogue shadcn limitées à
+90 % de la hauteur).
+---
+ backend/routes/liluvine_pro.py                |  17 ++
+ backend/routes/liluvine_reactions.py          |  11 +
+ backend/routes/liluvine_wa_autoreply.py       |  27 +-
+ backend/server.py                             | 269 ++++++++++++++++--
+ .../tests/test_contacts_duplicates_lot24.py   | 157 ++++++++++
+ .../test_liluvine_thread_mirror_lot24.py      |  47 +++
+ backend/tests/test_messaging_center_lot23.py  |   9 +-
+ backend/tests/test_messaging_center_lot24.py  |  39 +++
+ frontend/src/components/ui/dialog.jsx         |   3 +-
+ frontend/src/index.css                        |  16 ++
+ .../sections/LiluvineWaAutoreplySection.jsx   | 100 +++++++
+ frontend/src/pages/portal/Contacts.jsx        | 171 ++++++++++-
+ 12 files changed, 833 insertions(+), 33 deletions(-)
+ create mode 100644 backend/tests/test_contacts_duplicates_lot24.py
+ create mode 100644 backend/tests/test_liluvine_thread_mirror_lot24.py
+ create mode 100644 backend/tests/test_messaging_center_lot24.py
+
+diff --git a/backend/routes/liluvine_pro.py b/backend/routes/liluvine_pro.py
+index eb751c1..f7d4b88 100644
+--- a/backend/routes/liluvine_pro.py
++++ b/backend/routes/liluvine_pro.py
+@@ -805,6 +805,23 @@ def setup_liluvine_pro_routes(*, db, api, get_current_user, wa_send_text=None):
+         await db.settings.update_one({"_id": "global"}, {"$set": update}, upsert=True)
+         return {"ok": True, "updated": list(update.keys())}
+ 
++    @api.get("/admin/liluvine-pro/wa-autoreply/decisions", tags=["Admin — Liluvine PRO"])
++    async def admin_autoreply_decisions(limit: int = 50, user: dict = Depends(get_current_user)):
++        """Lot 24 — « Pourquoi Liluvine n'a pas répondu ? » : les dernières
++        décisions de l'auto-réponse WhatsApp (une par message reçu, écrites par
++        le webhook) et, sur 7 jours, le nombre de messages par motif."""
++        if user.get("role") not in ("admin", "superviseur"):
++            raise HTTPException(status_code=403, detail="Réservé aux administrateurs")
++        n = min(max(limit, 1), 200)
++        items = await db.liluvine_wa_autoreply_log.find({}, {"_id": 0}).sort("at", -1).limit(n).to_list(n)
++        since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
++        stats: Dict[str, int] = {}
++        async for d in db.liluvine_wa_autoreply_log.find({"at": {"$gte": since}}, {"_id": 0, "ok": 1, "reason": 1}):
++            # « cooldown (42s left) » → « cooldown » ; « llm_error: … » → « llm_error »
++            key = "sent" if d.get("ok") else re.split(r"[ :(]", str(d.get("reason") or "unknown"), maxsplit=1)[0]
++            stats[key] = stats.get(key, 0) + 1
++        return {"items": items, "stats_7d": stats}
++
+     @api.get("/admin/liluvine-pro/wa-autoreply/history", tags=["Admin — Liluvine PRO"])
+     async def admin_autoreply_history(limit: int = 50, user: dict = Depends(get_current_user)):
+         if user.get("role") not in ("admin", "superviseur"):
+diff --git a/backend/routes/liluvine_reactions.py b/backend/routes/liluvine_reactions.py
+index 344e099..cfc3b66 100644
+--- a/backend/routes/liluvine_reactions.py
++++ b/backend/routes/liluvine_reactions.py
+@@ -750,6 +750,17 @@ def attach_liluvine_reactions_routes(
+         try:
+             await db.directory_contacts.insert_one(new_contact.copy())
+             logger.info("[liluvine_reactions] auto-added contact +%s -> group=%s", digits, default_group_id or "-")
++            # Lot 24 — le numéro n'est plus « inconnu » : on retire son entrée
++            # « contact à enregistrer » (sinon l'enregistrer créait un doublon)
++            # et on rattache ses messages déjà reçus au nouveau contact.
++            try:
++                await db.wa_pending_imports.delete_many({"phone_digits": digits, "client_id": tenant_id})
++                await db.whatsapp_messages.update_many(
++                    {"phone_digits": digits, "client_id": tenant_id, "direction": "inbound", "contact_id": None},
++                    {"$set": {"contact_id": new_contact["id"], "contact_name": new_contact["name"]}},
++                )
++            except Exception as exc:  # noqa: BLE001
++                logger.warning("[liluvine_reactions] nettoyage après ajout auto échoué: %s", exc)
+             return {"id": new_contact["id"], "group_id": default_group_id}
+         except Exception as exc:  # noqa: BLE001
+             logger.warning("[liluvine_reactions] auto-add contact failed: %s", exc)
+diff --git a/backend/routes/liluvine_wa_autoreply.py b/backend/routes/liluvine_wa_autoreply.py
+index 01d747d..7e8f364 100644
+--- a/backend/routes/liluvine_wa_autoreply.py
++++ b/backend/routes/liluvine_wa_autoreply.py
+@@ -334,6 +334,27 @@ async def autoreply_to_inbound(
+     # PRIORITÉ 3 : Fuzzy command detection (ex: "pharmacies de garde" → `!garde`).
+     # PRIORITÉ 4 : Auto-add nouveau contact au groupe par défaut.
+     from_num = inbound_doc.get("from") or ""
++
++    # Lot 24 — envoi + copie dans le fil de discussion (`whatsapp_messages`).
++    # Les réponses aux modèles d'annonce, les messages de correction de
++    # commande et `!reactions` partaient sur WhatsApp sans être enregistrés :
++    # elles n'apparaissaient donc pas dans la conversation du contact.
++    async def _send_mirrored(to, text, command, **kw):
++        res = await wa_send_text(to, text, **kw)
++        try:
++            await db.whatsapp_messages.insert_one({
++                "id": uuid.uuid4().hex, "direction": "outbound",
++                "to": to, "phone_digits": phone_digits, "body": text,
++                "client_id": inbound_doc.get("client_id"), "contact_id": (contact or {}).get("id"),
++                "wa_message_id": (res or {}).get("message_id") if isinstance(res, dict) else None,
++                "auto_reply": True, "ai_generated": True, "ai_source": "liluvine_pro_autoreply",
++                "command": command, "status": "sent", "wa_status": "sent",
++                "sent_at": _now_iso(), "created_at": _now_iso(),
++            })
++        except Exception:  # noqa: BLE001 — la réponse est partie, la copie est secondaire
++            logger.warning("[wa_autoreply] copie dans le fil échouée (%s)", command, exc_info=True)
++        return res
++
+     try:
+         import server as _server_module
+         reactions_helpers = getattr(_server_module, "LILUVINE_REACTIONS_HELPERS", None) or {}
+@@ -356,7 +377,7 @@ async def autoreply_to_inbound(
+         if reactions_helpers.get("build_reactions_summary_reply"):
+             summary = await reactions_helpers["build_reactions_summary_reply"]()
+             try:
+-                await wa_send_text(from_num, summary)
++                await _send_mirrored(from_num, summary, "!reactions")
+                 return {"ok": True, "command": "!reactions", "reply": summary[:120]}
+             except Exception as exc:  # noqa: BLE001
+                 logger.warning("[wa_autoreply] !reactions send failed: %s", exc)
+@@ -365,7 +386,7 @@ async def autoreply_to_inbound(
+     if reactions_helpers.get("try_reply_ad_template"):
+         try:
+             match = await reactions_helpers["try_reply_ad_template"](
+-                text, wa_send_text, from_num,
++                text, (lambda to, body, **kw: _send_mirrored(to, body, "ad_template", **kw)), from_num,
+                 phone_digits=phone_digits,
+                 contact=contact,
+                 tenant_id=inbound_doc.get("client_id"),
+@@ -391,7 +412,7 @@ async def autoreply_to_inbound(
+                 correction = fuzzy.get("correction_prefix") or ""
+                 if correction:
+                     try:
+-                        await wa_send_text(from_num, correction)
++                        await _send_mirrored(from_num, correction, "fuzzy_correction")
+                     except Exception:  # noqa: BLE001
+                         pass
+                 # Iter43-fix24az-p — journalise le match dans la timeline du contact
+diff --git a/backend/server.py b/backend/server.py
+index 2aa02e6..d3a07a3 100644
+--- a/backend/server.py
++++ b/backend/server.py
+@@ -14486,6 +14486,96 @@ async def me_delete_contact(cid: str, user: dict = Depends(get_current_user)):
+     return {"ok": True}
+ 
+ 
++# ---------- Lot 24 — Dédoublonnage des contacts (même numéro) ----------
++# Champs pris en compte pour juger qu'une fiche est « plus complète ».
++_DUP_SCORE_FIELDS = ("company", "email", "phone", "whatsapp", "notes", "photo_url", "unique_code", "address", "city")
++
++
++def _contact_completeness(c: Dict[str, Any]) -> int:
++    """Nombre d'informations renseignées (le nom compte seulement s'il n'est
++    pas un simple numéro ; étiquettes et groupes comptent chacun pour 1)."""
++    score = 0
++    name = (c.get("name") or "").strip()
++    if name and not re.fullmatch(r"\+?[\d\s().-]+", name):
++        score += 1
++    for f in _DUP_SCORE_FIELDS:
++        if str(c.get(f) or "").strip():
++            score += 1
++    if c.get("tags"):
++        score += 1
++    if c.get("group_ids"):
++        score += 1
++    return score
++
++
++async def _duplicate_groups(user: dict) -> List[Dict[str, Any]]:
++    """Groupes de contacts visibles partageant le même numéro (WhatsApp, sinon
++    téléphone ; 8 derniers chiffres). Dans chaque groupe, on GARDE la fiche la
++    plus complète — à complétude égale, la plus ancienne — et on PROPOSE les
++    autres à la suppression (donc les moins complètes, et les plus récentes)."""
++    visible_scope = await _resolve_visible_client_ids(user)
++    contacts = await db.directory_contacts.find({"client_id": {"$in": visible_scope}}, {"_id": 0}).to_list(5000)
++    by_suffix: Dict[str, List[Dict[str, Any]]] = {}
++    for c in contacts:
++        suffix = _phone_suffix(c.get("whatsapp") or c.get("phone"))
++        if len(suffix) >= 6:
++            by_suffix.setdefault(suffix, []).append(c)
++    groups = []
++    for suffix, items in by_suffix.items():
++        if len(items) < 2:
++            continue
++        ranked = sorted(items, key=lambda c: (-_contact_completeness(c), str(c.get("created_at") or "")))
++
++        def _summary(c: Dict[str, Any]) -> Dict[str, Any]:
++            return {"id": c.get("id"), "name": c.get("name"), "whatsapp": c.get("whatsapp"), "phone": c.get("phone"),
++                    "company": c.get("company"), "email": c.get("email"), "tags": c.get("tags") or [],
++                    "created_at": c.get("created_at"), "score": _contact_completeness(c)}
++        groups.append({"phone_suffix": suffix, "keep": _summary(ranked[0]),
++                       "duplicates": [_summary(c) for c in ranked[1:]]})
++    groups.sort(key=lambda g: g["keep"].get("name") or "")
++    return groups
++
++
++@api.get("/me/contacts-duplicates", tags=["Portail Client"])
++async def me_contacts_duplicates(user: dict = Depends(get_current_user)):
++    """Lot 24 — propose les doublons à supprimer (réservé au superviseur)."""
++    if user.get("role") != "superviseur":
++        raise HTTPException(status_code=403, detail="Outil de dédoublonnage réservé au superviseur")
++    groups = await _duplicate_groups(user)
++    return {"groups": groups, "duplicates_count": sum(len(g["duplicates"]) for g in groups)}
++
++
++class ContactsDuplicatesDeleteRequest(BaseModel):
++    ids: List[str]
++
++
++@api.post("/me/contacts-duplicates/delete", tags=["Portail Client"])
++async def me_contacts_duplicates_delete(payload: ContactsDuplicatesDeleteRequest, user: dict = Depends(get_current_user)):
++    """Lot 24 — supprime les doublons COCHÉS par le superviseur. Seules les
++    fiches proposées comme doublons (jamais la fiche gardée d'un groupe)
++    peuvent être supprimées ; leurs messages WhatsApp/SMS sont rattachés à la
++    fiche gardée avant la suppression, pour ne rien perdre de l'historique."""
++    if user.get("role") != "superviseur":
++        raise HTTPException(status_code=403, detail="Outil de dédoublonnage réservé au superviseur")
++    wanted = set(payload.ids or [])
++    keep_of: Dict[str, Dict[str, Any]] = {}
++    for g in await _duplicate_groups(user):
++        for d in g["duplicates"]:
++            if d["id"] in wanted:
++                keep_of[d["id"]] = g["keep"]
++    deleted = 0
++    for dup_id, keep in keep_of.items():
++        await db.whatsapp_messages.update_many({"contact_id": dup_id},
++                                               {"$set": {"contact_id": keep["id"], "contact_name": keep.get("name")}})
++        await db.sms_messages.update_many({"contact_id": dup_id}, {"$set": {"contact_id": keep["id"]}})
++        res = await db.directory_contacts.delete_one({"id": dup_id})
++        if getattr(res, "deleted_count", 0):
++            deleted += 1
++            await _log_activity(client_id=None, kind="contact", action="deleted",
++                                label=f"Doublon supprimé (gardé : {keep.get('name') or keep['id']})", actor=user, target_id=dup_id)
++    return {"ok": True, "deleted": deleted, "ignored": len(wanted) - len(keep_of)}
++
++
+ @api.post("/me/contacts/{cid}/photo", tags=["Portail Client"])
+ async def me_upload_contact_photo(cid: str, request: Request, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+     """Upload a profile picture for a contact (à la WhatsApp avatar). Stored in
+@@ -14616,7 +14706,22 @@ async def me_list_wa_pending_imports(user: dict = Depends(get_current_user)):
+     client_scope = (user.get("client_id") or user.get("id"))
+     q = {} if user.get("role") == "admin" else {"client_id": client_scope}
+     items = await db.wa_pending_imports.find(q, {"_id": 0}).sort("last_seen_at", -1).to_list(50)
+-    return items
++    # Lot 24 — un numéro déjà présent dans le carnet (créé entre-temps, par
++    # exemple par l'ajout automatique de Liluvine) n'est plus proposé : son
++    # entrée est supprimée, sinon « Enregistrer » créait un doublon.
++    visible_scope = await _resolve_visible_client_ids(user)
++    kept: List[Dict[str, Any]] = []
++    seen_digits: set = set()
++    for it in items:
++        suffix = _phone_suffix(it.get("phone_digits") or it.get("from"))
++        existing = await _find_contact_by_phone(None if user.get("role") == "admin" else visible_scope,
++                                                it.get("phone_digits") or it.get("from"))
++        if existing or (suffix and suffix in seen_digits):
++            await db.wa_pending_imports.delete_one({"id": it.get("id")})
++            continue
++        seen_digits.add(suffix)
++        kept.append(it)
++    return kept
+ 
+ 
+ class WaPendingImportRequest(BaseModel):
+@@ -14710,6 +14815,22 @@ async def me_import_wa_pending(pending_id: str, payload: WaPendingImportRequest,
+     name = (payload.name or pending.get("wa_profile_name") or pending.get("from") or "").strip()
+     if not name:
+         raise HTTPException(status_code=400, detail="Nom requis")
++    # Lot 24 — idempotent : si ce numéro existe déjà dans le carnet (ajout
++    # automatique Liluvine, double clic, entrée en double…), on NE crée PAS de
++    # second contact : on rattache les messages au contact existant.
++    visible_scope = await _resolve_visible_client_ids(user)
++    raw_phone = pending.get("phone_digits") or pending.get("from")
++    existing = await _find_contact_by_phone(visible_scope, raw_phone)
++    rx = _phone_suffix_regex(raw_phone)
++    if existing:
++        if rx:
++            await db.whatsapp_messages.update_many(
++                {"client_id": {"$in": visible_scope}, "direction": "inbound", "phone_digits": {"$regex": rx}, "contact_id": None},
++                {"$set": {"contact_id": existing["id"], "contact_name": existing.get("name")}},
++            )
++            await db.wa_pending_imports.delete_many({"phone_digits": {"$regex": rx}, "client_id": {"$in": visible_scope}})
++        await db.wa_pending_imports.delete_one({"id": pending_id})
++        return {"ok": True, "already_present": True, "contact": existing}
+     new_id = _uuid()
+     contact = {
+         "id": new_id,
+@@ -14737,8 +14858,11 @@ async def me_import_wa_pending(pending_id: str, payload: WaPendingImportRequest,
+             {"$set": {"contact_id": new_id, "contact_name": name}},
+         )
+     await db.wa_pending_imports.delete_one({"id": pending_id})
++    # Lot 24 — autres entrées « inconnu » du même numéro (autre tenant visible) : devenues sans objet.
++    if rx:
++        await db.wa_pending_imports.delete_many({"phone_digits": {"$regex": rx}, "client_id": {"$in": visible_scope}})
+     contact.pop("_id", None)
+-    return {"ok": True, "contact": contact}
++    return {"ok": True, "already_present": False, "contact": contact}
+ 
+ 
+ @api.delete("/me/wa-pending-imports/{pending_id}", tags=["Portail Client"])
+@@ -15628,17 +15752,39 @@ def _contact_phone_clauses(contact: Dict[str, Any]) -> List[Dict[str, Any]]:
+     return clauses
+ 
+ 
+-async def _wa_unread_summary(user: dict) -> Dict[str, Any]:
+-    """Non-lus WhatsApp du Centre de Messagerie — SOURCE UNIQUE pour la
+-    pastille de chaque contact, le total du badge de la sidebar et la cloche.
++# Lot 24 — un message non lu de plus de 30 jours n'est plus compté comme
++# « nouveau » : l'historique jamais marqué comme lu (avant le lot 23, les
++# messages reçus sans contact rattaché ne pouvaient pas l'être) ne gonfle plus
++# le badge. Il reste marqué comme non lu en base, et « Tout marquer comme lu »
++# le traite aussi.
++WA_UNREAD_MAX_AGE_DAYS = 30
+ 
+-    - périmètre : _resolve_visible_client_ids (celui de /me/contacts et de
+-      mark-read), pour TOUS les rôles, admin compris ;
+-    - un message sans contact_id est rattaché au contact dont le numéro
+-      correspond (8 derniers chiffres) ;
+-    - seuls comptent les messages rattachés à un contact VISIBLE (donc
+-      qu'on peut ouvrir et marquer comme lus) ; les autres (expéditeurs
+-      inconnus) sont renvoyés à part dans `unknown`, sans gonfler le total."""
++
++def _phone_suffix_regex(raw: Optional[str]) -> Optional[str]:
++    """Lot 24 — regex Mongo « le numéro se termine par ces 8 chiffres », quelle
++    que soit la mise en forme stockée (« +226 70 11 11 11 », « 70111111 »…)."""
++    suffix = _phone_suffix(raw)
++    if len(suffix) < 6:
++        return None
++    return r"\D*".join(re.escape(ch) for ch in suffix) + r"\D*$"
++
++
++async def _find_contact_by_phone(scope_ids: Optional[List[str]], raw_phone: Optional[str]) -> Optional[Dict[str, Any]]:
++    """Lot 24 — contact existant ayant ce numéro (WhatsApp, téléphone ou
++    phone_digits, reconnu sur ses 8 derniers chiffres), le plus ancien d'abord.
++    `scope_ids=None` : tous les tenants."""
++    rx = _phone_suffix_regex(raw_phone)
++    if not rx:
++        return None
++    q: Dict[str, Any] = {"$or": [{"whatsapp": {"$regex": rx}}, {"phone": {"$regex": rx}}, {"phone_digits": {"$regex": rx}}]}
++    if scope_ids is not None:
++        q["client_id"] = {"$in": scope_ids}
++    return await db.directory_contacts.find_one(q, {"_id": 0}, sort=[("created_at", 1)])
++
++
++async def _wa_visible_contact_index(user: dict) -> Tuple[List[str], set, Dict[str, str]]:
++    """Périmètre visible, ids des contacts visibles et index « 8 derniers
++    chiffres du numéro → id du contact » (rattachement des messages)."""
+     visible_scope = await _resolve_visible_client_ids(user)
+     contacts = await db.directory_contacts.find(
+         {"client_id": {"$in": visible_scope}}, {"_id": 0, "id": 1, "whatsapp": 1, "phone": 1},
+@@ -15650,21 +15796,73 @@ async def _wa_unread_summary(user: dict) -> Dict[str, Any]:
+             suffix = _phone_suffix(raw)
+             if len(suffix) >= 6:
+                 by_suffix.setdefault(suffix, c["id"])
++    return visible_scope, ids, by_suffix
++
++
++def _wa_attribute(ids: set, by_suffix: Dict[str, str], contact_id: Optional[str], phone: Optional[str]) -> Optional[str]:
++    """Contact visible auquel rattacher un message (son contact_id, sinon son numéro), ou None."""
++    return contact_id if contact_id in ids else by_suffix.get(_phone_suffix(phone))
++
++
++async def _wa_unread_summary(user: dict) -> Dict[str, Any]:
++    """Non-lus WhatsApp du Centre de Messagerie — SOURCE UNIQUE pour la
++    pastille de chaque contact, le total du badge de la sidebar et la cloche.
++
++    - périmètre : _resolve_visible_client_ids (celui de /me/contacts et de
++      mark-read), pour TOUS les rôles, admin compris ;
++    - un message sans contact_id est rattaché au contact dont le numéro
++      correspond (8 derniers chiffres) ;
++    - seuls comptent les messages rattachés à un contact VISIBLE (donc
++      qu'on peut ouvrir et marquer comme lus) ; les autres (expéditeurs
++      inconnus) sont renvoyés à part dans `unknown`, sans gonfler le total ;
++    - Lot 24 : seuls comptent les messages des 30 derniers jours ; les non-lus
++      plus anciens sont renvoyés à part dans `older` (pour information)."""
++    visible_scope, ids, by_suffix = await _wa_visible_contact_index(user)
++    cutoff = (datetime.now(timezone.utc) - timedelta(days=WA_UNREAD_MAX_AGE_DAYS)).isoformat()
+     by_contact: Dict[str, int] = {}
+     unknown = 0
+-    pipeline = [
+-        {"$match": {"direction": "inbound", "read_by_us_at": None, "client_id": {"$in": visible_scope}}},
+-        {"$group": {"_id": {"c": "$contact_id", "p": "$phone_digits"}, "n": {"$sum": 1}}},
+-    ]
+-    async for row in db.whatsapp_messages.aggregate(pipeline):
++    older = 0
++    base = {"direction": "inbound", "read_by_us_at": None, "client_id": {"$in": visible_scope}}
++    group = {"$group": {"_id": {"c": "$contact_id", "p": "$phone_digits"}, "n": {"$sum": 1}}}
++    async for row in db.whatsapp_messages.aggregate([{"$match": {**base, "created_at": {"$gte": cutoff}}}, group]):
+         key = row.get("_id") or {}
+         n = int(row.get("n") or 0)
+-        cid = key.get("c") if key.get("c") in ids else by_suffix.get(_phone_suffix(key.get("p")))
++        cid = _wa_attribute(ids, by_suffix, key.get("c"), key.get("p"))
+         if cid:
+             by_contact[cid] = by_contact.get(cid, 0) + n
+         else:
+             unknown += n
+-    return {"total": sum(by_contact.values()), "by_contact": by_contact, "unknown": unknown}
++    async for row in db.whatsapp_messages.aggregate([{"$match": {**base, "created_at": {"$lt": cutoff}}}, group]):
++        key = row.get("_id") or {}
++        if _wa_attribute(ids, by_suffix, key.get("c"), key.get("p")):
++            older += int(row.get("n") or 0)
++    return {"total": sum(by_contact.values()), "by_contact": by_contact, "unknown": unknown,
++            "older": older, "max_age_days": WA_UNREAD_MAX_AGE_DAYS}
++
++
++@api.post("/me/whatsapp/mark-all-read", tags=["Portail Client"])
++async def me_whatsapp_mark_all_read(user: dict = Depends(get_current_user)):
++    """Lot 24 — « Tout marquer comme lu » dans le Centre de Messagerie : tous
++    les messages WhatsApp non lus rattachés à un contact visible, quel que soit
++    leur âge. Les messages d'expéditeurs inconnus ne sont pas touchés (ils se
++    traitent dans l'Inbox unifiée)."""
++    visible_scope, ids, by_suffix = await _wa_visible_contact_index(user)
++    to_mark: List[str] = []
++    async for m in db.whatsapp_messages.find(
++        {"direction": "inbound", "read_by_us_at": None, "client_id": {"$in": visible_scope}},
++        {"_id": 0, "id": 1, "contact_id": 1, "phone_digits": 1},
++    ):
++        if m.get("id") and _wa_attribute(ids, by_suffix, m.get("contact_id"), m.get("phone_digits")):
++            to_mark.append(m["id"])
++    updated = 0
++    now = _now()
++    for i in range(0, len(to_mark), 1000):
++        res = await db.whatsapp_messages.update_many(
++            {"id": {"$in": to_mark[i:i + 1000]}, "read_by_us_at": None},
++            {"$set": {"read_by_us_at": now, "read_by_us_id": user["id"]}},
++        )
++        updated += int(getattr(res, "modified_count", 0) or 0)
++    return {"ok": True, "updated": updated}
+ 
+ 
+ @api.get("/me/whatsapp/unread", tags=["Portail Client"])
+@@ -17448,6 +17646,14 @@ async def whatsapp_webhook_incoming(request: Request):
+                                 phone_match,
+                                 {"_id": 0, "id": 1, "client_id": 1, "name": 1, "wa_profile_name": 1, "vidal_riche": 1},
+                             )
++                        # Lot 24 — contact enregistré sans indicatif ou avec des espaces
++                        # (« 70 11 11 11 ») : reconnu sur les 8 derniers chiffres, sinon le
++                        # numéro partait en « contact inconnu » et son enregistrement créait un doublon.
++                        if not contact:
++                            found = (await _find_contact_by_phone([client_scope], digits_only) if client_scope else None) \
++                                or await _find_contact_by_phone(None, digits_only)
++                            if found:
++                                contact = {k: found.get(k) for k in ("id", "client_id", "name", "wa_profile_name", "vidal_riche")}
+                     # Bug #3 — If the inbound sender is a REGISTERED system user
+                     # (e.g. a moderator writing to the WA bot), auto-create their
+                     # contact in their canonical tenant scope so they appear in
+@@ -17812,7 +18018,16 @@ async def whatsapp_webhook_incoming(request: Request):
+                     # passer par `autoreply_to_inbound` qui contient maintenant
+                     # le dispatcher des commandes publiques + le catch-all `…`.
+                     # On ne skip QUE quand `hr_handled` a déjà traité le message.
+-                    if not skip_autoreply and not hr_handled and mtype == "text" and text_body:
++                    # Lot 24 — chaque message reçu laisse une trace de la décision de
++                    # Liluvine (répondu, ou pourquoi pas) : Paramètres → Auto-réponse
++                    # WhatsApp → « Pourquoi Liluvine n'a pas répondu ? ».
++                    if skip_autoreply or hr_handled:
++                        ar_result = {"ok": False, "reason": "task_ack" if skip_autoreply else "hr_command"}
++                    elif mtype != "text" or not text_body:
++                        ar_result = {"ok": False, "reason": "non_text_message", "message_type": mtype}
++                    else:
++                        ar_result = None
++                    if ar_result is None:
+                         try:
+                             from routes.liluvine_wa_autoreply import autoreply_to_inbound
+                             s_root = await db.settings.find_one({"_id": "global"}) or {}
+@@ -17832,6 +18047,20 @@ async def whatsapp_webhook_incoming(request: Request):
+                                 logger.debug("[wa_autoreply] skipped (%s)", ar_result.get("reason"))
+                         except Exception as exc:  # noqa: BLE001
+                             logger.warning("[wa_autoreply] handler crashed: %s", exc)
++                            ar_result = {"ok": False, "reason": f"crash: {str(exc)[:160]}"}
++                    try:
++                        await db.liluvine_wa_autoreply_log.insert_one({
++                            "id": _uuid(), "at": _now(), "tenant_id": scope_for_msg,
++                            "phone_digits": digits_only, "contact_id": (contact or {}).get("id"),
++                            "contact_name": (contact or {}).get("name") or profile_name,
++                            "message_type": mtype, "text": (text_body or "")[:160],
++                            "ok": bool((ar_result or {}).get("ok")),
++                            "reason": str((ar_result or {}).get("reason") or ("sent" if (ar_result or {}).get("ok") else "unknown"))[:200],
++                            "command": (ar_result or {}).get("command"),
++                            "prospect": (ar_result or {}).get("prospect"),
++                        })
++                    except Exception:  # noqa: BLE001
++                        pass
+                 except Exception as exc:  # noqa: BLE001
+                     err = f"inbound[{mtype if 'mtype' in locals() else '?'}]: {exc!r}"
+                     errors.append(err[:250])
+diff --git a/backend/tests/test_contacts_duplicates_lot24.py b/backend/tests/test_contacts_duplicates_lot24.py
+new file mode 100644
+index 0000000..8ae8379
+--- /dev/null
++++ b/backend/tests/test_contacts_duplicates_lot24.py
+@@ -0,0 +1,157 @@
++"""Lot 24 — Contacts : plus de doublon à l'enregistrement d'un numéro inconnu
++(idempotent, entrées déjà couvertes retirées), et outil de dédoublonnage
++(fiche la plus complète gardée, à égalité la plus ancienne ; suppression
++seulement des fiches cochées, messages rattachés à la fiche gardée).
++Fonctions extraites de server.py (ast), MongoDB simulé. Aucun réseau.
++Lancer : cd backend && python -m pytest tests/test_contacts_duplicates_lot24.py -q
++"""
++from __future__ import annotations
++
++import ast
++import asyncio
++import re
++import types
++import uuid
++from datetime import datetime, timezone
++from pathlib import Path
++from typing import Any, Dict, List, Optional, Tuple
++
++import pytest
++
++pytest.importorskip("mongomock_motor")
++from mongomock_motor import AsyncMongoMockClient  # noqa: E402
++
++SERVER = Path(__file__).resolve().parents[1] / "server.py"
++FUNCS = {"_phone_suffix", "_phone_suffix_regex", "_find_contact_by_phone", "me_list_wa_pending_imports",
++         "me_import_wa_pending", "_contact_completeness", "_duplicate_groups", "me_contacts_duplicates",
++         "me_contacts_duplicates_delete"}
++CONSTS = {"WA_PHONE_SUFFIX_LEN", "_DUP_SCORE_FIELDS"}
++SCOPE = ["t-pdp"]
++
++
++class _HTTPException(Exception):
++    def __init__(self, status_code, detail=""):
++        super().__init__(detail)
++        self.status_code = status_code
++
++
++def _load(db):
++    tree = ast.parse(SERVER.read_text())
++    nodes = []
++    for node in tree.body:
++        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in FUNCS:
++            node.decorator_list = []
++            nodes.append(node)
++        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) in CONSTS for t in node.targets):
++            nodes.append(node)
++    assert {getattr(n, "name", None) for n in nodes} >= FUNCS
++
++    async def _visible(user):
++        return list(SCOPE)
++
++    async def _log(**kw):
++        return None
++    ns = {"db": db, "re": re, "Optional": Optional, "List": List, "Dict": Dict, "Any": Any, "Tuple": Tuple,
++          "Depends": lambda x: None, "get_current_user": None, "HTTPException": _HTTPException,
++          "WaPendingImportRequest": None, "ContactsDuplicatesDeleteRequest": None,
++          "_now": lambda: datetime.now(timezone.utc).isoformat(), "_uuid": lambda: uuid.uuid4().hex,
++          "_resolve_visible_client_ids": _visible, "_log_activity": _log}
++    exec(compile(ast.Module(body=nodes, type_ignores=[]), str(SERVER), "exec"), ns)  # noqa: S102
++    return ns
++
++
++@pytest.fixture()
++def env():
++    db = AsyncMongoMockClient()["sawali_dup_lot24"]
++    loop = asyncio.new_event_loop()
++    yield types.SimpleNamespace(db=db, run=loop.run_until_complete, ns=_load(db))
++    loop.close()
++
++
++SUP = {"id": "sup", "role": "superviseur", "client_id": "t-pdp"}
++ADMIN = {"id": "adm", "role": "admin", "client_id": "t-pdp"}
++CLIENT = {"id": "u1", "role": "client", "client_id": "t-pdp"}
++REQ = types.SimpleNamespace(name=None, company=None, email=None)
++
++
++def test_import_is_idempotent_when_contact_already_exists(env):
++    # Contact créé entre-temps par l'ajout automatique de Liluvine, saisi avec espaces
++    env.run(env.db.directory_contacts.insert_one({"id": "c-auto", "client_id": "t-pdp", "name": "Awa", "whatsapp": "+226 70 11 11 11"}))
++    env.run(env.db.wa_pending_imports.insert_one({"id": "p1", "client_id": "t-pdp", "phone_digits": "22670111111", "from": "+22670111111"}))
++    env.run(env.db.whatsapp_messages.insert_one({"id": "m1", "client_id": "t-pdp", "direction": "inbound",
++                                                 "phone_digits": "22670111111", "contact_id": None}))
++    res = env.run(env.ns["me_import_wa_pending"]("p1", REQ, user=CLIENT))
++    assert res["already_present"] is True and res["contact"]["id"] == "c-auto"
++    assert env.run(env.db.directory_contacts.count_documents({})) == 1          # pas de doublon
++    assert env.run(env.db.whatsapp_messages.find_one({"id": "m1"}))["contact_id"] == "c-auto"
++    assert env.run(env.db.wa_pending_imports.count_documents({})) == 0
++
++
++def test_import_twice_creates_a_single_contact(env):
++    env.run(env.db.wa_pending_imports.insert_many([
++        {"id": "p1", "client_id": "t-pdp", "phone_digits": "22670222222", "from": "+22670222222", "wa_profile_name": "Ben"},
++        {"id": "p2", "client_id": "t-pdp", "phone_digits": "22670222222", "from": "+22670222222", "wa_profile_name": "Ben"},
++    ]))
++    first = env.run(env.ns["me_import_wa_pending"]("p1", REQ, user=CLIENT))
++    assert first["already_present"] is False
++    # La 2e entrée du même numéro a été retirée avec la 1re : un 2e clic ne recrée rien.
++    assert env.run(env.db.wa_pending_imports.count_documents({})) == 0
++    assert env.run(env.db.directory_contacts.count_documents({})) == 1
++
++
++def test_pending_list_drops_numbers_already_in_directory(env):
++    env.run(env.db.directory_contacts.insert_one({"id": "c1", "client_id": "t-pdp", "name": "Awa", "whatsapp": "70111111"}))
++    env.run(env.db.wa_pending_imports.insert_many([
++        {"id": "p1", "client_id": "t-pdp", "phone_digits": "22670111111", "last_seen_at": "2026-09-25"},
++        {"id": "p2", "client_id": "t-pdp", "phone_digits": "22670999999", "last_seen_at": "2026-09-24"},
++    ]))
++    items = env.run(env.ns["me_list_wa_pending_imports"](user=CLIENT))
++    assert [i["id"] for i in items] == ["p2"]
++    assert env.run(env.db.wa_pending_imports.count_documents({})) == 1
++
++
++def test_duplicates_keep_most_complete_then_oldest(env):
++    env.run(env.db.directory_contacts.insert_many([
++        # Groupe 1 : la fiche la plus complète est gardée même si elle est plus récente
++        {"id": "a-old", "client_id": "t-pdp", "name": "+22670111111", "whatsapp": "+22670111111", "created_at": "2026-01-01"},
++        {"id": "a-full", "client_id": "t-pdp", "name": "Awa Traoré", "whatsapp": "+226 70 11 11 11",
++         "company": "PDP", "email": "awa@x.bf", "created_at": "2026-05-01"},
++        # Groupe 2 : complétude égale → la plus ancienne est gardée, la plus récente proposée
++        {"id": "b-1", "client_id": "t-pdp", "name": "Ben", "whatsapp": "70222222", "created_at": "2026-02-01"},
++        {"id": "b-2", "client_id": "t-pdp", "name": "Ben O.", "whatsapp": "+22670222222", "created_at": "2026-03-01"},
++        # Unique : pas de groupe
++        {"id": "c-1", "client_id": "t-pdp", "name": "Chantal", "whatsapp": "+22670333333"},
++        # Autre tenant : hors périmètre
++        {"id": "x-1", "client_id": "t-autre", "name": "Awa bis", "whatsapp": "+22670111111"},
++    ]))
++    out = env.run(env.ns["me_contacts_duplicates"](user=SUP))
++    groups = {g["phone_suffix"]: g for g in out["groups"]}
++    assert groups["70111111"]["keep"]["id"] == "a-full" and [d["id"] for d in groups["70111111"]["duplicates"]] == ["a-old"]
++    assert groups["70222222"]["keep"]["id"] == "b-1" and [d["id"] for d in groups["70222222"]["duplicates"]] == ["b-2"]
++    assert out["duplicates_count"] == 2 and "70333333" not in groups
++    # Réservé au superviseur : ni l'admin ni un client n'y ont accès.
++    for other in (ADMIN, CLIENT):
++        with pytest.raises(_HTTPException):
++            env.run(env.ns["me_contacts_duplicates"](user=other))
++
++
++def test_delete_only_checked_duplicates_and_relink_messages(env):
++    env.run(env.db.directory_contacts.insert_many([
++        {"id": "a-keep", "client_id": "t-pdp", "name": "Awa", "whatsapp": "+22670111111", "company": "PDP", "created_at": "2026-01-01"},
++        {"id": "a-dup", "client_id": "t-pdp", "name": "Awa", "whatsapp": "70111111", "created_at": "2026-02-01"},
++    ]))
++    env.run(env.db.whatsapp_messages.insert_one({"id": "m1", "contact_id": "a-dup", "client_id": "t-pdp"}))
++    req = types.SimpleNamespace(ids=["a-dup", "a-keep", "inconnu"])  # la fiche gardée ne peut pas être supprimée
++    with pytest.raises(_HTTPException):
++        env.run(env.ns["me_contacts_duplicates_delete"](req, user=ADMIN))  # l'admin ne peut pas supprimer
++    res = env.run(env.ns["me_contacts_duplicates_delete"](req, user=SUP))
++    assert res["deleted"] == 1 and res["ignored"] == 2
++    assert [c["id"] for c in env.run(env.db.directory_contacts.find({}, {"_id": 0}).to_list(10))] == ["a-keep"]
++    assert env.run(env.db.whatsapp_messages.find_one({"id": "m1"}))["contact_id"] == "a-keep"
++
++
++def test_suffix_regex_matches_any_formatting(env):
++    rx = env.ns["_phone_suffix_regex"]("22670111111")
++    for stored in ("+226 70 11 11 11", "70111111", "+22670111111", "70-11-11-11"):
++        assert re.search(rx, stored), stored
++    assert not re.search(rx, "+22670111112")
+diff --git a/backend/tests/test_liluvine_thread_mirror_lot24.py b/backend/tests/test_liluvine_thread_mirror_lot24.py
+new file mode 100644
+index 0000000..f876a77
+--- /dev/null
++++ b/backend/tests/test_liluvine_thread_mirror_lot24.py
+@@ -0,0 +1,47 @@
++"""Lot 24 — Les réponses automatiques de Liluvine apparaissent dans le fil :
++réponse à un modèle d'annonce, message de correction de commande et
++`!reactions` sont désormais copiés dans `whatsapp_messages` (avant : envoyés
++sur WhatsApp mais absents de la conversation).
++Réutilise l'environnement du lot 21 (Mongo, IA et WhatsApp simulés).
++Lancer : cd backend && python -m pytest tests/test_liluvine_thread_mirror_lot24.py -q
++"""
++from __future__ import annotations
++
++import sys
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parent))
++from test_liluvine_wa_prospects_lot21 import CLIENT_CONTACT, env  # noqa: E402,F401 — fixture réutilisée
++
++
++def test_ad_template_reply_is_copied_into_thread(env):
++    async def fake_ad(text, send, from_num, **kw):
++        await send(from_num, "Merci ! Voici notre offre de lancement.")
++        return {"sent": True, "template": {"id": "tpl-123456789", "response_text": "Merci ! Voici notre offre de lancement."}}
++    sys.modules["server"].LILUVINE_REACTIONS_HELPERS = {"try_reply_ad_template": fake_ad}
++    try:
++        res = env.run(CLIENT_CONTACT, "pharma", contact={"id": "c-client", "client_id": "pharma", "name": "Client fidèle"},
++                      text="Je viens de votre publicité")
++    finally:
++        sys.modules["server"].LILUVINE_REACTIONS_HELPERS = {}
++    assert res["ok"] is True and res["command"].startswith("ad_template")
++    m = env.loop.run_until_complete(env.db.whatsapp_messages.find_one({"direction": "outbound"}, {"_id": 0}))
++    assert m["body"] == "Merci ! Voici notre offre de lancement." and m["command"] == "ad_template"
++    assert m["contact_id"] == "c-client" and m["phone_digits"] == CLIENT_CONTACT and m["client_id"] == "pharma"
++    assert env.sent and env.sent[0]["text"] == m["body"]
++
++
++def test_fuzzy_correction_message_is_copied_into_thread(env):
++    async def fake_fuzzy(text):
++        return {"cmd": "garde", "score": 91, "correction_prefix": "Vous vouliez dire « !garde » ?"}
++    sys.modules["server"].LILUVINE_REACTIONS_HELPERS = {"try_fuzzy_command_correction": fake_fuzzy}
++    try:
++        env.run(CLIENT_CONTACT, "pharma", contact={"id": "c-client", "client_id": "pharma", "name": "Client fidèle"},
++                text="pharmacie de gard")
++    except Exception:  # noqa: BLE001 — la suite (commande !garde) dépend d'autres modules, hors sujet ici
++        pass
++    finally:
++        sys.modules["server"].LILUVINE_REACTIONS_HELPERS = {}
++    bodies = [m["body"] for m in env.loop.run_until_complete(
++        env.db.whatsapp_messages.find({"command": "fuzzy_correction"}, {"_id": 0}).to_list(5))]
++    assert bodies == ["Vous vouliez dire « !garde » ?"]
+diff --git a/backend/tests/test_messaging_center_lot23.py b/backend/tests/test_messaging_center_lot23.py
+index 3e67a56..6d1dd6d 100644
+--- a/backend/tests/test_messaging_center_lot23.py
++++ b/backend/tests/test_messaging_center_lot23.py
+@@ -24,7 +24,10 @@ from mongomock_motor import AsyncMongoMockClient  # noqa: E402
+ 
+ SERVER = Path(__file__).resolve().parents[1] / "server.py"
+ FUNCS = {"_phone_suffix", "_contact_phone_clauses", "_wa_unread_summary", "me_whatsapp_unread",
+-         "me_contact_messages_mark_read", "me_contact_messages", "me_list_contacts"}
++         "me_contact_messages_mark_read", "me_contact_messages", "me_list_contacts",
++         # Lot 24
++         "_wa_visible_contact_index", "_wa_attribute", "me_whatsapp_mark_all_read"}
++CONSTS = {"WA_PHONE_SUFFIX_LEN", "WA_UNREAD_MAX_AGE_DAYS"}
+ SCOPE = ["t-pdp", "t-pdp-peer"]  # périmètre visible de l'utilisateur (tenant + pair de la même société)
+ 
+ 
+@@ -43,7 +46,7 @@ def _load(db) -> Dict[str, Any]:
+         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in FUNCS:
+             node.decorator_list = []
+             nodes.append(node)
+-        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == "WA_PHONE_SUFFIX_LEN" for t in node.targets):
++        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) in CONSTS for t in node.targets):
+             nodes.append(node)
+     assert {getattr(n, "name", None) for n in nodes} >= FUNCS
+     ns: Dict[str, Any] = {
+@@ -120,7 +123,7 @@ USER = {"id": "u1", "role": "client"}
+ def test_unread_summary_single_source(env):
+     got = env.run(env.ns["_wa_unread_summary"](USER))
+     assert got["by_contact"] == {"c-awa": 2, "c-ben": 1}
+-    assert got["total"] == 3 and got["unknown"] == 1
++    assert got["total"] == 3 and got["unknown"] == 1 and got["older"] == 0
+     # La route des pastilles renvoie exactement le même calcul (badge = pastilles = cloche).
+     assert env.run(env.ns["me_whatsapp_unread"](user=USER)) == got
+ 
+diff --git a/backend/tests/test_messaging_center_lot24.py b/backend/tests/test_messaging_center_lot24.py
+new file mode 100644
+index 0000000..2300bf7
+--- /dev/null
++++ b/backend/tests/test_messaging_center_lot24.py
+@@ -0,0 +1,39 @@
++"""Lot 24 — Centre de Messagerie : les non-lus de plus de 30 jours ne sont
++plus comptés comme nouveaux (historique jamais marqué comme lu), et « Tout
++marquer comme lu » traite tous les non-lus des contacts visibles.
++Réutilise l'environnement du lot 23 (fonctions extraites de server.py, Mongo simulé).
++Lancer : cd backend && python -m pytest tests/test_messaging_center_lot24.py -q
++"""
++from __future__ import annotations
++
++import sys
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parent))
++from test_messaging_center_lot23 import USER, _ts, env  # noqa: E402,F401 — fixture réutilisée
++
++
++def _add_old_unread(env, n=47):
++    """47 vieux messages jamais lus (45 jours), rattachés à Awa par son numéro."""
++    env.run(env.db.whatsapp_messages.insert_many([
++        {"id": f"old{i}", "client_id": "t-pdp", "direction": "inbound", "phone_digits": "22670111111",
++         "contact_id": None, "read_by_us_at": None, "created_at": _ts(60 * 24 * 45 + i)} for i in range(n)
++    ]))
++
++
++def test_old_unread_not_counted_but_reported(env):
++    _add_old_unread(env)
++    got = env.run(env.ns["_wa_unread_summary"](USER))
++    assert got["by_contact"] == {"c-awa": 2, "c-ben": 1} and got["total"] == 3
++    assert got["older"] == 47 and got["max_age_days"] == 30
++
++
++def test_mark_all_read_clears_contacts_but_not_unknown_senders(env):
++    _add_old_unread(env)
++    res = env.run(env.ns["me_whatsapp_mark_all_read"](user=USER))
++    assert res["updated"] == 2 + 1 + 47
++    got = env.run(env.ns["_wa_unread_summary"](USER))
++    assert got["total"] == 0 and got["older"] == 0
++    # L'expéditeur inconnu (Inbox unifiée) et l'autre tenant ne sont pas touchés.
++    assert env.run(env.db.whatsapp_messages.find_one({"id": "m5"}))["read_by_us_at"] is None
++    assert env.run(env.db.whatsapp_messages.find_one({"id": "m6"}))["read_by_us_at"] is None
+diff --git a/frontend/src/components/ui/dialog.jsx b/frontend/src/components/ui/dialog.jsx
+index b41b8e1..d2bb2a6 100644
+--- a/frontend/src/components/ui/dialog.jsx
++++ b/frontend/src/components/ui/dialog.jsx
+@@ -23,13 +23,14 @@ const DialogOverlay = React.forwardRef(({ className, ...props }, ref) => (
+ ))
+ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
+ 
++// Lot 24 — max-h-[90vh] overflow-y-auto : une boîte trop haute défile au lieu de sortir de l'écran.
+ const DialogContent = React.forwardRef(({ className, children, ...props }, ref) => (
+   <DialogPortal>
+     <DialogOverlay />
+     <DialogPrimitive.Content
+       ref={ref}
+       className={cn(
+-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
++        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg max-h-[90vh] overflow-y-auto translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
+         className
+       )}
+       {...props}>
+diff --git a/frontend/src/index.css b/frontend/src/index.css
+index 015d87c..169506d 100644
+--- a/frontend/src/index.css
++++ b/frontend/src/index.css
+@@ -184,3 +184,19 @@ html {
+   64%           { opacity: 1; filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.9)); }
+   68%           { opacity: 0.6; }
+ }
++
++/* ==========================================================================
++   Lot 24 — Fenêtres modales hautes : barre de défilement verticale.
++   Toutes les fenêtres « maison » du portail suivent le même modèle : un voile
++   `fixed inset-0 flex items-center justify-center` qui contient le panneau.
++   Quand le panneau dépasse la hauteur de l'écran (Utilisateur suivi, Contact…),
++   son bas devenait inaccessible (bouton Enregistrer caché). On limite donc sa
++   hauteur à celle de l'écran et on le rend défilant.
++   Les panneaux qui gèrent déjà leur hauteur (classe max-h-… ou h-full/h-screen,
++   ex. la fenêtre de conversation WhatsApp) ne sont pas touchés.
++   ========================================================================== */
++.fixed.inset-0.flex.items-center.justify-center > div:not([class*="max-h-"]):not([class*="h-full"]):not([class*="h-screen"]) {
++  max-height: calc(100vh - 2rem);
++  max-height: calc(100dvh - 2rem);
++  overflow-y: auto;
++}
+diff --git a/frontend/src/pages/admin/sections/LiluvineWaAutoreplySection.jsx b/frontend/src/pages/admin/sections/LiluvineWaAutoreplySection.jsx
+index 9d5d9c1..d3ca502 100644
+--- a/frontend/src/pages/admin/sections/LiluvineWaAutoreplySection.jsx
++++ b/frontend/src/pages/admin/sections/LiluvineWaAutoreplySection.jsx
+@@ -8,12 +8,48 @@ import { apiClient } from "@/lib/api";
+ 
+ const TITLE = "Liluvine PRO — Auto-réponse WhatsApp (sans n8n)";
+ 
++// Lot 24 — motifs de décision de l'auto-réponse, en clair (journal
++// `liluvine_wa_autoreply_log` écrit par le webhook pour chaque message reçu).
++// Le prompt système n'est JAMAIS la cause d'un silence : il ne règle que le
++// contenu des réponses. Un silence vient toujours d'un de ces motifs.
++const REASON_LABELS = {
++  sent: ["Répondu", "text-emerald-700 bg-emerald-50 ring-emerald-200"],
++  disabled: ["Auto-réponse désactivée", "text-rose-700 bg-rose-50 ring-rose-200"],
++  cooldown: ["Anti-flood : le contact avait déjà reçu une réponse il y a moins de N secondes", "text-amber-800 bg-amber-50 ring-amber-200"],
++  no_keyword_match: ["Aucun mot-clé déclencheur dans le message", "text-amber-800 bg-amber-50 ring-amber-200"],
++  outside_business_hours: ["Hors des heures ouvrables (plage horaire configurée)", "text-amber-800 bg-amber-50 ring-amber-200"],
++  inside_business_hours: ["Pendant les heures ouvrables (réglé sur « hors heures »)", "text-amber-800 bg-amber-50 ring-amber-200"],
++  not_whitelisted: ["Numéro absent de la liste blanche", "text-amber-800 bg-amber-50 ring-amber-200"],
++  denylisted: ["Numéro bloqué", "text-slate-700 bg-slate-50 ring-slate-200"],
++  human_takeover_active: ["Un humain a repris la conversation", "text-slate-700 bg-slate-50 ring-slate-200"],
++  liluvine_pro_not_enabled: ["Liluvine PRO non activé pour ce compte (SMART Communications)", "text-rose-700 bg-rose-50 ring-rose-200"],
++  contract_invalid: ["Contrat du client invalide (décisionnaires prévenus)", "text-rose-700 bg-rose-50 ring-rose-200"],
++  contract_invalid_no_decision_maker: ["Contrat du client invalide, aucun décisionnaire à prévenir", "text-rose-700 bg-rose-50 ring-rose-200"],
++  access_restricted_outside_hours: ["Accès restreint hors heures ouvrées (formule du client)", "text-amber-800 bg-amber-50 ring-amber-200"],
++  prospect_replies_disabled: ["Réponses aux prospects désactivées", "text-amber-800 bg-amber-50 ring-amber-200"],
++  non_text_message: ["Message non textuel (vocal, image, document…) : pas de réponse IA", "text-slate-700 bg-slate-50 ring-slate-200"],
++  task_ack: ["Accusé de tâche (OK 1, FAIT 2…) traité à part", "text-slate-700 bg-slate-50 ring-slate-200"],
++  hr_command: ["Commande RH traitée à part", "text-slate-700 bg-slate-50 ring-slate-200"],
++  empty_text: ["Message vide", "text-slate-700 bg-slate-50 ring-slate-200"],
++  empty_reply: ["L'IA n'a rien renvoyé", "text-rose-700 bg-rose-50 ring-rose-200"],
++  llm_error: ["Erreur de l'IA (clé, quota ou réseau)", "text-rose-700 bg-rose-50 ring-rose-200"],
++  EMERGENT_LLM_KEY: ["Clé IA (EMERGENT_LLM_KEY) absente", "text-rose-700 bg-rose-50 ring-rose-200"],
++  send_failed: ["Échec d'envoi par Meta (fenêtre 24 h, numéro…)", "text-rose-700 bg-rose-50 ring-rose-200"],
++  unknown_fallback_disabled: ["Commande « ! » inconnue, réponse de repli désactivée", "text-amber-800 bg-amber-50 ring-amber-200"],
++  crash: ["Erreur interne de l'auto-réponse", "text-rose-700 bg-rose-50 ring-rose-200"],
++};
++// « cooldown (42s left) » → « cooldown » ; « llm_error: … » → « llm_error »
++const reasonKey = (d) => (d.ok ? "sent" : String(d.reason || "unknown").split(/[ :(]/)[0]);
++const reasonLabel = (key) => (REASON_LABELS[key] || [key, "text-slate-700 bg-slate-50 ring-slate-200"]);
++
+ export default function LiluvineWaAutoreplySection() {
+   const [cfg, setCfg] = useState(null);
+   const [form, setForm] = useState({});
+   const [saving, setSaving] = useState(false);
+   const [history, setHistory] = useState([]);
+   const [showHistory, setShowHistory] = useState(false);
++  // Lot 24 — journal des décisions (répondu / pourquoi pas)
++  const [decisions, setDecisions] = useState(null);
+ 
+   const load = useCallback(async () => {
+     try {
+@@ -125,6 +161,15 @@ export default function LiluvineWaAutoreplySection() {
+     }
+   };
+ 
++  const loadDecisions = async () => {
++    try {
++      const r = await apiClient.get("/admin/liluvine-pro/wa-autoreply/decisions?limit=60");
++      setDecisions(r.data || { items: [], stats_7d: {} });
++    } catch {
++      toast.error("Erreur chargement du journal des décisions");
++    }
++  };
++
+   if (!cfg) return null;
+ 
+   return (
+@@ -141,6 +186,15 @@ export default function LiluvineWaAutoreplySection() {
+         >
+           <History className="h-3.5 w-3.5" /> Historique
+         </button>
++        {/* Lot 24 — pourquoi Liluvine n'a pas répondu */}
++        <button
++          type="button"
++          onClick={loadDecisions}
++          className="text-xs inline-flex items-center gap-1 rounded-lg ring-1 ring-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 px-2.5 py-1.5"
++          data-testid="liluvine-autoreply-decisions-btn"
++        >
++          <AlertCircle className="h-3.5 w-3.5" /> Pourquoi Liluvine n'a pas répondu ?
++        </button>
+       </header>
+ 
+       <p className="text-xs text-slate-600 leading-relaxed">
+@@ -542,6 +596,52 @@ export default function LiluvineWaAutoreplySection() {
+         </button>
+       </div>
+ 
++      {/* Lot 24 — journal des décisions de l'auto-réponse */}
++      {decisions && (
++        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" onClick={() => setDecisions(null)}>
++          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}
++            data-testid="liluvine-autoreply-decisions">
++            <header className="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
++              <h3 className="font-display font-semibold text-slate-800 inline-flex items-center gap-2">
++                <AlertCircle className="h-4 w-4 text-amber-600" /> Pourquoi Liluvine n'a pas répondu ?
++              </h3>
++              <button onClick={() => setDecisions(null)} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
++            </header>
++            <div className="overflow-y-auto p-4 space-y-4 flex-1">
++              <p className="text-[11px] text-slate-600">
++                Une ligne par message WhatsApp reçu. Le <strong>prompt système</strong> ne provoque jamais de silence : il règle seulement
++                le contenu des réponses. Un silence vient toujours d'un réglage ci-dessus (anti-flood, mots-clés, plage horaire, liste
++                blanche…) ou d'une erreur indiquée ici.
++              </p>
++              {/* Répartition sur 7 jours */}
++              <div className="flex flex-wrap gap-1.5" data-testid="liluvine-autoreply-decisions-stats">
++                {Object.entries(decisions.stats_7d || {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => {
++                  const [label, cls] = reasonLabel(k);
++                  return <span key={k} className={`text-[11px] rounded-full ring-1 px-2 py-0.5 ${cls}`}>{label} : <strong>{n}</strong></span>;
++                })}
++                {Object.keys(decisions.stats_7d || {}).length === 0 && <span className="text-xs text-slate-400">Aucun message reçu ces 7 derniers jours.</span>}
++              </div>
++              <ul className="divide-y divide-slate-100">
++                {(decisions.items || []).map((d) => {
++                  const [label, cls] = reasonLabel(reasonKey(d));
++                  return (
++                    <li key={d.id} className="py-2 flex items-start gap-3 text-xs" data-testid={`liluvine-decision-${d.id}`}>
++                      <span className="text-[10px] text-slate-400 w-24 shrink-0">{new Date(d.at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}</span>
++                      <span className="flex-1 min-w-0">
++                        <span className="font-medium text-slate-800">{d.contact_name || `+${d.phone_digits}`}</span>
++                        {d.prospect && <span className="ml-1 text-[10px] rounded bg-violet-50 text-violet-700 px-1">prospect</span>}
++                        <span className="block text-slate-500 truncate">{d.text || `(${d.message_type})`}</span>
++                      </span>
++                      <span className={`shrink-0 max-w-[45%] text-right text-[10px] rounded ring-1 px-1.5 py-0.5 ${cls}`} title={d.reason}>{label}</span>
++                    </li>
++                  );
++                })}
++              </ul>
++            </div>
++          </div>
++        </div>
++      )}
++
+       {/* History modal */}
+       {showHistory && (
+         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" onClick={() => setShowHistory(false)}>
+diff --git a/frontend/src/pages/portal/Contacts.jsx b/frontend/src/pages/portal/Contacts.jsx
+index 2ca7f42..85b8d6c 100644
+--- a/frontend/src/pages/portal/Contacts.jsx
++++ b/frontend/src/pages/portal/Contacts.jsx
+@@ -188,12 +188,27 @@ export default function Contacts() {
+     try {
+       const r = await apiClient.get("/me/whatsapp/unread");
+       const total = r.data?.total || 0;
+-      setUnread({ total, by_contact: r.data?.by_contact || {} });
++      setUnread({ total, by_contact: r.data?.by_contact || {}, older: r.data?.older || 0 });
+       if (lastUnreadTotalRef.current != null && total > lastUnreadTotalRef.current) load(true);
+       lastUnreadTotalRef.current = total;
+     } catch { /* noop */ }
+   };
+ 
++  // Lot 24 — « Tout marquer comme lu » : tous les non-lus des contacts
++  // (y compris l'historique de plus de 30 jours, qui n'est plus compté).
++  const markAllRead = async () => {
++    const n = (unread.total || 0) + (unread.older || 0);
++    if (!window.confirm(`Marquer comme lus les ${n} message(s) WhatsApp non lus de vos contacts ?`)) return;
++    try {
++      const r = await apiClient.post("/me/whatsapp/mark-all-read");
++      toast.success(`${r.data?.updated || 0} message(s) marqué(s) comme lu(s)`);
++      window.dispatchEvent(new Event("sawali:wa-messages-read"));
++      loadUnread();
++    } catch (err) {
++      toast.error(err?.response?.data?.detail || "Erreur");
++    }
++  };
++
+   const [pendingImports, setPendingImports] = useState([]);
+   const loadPending = async () => {
+     try {
+@@ -354,6 +369,17 @@ export default function Contacts() {
+           </button>
+           {/* Iter34w — Exports list */}
+           <ContactsExportMenu />
++          {/* Lot 24 — dédoublonnage (même numéro), réservé au superviseur */}
++          {user?.role === "superviseur" && (
++            <button
++              onClick={() => setModal({ type: "duplicates" })}
++              className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-2 text-sm"
++              data-testid="contacts-duplicates-btn"
++              title="Trouver les contacts en double (même numéro) et supprimer les fiches les moins complètes"
++            >
++              <Users className="h-4 w-4" /> Doublons
++            </button>
++          )}
+           <button
+             onClick={() => setModal({ type: "edit" })}
+             className="inline-flex items-center gap-2 rounded-lg bg-sawali-blue text-white px-4 py-2 text-sm hover:bg-sawali-blue-light"
+@@ -421,6 +447,16 @@ export default function Contacts() {
+             </button>
+           );
+         })}
++        {/* Lot 24 — tout marquer comme lu (non-lus récents + historique de plus de 30 jours) */}
++        {(unread.total > 0 || unread.older > 0) && (
++          <button type="button" onClick={markAllRead}
++            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ring-slate-200 bg-white text-slate-600 hover:bg-slate-50"
++            data-testid="contacts-mark-all-read"
++            title={unread.older > 0 ? `Dont ${unread.older} message(s) non lu(s) de plus de 30 jours, qui ne sont plus comptés` : "Marquer tous les messages non lus comme lus"}>
++            <CheckCheck className="h-3 w-3" /> Tout marquer comme lu
++            {unread.older > 0 && <span className="text-[10px] text-slate-400">(+{unread.older} anciens)</span>}
++          </button>
++        )}
+       </div>
+ 
+       {pendingImports.length > 0 && (
+@@ -445,6 +481,8 @@ export default function Contacts() {
+             <thead className="bg-slate-50 text-slate-600 text-xs uppercase">
+               <tr>
+                 <th className="text-left px-3 py-2">Nom</th>
++                {/* Lot 24 — date/heure de la dernière interaction en colonne */}
++                <th className="text-left px-3 py-2 hidden sm:table-cell whitespace-nowrap">Dernière interaction</th>
+                 <th className="text-left px-3 py-2 hidden sm:table-cell">Société</th>
+                 <th className="text-left px-3 py-2 hidden md:table-cell">Téléphone</th>
+                 <th className="text-left px-3 py-2">WhatsApp</th>
+@@ -500,6 +538,9 @@ export default function Contacts() {
+           onMessagesRead={loadUnread}
+         />
+       )}
++      {modal?.type === "duplicates" && (
++        <DuplicatesModal onClose={() => setModal(null)} onDone={() => { load(true); loadUnread(); }} />
++      )}
+       {modal?.type === "liluvine" && (
+         <LiluvineTimelineModal
+           contact={modal.contact}
+@@ -510,6 +551,106 @@ export default function Contacts() {
+   );
+ }
+ 
++// Lot 24 — Dédoublonnage : les contacts qui partagent le même numéro sont
++// regroupés ; dans chaque groupe, la fiche la plus complète (à égalité, la
++// plus ancienne) est GARDÉE, les autres sont PROPOSÉES à la suppression et
++// pré-cochées. Le superviseur décoche ce qu'il veut garder, puis confirme.
++// Les messages des fiches supprimées sont rattachés à la fiche gardée (serveur).
++const DuplicatesModal = ({ onClose, onDone }) => {
++  const [groups, setGroups] = useState(null);
++  const [checked, setChecked] = useState({});
++  const [busy, setBusy] = useState(false);
++
++  useEffect(() => {
++    apiClient.get("/me/contacts-duplicates")
++      .then((r) => {
++        const g = r.data?.groups || [];
++        setGroups(g);
++        const init = {};
++        g.forEach((grp) => grp.duplicates.forEach((d) => { init[d.id] = true; }));
++        setChecked(init);
++      })
++      .catch((err) => { toast.error(err?.response?.data?.detail || "Erreur"); setGroups([]); });
++  }, []);
++
++  const ids = Object.keys(checked).filter((k) => checked[k]);
++  const confirmDelete = async () => {
++    if (!ids.length) return;
++    if (!window.confirm(`Supprimer définitivement ${ids.length} contact(s) en double ? Leurs messages seront rattachés à la fiche gardée.`)) return;
++    setBusy(true);
++    try {
++      const r = await apiClient.post("/me/contacts-duplicates/delete", { ids });
++      toast.success(`${r.data?.deleted || 0} doublon(s) supprimé(s)`);
++      onDone && onDone();
++      onClose();
++    } catch (err) {
++      toast.error(err?.response?.data?.detail || "Erreur");
++      setBusy(false);
++    }
++  };
++
++  // Résumé d'une fiche : nom, numéro, société, email, date de création, complétude.
++  const Line = ({ c }) => (
++    <span className="min-w-0">
++      <span className="font-medium text-slate-800">{c.name || "(sans nom)"}</span>
++      <span className="text-slate-500"> · {c.whatsapp || c.phone}</span>
++      {c.company && <span className="text-slate-500"> · {c.company}</span>}
++      {c.email && <span className="text-slate-500"> · {c.email}</span>}
++      <span className="block text-[10px] text-slate-400">
++        Créé le {c.created_at ? new Date(c.created_at).toLocaleDateString("fr-FR") : "?"} · {c.score} info(s) renseignée(s)
++      </span>
++    </span>
++  );
++
++  return (
++    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={(e) => e.target === e.currentTarget && onClose()}
++      data-testid="duplicates-modal">
++      <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl flex flex-col max-h-[85vh]">
++        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
++          <h3 className="font-display font-semibold text-slate-900 inline-flex items-center gap-2"><Users className="h-5 w-5 text-rose-600" /> Contacts en double</h3>
++          <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="h-5 w-5" /></button>
++        </div>
++        <div className="flex-1 overflow-y-auto p-5 space-y-3">
++          <p className="text-xs text-slate-600">
++            Même numéro (8 derniers chiffres). Dans chaque groupe, la fiche <strong className="text-emerald-700">gardée</strong> est la plus
++            complète (à égalité, la plus ancienne). Les autres sont cochées pour suppression : décochez celles à conserver.
++          </p>
++          {groups === null ? (
++            <p className="text-sm text-slate-500">Recherche des doublons…</p>
++          ) : groups.length === 0 ? (
++            <p className="text-sm text-emerald-700" data-testid="duplicates-none">Aucun doublon : chaque numéro n'a qu'une seule fiche.</p>
++          ) : groups.map((g) => (
++            <div key={g.phone_suffix} className="rounded-lg ring-1 ring-slate-200 p-3 space-y-1.5 text-xs" data-testid={`duplicates-group-${g.phone_suffix}`}>
++              <div className="flex items-start gap-2 bg-emerald-50 rounded px-2 py-1.5">
++                <Check className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
++                <Line c={g.keep} />
++                <span className="ml-auto text-[10px] font-semibold text-emerald-700 shrink-0">GARDÉE</span>
++              </div>
++              {g.duplicates.map((d) => (
++                <label key={d.id} className="flex items-start gap-2 px-2 py-1.5 rounded hover:bg-rose-50 cursor-pointer">
++                  <input type="checkbox" className="mt-0.5" checked={!!checked[d.id]}
++                    onChange={(e) => setChecked({ ...checked, [d.id]: e.target.checked })}
++                    data-testid={`duplicates-check-${d.id}`} />
++                  <Line c={d} />
++                  <span className="ml-auto text-[10px] font-semibold text-rose-600 shrink-0">{checked[d.id] ? "À SUPPRIMER" : "conservée"}</span>
++                </label>
++              ))}
++            </div>
++          ))}
++        </div>
++        <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2">
++          <button onClick={onClose} className="px-3 py-2 text-sm rounded-lg text-slate-600 hover:bg-slate-100">Annuler</button>
++          <button onClick={confirmDelete} disabled={busy || !ids.length}
++            className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50"
++            data-testid="duplicates-confirm">
++            <Trash2 className="h-4 w-4" /> Supprimer les {ids.length} sélectionné(s)
++          </button>
++        </div>
++      </div>
++    </div>
++  );
++};
++
+ // Lot 23 — date/heure de la dernière interaction, lisible d'un coup d'œil :
+ // « Aujourd'hui 14:32 », « Hier 09:10 », sinon « 12/09/2026 16:05 ».
+ function formatLastInteraction(iso) {
+@@ -590,8 +731,9 @@ const ContactRow = ({ c, onReload, onEdit, onWa, onSms, onSchedule, onHistory, o
+                 </span>
+               )}
+             </button>
+-            {/* Lot 23 — date/heure et sens du dernier échange (WhatsApp/SMS de ce tenant, hors envois en masse) */}
+-            <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1" data-testid={`contact-last-interaction-${c.id}`}>
++            {/* Lot 23 — date/heure et sens du dernier échange (WhatsApp/SMS de ce tenant, hors envois en masse).
++                Lot 24 — affichée en colonne ; ici seulement sur mobile, où la colonne est masquée. */}
++            <div className="sm:hidden text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
+               {c.last_interaction_at ? (
+                 <>
+                   {c.last_interaction_direction === "in"
+@@ -632,6 +774,20 @@ const ContactRow = ({ c, onReload, onEdit, onWa, onSms, onSchedule, onHistory, o
+           </div>
+         </div>
+       </td>
++      {/* Lot 24 — colonne « Dernière interaction » : date/heure + sens (reçu / envoyé) */}
++      <td className="px-3 py-2 hidden sm:table-cell whitespace-nowrap text-xs" data-testid={`contact-last-interaction-${c.id}`}>
++        {c.last_interaction_at ? (
++          <span className="inline-flex items-center gap-1 text-slate-700"
++            title={c.last_interaction_direction === "in" ? "Dernier message reçu" : "Dernier message envoyé"}>
++            {c.last_interaction_direction === "in"
++              ? <ArrowDownLeft className="h-3.5 w-3.5 text-emerald-600" aria-label="reçu" />
++              : <ArrowUpRight className="h-3.5 w-3.5 text-sky-600" aria-label="envoyé" />}
++            {formatLastInteraction(c.last_interaction_at)}
++          </span>
++        ) : (
++          <span className="italic text-slate-400">Aucun échange</span>
++        )}
++      </td>
+       <td className="px-3 py-2 hidden sm:table-cell text-slate-600">{c.company || "—"}</td>
+       <td className="px-3 py-2 hidden md:table-cell text-sky-600 font-mono text-[12px]" data-testid={`contact-phone-${c.id}`}>{c.phone || "—"}</td>
+       <td className="px-3 py-2 text-sky-600 font-mono text-[12px]">
+@@ -2894,9 +3050,10 @@ const MessageBubble = ({ m, allMessages = [], onReply }) => {
+               {m.template_name}
+             </code>
+           )}
++          {/* Lot 24 — tag « Relayé » : fond blanc + texte vert, lisible quelle que soit la couleur de la bulle */}
+           {outbound && m.via_masked_reply && (
+             <span
+-              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white/20 text-white"
++              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white text-emerald-700 ring-1 ring-emerald-300 font-semibold"
+               title={`Répondu par WhatsApp via #R${m.masked_reply_code || ""}${m.sender_label ? ` — ${m.sender_label}` : ""}`}
+               data-testid={`msg-relayed-${m.id}`}
+             >
+@@ -3696,8 +3853,10 @@ const PendingImportsBanner = ({ items, onChange }) => {
+   const importOne = async (it) => {
+     setBusy((b) => ({ ...b, [it.id]: true }));
+     try {
+-      await apiClient.post(`/me/wa-pending-imports/${it.id}/import`, {});
+-      toast.success(`Contact « ${it.wa_profile_name || it.from} » importé`);
++      const r = await apiClient.post(`/me/wa-pending-imports/${it.id}/import`, {});
++      // Lot 24 — numéro déjà dans le carnet : aucun doublon créé, messages rattachés.
++      if (r.data?.already_present) toast.info(`« ${r.data?.contact?.name || it.from} » existe déjà : pas de doublon, ses messages y sont rattachés`);
++      else toast.success(`Contact « ${it.wa_profile_name || it.from} » importé`);
+       onChange && onChange();
+     } catch (err) {
+       toast.error(safeText(err?.response?.data?.detail) || "Erreur");
+-- 
+2.43.0
+

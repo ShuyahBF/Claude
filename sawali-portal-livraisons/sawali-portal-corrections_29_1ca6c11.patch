@@ -1,0 +1,591 @@
+From 1ca6c113ced0b8bf5e552760b88a15028e28fcc9 Mon Sep 17 00:00:00 2001
+From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
+Date: Sun, 27 Sep 2026 06:28:31 +0000
+Subject: [PATCH] =?UTF-8?q?Lot=2029=20:=20Centre=20de=20Messagerie=20plus?=
+ =?UTF-8?q?=20rapide=20et=20mesure=20des=20temps=20de=20r=C3=A9ponse?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Liste des contacts : la « dernière interaction » est calculée par MongoDB
+(regroupement des 20 000 derniers messages par numéro) au lieu de rapatrier
+20 000 WhatsApp + 20 000 SMS et de les parcourir à chaque affichage ; même
+résultat. Numéros en attente d'import : le carnet est lu une fois au lieu d'une
+recherche par expression régulière pour chaque numéro, toutes les 15 s ; même
+règle de correspondance. Périmètre visible d'un utilisateur mémorisé 60 s
+(recherche insensible à la casse sur tous les utilisateurs à chaque appel).
+Index composés créés en arrière-plan au démarrage (messages par client et date,
+non-lus, numéros en attente). Le Centre de Messagerie réutilise les compteurs
+de non-lus relus par la cloche au lieu de les redemander.
+
+Mesure : temps de réponse par route depuis le démarrage (nombre, moyenne,
+maximum, appels de plus d'une seconde), GET /api/admin/perf/routes, affiché
+dans Santé applicative. Tests d'équivalence ancien/nouveau calcul.
+---
+ backend/server.py                             |  33 ++++
+ .../p09_supervision_parametres.py             |  20 +++
+ .../server_parts/p10_site_public_marketing.py |  18 +-
+ backend/server_parts/p11_whatsapp.py          |  59 +++++--
+ .../p17_demarrage_planificateur.py            |  20 +++
+ backend/tests/test_perf_lot29.py              | 155 ++++++++++++++++++
+ frontend/src/components/RoutePerfSection.jsx  |  76 +++++++++
+ frontend/src/hooks/useWhatsAppNotifier.js     |   3 +
+ .../src/pages/admin/AdminHealthDashboard.jsx  |   3 +
+ frontend/src/pages/portal/Contacts.jsx        |  26 ++-
+ 10 files changed, 390 insertions(+), 23 deletions(-)
+ create mode 100644 backend/tests/test_perf_lot29.py
+ create mode 100644 frontend/src/components/RoutePerfSection.jsx
+
+diff --git a/backend/server.py b/backend/server.py
+index 25a1d1b..bfe729e 100644
+--- a/backend/server.py
++++ b/backend/server.py
+@@ -356,12 +356,45 @@ async def ip_blacklist_middleware(request, call_next):
+ import time as _time_perf  # local alias — avoid clashing with other `time` uses
+ 
+ 
++# Lot 29 (performances) — statistiques de temps de réponse PAR ROUTE (lectures
++# comprises), gardées en mémoire depuis le dernier démarrage du serveur :
++# nombre d'appels, temps total, temps maximum, appels de plus d'une seconde.
++# Consultables par l'admin : GET /api/admin/perf/routes (page Santé applicative).
++_PERF_STATS: Dict[str, List[float]] = {}
++_PERF_SINCE = datetime.now(timezone.utc).isoformat()
++
++
++def _perf_record(request, duration: float) -> None:
++    """Ajoute une mesure pour la route (modèle d'URL, ex. /api/me/contacts/{cid}/messages)."""
++    try:
++        route = request.scope.get("route")
++        tpl = getattr(route, "path", None)
++        # seules les routes réelles de l'API (une adresse inconnue n'est pas comptée)
++        if not tpl or not tpl.startswith("/api/"):
++            return
++        key = f"{request.method} {tpl}"
++        s = _PERF_STATS.get(key)
++        if s is None:
++            if len(_PERF_STATS) > 1500:        # garde-fou mémoire
++                return
++            s = _PERF_STATS[key] = [0, 0.0, 0.0, 0]
++        s[0] += 1
++        s[1] += duration
++        if duration > s[2]:
++            s[2] = duration
++        if duration > 1.0:
++            s[3] += 1
++    except Exception:  # noqa: BLE001
++        pass
++
++
+ @app.middleware("http")
+ async def request_timing_middleware(request, call_next):
+     _start = _time_perf.time()
+     try:
+         response = await call_next(request)
+         duration = _time_perf.time() - _start
++        _perf_record(request, duration)
+         if duration > 5.0:
+             try:
+                 logger.warning(
+diff --git a/backend/server_parts/p09_supervision_parametres.py b/backend/server_parts/p09_supervision_parametres.py
+index 3c9f6c1..4e02b1f 100644
+--- a/backend/server_parts/p09_supervision_parametres.py
++++ b/backend/server_parts/p09_supervision_parametres.py
+@@ -1262,3 +1262,23 @@ async def list_api_routes():
+         )
+     routes.sort(key=lambda r: (r["tags"][0] if r["tags"] else "", r["path"]))
+     return routes
++
++
++# =====================================================================
++# Lot 29 (performances) — temps de réponse par route depuis le dernier
++# démarrage (mesures prises par request_timing_middleware dans server.py).
++# Réservé à l'admin et au Superviseur ; affiché dans Santé applicative.
++# =====================================================================
++@api.get("/admin/perf/routes", tags=["Admin"])
++async def admin_perf_routes(limit: int = 60, sort: str = "total", _: dict = Depends(get_admin_or_supervisor)):
++    rows = []
++    for key, (n, total, mx, slow) in list(_PERF_STATS.items()):
++        method, _sp, path = key.partition(" ")
++        rows.append({"method": method, "path": path, "count": int(n),
++                     "avg_ms": round(total / n * 1000) if n else 0,
++                     "max_ms": round(mx * 1000), "total_s": round(total, 1), "over_1s": int(slow)})
++    # tri : temps cumulé (ce qui charge le plus le serveur), moyenne ou maximum
++    keyf = {"avg": lambda r: r["avg_ms"], "max": lambda r: r["max_ms"], "count": lambda r: r["count"]}.get(
++        sort, lambda r: r["total_s"])
++    rows.sort(key=keyf, reverse=True)
++    return {"since": _PERF_SINCE, "routes": rows[:max(1, min(limit, 500))], "tracked": len(rows)}
+diff --git a/backend/server_parts/p10_site_public_marketing.py b/backend/server_parts/p10_site_public_marketing.py
+index b71bfdb..483fef1 100644
+--- a/backend/server_parts/p10_site_public_marketing.py
++++ b/backend/server_parts/p10_site_public_marketing.py
+@@ -641,6 +641,20 @@ async def _resolve_visible_client_ids(user: dict) -> List[str]:
+     This guarantees that two users typed with the same employer name see each
+     other's directory even if their client_id pointers were never re-aligned.
+     """
++    # Lot 29 (performances) — ce périmètre est demandé par presque toutes les
++    # routes du Centre de Messagerie (non-lus toutes les 15 s, liste, conversation)
++    # et coûte une recherche insensible à la casse sur TOUS les utilisateurs.
++    # Il ne change que si un compte change de société : résultat mémorisé 60 s
++    # par utilisateur (même clé = mêmes id/client/parent/société).
++    _cache = _resolve_visible_client_ids.__dict__.setdefault("_cache", {})
++    _key = (user.get("id"), user.get("client_id"), user.get("parent_client_id"),
++            (user.get("company") or "").strip().lower())
++    _hit = _cache.get(_key)
++    _now_mono = _time_perf.monotonic()
++    if _hit and _now_mono - _hit[0] < 60:
++        return list(_hit[1])
++    if len(_cache) > 2000:           # garde-fou mémoire
++        _cache.clear()
+     ids: set[str] = set()
+     for k in ("client_id", "parent_client_id", "id"):
+         v = user.get(k)
+@@ -660,7 +674,9 @@ async def _resolve_visible_client_ids(user: dict) -> List[str]:
+                         ids.add(v)
+         except Exception:
+             pass
+-    return list(ids) if ids else [user.get("id")]
++    result = list(ids) if ids else [user.get("id")]
++    _cache[_key] = (_now_mono, list(result))
++    return result
+ 
+ 
+ # ============================================================
+diff --git a/backend/server_parts/p11_whatsapp.py b/backend/server_parts/p11_whatsapp.py
+index 402394e..fe9c5a7 100644
+--- a/backend/server_parts/p11_whatsapp.py
++++ b/backend/server_parts/p11_whatsapp.py
+@@ -382,20 +382,31 @@ async def me_list_contacts(user: dict = Depends(get_current_user)):
+                     break
+ 
+         tenant_q = {"client_id": {"$in": client_ids}, "bulk": {"$ne": True}}
+-        try:
+-            async for msg in db.whatsapp_messages.find(
+-                tenant_q, {"_id": 0, "phone_digits": 1, "from": 1, "to": 1, "created_at": 1, "direction": 1},
+-            ).sort("created_at", -1).limit(20000):
+-                _note(msg, "in" if msg.get("direction") == "inbound" else "out")
+-        except Exception:
+-            pass
+-        try:
+-            async for msg in db.sms_messages.find(
+-                tenant_q, {"_id": 0, "phone_digits": 1, "to": 1, "from": 1, "created_at": 1, "direction": 1},
+-            ).sort("created_at", -1).limit(20000):
+-                _note(msg, "in" if msg.get("direction") == "inbound" else "out")
+-        except Exception:
+-            pass
++        # Lot 29 (performances) — même résultat qu'avant, mais calculé par MongoDB :
++        # au lieu de rapatrier jusqu'à 20 000 messages WhatsApp + 20 000 SMS et de
++        # les parcourir en Python à chaque affichage de la liste, la base regroupe
++        # ces mêmes 20 000 derniers messages par numéro (phone_digits, from, to) et
++        # ne renvoie que le plus récent de chaque groupe (quelques centaines de
++        # lignes). On les traite ensuite du plus récent au plus ancien, exactement
++        # comme l'ancien parcours.
++        _pipeline = [
++            {"$match": tenant_q},
++            {"$sort": {"created_at": -1}},
++            {"$limit": 20000},
++            {"$group": {"_id": {"p": "$phone_digits", "f": "$from", "t": "$to"},
++                        "created_at": {"$first": "$created_at"}, "direction": {"$first": "$direction"}}},
++        ]
++        for _coll in (db.whatsapp_messages, db.sms_messages):
++            try:
++                _groups = [g async for g in _coll.aggregate(_pipeline)]
++                _groups.sort(key=lambda g: str(g.get("created_at") or ""), reverse=True)
++                for g in _groups:
++                    _k = g.get("_id") or {}
++                    _note({"phone_digits": _k.get("p"), "from": _k.get("f"), "to": _k.get("t"),
++                           "created_at": g.get("created_at")},
++                          "in" if g.get("direction") == "inbound" else "out")
++            except Exception:
++                pass
+         for d10, contacts in phone_map.items():
+             ts, direction = last_by_phone.get(d10, (None, None))
+             for c in contacts:
+@@ -753,10 +764,26 @@ async def me_list_wa_pending_imports(user: dict = Depends(get_current_user)):
+     visible_scope = await _resolve_visible_client_ids(user)
+     kept: List[Dict[str, Any]] = []
+     seen_digits: set = set()
++    # Lot 29 (performances) — avant : une recherche par expression régulière dans
++    # tout le carnet POUR CHAQUE numéro en attente (jusqu'à 50), toutes les 15 s.
++    # Maintenant : le carnet est lu une seule fois et on garde, pour chaque
++    # numéro (WhatsApp, téléphone, phone_digits), ses 6, 7 et 8 derniers chiffres.
++    # Même règle qu'avant (_find_contact_by_phone) : un contact correspond si les
++    # chiffres de l'un de ces champs se terminent par ceux du numéro en attente
++    # (6 à 8 chiffres, mise en forme ignorée).
++    known_tails: set = set()
++    if items:
++        _contacts_q = {} if user.get("role") == "admin" else {"client_id": {"$in": visible_scope}}
++        async for c in db.directory_contacts.find(_contacts_q, {"_id": 0, "whatsapp": 1, "phone": 1, "phone_digits": 1}):
++            for raw in (c.get("whatsapp"), c.get("phone"), c.get("phone_digits")):
++                if isinstance(raw, str):
++                    d = "".join(ch for ch in raw if ch.isdigit())
++                    for n in (6, 7, 8):
++                        if len(d) >= n:
++                            known_tails.add(d[-n:])
+     for it in items:
+         suffix = _phone_suffix(it.get("phone_digits") or it.get("from"))
+-        existing = await _find_contact_by_phone(None if user.get("role") == "admin" else visible_scope,
+-                                                it.get("phone_digits") or it.get("from"))
++        existing = len(suffix) >= 6 and suffix in known_tails
+         if existing or (suffix and suffix in seen_digits):
+             await db.wa_pending_imports.delete_one({"id": it.get("id")})
+             continue
+diff --git a/backend/server_parts/p17_demarrage_planificateur.py b/backend/server_parts/p17_demarrage_planificateur.py
+index 917455a..9277430 100644
+--- a/backend/server_parts/p17_demarrage_planificateur.py
++++ b/backend/server_parts/p17_demarrage_planificateur.py
+@@ -237,6 +237,26 @@ async def on_startup():
+     await db.sms_messages.create_index("created_at")
+     await db.sms_messages.create_index("payment_link_slug")
+     await db.sms_messages.create_index([("contact_id", 1), ("created_at", -1)])
++
++    # Lot 29 (performances du Centre de Messagerie) — index composés pour les
++    # requêtes les plus fréquentes (liste des contacts, non-lus toutes les 15 s).
++    # Créés EN ARRIÈRE-PLAN : sur une grosse collection la construction peut
++    # prendre du temps, elle ne doit jamais retarder le démarrage. create_index
++    # ne fait rien si l'index existe déjà ; une erreur est seulement journalisée.
++    async def _lot29_perf_indexes():
++        specs = [
++            (db.whatsapp_messages, [("client_id", 1), ("created_at", -1)], "lot29_client_created"),
++            (db.whatsapp_messages, [("client_id", 1), ("direction", 1), ("read_by_us_at", 1), ("created_at", -1)],
++             "lot29_unread"),
++            (db.sms_messages, [("client_id", 1), ("created_at", -1)], "lot29_client_created"),
++            (db.wa_pending_imports, [("client_id", 1), ("last_seen_at", -1)], "lot29_client_seen"),
++        ]
++        for coll, keys, name in specs:
++            try:
++                await coll.create_index(keys, name=name, background=True)
++            except Exception as _exc:  # noqa: BLE001
++                logger.warning("[lot29] index %s non créé : %s", name, _exc)
++    asyncio.create_task(_lot29_perf_indexes())
+     await db.sms_schedules.create_index("status")
+     await db.sms_schedules.create_index("scheduled_at")
+     await db.sms_schedules.create_index([("client_id", 1), ("status", 1)])
+diff --git a/backend/tests/test_perf_lot29.py b/backend/tests/test_perf_lot29.py
+new file mode 100644
+index 0000000..c1d9a9a
+--- /dev/null
++++ b/backend/tests/test_perf_lot29.py
+@@ -0,0 +1,155 @@
++"""Lot 29 — performances du Centre de Messagerie : les nouveaux calculs donnent
++EXACTEMENT les mêmes résultats que les anciens.
++
++- /me/contacts : « dernière interaction » calculée par MongoDB (regroupement)
++  au lieu d'un parcours Python de 20 000 WhatsApp + 20 000 SMS ;
++- /me/wa-pending-imports : le carnet est lu une fois au lieu d'une recherche par
++  expression régulière pour chaque numéro en attente.
++Données tirées au hasard (graine fixe), MongoDB simulé. Aucun réseau.
++"""
++from __future__ import annotations
++
++import ast
++import asyncio
++import random
++import re
++from datetime import datetime, timedelta, timezone
++from typing import Any, Dict, List, Optional, Tuple
++
++import pytest
++
++pytest.importorskip("mongomock_motor")
++from mongomock_motor import AsyncMongoMockClient  # noqa: E402
++
++from _source_serveur import source_serveur  # noqa: E402
++
++FUNCS = {"_phone_suffix", "_phone_suffix_regex", "_find_contact_by_phone", "me_list_contacts",
++         "me_list_wa_pending_imports"}
++CONSTS = {"WA_PHONE_SUFFIX_LEN"}
++SCOPE = ["t1", "t1-peer"]
++
++
++def _load(db) -> Dict[str, Any]:
++    tree = ast.parse(source_serveur())
++    nodes = []
++    for node in tree.body:
++        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in FUNCS:
++            node.decorator_list = []
++            nodes.append(node)
++        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) in CONSTS for t in node.targets):
++            nodes.append(node)
++    ns: Dict[str, Any] = {"db": db, "re": re, "Optional": Optional, "List": List, "Dict": Dict, "Any": Any,
++                          "Tuple": Tuple, "Depends": lambda x: None, "get_current_user": None}
++
++    async def _visible(user):
++        return list(SCOPE)
++
++    async def _flags(user):
++        return {}
++    ns.update(_resolve_visible_client_ids=_visible, _resolve_anon_flags=_flags, _apply_anon_to_contact=lambda c, f: c)
++    exec(compile(ast.Module(body=nodes, type_ignores=[]), "server", "exec"), ns)  # noqa: S102
++    return ns
++
++
++# ---------------------------------------------------------------- anciens calculs (copie du code d'avant le lot 29)
++async def _ancien_last_interaction(db, ns, contacts, client_ids):
++    phone_map: Dict[str, List[Dict[str, Any]]] = {}
++    for c in contacts:
++        d10 = ns["_phone_suffix"](c.get("whatsapp") or c.get("phone"))
++        if len(d10) >= 6:
++            phone_map.setdefault(d10, []).append(c)
++    last: Dict[str, Tuple[str, str]] = {}
++
++    def _note(msg, direction):
++        ts = str(msg.get("created_at") or "")
++        if not ts:
++            return
++        for k in ("phone_digits", "from", "to"):
++            d10 = ns["_phone_suffix"](msg.get(k))
++            if d10 in phone_map:
++                if d10 not in last or ts > last[d10][0]:
++                    last[d10] = (ts, direction)
++                break
++    q = {"client_id": {"$in": client_ids}, "bulk": {"$ne": True}}
++    for coll in (db.whatsapp_messages, db.sms_messages):
++        async for m in coll.find(q, {"_id": 0}).sort("created_at", -1).limit(20000):
++            _note(m, "in" if m.get("direction") == "inbound" else "out")
++    out = {}
++    for d10, cs in phone_map.items():
++        for c in cs:
++            out[c["id"]] = last.get(d10, (None, None))
++    return out
++
++
++def _numero(rng):
++    """Numéro dans des formats variés (avec/sans indicatif, espaces, +)."""
++    base = "".join(rng.choice("0123456789") for _ in range(8))
++    return rng.choice([base, "226" + base, "+226 " + " ".join(base[i:i + 2] for i in range(0, 8, 2)),
++                       "00226" + base, base[:6], ""])
++
++
++@pytest.mark.parametrize("graine", [1, 2, 3, 4, 5])
++def test_derniere_interaction_identique(graine):
++    rng = random.Random(graine)
++    db = AsyncMongoMockClient()[f"lot29_{graine}"]
++    ns = _load(db)
++    t0 = datetime(2026, 9, 1, tzinfo=timezone.utc)
++
++    async def run():
++        numeros = [_numero(rng) for _ in range(40)]
++        contacts = []
++        for i in range(60):
++            n = rng.choice(numeros)
++            contacts.append({"id": f"c{i}", "name": f"N{i:03d}", "client_id": rng.choice(SCOPE + ["autre"]),
++                             "whatsapp": n if rng.random() < .7 else "", "phone": rng.choice(numeros)})
++        await db.directory_contacts.insert_many([dict(c) for c in contacts])
++        for coll in (db.whatsapp_messages, db.sms_messages):
++            docs = []
++            for j in range(900):
++                n = rng.choice(numeros)
++                docs.append({"id": f"{coll.name}{j}", "client_id": rng.choice(SCOPE + ["autre"]),
++                             "bulk": rng.random() < .1,
++                             "direction": rng.choice(["inbound", "outbound"]),
++                             "phone_digits": re.sub(r"\D", "", n) if rng.random() < .8 else None,
++                             "from": rng.choice(numeros), "to": rng.choice(numeros),
++                             "created_at": (t0 + timedelta(minutes=rng.randint(0, 50000))).isoformat()})
++            await coll.insert_many(docs)
++        nouveau = {c["id"]: (c.get("last_interaction_at"), c.get("last_interaction_direction"))
++                   for c in await ns["me_list_contacts"]({"id": "u"}) if "last_interaction_at" in c}
++        visibles = [c for c in contacts if c["client_id"] in SCOPE]
++        ancien = await _ancien_last_interaction(db, ns, visibles, SCOPE)
++        # mêmes dates ; même sens sauf égalité de date (ordre indéfini dans les deux cas)
++        assert {k: v[0] for k, v in nouveau.items()} == {k: v[0] for k, v in ancien.items()}
++        assert sum(1 for k in ancien if ancien[k][1] != nouveau[k][1]) <= 1
++        assert any(v[0] for v in ancien.values())          # le test porte bien sur des dates réelles
++    asyncio.run(run())
++
++
++@pytest.mark.parametrize("graine", [11, 12, 13])
++def test_imports_en_attente_identiques(graine):
++    rng = random.Random(graine)
++    db = AsyncMongoMockClient()[f"lot29p_{graine}"]
++    ns = _load(db)
++
++    async def run():
++        numeros = [_numero(rng) for _ in range(30)]
++        await db.directory_contacts.insert_many([
++            {"id": f"c{i}", "client_id": rng.choice(SCOPE + ["autre"]), "whatsapp": rng.choice(numeros),
++             "phone": rng.choice(numeros), "phone_digits": re.sub(r"\D", "", rng.choice(numeros)),
++             "created_at": f"2026-01-{i % 28 + 1:02d}"} for i in range(40)])
++        pend = [{"id": f"p{i}", "client_id": "t1", "phone_digits": re.sub(r"\D", "", rng.choice(numeros)) or None,
++                 "from": rng.choice(numeros), "last_seen_at": f"2026-09-{i % 28 + 1:02d}T{i:02d}:00"} for i in range(35)]
++        await db.wa_pending_imports.insert_many([dict(p) for p in pend])
++        # ancien calcul : _find_contact_by_phone (regex) pour chaque numéro en attente
++        attendus, vus = [], set()
++        for it in sorted(pend, key=lambda p: p["last_seen_at"], reverse=True)[:50]:
++            suffix = ns["_phone_suffix"](it.get("phone_digits") or it.get("from"))
++            existe = await ns["_find_contact_by_phone"](SCOPE, it.get("phone_digits") or it.get("from"))
++            if existe or (suffix and suffix in vus):
++                continue
++            vus.add(suffix)
++            attendus.append(it["id"])
++        garde = await ns["me_list_wa_pending_imports"]({"id": "u", "client_id": "t1", "role": "client"})
++        assert [x["id"] for x in garde] == attendus
++        assert 0 < len(attendus) < len(pend)               # des numéros gardés ET des numéros retirés
++    asyncio.run(run())
+diff --git a/frontend/src/components/RoutePerfSection.jsx b/frontend/src/components/RoutePerfSection.jsx
+new file mode 100644
+index 0000000..72ef9c7
+--- /dev/null
++++ b/frontend/src/components/RoutePerfSection.jsx
+@@ -0,0 +1,76 @@
++/*
++  RoutePerfSection — lot 29 (performances) : temps de réponse du serveur par
++  route depuis son dernier démarrage (GET /api/admin/perf/routes).
++  Sert à repérer les pages lentes et à mesurer le gain de chaque lot.
++*/
++import React, { useEffect, useState } from "react";
++import { apiClient } from "@/lib/api";
++import { Gauge, RefreshCw } from "lucide-react";
++
++const SORTS = [["total", "Temps cumulé"], ["avg", "Moyenne"], ["max", "Maximum"], ["count", "Nombre d'appels"]];
++
++export default function RoutePerfSection() {
++  const [data, setData] = useState(null);
++  const [sort, setSort] = useState("total");
++  const [filter, setFilter] = useState("");
++  const [error, setError] = useState("");
++
++  const load = async (s = sort) => {
++    try {
++      const r = await apiClient.get(`/admin/perf/routes?limit=80&sort=${s}`);
++      setData(r.data); setError("");
++    } catch (e) { setError(e?.response?.data?.detail || "Mesures indisponibles"); }
++  };
++  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
++
++  // couleur de la moyenne : vert < 300 ms, orange < 1 s, rouge au-delà
++  const tone = (ms) => (ms < 300 ? "text-emerald-700" : ms < 1000 ? "text-amber-700" : "text-rose-700");
++  const rows = (data?.routes || []).filter((r) => !filter || r.path.toLowerCase().includes(filter.toLowerCase()));
++
++  return (
++    <section className="rounded-2xl border border-slate-200 bg-white p-5 space-y-3" data-testid="route-perf">
++      <div className="flex flex-wrap items-center gap-3">
++        <h2 className="font-display font-bold text-lg flex items-center gap-2"><Gauge className="h-5 w-5 text-sawali-blue" /> Temps de réponse par route</h2>
++        <span className="text-xs text-slate-500">
++          depuis le dernier démarrage{data?.since ? ` (${new Date(data.since).toLocaleString("fr-FR")})` : ""}
++        </span>
++        <div className="ml-auto flex flex-wrap items-center gap-2">
++          <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filtrer (ex. contacts)"
++            className="h-8 rounded-lg border border-slate-300 px-2 text-sm" data-testid="route-perf-filter" />
++          <select value={sort} onChange={(e) => { setSort(e.target.value); load(e.target.value); }}
++            className="h-8 rounded-lg border border-slate-300 px-2 text-sm" data-testid="route-perf-sort">
++            {SORTS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
++          </select>
++          <button type="button" onClick={() => load()} className="inline-flex items-center gap-1 h-8 rounded-lg border border-slate-300 px-2 text-sm hover:bg-slate-50">
++            <RefreshCw className="h-3.5 w-3.5" /> Actualiser
++          </button>
++        </div>
++      </div>
++      {error && <p className="text-sm text-rose-700">{error}</p>}
++      <div className="overflow-x-auto">
++        <table className="w-full text-sm">
++          <thead>
++            <tr className="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b">
++              <th className="py-2 pr-3">Route</th><th className="py-2 px-2 text-right">Appels</th>
++              <th className="py-2 px-2 text-right">Moyenne</th><th className="py-2 px-2 text-right">Maximum</th>
++              <th className="py-2 px-2 text-right">&gt; 1 s</th><th className="py-2 pl-2 text-right">Cumul</th>
++            </tr>
++          </thead>
++          <tbody>
++            {rows.map((r) => (
++              <tr key={r.method + r.path} className="border-b border-slate-100 hover:bg-slate-50">
++                <td className="py-1.5 pr-3 font-mono text-xs"><span className="text-slate-400 mr-1">{r.method}</span>{r.path}</td>
++                <td className="py-1.5 px-2 text-right tabular-nums">{r.count}</td>
++                <td className={`py-1.5 px-2 text-right tabular-nums font-medium ${tone(r.avg_ms)}`}>{r.avg_ms} ms</td>
++                <td className="py-1.5 px-2 text-right tabular-nums">{r.max_ms} ms</td>
++                <td className="py-1.5 px-2 text-right tabular-nums">{r.over_1s || ""}</td>
++                <td className="py-1.5 pl-2 text-right tabular-nums">{r.total_s} s</td>
++              </tr>
++            ))}
++            {!rows.length && <tr><td colSpan={6} className="py-4 text-center text-slate-500">Aucune mesure pour l'instant.</td></tr>}
++          </tbody>
++        </table>
++      </div>
++    </section>
++  );
++}
+diff --git a/frontend/src/hooks/useWhatsAppNotifier.js b/frontend/src/hooks/useWhatsAppNotifier.js
+index c7290c2..cfbcb92 100644
+--- a/frontend/src/hooks/useWhatsAppNotifier.js
++++ b/frontend/src/hooks/useWhatsAppNotifier.js
+@@ -109,6 +109,9 @@ export function useWhatsAppNotifier({ enabled = true } = {}) {
+   const tick = useCallback(async () => {
+     try {
+       const r = await apiClient.get("/me/whatsapp/unread");
++      // Lot 29 (performances) — partage la réponse avec le Centre de Messagerie,
++      // qui n'a alors plus besoin de redemander les mêmes compteurs au serveur.
++      try { window.dispatchEvent(new CustomEvent("sawali:wa-unread", { detail: r.data || {} })); } catch { /* noop */ }
+       const total = r.data?.total || 0;
+       setUnread(total);
+       setFaviconBadge(total > 0);
+diff --git a/frontend/src/pages/admin/AdminHealthDashboard.jsx b/frontend/src/pages/admin/AdminHealthDashboard.jsx
+index 43a1f6f..c98d1c9 100644
+--- a/frontend/src/pages/admin/AdminHealthDashboard.jsx
++++ b/frontend/src/pages/admin/AdminHealthDashboard.jsx
+@@ -3,6 +3,7 @@ import { apiClient } from "@/lib/api";
+ import { Activity, AlertCircle, Clock, Mail, Send, RefreshCw, AlertTriangle, ShieldCheck, ShieldAlert, Loader2 } from "lucide-react";
+ import { toast } from "sonner";
+ import UptimeMonitorSection from "@/components/UptimeMonitorSection";
++import RoutePerfSection from "@/components/RoutePerfSection";  // lot 29
+ 
+ export default function AdminHealthDashboard() {
+   const [stats, setStats] = useState(null);
+@@ -87,6 +88,8 @@ export default function AdminHealthDashboard() {
+ 
+       {/* Multi-endpoint uptime monitor (DB + public APIs) */}
+       <UptimeMonitorSection />
++      {/* Lot 29 — temps de réponse par route (mesure des lots performances) */}
++      <RoutePerfSection />
+ 
+       {!stats ? (
+         <div className="rounded-xl border border-dashed border-slate-300 p-12 text-center text-slate-500">Chargement…</div>
+diff --git a/frontend/src/pages/portal/Contacts.jsx b/frontend/src/pages/portal/Contacts.jsx
+index fc9aaea..f718598 100644
+--- a/frontend/src/pages/portal/Contacts.jsx
++++ b/frontend/src/pages/portal/Contacts.jsx
+@@ -186,15 +186,29 @@ export default function Contacts() {
+   // Lot 23 — quand un nouveau message arrive (total des non-lus en hausse),
+   // la liste est relue pour que ce contact remonte en tête avec sa date.
+   const lastUnreadTotalRef = React.useRef(null);
+-  const loadUnread = async () => {
++  // Lot 29 (performances) — applique une réponse « non-lus », qu'elle vienne de
++  // notre propre appel ou de la cloche (qui relit les mêmes compteurs toutes les 15 s).
++  const lastSharedUnreadAt = React.useRef(0);
++  const applyUnread = (data) => {
++    const total = data?.total || 0;
++    setUnread({ total, by_contact: data?.by_contact || {}, older: data?.older || 0 });
++    if (lastUnreadTotalRef.current != null && total > lastUnreadTotalRef.current) load(true);
++    lastUnreadTotalRef.current = total;
++  };
++  const loadUnread = async ({ skipIfShared = false } = {}) => {
++    // La cloche vient de nous transmettre les compteurs : inutile de les redemander
++    if (skipIfShared && Date.now() - lastSharedUnreadAt.current < 20000) return;
+     try {
+       const r = await apiClient.get("/me/whatsapp/unread");
+-      const total = r.data?.total || 0;
+-      setUnread({ total, by_contact: r.data?.by_contact || {}, older: r.data?.older || 0 });
+-      if (lastUnreadTotalRef.current != null && total > lastUnreadTotalRef.current) load(true);
+-      lastUnreadTotalRef.current = total;
++      applyUnread(r.data);
+     } catch { /* noop */ }
+   };
++  useEffect(() => {
++    const onShared = (e) => { lastSharedUnreadAt.current = Date.now(); applyUnread(e.detail); };
++    window.addEventListener("sawali:wa-unread", onShared);
++    return () => window.removeEventListener("sawali:wa-unread", onShared);
++    /* eslint-disable-next-line react-hooks/exhaustive-deps */
++  }, []);
+ 
+   // Lot 24 — « Tout marquer comme lu » : tous les non-lus des contacts
+   // (y compris l'historique de plus de 30 jours, qui n'est plus compté).
+@@ -229,7 +243,7 @@ export default function Contacts() {
+   useEffect(() => {
+     // Lot 23 — non-lus toutes les 15 s (même rythme que le badge de la sidebar),
+     // liste complète relue en silence toutes les 2 min (messages envoyés ailleurs).
+-    const t = setInterval(() => { loadUnread(); loadPending(); }, 15000);
++    const t = setInterval(() => { loadUnread({ skipIfShared: true }); loadPending(); }, 15000);
+     const t2 = setInterval(() => load(true), 120000);
+     return () => { clearInterval(t); clearInterval(t2); };
+     /* eslint-disable-next-line react-hooks/exhaustive-deps */
+-- 
+2.43.0
+
