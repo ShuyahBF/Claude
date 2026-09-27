@@ -204,6 +204,21 @@ concerné.
   (même modèle de données) ; Production : Recette -> Formulation.
   Doublons auto-liluvine : auto_add_new_contact_if_enabled cherchait « +digits »
   exact -> reconnaissance sur 8 derniers chiffres. 107 tests autonomes, E2E navigateur OK. Ensuite : découpage de server.py par lots. Lot 26 : 395/395 sondes OK sur 15 min.
+- **Sawali lot 29 — Centre de Messagerie plus rapide + mesure des temps de réponse**
+  — **livré, en attente de publication** (base `ec599b9` = lot 28 publié ;
+  `sawali-portal-livraisons/sawali-portal-corrections_29_1ca6c11.patch` (32 Ko) +
+  `sawali-portal-prompt_29.md` ; dev `claude/lot29` 1ca6c11). /me/contacts :
+  last_interaction par agrégation Mongo ($sort+$limit 20000+$group sur
+  phone_digits/from/to, puis même _note) au lieu de 2×20 000 docs en Python ;
+  /me/wa-pending-imports : suffixes 6/7/8 chiffres du carnet en mémoire au lieu
+  de _find_contact_by_phone (regex) par numéro ; _resolve_visible_client_ids
+  mémorisé 60 s ; 4 index composés en tâche de fond au démarrage ; frontend :
+  non-lus partagés cloche → page (événement sawali:wa-unread) ; mesure
+  _PERF_STATS par modèle de route + GET /api/admin/perf/routes + tableau dans
+  Santé applicative. Tests d'équivalence (8, graines fixes) ; 34 fichiers de
+  tests messagerie identiques avant/après ; photo : seule la nouvelle route ;
+  démarrage réel identique ; git am sans avertissement + retour arrière exact.
+  Mesure « avant » demandée à l'utilisateur (console, X-Process-Time).
 - **Sawali lot 28 — zone de saisie pleine largeur + découpage de server.py**
   — **publié le 2026-09-27** (GitHub db42025→ec599b9, code identique hors `.emergent` ; production deploy_seq 55, /api/health ok ; NB : /health sans /api est servi par le frontend en production) (base `ce753a0` = lot 27 publié ;
   `sawali-portal-livraisons/sawali-portal-corrections_28_057b712.patch` +
