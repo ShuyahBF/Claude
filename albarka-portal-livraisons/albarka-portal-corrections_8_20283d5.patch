@@ -1,6 +1,6 @@
-From b1465a9d1d8dc9cf22587a3b2f826917f2d42304 Mon Sep 17 00:00:00 2001
+From 20283d5ab4ef3f386e95806e7638fc2d36b366a2 Mon Sep 17 00:00:00 2001
 From: "J.F. Ouoba" <jfrancois.ouoba@gmail.com>
-Date: Sun, 27 Sep 2026 00:12:26 +0000
+Date: Sun, 27 Sep 2026 02:15:40 +0000
 Subject: [PATCH] =?UTF-8?q?Lot=208=20:=20paie=20Burkina=20Faso=20param?=
  =?UTF-8?q?=C3=A9trable=20(cabinet=20et=20clients),=20retenue=20et=20arron?=
  =?UTF-8?q?dis=20des=20factures?=
@@ -29,22 +29,22 @@ Factures : TVA et retenue arrondies au franc (0,5 vers le haut) ; retenue à
 la source avec IFU 5 % / sans IFU 10 % et libellé, modifiables.
 ---
  backend/albarka_docgen.py                     |  12 +
- backend/albarka_paie.py                       | 760 ++++++++++++++++++
- backend/albarka_paie_moteur.py                | 477 +++++++++++
+ backend/albarka_paie.py                       | 792 ++++++++++++++++++
+ backend/albarka_paie_moteur.py                | 479 +++++++++++
  backend/albarka_payroll.py                    |  10 +
  backend/albarka_phase_c.py                    |  13 +-
  backend/server.py                             |   5 +
- backend/tests/test_paie_lot8.py               | 235 ++++++
+ backend/tests/test_paie_lot8.py               | 266 ++++++
  .../src/components/paie/PaieBulletins.jsx     | 258 ++++++
- .../src/components/paie/PaieEmployees.jsx     | 186 +++++
- .../src/components/paie/PaieParamsEditor.jsx  | 241 ++++++
- frontend/src/components/paie/PaieSettings.jsx | 197 +++++
+ .../src/components/paie/PaieEmployees.jsx     | 195 +++++
+ .../src/components/paie/PaieParamsEditor.jsx  | 249 ++++++
+ frontend/src/components/paie/PaieSettings.jsx | 200 +++++
  frontend/src/components/paie/paieCommon.jsx   |  51 ++
  frontend/src/pages/admin/AdminBilling.jsx     |  41 +-
  frontend/src/pages/admin/AdminHR.jsx          |  86 +-
  frontend/src/pages/admin/DocSettingsPanel.jsx |  11 +-
  frontend/src/version.js                       |   2 +-
- 16 files changed, 2503 insertions(+), 82 deletions(-)
+ 16 files changed, 2588 insertions(+), 82 deletions(-)
  create mode 100644 backend/albarka_paie.py
  create mode 100644 backend/albarka_paie_moteur.py
  create mode 100644 backend/tests/test_paie_lot8.py
@@ -91,10 +91,10 @@ index 0de49b7..3dd8095 100644
      raise HTTPException(status_code=404, detail="Document inconnu")
 diff --git a/backend/albarka_paie.py b/backend/albarka_paie.py
 new file mode 100644
-index 0000000..04f6a4f
+index 0000000..e6ff01b
 --- /dev/null
 +++ b/backend/albarka_paie.py
-@@ -0,0 +1,760 @@
+@@ -0,0 +1,792 @@
 +"""PAIE — modèles de configuration, bulletins et livre de paie (lot 8).
 +
 +Le cabinet calcule la paie de SON PROPRE PERSONNEL (employeur « cabinet ») et
@@ -129,6 +129,7 @@ index 0000000..04f6a4f
 +from fastapi import APIRouter, Depends, HTTPException
 +from fastapi.responses import Response
 +from pydantic import BaseModel, Field
++from pymongo.errors import DuplicateKeyError
 +
 +from albarka_auth import require_roles
 +from albarka_docgen import MONTHS_FR, fcfa, new_verify_token, now_iso, qr_png, verify_url
@@ -162,7 +163,7 @@ index 0000000..04f6a4f
 +def _clean_params(params: Optional[dict]) -> dict:
 +    try:
 +        return normalize_params(params)
-+    except ValueError as exc:
++    except (ValueError, TypeError, AttributeError) as exc:
 +        raise HTTPException(status_code=400, detail=str(exc))
 +
 +
@@ -175,16 +176,28 @@ index 0000000..04f6a4f
 +    params: Optional[dict] = None                # absent = valeurs par défaut
 +
 +
++# Base pour laquelle l'initialisation est déjà faite : on ne la refait pas
++# à chaque requête (index + modèle créés une seule fois par processus).
++_SETUP_DONE_FOR = None
++
++
 +async def ensure_paie_setup() -> None:
 +    """Index et modèle « Burkina Faso — standard » (au premier démarrage)."""
++    global _SETUP_DONE_FOR
++    if _SETUP_DONE_FOR is db:
++        return
 +    await db.paie_bulletins.create_index([("employer_id", 1), ("period_month", 1), ("employee_id", 1)], unique=True)
 +    await db.paie_employeurs.create_index("employer_id", unique=True)
 +    if not await db.paie_modeles.find_one({}, {"_id": 0, "id": 1}):
-+        await db.paie_modeles.insert_one({
-+            "id": secrets.token_hex(8), "name": SYSTEM_TEMPLATE_NAME,
++        # upsert sur un identifiant fixe : jamais deux modèles standard, même si
++        # deux démarrages arrivent en même temps
++        await db.paie_modeles.update_one({"id": "bf-standard"}, {"$setOnInsert": {
++            "id": "bf-standard", "name": SYSTEM_TEMPLATE_NAME,
 +            "description": "Barème IUTS, CNSS 5,5 % plafonnée, exonérations logement/transport/fonction, "
 +                           "abattement 25 %, soutien patriotique 1 % (valeurs du fichier du cabinet).",
-+            "params": normalize_params(None), "is_default": True, "created_at": now_iso(), "updated_at": now_iso()})
++            "params": normalize_params(None), "is_default": True, "created_at": now_iso(), "updated_at": now_iso()}},
++            upsert=True)
++    _SETUP_DONE_FOR = db
 +
 +
 +async def _template(tid: str) -> dict:
@@ -311,9 +324,20 @@ index 0000000..04f6a4f
 +            "phone": u.get("phone") or "", "kind": "client"}
 +
 +
-+async def employer_config(eid: str) -> Dict[str, Any]:
-+    """Configuration effective : modèle, personnalisation, paramètres utilisés, en-tête."""
-+    ident = await _employer_identity(eid)
++async def employer_config(eid: str, strict: bool = True) -> Dict[str, Any]:
++    """Configuration effective : modèle, personnalisation, paramètres utilisés, en-tête.
++    strict=False : un client supprimé reste lisible (livre de paie, bulletins passés)
++    avec le nom mémorisé sur ses derniers bulletins."""
++    try:
++        ident = await _employer_identity(eid)
++    except HTTPException:
++        if strict:
++            raise
++        last = await db.paie_bulletins.find_one({"employer_id": eid}, {"_id": 0, "employer": 1},
++                                                sort=[("period_month", -1)]) or {}
++        snap = last.get("employer") or {}
++        ident = {"name": snap.get("name") or eid, "address": snap.get("address") or "",
++                 "phone": snap.get("phone") or "", "kind": "client"}
 +    cfg = await db.paie_employeurs.find_one({"employer_id": eid}, {"_id": 0}) or {}
 +    tpl = None
 +    if cfg.get("template_id"):
@@ -325,7 +349,9 @@ index 0000000..04f6a4f
 +        "name": cfg.get("display_name") or ident["name"], "default_name": ident["name"],
 +        "display_name": cfg.get("display_name") or "", "address": cfg.get("address") or ident["address"],
 +        "phone": cfg.get("phone") or ident["phone"], "cnss_number": cfg.get("cnss_number") or "",
-+        "template_id": tpl["id"], "template_name": tpl["name"], "customized": custom is not None,
++        "template_id": tpl["id"], "template_name": tpl["name"],
++        "chosen_template_id": cfg.get("template_id") or None,     # None = suit le modèle par défaut
++        "customized": custom is not None,
 +        "custom_params": custom, "params": normalize_params(custom if custom is not None else tpl["params"]),
 +    }
 +
@@ -465,7 +491,10 @@ index 0000000..04f6a4f
 +    emp = dict(emp_input)
 +    if emp.get("pay_mode") == "net" and emp.get("net_target"):
 +        try:
-+            emp["base_salary"] = base_for_net(emp, emp["net_target"], params, month)
++            # Recherche sur la fiche seule : les primes du mois et une ancienneté
++            # saisie s'ajoutent ensuite au net négocié (elles ne le réduisent pas).
++            fiche = {**emp, "extras": [], "deductions": [], "seniority_amount": None}
++            emp["base_salary"] = base_for_net(fiche, emp["net_target"], params, month)
 +        except ValueError as exc:
 +            raise HTTPException(status_code=400, detail=str(exc))
 +    try:
@@ -550,7 +579,10 @@ index 0000000..04f6a4f
 +                 "status": "draft", "variables": {"extras": [], "deductions": [], "seniority_amount": None, "notes": ""},
 +                 "verify_token": new_verify_token(), "created_at": now_iso(), "created_by": user["id"]}
 +            b.update(await _compute_bulletin(b, cfg))
-+            await db.paie_bulletins.insert_one(b.copy())
++            try:
++                await db.paie_bulletins.insert_one(b.copy())
++            except DuplicateKeyError:       # préparation lancée deux fois en même temps
++                continue
 +            created += 1
 +        else:
 +            await db.paie_bulletins.update_one({"id": b["id"]}, {"$set": await _compute_bulletin(b, cfg)})
@@ -587,7 +619,7 @@ index 0000000..04f6a4f
 +        raise HTTPException(status_code=409, detail="Bulletin validé : rouvrez-le pour le modifier")
 +    b["variables"] = {"extras": _clean_items(payload.extras, "Prime"), "deductions": _clean_items(payload.deductions, "Retenue"),
 +                      "seniority_amount": payload.seniority_amount, "notes": payload.notes.strip()}
-+    cfg = await employer_config(b["employer_id"])
++    cfg = await employer_config(b["employer_id"], strict=False)
 +    await db.paie_bulletins.update_one({"id": bid}, {"$set": {"variables": b["variables"], **await _compute_bulletin(b, cfg)}})
 +    return await _bulletin(bid)
 +
@@ -644,7 +676,7 @@ index 0000000..04f6a4f
 +@router.get("/livre")
 +async def ledger(employer_id: str, period_month: str, user: dict = Depends(require_roles(HR_ROLES))):
 +    month = _month_ok(period_month)
-+    cfg = await employer_config(employer_id)
++    cfg = await employer_config(employer_id, strict=False)
 +    items = await db.paie_bulletins.find({"employer_id": employer_id, "period_month": month}, {"_id": 0, "params": 0}).to_list(2000)
 +    items.sort(key=lambda b: (b.get("employee") or {}).get("full_name") or "")
 +    return {"employer": {k: cfg[k] for k in ("employer_id", "name", "address", "phone", "cnss_number")},
@@ -857,10 +889,10 @@ index 0000000..04f6a4f
 +            "status": "validé" if b.get("status") == "validated" else "brouillon"}
 diff --git a/backend/albarka_paie_moteur.py b/backend/albarka_paie_moteur.py
 new file mode 100644
-index 0000000..f0ee56b
+index 0000000..db38205
 --- /dev/null
 +++ b/backend/albarka_paie_moteur.py
-@@ -0,0 +1,477 @@
+@@ -0,0 +1,479 @@
 +"""MOTEUR DE PAIE — Burkina Faso, entièrement paramétrable (lot 8).
 +
 +Module pur : aucune base de données, aucun accès réseau. Il reçoit la fiche
@@ -1017,6 +1049,8 @@ index 0000000..f0ee56b
 +    if not params:
 +        return base
 +    for k, v in params.items():
++        if v is None:                       # section vide : valeurs par défaut
++            continue
 +        if isinstance(v, dict) and isinstance(base.get(k), dict):
 +            base[k] = {**base[k], **v}
 +            if k == "rounding":
@@ -1191,7 +1225,7 @@ index 0000000..f0ee56b
 +        for c in f["categories"]:
 +            if c["key"] == category:
 +                return c["rate"]
-+        return f["categories"][0]["rate"] if f["categories"] else f["rate"]
++        return f["rate"]                 # sans catégorie connue : taux général
 +    return f["rate"]
 +
 +
@@ -1339,7 +1373,7 @@ index 0000000..f0ee56b
 +            lo = mid + 1
 +    return float(lo)
 diff --git a/backend/albarka_payroll.py b/backend/albarka_payroll.py
-index a9cce66..e57237c 100644
+index a9cce66..808870a 100644
 --- a/backend/albarka_payroll.py
 +++ b/backend/albarka_payroll.py
 @@ -143,6 +143,16 @@ async def load_table(tenant_id: str, month: str) -> dict:
@@ -1352,9 +1386,9 @@ index a9cce66..e57237c 100644
 +    for r in rows:
 +        res = slips.get(r.get("employee_id"))
 +        if res:
-+            if r.get("net") in (None, "", 0):
++            if source != "saved" or r.get("net") in (None, "", 0):
 +                r["net"] = res.get("net")
-+            if not r.get("seniority"):
++            if source != "saved" or not r.get("seniority"):
 +                r["seniority"] = res.get("seniority") or 0
      clean = []
      for r in rows:
@@ -1418,10 +1452,10 @@ index f4131c6..3ccad81 100644
  
 diff --git a/backend/tests/test_paie_lot8.py b/backend/tests/test_paie_lot8.py
 new file mode 100644
-index 0000000..6523147
+index 0000000..0da1776
 --- /dev/null
 +++ b/backend/tests/test_paie_lot8.py
-@@ -0,0 +1,235 @@
+@@ -0,0 +1,266 @@
 +"""Lot 8 — paie Burkina Faso entièrement paramétrable.
 +
 +- moteur : reproduction EXACTE du fichier du cabinet « Assistante_cardi_pro_ESSAI.xlsx »
@@ -1657,6 +1691,37 @@ index 0000000..6523147
 +
 +def env_db_token(env, bid):
 +    return asyncio.run(env.db.paie_bulletins.find_one({"id": bid}))["verify_token"]
++
++
++def test_review_fixes(env):
++    """Corrections après revue : net négocié + primes, catégorie absente, section
++    nulle, modèle par défaut suivi, client supprimé, double préparation."""
++    c = env.c
++    # Sans catégorie en mode « par catégorie » : taux général (25 %), pas celui de la 1re catégorie
++    cat = {"flat_abatement": {"mode": "by_category", "rate": 25, "categories": [{"key": "cadre", "label": "Cadre", "rate": 20}]}}
++    assert moteur.compute_payslip(SANDRINE, cat, "2024-07")["flat_abatement"] == round(231672 * 0.25)
++    # Section nulle : valeurs par défaut (et plus d'erreur 500)
++    assert moteur.normalize_params({"cnss": None, "rounding": None})["cnss"]["employee_rate"] == 5.5
++    # Employeur sans modèle choisi : il suit le modèle par défaut même après « Appliquer »
++    cfg = c.put("/api/hr/paie/employeurs/c1", headers=H, json={"template_id": None, "cnss_number": "1"}).json()
++    assert cfg["chosen_template_id"] is None
++    # Net négocié : une prime du mois s'ajoute au net au lieu de baisser le salaire de base
++    e = c.post("/api/hr/paie/employees", headers=H, json={
++        "tenant_id": "c1", "full_name": "Net négocié", "pay_mode": "net", "net_target": 300000, "dependents": 1,
++        "allowances": {"housing": 50000, "transport": 30000, "function": 30000}}).json()
++    c.post("/api/hr/paie/bulletins/prepare", headers=H, json={"employer_id": "c1", "period_month": "2024-07"})
++    b = c.get("/api/hr/paie/bulletins?employer_id=c1&period_month=2024-07", headers=H).json()["items"][0]
++    base = b["result"]["base_salary"]
++    b = c.put(f"/api/hr/paie/bulletins/{b['id']}", headers=H, json={"extras": [{"label": "Prime", "amount": 50000}], "deductions": []}).json()
++    assert b["result"]["base_salary"] == base and b["result"]["net"] > 300000
++    # Double préparation simultanée : pas d'erreur (index unique respecté)
++    assert c.post("/api/hr/paie/bulletins/prepare", headers=H, json={"employer_id": "c1", "period_month": "2024-08"}).status_code == 200
++    # Client supprimé : le livre de paie de ses mois passés reste consultable
++    asyncio.run(env.db.users.delete_one({"id": "c1"}))
++    lv = c.get("/api/hr/paie/livre?employer_id=c1&period_month=2024-07", headers=H)
++    assert lv.status_code == 200 and lv.json()["employer"]["name"] == "CARD-IPRO SARL"
++    assert c.post("/api/hr/paie/bulletins/prepare", headers=H, json={"employer_id": "c1", "period_month": "2024-09"}).status_code == 404
++    assert e["tenant_id"] == "c1"
 diff --git a/frontend/src/components/paie/PaieBulletins.jsx b/frontend/src/components/paie/PaieBulletins.jsx
 new file mode 100644
 index 0000000..cae4f80
@@ -1923,10 +1988,10 @@ index 0000000..cae4f80
 +}
 diff --git a/frontend/src/components/paie/PaieEmployees.jsx b/frontend/src/components/paie/PaieEmployees.jsx
 new file mode 100644
-index 0000000..6f4f20c
+index 0000000..63fe8a3
 --- /dev/null
 +++ b/frontend/src/components/paie/PaieEmployees.jsx
-@@ -0,0 +1,186 @@
+@@ -0,0 +1,195 @@
 +/*
 +  PaieEmployees — lot 8 : onglet « Salariés ».
 +
@@ -2029,6 +2094,15 @@ index 0000000..6f4f20c
 +                  </div>
 +                ))}
 +              </div>
++              {/* Indemnités qui ne sont plus dans le modèle : visibles et supprimables */}
++              {Object.keys(f.allowances || {}).filter((k) => !(params?.allowances || []).some((a) => a.key === k)).map((k) => (
++                <div key={k} className="mt-2 flex items-center gap-2 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-amber-800">
++                  <span className="flex-1">Indemnité retirée du modèle (« {k} ») : {fcfa(f.allowances[k])}</span>
++                  <button type="button" title="Retirer de la fiche" className="p-1 rounded hover:bg-amber-100"
++                    onClick={() => { const a = { ...f.allowances }; delete a[k]; set({ allowances: a, non_exempt: f.non_exempt.filter((x) => x !== k) }); }}>
++                    <Trash2 className="h-4 w-4" /></button>
++                </div>
++              ))}
 +            </div>
 +          </div>
 +          {/* Calcul en direct */}
@@ -2115,10 +2189,10 @@ index 0000000..6f4f20c
 +}
 diff --git a/frontend/src/components/paie/PaieParamsEditor.jsx b/frontend/src/components/paie/PaieParamsEditor.jsx
 new file mode 100644
-index 0000000..24751be
+index 0000000..ac3b7ad
 --- /dev/null
 +++ b/frontend/src/components/paie/PaieParamsEditor.jsx
-@@ -0,0 +1,241 @@
+@@ -0,0 +1,249 @@
 +/*
 +  PaieParamsEditor — lot 8 : édition d'un jeu complet de paramètres de paie.
 +
@@ -2147,6 +2221,10 @@ index 0000000..24751be
 +const MODES = [["nearest", "Au plus proche"], ["down", "Inférieur"], ["up", "Supérieur"]];
 +const ROUNDING_LABELS = { amounts: "Montants (CNSS, IUTS, primes…)", iuts_base: "Base IUTS", net: "Salaire net" };
 +
++// Clé unique pour une nouvelle ligne (évite les doublons après suppression)
++const newKey = (prefix) => `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
++// Champ numérique : vide autorisé pendant la saisie (sinon impossible d'effacer le 0)
++const numOrEmpty = (e) => (e.target.value === "" ? "" : Number(e.target.value));
 +const num = "w-24 h-8 rounded border border-slate-300 px-2 text-sm text-right";
 +const txt = "h-8 rounded border border-slate-300 px-2 text-sm";
 +
@@ -2267,13 +2345,13 @@ index 0000000..24751be
 +
 +        <Section title="CNSS" hint={`${p.cnss.employee_rate} % plafonnée à ${fcfa(p.cnss.ceiling)}`} testId="sec-cnss">
 +          <div className="flex flex-wrap gap-4">
-+            <label className="flex items-center gap-1">Part salariale <input type="number" value={p.cnss.employee_rate} onChange={(e) => setIn("cnss", { employee_rate: Number(e.target.value) })} className={num} /> %</label>
-+            <label className="flex items-center gap-1">Plafond du brut <input type="number" value={p.cnss.ceiling} onChange={(e) => setIn("cnss", { ceiling: Number(e.target.value) })} className={num} /></label>
++            <label className="flex items-center gap-1">Part salariale <input type="number" value={p.cnss.employee_rate} onChange={(e) => setIn("cnss", { employee_rate: numOrEmpty(e) })} className={num} /> %</label>
++            <label className="flex items-center gap-1">Plafond du brut <input type="number" value={p.cnss.ceiling} onChange={(e) => setIn("cnss", { ceiling: numOrEmpty(e) })} className={num} /></label>
 +            <label className="flex items-center gap-1"><input type="checkbox" checked={p.cnss.fiscal_cap_enabled} onChange={(e) => setIn("cnss", { fiscal_cap_enabled: e.target.checked })} />
-+              CNSS déductible de l'IUTS limitée à <input type="number" value={p.cnss.fiscal_cap_rate} onChange={(e) => setIn("cnss", { fiscal_cap_rate: Number(e.target.value) })} className={num} /> % du salaire de base</label>
++              CNSS déductible de l'IUTS limitée à <input type="number" value={p.cnss.fiscal_cap_rate} onChange={(e) => setIn("cnss", { fiscal_cap_rate: numOrEmpty(e) })} className={num} /> % du salaire de base</label>
 +          </div>
 +          <p className="text-xs font-semibold text-slate-700 pt-2">CNSS patronale (livre de paie)</p>
-+          <label className="flex items-center gap-1 text-xs">Plafond <input type="number" value={p.cnss.employer_ceiling} onChange={(e) => setIn("cnss", { employer_ceiling: Number(e.target.value) })} className={num} /></label>
++          <label className="flex items-center gap-1 text-xs">Plafond <input type="number" value={p.cnss.employer_ceiling} onChange={(e) => setIn("cnss", { employer_ceiling: numOrEmpty(e) })} className={num} /></label>
 +          <Rows rows={p.cnss.employer_lines} onChange={(rows) => setIn("cnss", { employer_lines: rows })} newRow={() => ({ label: "", rate: 0 })}
 +            columns={[{ key: "label", label: "Branche", type: "text" }, { key: "rate", label: "taux", suffix: "%" }]} />
 +        </Section>
@@ -2285,14 +2363,14 @@ index 0000000..24751be
 +
 +        <Section title="Exonérations" hint="min(montant versé, taux × imposable, plafond)" testId="sec-exemptions">
 +          <Rows rows={p.exemptions} onChange={(rows) => set({ exemptions: rows })}
-+            newRow={(rows) => ({ key: `ex${rows.length + 1}`, label: "", rate: 0, cap: 0 })}
++            newRow={(rows) => ({ key: newKey("ex"), label: "", rate: 0, cap: 0 })}
 +            columns={[{ key: "label", label: "Nom", type: "text", width: "w-32" }, { key: "rate", label: "taux", suffix: "% de l'imposable" },
-+              { key: "cap", label: "plafond" }]} />
++              { key: "cap", label: "plafond (0 = sans plafond)" }]} />
 +        </Section>
 +
 +        <Section title="Indemnités" hint="rubriques de la fiche salarié" testId="sec-allowances">
 +          <Rows rows={p.allowances} onChange={(rows) => set({ allowances: rows })}
-+            newRow={(rows) => ({ key: `ind${rows.length + 1}`, label: "", exemption: null })} addLabel="Ajouter une indemnité"
++            newRow={(rows) => ({ key: newKey("ind"), label: "", exemption: null })} addLabel="Ajouter une indemnité"
 +            columns={[{ key: "label", label: "Libellé", type: "text", width: "w-56" },
 +              { key: "exemption", label: "exonération", render: (r, v) => (
 +                <select value={r.exemption || ""} onChange={(e) => v(e.target.value || null)} className={txt}>
@@ -2305,14 +2383,18 @@ index 0000000..24751be
 +        <Section title="Abattement forfaitaire" hint={p.flat_abatement.mode === "single" ? `${p.flat_abatement.rate} % pour tous` : "selon la catégorie"} testId="sec-flat">
 +          <div className="flex flex-wrap gap-4">
 +            <label className="flex items-center gap-1"><input type="radio" checked={p.flat_abatement.mode === "single"} onChange={() => setIn("flat_abatement", { mode: "single" })} data-testid="flat-single" />
-+              Taux unique <input type="number" value={p.flat_abatement.rate} onChange={(e) => setIn("flat_abatement", { rate: Number(e.target.value) })} className={num} /> % du salaire de base</label>
++              Taux unique <input type="number" value={p.flat_abatement.rate} onChange={(e) => setIn("flat_abatement", { rate: numOrEmpty(e) })} className={num} /> % du salaire de base</label>
 +            <label className="flex items-center gap-1"><input type="radio" checked={p.flat_abatement.mode === "by_category"} onChange={() => setIn("flat_abatement", { mode: "by_category" })} data-testid="flat-category" />
 +              Selon la catégorie du salarié</label>
 +          </div>
 +          {p.flat_abatement.mode === "by_category" && (
 +            <Rows rows={p.flat_abatement.categories} onChange={(rows) => setIn("flat_abatement", { categories: rows })}
-+              newRow={(rows) => ({ key: `cat${rows.length + 1}`, label: "", rate: 25 })} addLabel="Ajouter une catégorie"
++              newRow={(rows) => ({ key: newKey("cat"), label: "", rate: 25 })} addLabel="Ajouter une catégorie"
 +              columns={[{ key: "label", label: "Catégorie", type: "text", width: "w-40" }, { key: "rate", label: "taux", suffix: "%" }]} />
++          )}
++          {p.flat_abatement.mode === "by_category" && (
++            // Un salarié sans catégorie (ou dont la catégorie a été supprimée) garde le taux unique
++            <p className="text-[11px] text-slate-500">Salarié sans catégorie : taux unique ci-dessus ({p.flat_abatement.rate} %).</p>
 +          )}
 +        </Section>
 +
@@ -2326,10 +2408,10 @@ index 0000000..24751be
 +        <Section title="Prime d'ancienneté" hint={p.seniority.enabled ? `à partir de ${p.seniority.start_years} ans` : "désactivée"} testId="sec-seniority">
 +          <label className="flex items-center gap-1"><input type="checkbox" checked={p.seniority.enabled} onChange={(e) => setIn("seniority", { enabled: e.target.checked })} /> Calculer la prime d'ancienneté</label>
 +          <div className="flex flex-wrap gap-4">
-+            <label className="flex items-center gap-1">À partir de <input type="number" value={p.seniority.start_years} onChange={(e) => setIn("seniority", { start_years: Number(e.target.value) })} className={num} /> ans</label>
-+            <label className="flex items-center gap-1">taux <input type="number" value={p.seniority.start_rate} onChange={(e) => setIn("seniority", { start_rate: Number(e.target.value) })} className={num} /> %</label>
-+            <label className="flex items-center gap-1">puis + <input type="number" value={p.seniority.step_rate} onChange={(e) => setIn("seniority", { step_rate: Number(e.target.value) })} className={num} /> point(s) par an</label>
-+            <label className="flex items-center gap-1">plafond <input type="number" value={p.seniority.max_rate} onChange={(e) => setIn("seniority", { max_rate: Number(e.target.value) })} className={num} /> %</label>
++            <label className="flex items-center gap-1">À partir de <input type="number" value={p.seniority.start_years} onChange={(e) => setIn("seniority", { start_years: numOrEmpty(e) })} className={num} /> ans</label>
++            <label className="flex items-center gap-1">taux <input type="number" value={p.seniority.start_rate} onChange={(e) => setIn("seniority", { start_rate: numOrEmpty(e) })} className={num} /> %</label>
++            <label className="flex items-center gap-1">puis + <input type="number" value={p.seniority.step_rate} onChange={(e) => setIn("seniority", { step_rate: numOrEmpty(e) })} className={num} /> point(s) par an</label>
++            <label className="flex items-center gap-1">plafond <input type="number" value={p.seniority.max_rate} onChange={(e) => setIn("seniority", { max_rate: numOrEmpty(e) })} className={num} /> %</label>
 +          </div>
 +          <p className="text-[11px] text-slate-500">Calculée sur le salaire de base, d'après la date d'embauche (années complètes à la fin du mois).</p>
 +        </Section>
@@ -2337,7 +2419,7 @@ index 0000000..24751be
 +        <Section title="Soutien patriotique" hint={p.patriotic_support.enabled ? `${p.patriotic_support.rate} % du net` : "désactivé"} testId="sec-patriotic">
 +          <div className="flex flex-wrap gap-4">
 +            <label className="flex items-center gap-1"><input type="checkbox" checked={p.patriotic_support.enabled} onChange={(e) => setIn("patriotic_support", { enabled: e.target.checked })} /> Appliquer</label>
-+            <label className="flex items-center gap-1">Taux <input type="number" value={p.patriotic_support.rate} onChange={(e) => setIn("patriotic_support", { rate: Number(e.target.value) })} className={num} /> % du salaire net</label>
++            <label className="flex items-center gap-1">Taux <input type="number" value={p.patriotic_support.rate} onChange={(e) => setIn("patriotic_support", { rate: numOrEmpty(e) })} className={num} /> % du salaire net</label>
 +            <label className="flex items-center gap-1">Libellé <input value={p.patriotic_support.label} onChange={(e) => setIn("patriotic_support", { label: e.target.value })} className={`${txt} w-56`} /></label>
 +          </div>
 +        </Section>
@@ -2362,10 +2444,10 @@ index 0000000..24751be
 +}
 diff --git a/frontend/src/components/paie/PaieSettings.jsx b/frontend/src/components/paie/PaieSettings.jsx
 new file mode 100644
-index 0000000..53066ba
+index 0000000..0681200
 --- /dev/null
 +++ b/frontend/src/components/paie/PaieSettings.jsx
-@@ -0,0 +1,197 @@
+@@ -0,0 +1,200 @@
 +/*
 +  PaieSettings — lot 8 : onglet « Paramètres de paie ».
 +
@@ -2495,7 +2577,8 @@ index 0000000..53066ba
 +    setBusy(true);
 +    try {
 +      const { data } = await apiClient.put(`/hr/paie/employeurs/${eid}`, {
-+        template_id: cfg.template_id, custom_params: customParams, display_name: cfg.display_name || "",
++        // null = suit le « modèle par défaut » (s'il change, l'employeur suit)
++        template_id: cfg.chosen_template_id || null, custom_params: customParams, display_name: cfg.display_name || "",
 +        address: cfg.address || "", phone: cfg.phone || "", cnss_number: cfg.cnss_number || "" });
 +      setCfg(data); setCustom(data.customized ? data.custom_params : null);
 +      toast.success("Configuration de l'employeur appliquée");
@@ -2517,7 +2600,9 @@ index 0000000..53066ba
 +        <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
 +          <div className="grid md:grid-cols-5 gap-3 text-xs text-slate-600">
 +            <label>Modèle de configuration
-+              <select value={cfg.template_id} onChange={(e) => setCfg({ ...cfg, template_id: e.target.value })} className="mt-1 block h-9 w-full rounded border border-slate-300 px-2 text-sm" data-testid="employer-template">
++              <select value={cfg.chosen_template_id || ""} onChange={(e) => setCfg({ ...cfg, chosen_template_id: e.target.value })} className="mt-1 block h-9 w-full rounded border border-slate-300 px-2 text-sm" data-testid="employer-template">
++                {/* Option vide : l'employeur suit toujours le modèle par défaut */}
++                <option value="">Modèle par défaut{templates.find((t) => t.is_default) ? ` (${templates.find((t) => t.is_default).name})` : ""}</option>
 +                {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
 +            <label>Raison sociale (bulletin)
 +              <input value={cfg.display_name || ""} placeholder={cfg.default_name} onChange={(e) => setCfg({ ...cfg, display_name: e.target.value })} className="mt-1 block h-9 w-full rounded border border-slate-300 px-2 text-sm" /></label>

@@ -4,7 +4,7 @@
 de lint, pas de ré-analyse du code, et surtout **AUCUN Testing Agent, agent
 évaluateur ou analyseur automatique**. Tu appliques et tu déploies directement.
 
-Applique `albarka-portal-corrections_8_b1465a9.patch` sur la branche
+Applique `albarka-portal-corrections_8_20283d5.patch` sur la branche
 `conflict_030926_0658`. Base attendue : ton commit `7b86f23` (« Auto-generated
 changes », juste après `4313f2e`, le lot 7 que tu as publié). Le patch ne
 touche pas au dossier `.emergent`. C'est un `git format-patch` d'un seul
@@ -89,7 +89,8 @@ Le cabinet calcule la paie de **son propre personnel** et celle de **ses clients
      - la CNSS salariale et patronale ;
      - les taxes patronales (TPA) ;
      - les exonérations et les rubriques d'indemnités ;
-     - l'abattement forfaitaire (taux unique ou par catégorie) ;
+     - l'abattement forfaitaire (taux unique ou par catégorie ; un salarié
+       sans catégorie garde le taux unique) ;
      - les **charges de famille** (nombre de charges et taux, lignes
        ajoutées ou supprimées) ;
      - la prime d'ancienneté ;
@@ -100,8 +101,9 @@ Le cabinet calcule la paie de **son propre personnel** et celle de **ses clients
      défaut** revient aux valeurs du Burkina Faso. Un **aperçu du calcul**
      s'actualise pendant la saisie. Le modèle « Burkina Faso — standard » est
      créé au premier démarrage.
-   - **Chaque employeur** (le cabinet et chaque client) choisit son modèle et
-     peut le **personnaliser pour lui seul**. Le bouton **Restaurer les
+   - **Chaque employeur** (le cabinet et chaque client) choisit son modèle
+     (par défaut : « Modèle par défaut », qui suit le modèle marqué par
+     défaut) et peut le **personnaliser pour lui seul**. Le bouton **Restaurer les
      valeurs du modèle** revient ensuite au modèle.
    - L'en-tête du bulletin se règle aussi : raison sociale, adresse,
      téléphone, n° CNSS employeur.
@@ -111,7 +113,8 @@ Le cabinet calcule la paie de **son propre personnel** et celle de **ses clients
    - date d'embauche : la prime d'ancienneté démarre à 3 ans ;
    - indemnités.
    - Deux modes : **brut → net**, ou **net négocié → brut**. Dans le second,
-     on saisit le net voulu et le salaire de base est calculé.
+     on saisit le net voulu et le salaire de base est calculé. Les primes du
+     mois s'ajoutent ensuite à ce net.
    - Le calcul s'affiche en direct.
 4. **Bulletins de paie** (onglet Bulletins) :
    - « Préparer / recalculer le mois » crée un bulletin par salarié ;
