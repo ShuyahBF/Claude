@@ -126,6 +126,13 @@ du patch + prompt), toujours donner :
    personnel et côté client.
 3. **La recette des lots concernés** : pour chaque module, qui se connecte
    (quel compte de test), comment faire (étapes), et ce qu'il faut vérifier.
+4. **Écran de travail réduit (rappel utilisateur 2026-09-27)** : le défilement
+   dans la conversation est pénible. À chaque lot publié, ajouter ses tests EN
+   TÊTE des artefacts « Recette complète Sawali »
+   (https://claude.ai/artifact/TX7v7c7WR7LA7S8K6p3meZ) ou « Recette complète
+   Albarka » (https://claude.ai/artifact/CmYGd3A1QPm8guDCstdYzC), avec un filtre
+   « Lot N », et donner le lien. Quand l'utilisateur redemande une information
+   déjà donnée, la renvoyer sans commentaire (ou par e-mail s'il le demande).
    Commencer par les comptes à préparer, finir par la non-régression et
    « si quelque chose ne marche pas ». Proposer ensuite la checklist à cocher
    partagée (Artifact avec `db`), comme pour le lot 3 Albarka.
