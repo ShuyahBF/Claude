@@ -1,8 +1,8 @@
-Bonjour. Tâche technique précise, à faire exactement comme décrit, sans autre modification du code :
+Bonjour. Mise à jour (v2) du module de migration déjà installé. Tâche technique précise, à faire exactement comme décrit, sans autre modification du code :
 
 1. Dans le terminal du projet, exécute :
-   curl -fsSL https://raw.githubusercontent.com/ShuyahBF/Claude/44363650799ea1aa6c739341e7100f7d383da999/sawali-migration/installer_migration.py -o /tmp/installer_migration.py && sha256sum /tmp/installer_migration.py && python3 /tmp/installer_migration.py /app
-   L'empreinte SHA-256 affichée doit être : 17ecafbbc5ddc2a5f9028b065a29d1fbb1e3c9c4adf50672bd99785268abcde3
+   curl -fsSL https://raw.githubusercontent.com/ShuyahBF/Claude/01a323522387b23cd109b6ddab70ad231d0eafba/sawali-migration/installer_migration.py -o /tmp/installer_migration.py && sha256sum /tmp/installer_migration.py && python3 /tmp/installer_migration.py /app
+   L'empreinte SHA-256 affichée doit être : cfc54281265884f4830d0eb0467028ad81d8e1702024608b484059dce5f9ac32
    Si elle est différente, arrête-toi et dis-le-moi.
 
 2. Redémarre le backend : sudo supervisorctl restart backend
@@ -11,6 +11,8 @@ Bonjour. Tâche technique précise, à faire exactement comme décrit, sans autr
    - le backend démarre sans erreur (logs) ;
    - GET /api/admin/migration/inventaire répond 200 avec un jeton administrateur ;
    - la section « Migration vers Render (sauvegarde complète) » apparaît dans AdminSettings, onglet « Diagnostics & Logs ».
+   - une sauvegarde restée « En cours » avant le redémarrage apparaît maintenant « Interrompue » (c'est normal) ;
+     ne la supprime pas et ne relance aucune sauvegarde toi-même.
 
 4. Ne modifie, ne « corrige » et ne réécris aucun des fichiers ajoutés ou modifiés par ce script, et ne lance pas d'autre refactorisation.
 
