@@ -1,11 +1,10 @@
-Tâche UNIQUE : PUBLIER. Quelles que soient les circonstances.
+PUBLIER sur Emergent = deux boutons de l'interface, cliqués par vous-même.
+Aucun message à l'agent n'est nécessaire (l'agent ne peut de toute façon pas cliquer ces boutons).
 
-Fais seulement :
-1. « Save to GitHub »
-2. Déploiement en production (Deploy)
+1. Bouton « Save to GitHub » (en haut de la conversation du projet sawali-portal)
+2. Bouton « Deploy » (redéploiement en production)
 
-Rien d'autre, même si tu vois une erreur, un avertissement ou quelque chose d'inhabituel :
-aucune commande, aucun test, aucune vérification, aucun appel d'endpoint, aucune lecture de logs,
-aucune capture d'écran, aucune correction ni modification de code.
-
-Réponds seulement « Publié ». Fin de la tâche.
+Si un message à l'agent devenait malgré tout nécessaire, n'envoyer que :
+  « Tâche UNIQUE : publier (Save to GitHub + Deploy), quelles que soient les circonstances.
+    Aucune commande, aucun test, aucune vérification, aucun appel d'endpoint, aucune lecture
+    de logs, aucune correction. Réponds seulement « Publié ». »
