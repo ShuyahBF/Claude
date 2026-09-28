@@ -21,14 +21,14 @@
   code{background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:12px}
 </style></head><body><div class="page">
 <h1>adLyn: collection and payout flow through PawaPay</h1>
-<div class="sous">Platform operated by SAWALI SMART SYSTEMS (Burkina Faso) · a single PawaPay account (the platform's) · partner mobile phone shops</div>
+<div class="sous">adLyn, a product of SAWALI SMART SYSTEMS (PawaPay account holder, Burkina Faso) · a single PawaPay account · partner mobile phone shops</div>
 
 <div class="ligne">
   <div class="boite"><h3><span class="num">1</span>End customer</h3><p>Orders a phone, an accessory or a repair on a partner shop's online storefront. Mobile Money is offered <b>only if the shop's KYC file has been approved</b>.</p></div>
   <div class="fleche"><span class="t">➜</span>selects "Mobile Money"</div>
   <div class="boite plat"><h3><span class="num">2</span>adLyn platform</h3><p>Re-checks KYC, creates the order, generates a unique <b>depositId</b> and stores it with the shop ID, merchant code and order number <u>before</u> calling PawaPay.</p></div>
   <div class="fleche"><span class="t">➜</span>Payment Page API<br>(depositId, amount,<br>reason = order no. + shop,<br>metadata = shop ID, merchant code)</div>
-  <div class="boite pawa"><h3><span class="num">3</span>PawaPay</h3><p>Hosted payment page: the customer confirms on their phone (Orange Money, Moov Money…). Funds land in adLyn's PawaPay account.</p></div>
+  <div class="boite pawa"><h3><span class="num">3</span>PawaPay</h3><p>Hosted payment page: the customer confirms on their phone (Orange Money, Moov Money…). Funds land in the PawaPay account of SAWALI SMART SYSTEMS.</p></div>
   <div class="fleche"><span class="t">➜</span>callback + deposit<br>status check</div>
   <div class="boite plat"><h3><span class="num">4</span>Reconciliation</h3><p>The confirmed deposit is matched to the order and the shop; the shop sees the payment in its account (and only its own payments).</p></div>
 </div>
@@ -36,7 +36,7 @@
 <div class="ligne" style="margin-top:22px;justify-content:flex-end">
   <div class="boite bout"><h3><span class="num">6</span>Partner shop</h3><p>Receives the net amount on the Mobile Money or bank account recorded in its file. Payout receipt available in its account.</p></div>
   <div class="fleche"><span class="t">⬅</span>payout<br>(traceable reference)</div>
-  <div class="boite plat" style="width:330px"><h3><span class="num">5</span>Payout by adLyn</h3><p>Statement per shop: collected / already paid out / still due. Each payout lists the depositIds it covers (a deposit can only be paid out once), the fees withheld and the transaction reference.</p></div>
+  <div class="boite plat" style="width:330px"><h3><span class="num">5</span>Payout by adLyn</h3><p>Monthly payout, at the end of each month. Statement per shop: collected / already paid out / still due. Each payout lists the depositIds it covers (a deposit can only be paid out once), the fees withheld and the transaction reference.</p></div>
 </div>
 
 <div class="bloc">

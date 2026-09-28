@@ -4,7 +4,12 @@ Bonjour,
 
 Merci pour votre retour et pour ces questions, qui tombent à point : elles m'obligent à mettre noir sur blanc ce que nous avons construit. Je vous joins un schéma du flux complet (schema_flux_adlyn_pawapay.png), ce sera plus parlant qu'un long texte. Voici nos réponses point par point.
 
-Pour situer le contexte : adLyn (https://adlynservice.com) est une plateforme en ligne éditée par SAWALI SMART SYSTEMS, société d'ingénierie logicielle basée à Ouagadougou (https://sawalismartsystems.com). Elle fournit aux boutiques de téléphonie un outil de gestion (caisse, stock, service après-vente) et une vitrine en ligne où leurs clients peuvent commander et payer par Mobile Money.
+Pour situer le contexte : l'entité titulaire de ce compte, que vous avez déjà vérifiée avec nos documents KYC, est SAWALI SMART SYSTEMS.
+
+- SAWALI SMART SYSTEMS (https://sawalismartsystems.com) est une société d'ingénierie logicielle basée à Ouagadougou, au Burkina Faso. Elle conçoit, déploie et maintient des logiciels de gestion pour les entreprises.
+- adLyn (https://adlynservice.com) est l'un de ses produits : une plateforme en ligne pour les boutiques de téléphonie, qui les aide à gérer leur activité au quotidien (ventes, stock, réparations) et leur donne à chacune une vitrine en ligne où leurs clients peuvent commander et payer par Mobile Money.
+
+adLyn n'est pas une société distincte : la plateforme est développée, exploitée et facturée par SAWALI SMART SYSTEMS, et chacune de ses pages publiques porte la mention « Powered by Sawali Smart Systems ».
 
 1. Entreprises / clients concernés
 
@@ -16,11 +21,11 @@ Pour être transparent, la plateforme est en phase de lancement : nous démarcho
 
 - Qui initie le paiement : le client final, depuis la vitrine d'une boutique. Il valide son panier, choisit « Mobile Money », et la plateforme lui ouvre la page de paiement hébergée par PawaPay (API Payment Page).
 - Ce que paie le client : uniquement des biens et services de la boutique, à savoir un téléphone, un accessoire ou une réparation. Le montant correspond exactement au total de la commande.
-- Où arrivent les fonds : oui, sur le compte PawaPay d'adLyn. C'est un compte unique, celui de la plateforme ; les boutiques n'ont pas de compte PawaPay.
+- Où arrivent les fonds : oui, sur notre compte PawaPay, détenu par SAWALI SMART SYSTEMS et utilisé pour adLyn. C'est un compte unique ; les boutiques n'ont pas de compte PawaPay.
 - Qui reçoit les fonds au final : la boutique concernée. Nous lui reversons le montant encaissé, diminué le cas échéant de nos frais, sur le compte Mobile Money ou bancaire déclaré dans son dossier.
-- Comment et quand : chaque boutique a un relevé détaillé (encaissé, déjà reversé, reste à reverser). Les reversements sont effectués [fréquence à préciser, par exemple chaque semaine]. Chacun porte une référence, liste précisément les dépôts qu'il couvre, et un même dépôt ne peut techniquement pas être reversé deux fois. La boutique retrouve l'historique et le détail de ses reversements dans son espace. À terme, nous aimerions exécuter ces reversements via l'API Payouts de PawaPay ; votre avis sur ce point nous intéresse.
+- Comment et quand : chaque boutique a un relevé détaillé (encaissé, déjà reversé, reste à reverser). Les reversements sont effectués une fois par mois, en fin de mois (tous les 30 jours). Chacun porte une référence, liste précisément les dépôts qu'il couvre, et un même dépôt ne peut techniquement pas être reversé deux fois. La boutique retrouve l'historique et le détail de ses reversements dans son espace. À terme, nous aimerions exécuter ces reversements via l'API Payouts de PawaPay ; votre avis sur ce point nous intéresse.
 
-Il existe un second flux, plus simple : les boutiques paient à adLyn leur abonnement mensuel (et, si elles l'utilisent, leur service SMS). Ces paiements sont des revenus propres de la plateforme et ne donnent lieu à aucun reversement.
+Il existe un second flux, plus simple : les boutiques paient à adLyn leur abonnement mensuel (et, si elles l'utilisent, leur service SMS). Ces paiements sont des revenus propres de SAWALI SMART SYSTEMS et ne donnent lieu à aucun reversement.
 
 3. Intégration des marchands et vérification préalable
 
@@ -56,6 +61,6 @@ Je reste bien sûr disponible pour un échange téléphonique ou une démonstrat
 Bien cordialement,
 
 OJF
-SAWALI SMART SYSTEMS – plateforme adLyn
+SAWALI SMART SYSTEMS (adLyn)
 Ouagadougou, Burkina Faso
-contact@sawalismartsystems.com | +226 25 65 81 65
+jfrancois.ouoba@gmail.com | +226 25 65 81 65
