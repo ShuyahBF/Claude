@@ -34,36 +34,27 @@ param(
     [string]$Utilisateur = "admin",
     [string]$MotDePasse = "JesusIsMyLord2013",
     [string]$MotDePasseFichiers = "Jesusismylord",
-    [string]$FichierSortie = "aizenta_resultats.txt"
+    [string]$FichierSortie = "aizenta_resultats.txt",
+    [string[]]$Tables = @("RèglementCaisse", "TypePaiementCaisse", "Règlement", "PièceCaisse_ClientConcerné")
 )
 
-# § liste des tables identifiées comme correspondant à Biolog (voir le
-# tableau de correspondance du 24/09) — à compléter/ajuster librement,
-# c'est une simple liste PowerShell, une table par ligne.
-$tables = @(
-    "Vente",
-    "AAcheté",
-    "Prestations",
-    "ProduitClinique",
-    "Pièces_Scannées",
-    "Pièces_Scannées2",
-    "Utilisateur",
-    "MédecinT",
-    "Clinique"
-)
+# § sortie en UTF-8 de bout en bout (accents des noms de colonnes préservés)
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 
 if (Test-Path $FichierSortie) {
     Remove-Item $FichierSortie
 }
 
-foreach ($table in $tables) {
+foreach ($table in $Tables) {
     Write-Host "--- Table : $table ---" -ForegroundColor Cyan
-    Add-Content -Path $FichierSortie -Value "`n`n===== TABLE : $table ====="
-
-    dotnet run --project . -- `
+    $sortie = dotnet run --project . -- `
         --server $Serveur --port $Port --database $Base --driver $Provider `
         --user $Utilisateur --password $MotDePasse --file-password $MotDePasseFichiers `
-        --table $table --sample 2 2>&1 | Tee-Object -Append -FilePath $FichierSortie
+        --table $table --sample 3 2>&1 | Out-String
+    Write-Host $sortie
+    Add-Content -Path $FichierSortie -Value "`n`n===== TABLE : $table =====`n$sortie" -Encoding UTF8
 }
 
 Write-Host ""

@@ -43,6 +43,8 @@ namespace HFSQL_SchemaExplorer
     {
         private static int Main(string[] args)
         {
+            // § sortie console en UTF-8 (accents des noms de tables/colonnes préservés, y compris redirigée vers un fichier)
+            System.Console.OutputEncoding = new System.Text.UTF8Encoding(false);
             Options options;
             try
             {
