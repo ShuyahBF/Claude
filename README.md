@@ -156,3 +156,12 @@ me faciliter la tâche avec le moins de manipulations" — nouveau script
   neuf captures d'écran séparées.
 
 Usage : `.\explorer_aizenta.ps1` depuis le dossier `HFSQL_SchemaExplorer`.
+
+## 2026-09-28 — Nouveau projet : plateforme TelecomPro (`telecom-platform/`)
+
+Site de gestion d'une entreprise télécom en Python/Django : vente de
+téléphones et accessoires, stock (entrées/sorties), maintenance avec
+numéro de dossier automatique, clients/fournisseurs, factures et
+proformas multi-lignes, centre de messagerie paramétrable par l'admin,
+portail public (catalogue, panier, suivi commande/réparation, conseils).
+Voir `telecom-platform/README.md`.
