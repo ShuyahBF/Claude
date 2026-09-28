@@ -1,5 +1,11 @@
 # Installateur du bouton « Migration vers Render » (site SAWALI sur Emergent)
 
+> **Règle non négociable (Emergent)** : Emergent sert UNIQUEMENT à appliquer un script et à publier
+> (Save to GitHub + déploiement). Jamais de test, de vérification, de lecture de logs ni de correction :
+> ses boucles de tests consomment tous les crédits. Les vérifications se font ensuite hors d'Emergent,
+> sur le code sauvegardé dans GitHub et dans l'écran d'administration.
+
+
 `installer_migration.py` ajoute au site SAWALI hébergé sur Emergent la section
 **AdminSettings > Diagnostics & Logs > « Migration vers Render (sauvegarde complète) »**
 (sauvegarde de toute la base vers MongoDB Atlas, des fichiers / archives / secrets chiffrés vers R2).
