@@ -31,7 +31,7 @@ Toute boutique est créée par notre équipe, jamais en libre inscription. Nous 
 - pièce d'identité du gérant ;
 - adresse physique de la boutique, avec sa position GPS, et coordonnées de contact.
 
-Le dossier est examiné manuellement par un administrateur, qui le valide ou le rejette avec un motif. Toute modification ultérieure des informations légales (IFU, RCCM, gérant) remet le dossier « en attente de vérification ». Le paiement en ligne n'est activé que pour une boutique dont le dossier est validé.
+Le dossier est examiné manuellement par un administrateur, qui le valide ou le rejette avec un motif. Tant qu'il n'est pas validé, la plateforme bloque tout encaissement pour le compte de la boutique : l'option Mobile Money n'apparaît pas sur sa vitrine et toute tentative de paiement est refusée avant même l'appel à PawaPay. Si la boutique modifie ensuite ses informations légales (IFU, RCCM, gérant), le dossier repasse « en attente de vérification », ce qui suspend de nouveau les encaissements jusqu'à la nouvelle validation.
 
 4. Contrôles de conformité
 
@@ -39,7 +39,7 @@ Je préfère être précis sur ce que nous avons aujourd'hui et ce qui reste à 
 
 Ce qui est en place :
 - périmètre fermé : une seule activité autorisée (téléphonie), donc pas de commerce interdit ou soumis à restriction sur la plateforme ;
-- vérification manuelle de chaque boutique avant activation ;
+- vérification manuelle de chaque boutique, avec blocage automatique des encaissements tant que son dossier n'est pas validé ;
 - possibilité de suspendre immédiatement une boutique, ce qui coupe son accès et ses encaissements ;
 - traçabilité complète de chaque paiement (client, commande, montant, date, statut) ;
 - journal des connexions à l'espace de gestion, avec filtrage par adresse IP ou appareil ;
