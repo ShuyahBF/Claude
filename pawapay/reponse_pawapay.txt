@@ -1,0 +1,61 @@
+Objet : RE: Configuration du compte – modèle de paiement de la plateforme adLyn
+
+Bonjour,
+
+Merci pour votre retour et pour ces questions, qui tombent à point : elles m'obligent à mettre noir sur blanc ce que nous avons construit. Je vous joins un schéma du flux complet (schema_flux_adlyn_pawapay.png), ce sera plus parlant qu'un long texte. Voici nos réponses point par point.
+
+Pour situer le contexte : adLyn (https://adlynservice.com) est une plateforme en ligne éditée par SAWALI SMART SYSTEMS, société d'ingénierie logicielle basée à Ouagadougou (https://sawalismartsystems.com). Elle fournit aux boutiques de téléphonie un outil de gestion (caisse, stock, service après-vente) et une vitrine en ligne où leurs clients peuvent commander et payer par Mobile Money.
+
+1. Entreprises / clients concernés
+
+Nous ne travaillons qu'avec une seule catégorie de commerçants : les boutiques de téléphonie mobile, c'est-à-dire la vente de téléphones et d'accessoires et les réparations. Il s'agit surtout de petites et moyennes boutiques, au Burkina Faso dans un premier temps. Chaque boutique a sa propre vitrine sur adLyn, à une adresse du type https://adlynservice.com/b/<nom-de-la-boutique>.
+
+Pour être transparent, la plateforme est en phase de lancement : nous démarchons nos premières boutiques et aucune n'encaisse encore de paiements réels. Nous préférons régler la configuration avec vous avant d'activer le paiement en ligne chez qui que ce soit.
+
+2. Flux de paiement et de règlement
+
+- Qui initie le paiement : le client final, depuis la vitrine d'une boutique. Il valide son panier, choisit « Mobile Money », et la plateforme lui ouvre la page de paiement hébergée par PawaPay (API Payment Page).
+- Ce que paie le client : uniquement des biens et services de la boutique, à savoir un téléphone, un accessoire ou une réparation. Le montant correspond exactement au total de la commande.
+- Où arrivent les fonds : oui, sur le compte PawaPay d'adLyn. C'est un compte unique, celui de la plateforme ; les boutiques n'ont pas de compte PawaPay.
+- Qui reçoit les fonds au final : la boutique concernée. Nous lui reversons le montant encaissé, diminué le cas échéant de nos frais, sur le compte Mobile Money ou bancaire déclaré dans son dossier.
+- Comment et quand : chaque boutique a un relevé détaillé (encaissé, déjà reversé, reste à reverser). Les reversements sont effectués [fréquence à préciser, par exemple chaque semaine]. Chacun porte une référence, liste précisément les dépôts qu'il couvre, et un même dépôt ne peut techniquement pas être reversé deux fois. La boutique retrouve l'historique et le détail de ses reversements dans son espace. À terme, nous aimerions exécuter ces reversements via l'API Payouts de PawaPay ; votre avis sur ce point nous intéresse.
+
+Il existe un second flux, plus simple : les boutiques paient à adLyn leur abonnement mensuel (et, si elles l'utilisent, leur service SMS). Ces paiements sont des revenus propres de la plateforme et ne donnent lieu à aucun reversement.
+
+3. Intégration des marchands et vérification préalable
+
+Toute boutique est créée par notre équipe, jamais en libre inscription. Nous constituons pour chacune un dossier d'identification, stocké dans un espace privé :
+- registre du commerce (RCCM) ;
+- attestation IFU ;
+- attestation CNSS lorsqu'elle existe ;
+- pièce d'identité du gérant ;
+- adresse physique de la boutique, avec sa position GPS, et coordonnées de contact.
+
+Le dossier est examiné manuellement par un administrateur, qui le valide ou le rejette avec un motif. Toute modification ultérieure des informations légales (IFU, RCCM, gérant) remet le dossier « en attente de vérification ». Le paiement en ligne n'est activé que pour une boutique dont le dossier est validé.
+
+4. Contrôles de conformité
+
+Je préfère être précis sur ce que nous avons aujourd'hui et ce qui reste à faire.
+
+Ce qui est en place :
+- périmètre fermé : une seule activité autorisée (téléphonie), donc pas de commerce interdit ou soumis à restriction sur la plateforme ;
+- vérification manuelle de chaque boutique avant activation ;
+- possibilité de suspendre immédiatement une boutique, ce qui coupe son accès et ses encaissements ;
+- traçabilité complète de chaque paiement (client, commande, montant, date, statut) ;
+- journal des connexions à l'espace de gestion, avec filtrage par adresse IP ou appareil ;
+- revue régulière de l'activité par l'administrateur.
+
+Ce que nous n'avons pas encore : un filtrage automatisé sanctions/PPE et un moteur de détection de fraude. Aujourd'hui, ces vérifications se font à la main lors de l'ouverture du dossier. Si PawaPay recommande un prestataire ou une liste de référence, nous sommes prêts à l'intégrer avant d'ouvrir le service à grande échelle.
+
+5. Identification des transactions
+
+Oui. Chaque paiement porte un identifiant unique (le depositId), que nous générons et enregistrons avant même d'appeler votre API. Il est relié à la boutique (identifiant interne et code marchand), au numéro de commande, au nom du client, au montant et à la date. Le numéro de commande et le nom de la boutique figurent déjà dans le champ « reason » de la demande. Nous pouvons aussi transmettre le code marchand dans les métadonnées du dépôt et vous fournir, à tout moment, la liste des transactions par boutique.
+
+Je reste bien sûr disponible pour un échange téléphonique ou une démonstration de la plateforme si cela peut faciliter votre analyse.
+
+Bien cordialement,
+
+OJF
+SAWALI SMART SYSTEMS – plateforme adLyn
+Ouagadougou, Burkina Faso
+contact@sawalismartsystems.com | +226 25 65 81 65
