@@ -1,10 +1,25 @@
-PUBLIER sur Emergent = deux boutons de l'interface, cliqués par vous-même.
-Aucun message à l'agent n'est nécessaire (l'agent ne peut de toute façon pas cliquer ces boutons).
+MISE EN LIGNE DE LA V3 DU MODULE DE MIGRATION (site Sawali, projet Emergent « sawali-portal »)
+Règle : l'agent Emergent ne fait RIEN d'autre que ce qui est écrit ici. Aucune vérification.
 
-1. Bouton « Save to GitHub » (en haut de la conversation du projet sawali-portal)
-2. Bouton « Deploy » (redéploiement en production)
+ÉTAPE 1 — vous-même, sans message à l'agent
+  Bouton « Save to GitHub ». Puis prévenir Claude, qui vérifie dans GitHub que la v3 y est.
 
-Si un message à l'agent devenait malgré tout nécessaire, n'envoyer que :
-  « Tâche UNIQUE : publier (Save to GitHub + Deploy), quelles que soient les circonstances.
-    Aucune commande, aucun test, aucune vérification, aucun appel d'endpoint, aucune lecture
-    de logs, aucune correction. Réponds seulement « Publié ». »
+ÉTAPE 2
+  Cas A (v3 présente dans GitHub) : bouton « Deploy ». Terminé.
+  Cas B (v3 absente) : envoyer à l'agent EXACTEMENT ce message, puis « Save to GitHub »,
+  vérification par Claude, puis « Deploy » :
+
+  ----------------------------------------------------------------------------------
+  Tâche UNIQUE, quelles que soient les circonstances. Exécute UNE seule fois cette commande :
+
+  curl -fsSL https://raw.githubusercontent.com/ShuyahBF/Claude/f4adbe9b8c1e93b99e746b5cb43660b1ad5b807f/sawali-migration/installer_migration.py -o /tmp/installer_migration.py && echo "8a440d030a492145662b85e2fbcef6004351b664ba956eb0915dcaadec978c4a  /tmp/installer_migration.py" | sha256sum -c - && python3 /tmp/installer_migration.py /app
+
+  Ensuite ARRÊTE-TOI. Interdit : redémarrage, test, vérification, appel d'endpoint, lecture de logs,
+  correction, toute autre commande. Même en cas d'erreur : recopie le message et arrête-toi.
+  Réponds seulement « Fait ».
+  ----------------------------------------------------------------------------------
+
+ÉTAPE 3 — sur le site en ligne
+  AdminSettings > Diagnostics & Logs > Migration vers Render :
+  la sauvegarde bloquée (38/167) apparaît « Interrompue » ; saisir les identifiants, « Mémoriser »
+  dans le coffre, puis « Reprendre cette sauvegarde » > « Reprendre la sauvegarde ».
