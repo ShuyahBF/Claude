@@ -1,0 +1,50 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<style>
+  /* Schéma du flux de paiement adLyn / PawaPay (rendu en image PNG pour l'e-mail) */
+  body{margin:0;background:#fff;font-family:Arial,Helvetica,sans-serif;color:#0f172a}
+  .page{width:1400px;padding:36px 44px;box-sizing:border-box}
+  h1{font-size:26px;margin:0 0 4px}
+  .sous{color:#475569;font-size:15px;margin-bottom:26px}
+  .ligne{display:flex;align-items:stretch;gap:0}
+  .boite{border:2px solid #cbd5e1;border-radius:10px;padding:14px 16px;background:#f8fafc;width:215px;box-sizing:border-box}
+  .boite h3{margin:0 0 6px;font-size:15px}
+  .boite p{margin:0;font-size:12.5px;line-height:1.45;color:#334155}
+  .pawa{border-color:#1e90ff;background:#eff6ff}
+  .plat{border-color:#081226;background:#081226;color:#fff}.plat p{color:#cbd5e1}
+  .bout{border-color:#16a34a;background:#f0fdf4}
+  .fleche{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;min-width:60px;font-size:11.5px;color:#475569;text-align:center;padding:0 4px}
+  .fleche .t{font-size:26px;color:#1e90ff;line-height:1}
+  .num{display:inline-block;background:#1e90ff;color:#fff;border-radius:50%;width:20px;height:20px;text-align:center;font-size:12px;line-height:20px;font-weight:bold;margin-right:6px}
+  .bloc{margin-top:28px;display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .cadre{border:1px dashed #94a3b8;border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.55}
+  .cadre b{color:#081226}
+  code{background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:12px}
+</style></head><body><div class="page">
+<h1>adLyn : flux d'encaissement et de reversement via PawaPay</h1>
+<div class="sous">adLyn, produit de SAWALI SMART SYSTEMS (titulaire du compte PawaPay, Burkina Faso) · un compte PawaPay unique · boutiques de téléphonie partenaires</div>
+
+<div class="ligne">
+  <div class="boite"><h3><span class="num">1</span>Client final</h3><p>Commande un téléphone, un accessoire ou une réparation sur la vitrine en ligne d'une boutique partenaire. Option Mobile Money proposée <b>uniquement si le dossier KYC de la boutique est validé</b>.</p></div>
+  <div class="fleche"><span class="t">➜</span>choisit « Mobile Money »</div>
+  <div class="boite plat"><h3><span class="num">2</span>Plateforme adLyn</h3><p>Revérifie le KYC, crée la commande, génère un <b>depositId</b> unique et l'enregistre avec l'identifiant de la boutique, son code marchand et le n° de commande <u>avant</u> l'appel à PawaPay.</p></div>
+  <div class="fleche"><span class="t">➜</span>API Payment Page<br>(depositId, montant,<br>reason = n° commande + boutique)</div>
+  <div class="boite pawa"><h3><span class="num">3</span>PawaPay</h3><p>Page de paiement hébergée : le client valide sur son téléphone (Orange Money, Moov Money…). Les fonds arrivent sur le compte PawaPay de SAWALI SMART SYSTEMS.</p></div>
+  <div class="fleche"><span class="t">➜</span>callback + vérification<br>du statut du dépôt</div>
+  <div class="boite plat"><h3><span class="num">4</span>Rapprochement</h3><p>Le dépôt confirmé est rattaché à la commande et à la boutique ; la boutique voit le paiement dans son espace (et uniquement les siens).</p></div>
+</div>
+
+<div class="ligne" style="margin-top:22px;justify-content:flex-end">
+  <div class="boite bout"><h3><span class="num">6</span>Boutique partenaire</h3><p>Reçoit le montant net sur le compte Mobile Money ou bancaire déclaré dans son dossier. Reçu de reversement consultable dans son espace.</p></div>
+  <div class="fleche"><span class="t">⬅</span>reversement<br>(référence tracée)</div>
+  <div class="boite plat" style="width:330px"><h3><span class="num">5</span>Reversement par adLyn</h3><p>Reversement mensuel, en fin de mois. Relevé par boutique : encaissé / déjà reversé / reste dû. Chaque reversement liste les depositId couverts (un dépôt ne peut être reversé qu'une seule fois), les frais retenus et la référence de l'opération.</p></div>
+</div>
+
+<div class="bloc">
+  <div class="cadre"><b>Identification de la boutique pour chaque transaction</b><br>
+  depositId ↔ <code>boutique_id</code> · <code>code_marchand</code> · <code>n° de commande</code> : transmis à PawaPay dans les métadonnées de chaque dépôt.<br>
+  Nom du client, montant et date : conservés par adLyn et fournis sur simple demande (aucune donnée personnelle dans les métadonnées).</div>
+  <div class="cadre"><b>Autres flux (revenus propres d'adLyn)</b><br>
+  Les boutiques paient leur abonnement à la plateforme et, le cas échéant, leur service SMS : ces dépôts sont
+  des revenus d'adLyn et ne donnent lieu à aucun reversement.</div>
+</div>
+</div></body></html>

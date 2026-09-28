@@ -1,0 +1,50 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<style>
+  /* adLyn / PawaPay payment flow diagram (rendered as PNG for the e-mail) */
+  body{margin:0;background:#fff;font-family:Arial,Helvetica,sans-serif;color:#0f172a}
+  .page{width:1400px;padding:36px 44px;box-sizing:border-box}
+  h1{font-size:26px;margin:0 0 4px}
+  .sous{color:#475569;font-size:15px;margin-bottom:26px}
+  .ligne{display:flex;align-items:stretch;gap:0}
+  .boite{border:2px solid #cbd5e1;border-radius:10px;padding:14px 16px;background:#f8fafc;width:215px;box-sizing:border-box}
+  .boite h3{margin:0 0 6px;font-size:15px}
+  .boite p{margin:0;font-size:12.5px;line-height:1.45;color:#334155}
+  .pawa{border-color:#1e90ff;background:#eff6ff}
+  .plat{border-color:#081226;background:#081226;color:#fff}.plat p{color:#cbd5e1}
+  .bout{border-color:#16a34a;background:#f0fdf4}
+  .fleche{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;min-width:60px;font-size:11.5px;color:#475569;text-align:center;padding:0 4px}
+  .fleche .t{font-size:26px;color:#1e90ff;line-height:1}
+  .num{display:inline-block;background:#1e90ff;color:#fff;border-radius:50%;width:20px;height:20px;text-align:center;font-size:12px;line-height:20px;font-weight:bold;margin-right:6px}
+  .bloc{margin-top:28px;display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .cadre{border:1px dashed #94a3b8;border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.55}
+  .cadre b{color:#081226}
+  code{background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:12px}
+</style></head><body><div class="page">
+<h1>adLyn: collection and payout flow through PawaPay</h1>
+<div class="sous">adLyn, a product of SAWALI SMART SYSTEMS (PawaPay account holder, Burkina Faso) · a single PawaPay account · partner mobile phone shops</div>
+
+<div class="ligne">
+  <div class="boite"><h3><span class="num">1</span>End customer</h3><p>Orders a phone, an accessory or a repair on a partner shop's online storefront. Mobile Money is offered <b>only if the shop's KYC file has been approved</b>.</p></div>
+  <div class="fleche"><span class="t">➜</span>selects "Mobile Money"</div>
+  <div class="boite plat"><h3><span class="num">2</span>adLyn platform</h3><p>Re-checks KYC, creates the order, generates a unique <b>depositId</b> and stores it with the shop ID, merchant code and order number <u>before</u> calling PawaPay.</p></div>
+  <div class="fleche"><span class="t">➜</span>Payment Page API<br>(depositId, amount,<br>reason = order no. + shop,<br>metadata = shop ID, merchant code)</div>
+  <div class="boite pawa"><h3><span class="num">3</span>PawaPay</h3><p>Hosted payment page: the customer confirms on their phone (Orange Money, Moov Money…). Funds land in the PawaPay account of SAWALI SMART SYSTEMS.</p></div>
+  <div class="fleche"><span class="t">➜</span>callback + deposit<br>status check</div>
+  <div class="boite plat"><h3><span class="num">4</span>Reconciliation</h3><p>The confirmed deposit is matched to the order and the shop; the shop sees the payment in its account (and only its own payments).</p></div>
+</div>
+
+<div class="ligne" style="margin-top:22px;justify-content:flex-end">
+  <div class="boite bout"><h3><span class="num">6</span>Partner shop</h3><p>Receives the net amount on the Mobile Money or bank account recorded in its file. Payout receipt available in its account.</p></div>
+  <div class="fleche"><span class="t">⬅</span>payout<br>(traceable reference)</div>
+  <div class="boite plat" style="width:330px"><h3><span class="num">5</span>Payout by adLyn</h3><p>Monthly payout, at the end of each month. Statement per shop: collected / already paid out / still due. Each payout lists the depositIds it covers (a deposit can only be paid out once), the fees withheld and the transaction reference.</p></div>
+</div>
+
+<div class="bloc">
+  <div class="cadre"><b>Shop identification for every transaction</b><br>
+  depositId ↔ <code>shop_id</code> · <code>merchant_code</code> · <code>order number</code>: sent to PawaPay in the metadata of every deposit.<br>
+  Customer name, amount and date: kept by adLyn and available on request (no personal data in the metadata).</div>
+  <div class="cadre"><b>Other flows (adLyn's own revenue)</b><br>
+  Shops pay their platform subscription and, where applicable, their SMS service: these deposits are
+  adLyn's own revenue and are never paid out.</div>
+</div>
+</div></body></html>
