@@ -1,0 +1,61 @@
+Subject: RE: Account configuration – payment model of the adLyn platform
+
+Hello,
+
+Thank you for getting back to us, and for these questions. Answering them made us put down in writing exactly how things work on our side. I have attached a diagram of the full flow (adlyn_pawapay_payment_flow.png), which should be clearer than a long description. Please find our answers below, point by point.
+
+Some context first. adLyn (https://adlynservice.com) is an online platform built and operated by SAWALI SMART SYSTEMS, a software engineering company based in Ouagadougou, Burkina Faso (https://sawalismartsystems.com). It gives mobile phone shops a management tool (point of sale, stock, after-sales service) and an online storefront where their customers can place orders and pay with Mobile Money.
+
+1. Businesses / clients
+
+We work with a single category of merchants only: mobile phone retailers. That means shops selling handsets and accessories and offering repairs. Most of them are small and medium-sized shops, based in Burkina Faso to begin with. Each shop has its own storefront on adLyn, at an address such as https://adlynservice.com/b/<shop-name>.
+
+To be fully transparent, the platform is in its launch phase. We are onboarding our first shops, and none of them is collecting real payments yet. We would rather settle the right setup with you before enabling online payments for anyone.
+
+2. Payment and settlement flow
+
+- Who initiates the payment: the end customer, from a shop's storefront. They confirm their basket, select "Mobile Money", and the platform opens the payment page hosted by PawaPay (Payment Page API).
+- What the end customer pays for: only the shop's own goods and services, i.e. a phone, an accessory or a repair. The amount is exactly the order total.
+- Whether funds are collected on our PawaPay account: yes, on adLyn's PawaPay account. This is a single account belonging to the platform; the shops do not hold PawaPay accounts.
+- Who ultimately receives the funds: the shop concerned. We pay out the amount collected, minus our fees where applicable, to the Mobile Money or bank account recorded in the shop's file.
+- How and when: each shop has a detailed statement showing what has been collected, what has already been paid out, and what is still due. Payouts are made [frequency to be confirmed, e.g. weekly]. Each payout carries a reference and lists exactly which deposits it covers, and the system prevents the same deposit from being paid out twice. The shop can see its payout history and details in its own account. Going forward, we would like to execute these payouts through the PawaPay Payouts API, and we would welcome your view on that.
+
+There is also a second, simpler flow: shops pay adLyn their monthly subscription (and, if they use it, the SMS service). These payments are the platform's own revenue and are not paid out to anyone.
+
+3. Merchant onboarding and due diligence
+
+Every shop is created by our team; there is no self sign-up. For each one we build an identification file, kept in a private storage area, containing:
+- the trade register extract (RCCM);
+- the tax identification certificate (IFU);
+- the social security certificate (CNSS), where applicable;
+- the manager's ID document;
+- the physical address of the shop, with its GPS location, and contact details.
+
+The file is reviewed manually by an administrator, who approves it or rejects it with a stated reason. Until the file is approved, the platform blocks all collections on the shop's behalf: the Mobile Money option is not shown on its storefront, and any payment attempt is refused before our system even calls PawaPay. If the shop later changes its legal details (IFU, RCCM, manager), the file goes back to "pending verification", which suspends collections again until it is re-approved.
+
+4. Compliance controls
+
+I would rather be precise about what we have today and what is still to be done.
+
+What is in place:
+- a closed scope: a single authorised activity (mobile phones), so no prohibited or restricted businesses on the platform;
+- manual review of every shop, with collections automatically blocked until its file is approved;
+- the ability to suspend a shop immediately, which cuts off its access and its collections;
+- full traceability of every payment (customer, order, amount, date, status);
+- a log of all logins to the management area, with filtering by IP address or device;
+- regular review of activity by the administrator.
+
+What we do not have yet: automated sanctions/PEP screening and a fraud detection engine. Today, these checks are done by hand when a shop's file is opened. If PawaPay recommends a provider or a reference list, we are ready to integrate it before opening the service at scale.
+
+5. Transaction identification
+
+Yes. Every payment has a unique identifier (the depositId), which we generate and store before calling your API. It is linked to the shop (internal ID and merchant code), the order number, the customer's name, the amount and the date. The order number and the shop name appear in the "reason" field of the request. Each deposit also sends you metadata with the payment type, the shop ID, its merchant code and the order number, with no personal data about the customer. We can also provide you with the list of transactions per shop at any time.
+
+I remain available for a call or a demo of the platform if that would help your review.
+
+Kind regards,
+
+OJF
+SAWALI SMART SYSTEMS – adLyn platform
+Ouagadougou, Burkina Faso
+contact@sawalismartsystems.com | +226 25 65 81 65
