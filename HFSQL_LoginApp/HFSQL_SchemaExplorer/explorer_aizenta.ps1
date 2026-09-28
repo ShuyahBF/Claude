@@ -35,7 +35,7 @@ param(
     [string]$MotDePasse = "JesusIsMyLord2013",
     [string]$MotDePasseFichiers = "Jesusismylord",
     [string]$FichierSortie = "aizenta_resultats.txt",
-    [string[]]$Tables = @("RèglementCaisse", "TypePaiementCaisse", "Règlement", "PièceCaisse_ClientConcerné")
+    [string[]]$Tables = @("RèglementCaisse", "TypePaiementCaisse")
 )
 
 # § sortie en UTF-8 de bout en bout (accents des noms de colonnes préservés)
