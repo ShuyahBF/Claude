@@ -1,9 +1,9 @@
 # Installateur du bouton « Migration vers Render » (site SAWALI sur Emergent)
 
-> **Règle non négociable (Emergent)** : Emergent sert UNIQUEMENT à appliquer un script et à publier
-> (Save to GitHub + déploiement). Jamais de test, de vérification, de lecture de logs ni de correction :
-> ses boucles de tests consomment tous les crédits. Les vérifications se font ensuite hors d'Emergent,
-> sur le code sauvegardé dans GitHub et dans l'écran d'administration.
+> **Règle non négociable (Emergent)** : l'agent Emergent se contente de PUBLIER (Save to GitHub +
+> déploiement), quelles que soient les circonstances. Jamais de commande, de test, de vérification,
+> de lecture de logs ni de correction : ses boucles de tests consomment tous les crédits.
+> Consigne type : `consigne_emergent.txt`. Les vérifications se font hors d'Emergent (GitHub, écran d'administration).
 
 
 `installer_migration.py` ajoute au site SAWALI hébergé sur Emergent la section

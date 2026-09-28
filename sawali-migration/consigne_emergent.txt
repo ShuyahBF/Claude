@@ -1,15 +1,11 @@
-Tâche STRICTEMENT limitée : appliquer un script puis publier. Rien d'autre.
+Tâche UNIQUE : PUBLIER. Quelles que soient les circonstances.
 
-INTERDIT : aucun test, aucune vérification, aucun appel d'endpoint, aucune lecture de logs,
-aucune capture d'écran, aucune correction ni modification de code, aucune autre action.
+Fais seulement :
+1. « Save to GitHub »
+2. Déploiement en production (Deploy)
 
-1. Exécute UNE seule fois cette commande dans le terminal :
-   curl -fsSL https://raw.githubusercontent.com/ShuyahBF/Claude/f4adbe9b8c1e93b99e746b5cb43660b1ad5b807f/sawali-migration/installer_migration.py -o /tmp/installer_migration.py && echo "8a440d030a492145662b85e2fbcef6004351b664ba956eb0915dcaadec978c4a  /tmp/installer_migration.py" | sha256sum -c - && python3 /tmp/installer_migration.py /app
+Rien d'autre, même si tu vois une erreur, un avertissement ou quelque chose d'inhabituel :
+aucune commande, aucun test, aucune vérification, aucun appel d'endpoint, aucune lecture de logs,
+aucune capture d'écran, aucune correction ni modification de code.
 
-2. Si la commande affiche une erreur : ARRÊTE-TOI immédiatement et recopie le message. Ne tente rien d'autre.
-
-3. Sinon : sudo supervisorctl restart backend
-
-4. Fais « Save to GitHub », puis déploie en production.
-
-5. Réponds seulement « Fait ». Fin de la tâche.
+Réponds seulement « Publié ». Fin de la tâche.
