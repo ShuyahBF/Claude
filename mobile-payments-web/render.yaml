@@ -1,0 +1,51 @@
+# Déploiement Render (New > Blueprint > ce dépôt, fichier mobile-payments-web/render.yaml).
+# Même organisation qu'adLyn : une API FastAPI + un site statique React.
+# Les variables marquées « sync: false » se renseignent dans le tableau de bord Render
+# (jamais de secret dans ce fichier).
+services:
+  - type: web
+    name: paiement-mobile-api
+    runtime: python
+    rootDir: mobile-payments-web/backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: MONGO_URL          # chaîne Atlas mongodb+srv://…
+        sync: false
+      - key: MONGO_DB_NAME
+        value: paiement_mobile
+      - key: JWT_SECRET
+        generateValue: true
+      # Adresse du site (CORS + cookie Secure). Ex. https://pay.exemple.com
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: PUBLIC_SITE_URL
+        sync: false
+      # Compte administrateur (catalogue USSD), créé au démarrage
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+    # domains:
+    #   - api.votre-domaine.com
+
+  - type: web
+    name: paiement-mobile-site
+    runtime: static
+    rootDir: mobile-payments-web/frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      # Adresse de l'API + /api, ex. https://api.votre-domaine.com/api
+      - key: VITE_API_BASE_URL
+        sync: false
+    routes:
+      # Application React (React Router) : toute adresse retombe sur index.html
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    # domains:
+    #   - votre-domaine.com
