@@ -89,6 +89,10 @@ Mettre l'adresse du cluster Atlas pour garder les données.
    (ex. `pay.exemple.com` et `api.exemple.com`). Sinon Safari (iPhone, Mac) refuse le cookie de session.
    C'est la même consigne que pour adLyn.
 
+## Contact
+
+SAWALI SMART SYSTEMS — contact@sawalismartsystems.com — +226 25 65 81 65 (affiché sur l'écran de connexion).
+
 ## Limites à connaître
 
 - Le lien `tel:` avec un code USSD ouvre le composeur sur **Android**. Sur **iPhone**, iOS refuse en

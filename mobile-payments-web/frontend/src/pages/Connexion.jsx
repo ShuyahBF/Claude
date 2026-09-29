@@ -101,7 +101,12 @@ export default function Connexion({ mode = "connexion" }) {
           <Link to={lienAutre} className="font-semibold text-primary">{inscrire ? "Se connecter" : "Créer un compte"}</Link>
         </p>
       </form>
-      <p className="mt-6 text-xs text-gray-500">
+      {/* Contact officiel de SAWALI SMART SYSTEMS */}
+      <p className="mt-6 text-center text-xs text-gray-400">
+        Contact : <a href="mailto:contact@sawalismartsystems.com" className="text-gray-300 hover:text-white">contact@sawalismartsystems.com</a>
+        {" · "}<a href="tel:+22625658165" className="text-gray-300 hover:text-white">+226 25 65 81 65</a>
+      </p>
+      <p className="mt-2 text-xs text-gray-500">
         Powered by <a href="https://sawalismartsystems.com" className="font-semibold text-gray-300 hover:text-white">Sawali Smart Systems</a>
       </p>
     </div>
