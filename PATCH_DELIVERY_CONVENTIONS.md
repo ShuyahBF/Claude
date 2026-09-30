@@ -109,6 +109,42 @@ Concrètement :
   Claude via `EMERGENT_LLM_KEY`") — jamais une attribution du travail de
   rédaction ou de préparation du patch lui-même.
 
+## 7. Récapitulatif par email à la fin de chaque lot (tous les projets)
+
+Règle demandée par l'utilisateur le 2026-09-30 : les conversations sont
+très longues et les anciennes informations s'y perdent. **Chaque fois
+qu'un lot ou une série de lots est terminé**, j'envoie un email de
+récapitulatif à **jfrancois.ouoba@gmail.com**, sans attendre qu'il le
+demande. Cela vaut pour tous les projets (SAWALI, Albarka, adLyn,
+beAuthentik, Paiement Mobile, Loois…), que la livraison soit un patch +
+prompt pour Emergent ou une PR fusionnée.
+
+« Terminé » = patch + prompt envoyés, ou PR fusionnée. Si une correction
+modifie ensuite un lot déjà récapitulé (même lot, nouveau patch), j'envoie
+un email court « mise à jour » qui ne reprend que ce qui change.
+
+Contenu de l'email (HTML lisible sur téléphone, un bloc par lot) :
+
+1. **Objet** : `[Projet] Lot N — récapitulatif` (ou `Lots N à M`).
+2. **Date et heure de réalisation** du lot (heure de Ouagadougou, UTC+0).
+3. **Identification** : projet, dépôt, branche, commit(s), nom du patch et
+   du prompt (ou numéro de PR), état (livré / appliqué / publié).
+4. **Ce que le lot touche** : modules et pages concernés (en termes
+   d'écran : menu, onglet), fonctions ajoutées ou corrigées, nouvelles
+   collections ou nouveaux champs, fichiers principaux.
+5. **Comment le vérifier et où** : étapes de test numérotées, avec le
+   module / la page / le compte à utiliser et le résultat attendu.
+6. **Ce qu'il faut activer ou régler** : fonctions à activer par client,
+   paramètres Admin, variables d'environnement (Render…), modèles Meta à
+   créer (nom, catégorie, langue, variables), prérequis.
+7. **Points d'attention** : limites connues, ce qui a été volontairement
+   laissé de côté, risques, ce qui ne marche pas dans la preview, ordre
+   des opérations.
+8. **Reste à faire** côté utilisateur (repris de la check-list).
+
+Jamais de secret, de clé ni de mot de passe dans l'email. Ton : clair,
+en français, adressé directement à l'utilisateur.
+
 ## Origine de ces règles
 
 Établies le 2026-09 sur `Site-SawaliSmartSystems` (sawali-emergent),
