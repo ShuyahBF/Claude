@@ -132,7 +132,7 @@ statique gratuit `paiement-mobile-site`. **Aucun serveur Node à déployer.**
    - `LILUVINE_WA_HMAC` (clé de l'émetteur `paiementmobile` dans SAWALI, pour les alertes WhatsApp).
    `JWT_SECRET` est généré par Render. Les autres valeurs sont déjà dans `render.yaml` :
    `FRONTEND_ORIGIN` / `PUBLIC_SITE_URL` = `https://paiement-mobile-site.onrender.com`,
-   `VITE_API_BASE_URL` = `https://paiement-mobile-api.onrender.com/api`, `LILUVINE_WA_EMETTEUR` = `paiementmobile`.
+   `VITE_API_BASE_URL` = `https://paiement-mobile-api-jo11.onrender.com/api`, `LILUVINE_WA_EMETTEUR` = `paiementmobile`.
 3. Le **catalogue USSD de départ** est chargé automatiquement au premier démarrage si la base est vide :
    aucune commande à lancer.
 4. **Noms de domaine** : avec les adresses `*.onrender.com`, Safari (iPhone, Mac) refuse en général le
@@ -142,7 +142,7 @@ statique gratuit `paiement-mobile-site`. **Aucun serveur Node à déployer.**
    (pas de cookie).
 5. **APK Android** : compilé par GitHub Actions (`Build APK - Raccourcis Paiement Mobile`) à chaque
    modification de `mobile-payments-app/**` sur la branche par défaut ; il appelle
-   `https://paiement-mobile-api.onrender.com/` par défaut.
+   `https://paiement-mobile-api-jo11.onrender.com/` par défaut.
 
 ## Contact
 

@@ -5,7 +5,7 @@ Application Android qui simplifie le lancement des paiements mobiles (USSD) : l'
 Le catalogue des services par opérateur et l'annuaire des codes marchands sont stockés dans **MongoDB**, exposés à l'app via une **API REST** (l'app ne se connecte jamais directement à MongoDB, par sécurité).
 
 > **Lot 13 — une seule API.** L'app utilise désormais l'API FastAPI de la version web
-> (`../mobile-payments-web/backend`, déployée sur Render : `https://paiement-mobile-api.onrender.com`).
+> (`../mobile-payments-web/backend`, déployée sur Render : `https://paiement-mobile-api-jo11.onrender.com`).
 > Elle partage avec le site le même catalogue de services et le même annuaire de marchands.
 > Le dossier `backend/` (ancien serveur Node/Express) est conservé **pour archive uniquement** :
 > il n'est plus utilisé ni déployé (son `render.yaml` a été retiré).
@@ -70,7 +70,7 @@ de départ est chargé automatiquement au premier démarrage de l'API).
 Rien à déployer pour l'app elle-même : l'API est déployée avec le site (`../mobile-payments-web/render.yaml`).
 L'APK est compilé par GitHub Actions (*Build APK - Raccourcis Paiement Mobile*) à chaque modification de
 `mobile-payments-app/**` sur la branche par défaut, et pointe par défaut sur l'API de production
-`https://paiement-mobile-api.onrender.com/`. Lancement manuel possible (*Run workflow*) avec une autre adresse.
+`https://paiement-mobile-api-jo11.onrender.com/`. Lancement manuel possible (*Run workflow*) avec une autre adresse.
 
 ## Application Android
 
@@ -84,7 +84,7 @@ L'APK est compilé par GitHub Actions (*Build APK - Raccourcis Paiement Mobile*)
 ### Configuration et build
 
 1. Ouvrir le dossier `android/` dans Android Studio (Koala ou plus récent). Android Studio proposera de régénérer le Gradle Wrapper automatiquement si besoin (les binaires du wrapper ne sont pas inclus dans ce dépôt, la sandbox de génération n'ayant pas d'accès réseau vers `dl.google.com`) — sinon lancez `gradle wrapper` une fois en local.
-2. L'URL de l'API est définie dans `app/build.gradle.kts` (`buildConfigField "API_BASE_URL"`) : par défaut l'API de production `https://paiement-mobile-api.onrender.com/`. Pour tester contre une API lancée en local depuis l'émulateur : `-PapiBaseUrl=http://10.0.2.2:8000/`.
+2. L'URL de l'API est définie dans `app/build.gradle.kts` (`buildConfigField "API_BASE_URL"`) : par défaut l'API de production `https://paiement-mobile-api-jo11.onrender.com/`. Pour tester contre une API lancée en local depuis l'émulateur : `-PapiBaseUrl=http://10.0.2.2:8000/`.
 3. `./gradlew assembleDebug` pour un APK de debug, `./gradlew bundleRelease` pour un App Bundle signé destiné au Play Store (configurer la signature dans Android Studio : *Build > Generate Signed Bundle*).
 
 ### Avant publication sur le Play Store

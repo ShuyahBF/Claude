@@ -22,9 +22,9 @@ on:
       api_base_url:
         description: >-
           URL de l'API (terminée par /). Par défaut : l'API de production
-          https://paiement-mobile-api.onrender.com/ (émulateur + API locale : http://10.0.2.2:8000/).
+          https://paiement-mobile-api-jo11.onrender.com/ (émulateur + API locale : http://10.0.2.2:8000/).
         required: false
-        default: 'https://paiement-mobile-api.onrender.com/'
+        default: 'https://paiement-mobile-api-jo11.onrender.com/'
 
 jobs:
   build:
@@ -54,7 +54,7 @@ jobs:
         env:
           # Adresse saisie au lancement manuel, sinon l'API de production.
           # Passée par une variable d'environnement (et non insérée dans le script) par sécurité.
-          API_BASE_URL: ${{ github.event.inputs.api_base_url || 'https://paiement-mobile-api.onrender.com/' }}
+          API_BASE_URL: ${{ github.event.inputs.api_base_url || 'https://paiement-mobile-api-jo11.onrender.com/' }}
         run: |
           echo "Compilation avec API_BASE_URL=$API_BASE_URL"
           gradle assembleDebug --stacktrace -PapiBaseUrl="$API_BASE_URL"

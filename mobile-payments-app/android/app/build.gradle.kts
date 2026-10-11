@@ -18,7 +18,7 @@ android {
         // URL de base de l'API : par défaut l'API de PRODUCTION (lot 13, API unique FastAPI partagée
         // avec le site web). Surcharge possible : -PapiBaseUrl=http://10.0.2.2:8000/ (émulateur + API locale).
         // L'adresse doit se terminer par « / ».
-        buildConfigField("String", "API_BASE_URL", "\"${project.findProperty("apiBaseUrl") ?: "https://paiement-mobile-api.onrender.com/"}\"")
+        buildConfigField("String", "API_BASE_URL", "\"${project.findProperty("apiBaseUrl") ?: "https://paiement-mobile-api-jo11.onrender.com/"}\"")
         // Date et heure de compilation (UTC, ISO 8601) : « deploye_le » du signal de présence SAWALI
         buildConfigField("String", "DATE_BUILD", "\"${java.time.Instant.now()}\"")
     }
