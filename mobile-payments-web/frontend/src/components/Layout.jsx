@@ -50,7 +50,11 @@ export default function Layout() {
       </main>
 
       {/* Pied de page de toutes les pages connectées : version et date de déploiement */}
-      <footer className="no-print py-3 text-center text-xs text-gray-400">{LIBELLE_VERSION}</footer>
+      {/* + lien vers la politique de confidentialité (lot 16) */}
+      <footer className="no-print py-3 text-center text-xs text-gray-400">
+        {LIBELLE_VERSION}
+        {" · "}<NavLink to="/confidentialite" className="underline hover:text-gray-600">Confidentialité</NavLink>
+      </footer>
 
       {/* Menu en bas de l'écran sur téléphone (comme une application) */}
       <nav className="no-print fixed inset-x-0 bottom-0 z-40 flex border-t border-gray-200 bg-white sm:hidden">

@@ -118,6 +118,13 @@ export default function Connexion({ mode = "connexion" }) {
         Contact : <a href="mailto:contact@sawalismartsystems.com" className="text-gray-300 hover:text-white">contact@sawalismartsystems.com</a>
         {" · "}<a href="tel:+22625658165" className="text-gray-300 hover:text-white">+226 25 65 81 65</a>
       </p>
+      {/* Lot 16 : lien vers la politique de confidentialité + mention de non-affiliation */}
+      <p className="mt-2 text-center text-xs">
+        <Link to="/confidentialite" className="text-gray-300 underline hover:text-white">Politique de confidentialité</Link>
+      </p>
+      <p className="mt-2 max-w-sm text-center text-[11px] leading-snug text-gray-500">
+        Paiement Mobile n'est affilié ni à Orange, ni à Moov Africa, ni à Telecel Faso ; les marques citées appartiennent à leurs propriétaires.
+      </p>
       <p className="mt-2 text-xs text-gray-500">
         Powered by <a href="https://sawalismartsystems.com" className="font-semibold text-gray-300 hover:text-white">Sawali Smart Systems</a>
       </p>
