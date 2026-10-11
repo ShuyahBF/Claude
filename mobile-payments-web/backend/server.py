@@ -5,6 +5,7 @@ Documentation interactive de l'API : http://localhost:8000/docs
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -15,14 +16,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from catalogue_defaut import initialiser_catalogue
 from config import get_settings
 from db import db, ensure_indexes
-from routes import auth, catalogue, marchands, paiements
+import presence_sawali
+import version_plateforme
+from routes import android, auth, catalogue, marchands, paiements, presence
 from securite import hash_password
 from ussd import normaliser_email
 
 settings = get_settings()
 log = logging.getLogger("paiement_mobile")
 
-app = FastAPI(title="Raccourcis Paiement Mobile API", version="1.0.0")
+app = FastAPI(title="Raccourcis Paiement Mobile API", version=str(version_plateforme.VERSION or "dev"))
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,14 +35,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Toutes les routes sous « /api » : site web (auth, catalogue, marchands, paiements),
+# application Android (« /api/android/… ») et visites du site (« /api/presence/visite »).
 api = APIRouter(prefix="/api")
-for module in (auth, catalogue, marchands, paiements):
+for module in (auth, catalogue, marchands, paiements, android, presence):
     api.include_router(module.router)
 
 
 @api.get("/health")
 async def health():
+    """Santé du serveur (utilisée par Render et par l'état « Serveur actif » de la page de connexion)."""
     return {"ok": True}
+
+
+@api.get("/version")
+async def version():
+    """Version, lot, commit et date de déploiement de l'API (source unique : frontend/src/version.js)."""
+    return version_plateforme.infos_version()
 
 
 app.include_router(api)
@@ -68,6 +80,13 @@ async def ensure_admin() -> None:
 async def au_demarrage():
     await ensure_indexes()
     await ensure_admin()
+    # Catalogue USSD de départ chargé automatiquement si la base est vide (aucune commande manuelle)
     n = await initialiser_catalogue()
     if n:
         log.info("Catalogue de départ inséré : %s services", n)
+    # Signal de présence auprès de SAWALI (au démarrage puis toutes les 5 minutes), en tâche de fond
+    _taches_fond.add(asyncio.get_running_loop().create_task(presence_sawali.boucle_presence()))
+
+
+# Référence des tâches de fond (sinon Python pourrait les effacer en cours de route)
+_taches_fond: set = set()

@@ -43,6 +43,18 @@ class Settings(BaseSettings):
     max_echecs_connexion: int = 10
     fenetre_echecs_minutes: int = 15
 
+    # --- SAWALI : alerte WhatsApp de connexion / visite (lot 13) ---
+    # Clé HMAC de l'émetteur dans SAWALI (SECRET : saisie dans Render, jamais dans le code).
+    # Vide = aucun signal envoyé.
+    liluvine_wa_hmac: str = ""
+    # Nom de l'émetteur déclaré dans SAWALI (en-tête X-Emetteur)
+    liluvine_wa_emetteur: str = "paiementmobile"
+    # Adresse de l'API SAWALI (sans « /api » final)
+    sawali_url: str = "https://api.sawalismartsystems.com"
+
+    # --- Limitation des appels publics (app Android, visites) : nombre max par minute et par adresse IP ---
+    limite_publique_par_minute: int = 60
+
     @property
     def frontend_origins(self) -> list[str]:
         return [o.strip() for o in self.frontend_origin.split(",") if o.strip()]

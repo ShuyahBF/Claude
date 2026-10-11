@@ -5,7 +5,8 @@ import com.ouoba.mobilepay.data.local.entity.ServiceEntity
 import com.ouoba.mobilepay.data.model.ServiceField
 
 /**
- * Catalogue de secours embarqué dans l'app (miroir de `backend/src/seed/seed.js`).
+ * Catalogue de secours embarqué dans l'app (miroir du catalogue de départ de l'API :
+ * `mobile-payments-web/backend/catalogue_defaut.py`).
  * Permet de composer un code USSD dès le tout premier lancement, même sans connexion
  * Internet : indispensable en zone rurale où le tout premier accès réseau n'est pas garanti.
  * Remplacé/complété silencieusement par le catalogue réel du backend dès qu'une synchro

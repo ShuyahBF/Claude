@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
+import { LIBELLE_VERSION } from "@/version";
 
 // Menus de l'application (l'entrée « Administration » n'apparaît qu'à l'administrateur)
 const MENUS = [
@@ -47,6 +48,9 @@ export default function Layout() {
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
         <Outlet />
       </main>
+
+      {/* Pied de page de toutes les pages connectées : version et date de déploiement */}
+      <footer className="no-print py-3 text-center text-xs text-gray-400">{LIBELLE_VERSION}</footer>
 
       {/* Menu en bas de l'écran sur téléphone (comme une application) */}
       <nav className="no-print fixed inset-x-0 bottom-0 z-40 flex border-t border-gray-200 bg-white sm:hidden">

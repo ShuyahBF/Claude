@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
 import { apiClient, messageErreur } from "@/lib/api";
+import ChampMotDePasse from "@/components/ChampMotDePasse";
 
 // Profil : coordonnées (téléphone et e-mail servent à se connecter) et mot de passe.
 export default function Profil() {
@@ -57,9 +58,9 @@ export default function Profil() {
       <form onSubmit={changerMotDePasse} className="card space-y-4">
         <h2 className="text-lg font-bold">Mot de passe</h2>
         <div><label className="label" htmlFor="m-ancien">Mot de passe actuel</label>
-          <input id="m-ancien" className="input" type="password" required value={mdp.ancien} onChange={(e) => setMdp({ ...mdp, ancien: e.target.value })} autoComplete="current-password" /></div>
+          <ChampMotDePasse id="m-ancien" required value={mdp.ancien} onChange={(e) => setMdp({ ...mdp, ancien: e.target.value })} autoComplete="current-password" /></div>
         <div><label className="label" htmlFor="m-nouveau">Nouveau mot de passe (8 caractères minimum)</label>
-          <input id="m-nouveau" className="input" type="password" required minLength={8} value={mdp.nouveau} onChange={(e) => setMdp({ ...mdp, nouveau: e.target.value })} autoComplete="new-password" /></div>
+          <ChampMotDePasse id="m-nouveau" required minLength={8} value={mdp.nouveau} onChange={(e) => setMdp({ ...mdp, nouveau: e.target.value })} autoComplete="new-password" /></div>
         <button type="submit" className="btn-outline">Changer le mot de passe</button>
       </form>
     </div>

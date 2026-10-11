@@ -5,10 +5,11 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from pymongo.errors import DuplicateKeyError
 
+import signal_connexion
 from db import SANS_ID, db
 from securite import (create_access_token, effacer_cookie_session, effacer_echecs, get_current_user, hash_password,
                       noter_echec, poser_cookie_session, utilisateur_public, verifier_non_bloque, verify_password)
@@ -58,6 +59,14 @@ def _coordonnees(telephone: str, email: Optional[str]) -> tuple[str, Optional[st
     return tel, mail
 
 
+def _signaler_connexion(request: Request, user: dict, page: str) -> None:
+    """Alerte WhatsApp du propriétaire (via SAWALI) : connexion réussie, envoyée en arrière-plan.
+    Ni mot de passe ni jeton dans le signal."""
+    nom = f"{user.get('prenom', '')} {user.get('nom', '')}".strip()
+    signal_connexion.signaler("connexion", request, utilisateur=nom or None, telephone=user.get("telephone"),
+                              role=user.get("role"), page=page)
+
+
 def _session(response: Response, user: dict) -> dict:
     """Pose le cookie de session et renvoie la fiche + le jeton (utile aux outils/tests)."""
     jeton = create_access_token(user["id"], int(user.get("version_session", 0)))
@@ -66,7 +75,7 @@ def _session(response: Response, user: dict) -> dict:
 
 
 @router.post("/inscription", status_code=status.HTTP_201_CREATED)
-async def inscription(data: Inscription, response: Response):
+async def inscription(data: Inscription, request: Request, response: Response):
     tel, mail = _coordonnees(data.telephone, data.email)
     user = {
         "id": str(uuid.uuid4()), "nom": data.nom.strip(), "prenom": data.prenom.strip(), "telephone": tel,
@@ -80,11 +89,13 @@ async def inscription(data: Inscription, response: Response):
     except DuplicateKeyError as exc:
         raise _erreur("Ce numéro de téléphone ou cet e-mail a déjà un compte : connectez-vous",
                       status.HTTP_409_CONFLICT) from exc
+    # L'inscription connecte aussitôt l'utilisateur : elle est signalée comme une connexion
+    _signaler_connexion(request, user, "/inscription")
     return _session(response, user)
 
 
 @router.post("/connexion")
-async def connexion(data: Connexion, response: Response):
+async def connexion(data: Connexion, request: Request, response: Response):
     try:
         champ, valeur = analyser_identifiant(data.identifiant)
     except ErreurSaisie as exc:
@@ -97,6 +108,7 @@ async def connexion(data: Connexion, response: Response):
         # Même message dans tous les cas : on ne révèle pas si le compte existe
         raise _erreur("Identifiant ou mot de passe incorrect", status.HTTP_401_UNAUTHORIZED)
     await effacer_echecs(cle)
+    _signaler_connexion(request, user, "/connexion")
     return _session(response, user)
 
 

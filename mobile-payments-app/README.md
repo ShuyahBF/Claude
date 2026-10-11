@@ -4,19 +4,30 @@ Application Android qui simplifie le lancement des paiements mobiles (USSD) : l'
 
 Le catalogue des services par opérateur et l'annuaire des codes marchands sont stockés dans **MongoDB**, exposés à l'app via une **API REST** (l'app ne se connecte jamais directement à MongoDB, par sécurité).
 
+> **Lot 13 — une seule API.** L'app utilise désormais l'API FastAPI de la version web
+> (`../mobile-payments-web/backend`, déployée sur Render : `https://paiement-mobile-api.onrender.com`).
+> Elle partage avec le site le même catalogue de services et le même annuaire de marchands.
+> Le dossier `backend/` (ancien serveur Node/Express) est conservé **pour archive uniquement** :
+> il n'est plus utilisé ni déployé (son `render.yaml` a été retiré).
+
 ## Architecture
 
 ```
 mobile-payments-app/
-├── backend/     API Node.js/Express + Mongoose (MongoDB)
-└── android/     App Android Kotlin + Jetpack Compose
+├── android/     App Android Kotlin + Jetpack Compose
+└── backend/     ARCHIVE — ancien serveur Node/Express (plus utilisé)
+
+mobile-payments-web/
+├── backend/     API FastAPI unique (site web + app Android)
+└── frontend/    Site React
 ```
 
 ```
-[App Android] --HTTPS/JSON--> [API Express] --Mongoose--> [MongoDB (Atlas ou self-hosted)]
+[App Android] --HTTPS/JSON--> [API FastAPI paiement-mobile-api] --Motor--> [MongoDB Atlas]
+[Site web]    --HTTPS/JSON-->            (même API)
 ```
 
-### Modèle de données
+### Modèle de données (format JSON vu par l'app)
 
 **Service** (un enregistrement par service et par opérateur) :
 | Champ | Description |
@@ -28,50 +39,38 @@ mobile-payments-app/
 | `ussdTemplate` | Gabarit avec placeholders, ex: `*144*10*{code}*{amount}#` |
 | `fields` | Liste des champs à saisir (`key`, `label`, `type`, `isMerchantCode`) |
 
-**Merchant** (annuaire des codes marchands déjà rencontrés) :
+**Merchant** (annuaire des codes marchands déjà rencontrés, partagé avec le site) :
 | Champ | Description |
 |---|---|
 | `operator` | Opérateur associé |
 | `code` | Code marchand, entièrement numérique |
-| `label` | Nom choisi par l'utilisateur (alphanumérique) |
+| `label` | Nom choisi par l'utilisateur |
 
-Le champ marqué `isMerchantCode: true` dans un service déclenche, côté app, une recherche dans `Merchant` (`GET /api/merchants/:operator/:code`). Si le code n'existe pas (`404`), l'app demande un intitulé à l'utilisateur puis crée l'enregistrement (`POST /api/merchants`).
+Le champ marqué `isMerchantCode: true` dans un service déclenche, côté app, une recherche
+(`GET /api/android/merchants/:operator/:code`). Si le code n'existe pas (`404`), l'app demande un intitulé
+à l'utilisateur puis crée l'enregistrement (`POST /api/android/merchants`).
 
-## Backend
+## API utilisée par l'app
 
-```bash
-cd backend
-cp .env.example .env   # renseigner MONGODB_URI (Atlas ou local)
-npm install
-npm run seed            # insère des exemples de services (Orange, Moov Africa, Telecel Faso - Burkina Faso)
-npm run dev              # démarre l'API sur http://localhost:3000
-```
-
-### Endpoints principaux
+Routes publiques de l'API FastAPI (détails dans `../mobile-payments-web/README.md`) :
 
 | Méthode | Route | Description |
 |---|---|---|
-| GET | `/api/operators` | Liste des opérateurs disponibles |
-| GET | `/api/services?operator=Orange` | Services d'un opérateur |
-| POST | `/api/services` | Créer un service (protégé par `API_KEY` si définie) |
-| GET | `/api/merchants/:operator/:code` | Recherche d'un code marchand (`404` si inconnu) |
-| POST | `/api/merchants` | Enregistrer un nouveau code marchand avec son intitulé |
-| POST | `/api/users` | Enregistrer/mettre à jour le profil utilisateur (upsert par `telephone`), route publique (voir mode hors-ligne ci-dessous) |
+| GET | `/api/android/operators` | Liste des opérateurs disponibles |
+| GET | `/api/android/services?operator=Orange` | Services actifs d'un opérateur |
+| GET | `/api/android/merchants/:operator/:code` | Recherche d'un code marchand (`404` si inconnu) |
+| POST | `/api/android/merchants` | Enregistrer un nouveau code marchand avec son intitulé |
+| POST | `/api/android/users` | Enregistrer/mettre à jour le profil saisi à l'accueil (upsert par téléphone) |
 
-### Déployer le backend (obligatoire pour tester sur un vrai téléphone)
+Le catalogue se gère depuis la page **Administration** du site web (plus de `npm run seed` : le catalogue
+de départ est chargé automatiquement au premier démarrage de l'API).
 
-`10.0.2.2` (l'adresse par défaut de l'app) n'existe que **dans l'émulateur Android
-Studio** — c'est un alias interne vers la machine hôte, invisible depuis un vrai
-téléphone. Sans backend déployé quelque part de joignable sur Internet, un test
-sur appareil physique échoue toujours, quelle que soit la configuration réseau
-de l'appli.
+### Déploiement
 
-1. **MongoDB Atlas** (gratuit) : créer un compte sur [mongodb.com/atlas](https://www.mongodb.com/atlas), un cluster **M0** (gratuit), un utilisateur DB, autoriser l'accès réseau `0.0.0.0/0` (ou l'IP sortante de Render), puis copier la chaîne de connexion (`mongodb+srv://...`).
-2. **Render** : *New +* → *Blueprint* → connecter ce dépôt GitHub → Render détecte `mobile-payments-app/render.yaml` et propose le service `mobile-payments-backend`. Renseigner `MONGODB_URI` (chaîne Atlas de l'étape 1) quand demandé, puis déployer.
-3. Une fois déployé, noter l'URL Render (ex. `https://mobile-payments-backend.onrender.com/`), puis peupler le catalogue une fois via l'onglet *Shell* de Render : `npm run seed`.
-4. Recompiler l'APK avec cette URL : dans GitHub → *Actions* → *Build APK - Raccourcis Paiement Mobile* → *Run workflow* → renseigner `api_base_url` avec l'URL Render (terminée par `/`). L'APK généré pointera alors sur le backend réel, plus besoin d'émulateur ni d'exception réseau en clair (HTTPS).
-
-N'importe quel autre hébergeur Node convient aussi (Railway, Fly.io, un VPS...) — `render.yaml` est fourni en confort mais n'est pas obligatoire.
+Rien à déployer pour l'app elle-même : l'API est déployée avec le site (`../mobile-payments-web/render.yaml`).
+L'APK est compilé par GitHub Actions (*Build APK - Raccourcis Paiement Mobile*) à chaque modification de
+`mobile-payments-app/**` sur la branche par défaut, et pointe par défaut sur l'API de production
+`https://paiement-mobile-api.onrender.com/`. Lancement manuel possible (*Run workflow*) avec une autre adresse.
 
 ## Application Android
 
@@ -85,13 +84,12 @@ N'importe quel autre hébergeur Node convient aussi (Railway, Fly.io, un VPS...)
 ### Configuration et build
 
 1. Ouvrir le dossier `android/` dans Android Studio (Koala ou plus récent). Android Studio proposera de régénérer le Gradle Wrapper automatiquement si besoin (les binaires du wrapper ne sont pas inclus dans ce dépôt, la sandbox de génération n'ayant pas d'accès réseau vers `dl.google.com`) — sinon lancez `gradle wrapper` une fois en local.
-2. Renseigner l'URL de l'API dans `app/build.gradle.kts` (`buildConfigField "API_BASE_URL"`), ou passer `-PapiBaseUrl=https://votre-api.example.com/` en ligne de commande. Par défaut, `http://10.0.2.2:3000/` cible un backend lancé en local depuis l'émulateur Android.
+2. L'URL de l'API est définie dans `app/build.gradle.kts` (`buildConfigField "API_BASE_URL"`) : par défaut l'API de production `https://paiement-mobile-api.onrender.com/`. Pour tester contre une API lancée en local depuis l'émulateur : `-PapiBaseUrl=http://10.0.2.2:8000/`.
 3. `./gradlew assembleDebug` pour un APK de debug, `./gradlew bundleRelease` pour un App Bundle signé destiné au Play Store (configurer la signature dans Android Studio : *Build > Generate Signed Bundle*).
 
 ### Avant publication sur le Play Store
 
 - Remplacer l'icône placeholder (`app/src/main/res/drawable/ic_launcher.xml`) par une vraie identité visuelle (icône adaptative recommandée).
-- Configurer une URL d'API en HTTPS de production (pas `10.0.2.2`).
 - Déclarer dans la fiche Play Console l'usage de la permission `CALL_PHONE` (fonctionnalité "appel direct") et la politique de confidentialité (l'app transmet code marchand/montant à votre backend, ainsi que le profil saisi à l'accueil).
 - Envisager d'ajouter : un historique des paiements récents (côté app, en local), une recherche/filtrage des services.
 
@@ -99,7 +97,7 @@ N'importe quel autre hébergeur Node convient aussi (Railway, Fly.io, un VPS...)
 
 L'app est **hors-ligne d'abord** : l'interface lit toujours une base locale (Room/SQLite embarquée sur l'appareil), jamais le réseau directement. Objectif : rester utilisable en zone rurale ou en cas de faible couverture, où une connexion n'est pas garantie au premier lancement.
 
-- **Catalogue opérateurs/services** : un catalogue de secours (Orange, Moov Africa, Telecel Faso — miroir de `seed.js`) est embarqué dans l'app et charge la base locale dès le tout premier lancement, sans réseau. Dès qu'une connexion existe, il est rafraîchi silencieusement depuis le backend.
+- **Catalogue opérateurs/services** : un catalogue de secours (Orange, Moov Africa, Telecel Faso — miroir de `catalogue_defaut.py` de l'API) est embarqué dans l'app et charge la base locale dès le tout premier lancement, sans réseau. Dès qu'une connexion existe, il est **remplacé** silencieusement par le catalogue du serveur (services désactivés retirés, pas de doublons).
 - **Codes marchands** : la recherche/création d'un code marchand se fait d'abord en local ; hors-ligne, un nouveau marchand est enregistré immédiatement sur l'appareil (l'utilisateur peut continuer sans attendre) et marqué "à synchroniser".
 - **Rattrapage** : une tâche de fond (WorkManager), contrainte à une connexion active, pousse vers le backend tout ce qui a été créé hors-ligne (profil, marchands) dès que le réseau revient, puis toutes les 6h.
 - **Accueil en 3 étapes** (au tout premier lancement) : 1) saisie nom/prénom/téléphone (email facultatif) ; 2) tentative de synchronisation du profil, plafonnée à quelques secondes ; 3) écran de bienvenue, affiché dans tous les cas — la synchro non aboutie est simplement reprogrammée en tâche de fond, elle ne bloque jamais l'accès à l'app.
@@ -107,5 +105,7 @@ L'app est **hors-ligne d'abord** : l'interface lit toujours une base locale (Roo
 ## Sécurité et limites à connaître
 
 - L'app ne fait que **composer le code USSD** ; elle ne peut pas garantir que la transaction aboutit (cela dépend entièrement du réseau de l'opérateur). Aucune donnée de paiement (montant, code) ne transite ailleurs que vers votre propre backend.
-- Protégez les routes d'écriture de l'API (`POST/PUT/DELETE`) avec `API_KEY` en production, et mettez l'API derrière HTTPS.
-- Les codes USSD d'exemple dans `seed.js` sont fournis à titre indicatif : vérifiez et mettez à jour les syntaxes réelles auprès de chaque opérateur avant mise en production.
+- Les routes `/api/android/…` sont publiques mais limitées (nombre d'appels par minute et par adresse IP, codes marchands numériques, opérateur du catalogue obligatoire) ; l'API est servie en HTTPS par Render.
+- **Présence SAWALI** : au lancement et au retour au premier plan (au plus toutes les 5 minutes), l'app envoie en arrière-plan `POST https://api.sawalismartsystems.com/api/presence-logiciel` (application `paiement-mobile-android`, version, modèle de l'appareil, version d'Android) — aucune donnée personnelle.
+- **Alerte WhatsApp** : l'enregistrement du profil (`POST /api/android/users`) est signalé au propriétaire par l'API (type « connexion »).
+- Les codes USSD du catalogue de départ sont fournis à titre indicatif : vérifiez-les auprès de chaque opérateur (page Administration du site).

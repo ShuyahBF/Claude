@@ -3,6 +3,7 @@ import Chargement from "@/components/Chargement";
 import Modal from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { apiClient, CATEGORIES, messageErreur } from "@/lib/api";
+import { libelleVersion } from "@/version";
 
 const VIDE = { operateur: "", pays: "BF", nom: "", categorie: "merchant_payment", gabarit_ussd: "*",
   champs: [{ key: "amount", label: "Montant (FCFA)", type: "numeric", isMerchantCode: false }], description: "", actif: true };
@@ -13,6 +14,13 @@ export default function Admin() {
   const toast = useToast();
   const [services, setServices] = useState(null);
   const [edition, setEdition] = useState(null); // service en cours d'édition (id absent = nouveau)
+  const [selection, setSelection] = useState(null); // id de la ligne sélectionnée (fond orange)
+  const [versionApi, setVersionApi] = useState(""); // libellé détaillé de l'API (GET /api/version)
+
+  // Version de l'API (lot, commit, date de démarrage) : affichée à côté de celle du site
+  useEffect(() => {
+    apiClient.get("/version").then(({ data }) => setVersionApi(data.libelle_detaille)).catch(() => setVersionApi(""));
+  }, []);
 
   const charger = () => apiClient.get("/admin/services").then(({ data }) => setServices(data)).catch(() => setServices([]));
   useEffect(() => { charger(); }, []);
@@ -44,6 +52,11 @@ export default function Admin() {
         <h1 className="text-2xl font-bold">Catalogue des services USSD</h1>
         <button type="button" className="btn-primary" onClick={() => setEdition({ ...VIDE })}>+ Service</button>
       </div>
+      {/* Version détaillée (page d'administration) : version, lot, commit, date de déploiement */}
+      <div className="rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-600">
+        <p><span className="font-semibold">Site :</span> {libelleVersion(true)}</p>
+        <p><span className="font-semibold">API :</span> {versionApi || "non disponible"}</p>
+      </div>
       <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
         Vérifiez chaque code auprès de l'opérateur avant de l'activer : un code faux enverrait l'utilisateur vers une mauvaise opération.
       </p>
@@ -52,7 +65,8 @@ export default function Admin() {
           <thead><tr><th>Opérateur</th><th>Service</th><th>Gabarit</th><th>État</th><th /></tr></thead>
           <tbody>
             {services.map((s) => (
-              <tr key={s.id}>
+              <tr key={s.id} onClick={() => setSelection(s.id)} aria-selected={selection === s.id}
+                className={selection === s.id ? "ligne-selectionnee cursor-pointer" : "cursor-pointer"}>
                 <td>{s.operateur} <span className="text-xs text-gray-400">{s.pays}</span></td>
                 <td>{s.nom}<br /><span className="text-xs text-gray-500">{CATEGORIES[s.categorie]}</span></td>
                 <td className="font-mono">{s.gabarit_ussd}</td>
