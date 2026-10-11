@@ -1,3 +1,6 @@
+// Lot 15 : import explicite — dans le bloc android { }, « java » désigne l'extension Java d'Android, pas le paquet java.time
+import java.time.Instant
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -20,7 +23,7 @@ android {
         // L'adresse doit se terminer par « / ».
         buildConfigField("String", "API_BASE_URL", "\"${project.findProperty("apiBaseUrl") ?: "https://paiement-mobile-api-jo11.onrender.com/"}\"")
         // Date et heure de compilation (UTC, ISO 8601) : « deploye_le » du signal de présence SAWALI
-        buildConfigField("String", "DATE_BUILD", "\"${java.time.Instant.now()}\"")
+        buildConfigField("String", "DATE_BUILD", "\"${Instant.now()}\"")
     }
 
     buildTypes {
