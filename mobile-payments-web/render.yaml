@@ -58,7 +58,7 @@ services:
     envVars:
       # Adresse de l'API + /api (lue à la compilation du site)
       - key: VITE_API_BASE_URL
-        value: https://paiement-mobile-api.onrender.com/api
+        value: https://paiement-mobile-api-jo11.onrender.com/api
     routes:
       # Application React (React Router) : toute adresse retombe sur index.html
       - type: rewrite
