@@ -34,16 +34,22 @@ jobs:
         working-directory: mobile-payments-app/android
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Installer Java 17 (requis par Android Gradle Plugin 8.5)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Installer le SDK Android (plateformes, build-tools, licences)
-        uses: android-actions/setup-android@v3
+      # Lot 15 : l'action android-actions/setup-android@v3 échoue désormais sur les machines GitHub
+      # (Node 20 retiré). Les machines ubuntu-latest contiennent déjà le SDK Android (ANDROID_HOME) :
+      # on accepte les licences et on installe seulement la plateforme et les build-tools utiles.
+      - name: Préparer le SDK Android déjà présent sur la machine (licences, plateforme 34)
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platforms;android-34" "build-tools;34.0.0" "platform-tools"
 
       - name: Installer Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
@@ -51,13 +57,22 @@ jobs:
           gradle-version: '8.7'
 
       - name: Compiler l'APK de debug (installable directement, non signé)
-        env:
-          # Adresse saisie au lancement manuel, sinon l'API de production.
-          # Passée par une variable d'environnement (et non insérée dans le script) par sécurité.
-          API_BASE_URL: ${{ github.event.inputs.api_base_url || 'https://paiement-mobile-api-jo11.onrender.com/' }}
+        shell: bash
         run: |
-          echo "Compilation avec API_BASE_URL=$API_BASE_URL"
-          gradle assembleDebug --stacktrace -PapiBaseUrl="$API_BASE_URL"
+          # Adresse de l'API : celle saisie au lancement manuel, sinon celle de production (build.gradle.kts)
+          ARGS="assembleDebug --stacktrace"
+          if [ -n "${{ github.event.inputs.api_base_url }}" ]; then
+            ARGS="$ARGS -PapiBaseUrl=${{ github.event.inputs.api_base_url }}"
+          fi
+          set -o pipefail
+          # Lot 15 : en cas d'échec, les erreurs de compilation sont publiées en « annotations »
+          # (visibles dans le résumé de l'exécution, sans ouvrir le journal complet).
+          if ! gradle $ARGS 2>&1 | tee build.log; then
+            grep -E "^e: |error:|What went wrong|Could not|Unresolved reference|FAILURE" build.log | head -25 | while IFS= read -r ligne; do
+              echo "::error::${ligne//%/%25}"
+            done
+            exit 1
+          fi
 
       - name: Publier l'APK comme fichier téléchargeable (onglet Actions -> Artifacts)
         uses: actions/upload-artifact@v4
