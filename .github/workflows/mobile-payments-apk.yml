@@ -34,16 +34,22 @@ jobs:
         working-directory: mobile-payments-app/android
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Installer Java 17 (requis par Android Gradle Plugin 8.5)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Installer le SDK Android (plateformes, build-tools, licences)
-        uses: android-actions/setup-android@v3
+      # Lot 15 : l'action android-actions/setup-android@v3 échoue désormais sur les machines GitHub
+      # (Node 20 retiré). Les machines ubuntu-latest contiennent déjà le SDK Android (ANDROID_HOME) :
+      # on accepte les licences et on installe seulement la plateforme et les build-tools utiles.
+      - name: Préparer le SDK Android déjà présent sur la machine (licences, plateforme 34)
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platforms;android-34" "build-tools;34.0.0" "platform-tools"
 
       - name: Installer Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
