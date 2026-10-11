@@ -1,6 +1,7 @@
 package com.ouoba.mobilepay.data.repository
 
 import android.content.Context
+import androidx.room.withTransaction
 import com.ouoba.mobilepay.data.local.AppDatabase
 import com.ouoba.mobilepay.data.local.DefaultCatalog
 import com.ouoba.mobilepay.data.local.entity.MerchantEntity
@@ -31,14 +32,22 @@ class PaymentRepository(
         }
     }
 
-    /** Rafraîchit le catalogue depuis le backend si une connexion existe ; échec silencieux sinon. */
+    /**
+     * Rafraîchit le catalogue depuis le backend si une connexion existe ; échec silencieux sinon.
+     * Le catalogue local est REMPLACÉ en une seule transaction (tout ou rien) : les services du
+     * catalogue embarqué (identifiants « local-… ») et ceux désactivés côté serveur disparaissent,
+     * au lieu de s'afficher en double à côté des services reçus du serveur.
+     */
     suspend fun refreshCatalogIfOnline() {
         if (!isOnline(context)) return
         runCatching {
             val operators = api.getOperators()
             val allServices = operators.flatMap { api.getServices(it) }
             if (allServices.isNotEmpty()) {
-                db.serviceDao().insertAll(allServices.map { it.toEntity() })
+                db.withTransaction {
+                    db.serviceDao().deleteAll()
+                    db.serviceDao().insertAll(allServices.map { it.toEntity() })
+                }
             }
         }
     }

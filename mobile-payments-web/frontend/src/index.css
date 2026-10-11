@@ -29,6 +29,23 @@
   .table td { @apply border-b border-gray-100 px-3 py-2 align-top; }
 }
 
+/* Tableaux (règle 3 du propriétaire, sur TOUT tableau du site) :
+   - ligne survolée    : fond bleu clair transparent ;
+   - ligne sélectionnée : fond orange clair et police blanche. Une ligne est sélectionnée si elle
+     porte la classe « ligne-selectionnee », aria-selected="true", data-selected="true", ou si la
+     case à cocher de sa première cellule est cochée. */
+tbody tr:hover > td,
+tbody tr:hover > th { background-color: rgba(56, 189, 248, 0.16); }
+tr.ligne-selectionnee > td, tr.ligne-selectionnee > th,
+tr[aria-selected="true"] > td, tr[aria-selected="true"] > th,
+tr[data-selected="true"] > td, tr[data-selected="true"] > th,
+tr:has(> td:first-child input[type="checkbox"]:checked) > td,
+tr:has(> td:first-child input[type="checkbox"]:checked) > th { background-color: #f6a35b; color: #fff; }
+/* Textes secondaires (gris) lisibles sur le fond orange (boutons et pastilles gardent leurs couleurs) */
+tr.ligne-selectionnee [class*="text-gray"]:not(.badge):not(button),
+tr[aria-selected="true"] [class*="text-gray"]:not(.badge):not(button),
+tr[data-selected="true"] [class*="text-gray"]:not(.badge):not(button) { color: #fff; }
+
 /* Impression de l'affiche « QR marchand » : on masque menus et boutons */
 @media print {
   .no-print { display: none !important; }

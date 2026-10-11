@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { apiClient } from "@/lib/api";
+import { signalerVisite } from "@/lib/visite";
 
 // Utilisateur connecté, partagé par toutes les pages.
 // user = undefined pendant la vérification de la session, null si déconnecté.
@@ -9,8 +10,12 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(undefined);
 
   // À l'ouverture du site : le cookie de session est-il encore valable ?
+  // Sinon (visiteur non connecté), la visite est signalée au propriétaire (au plus 1 fois / 30 min).
   useEffect(() => {
-    apiClient.get("/auth/moi").then(({ data }) => setUser(data)).catch(() => setUser(null));
+    apiClient.get("/auth/moi").then(({ data }) => setUser(data)).catch(() => {
+      setUser(null);
+      signalerVisite();
+    });
   }, []);
 
   // Connexion par numéro de téléphone OU adresse e-mail

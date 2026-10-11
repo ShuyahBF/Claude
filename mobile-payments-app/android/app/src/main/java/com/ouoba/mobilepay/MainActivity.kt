@@ -40,6 +40,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ouoba.mobilepay.data.model.Service
+import com.ouoba.mobilepay.data.remote.PresenceSawali
 import com.ouoba.mobilepay.data.repository.ProfileRepository
 import com.ouoba.mobilepay.ui.PaymentViewModel
 import com.ouoba.mobilepay.ui.Step
@@ -79,6 +80,13 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Présence auprès de SAWALI (règle 4) : au lancement puis au plus toutes les 5 minutes
+        // quand l'app revient au premier plan. Envoi en arrière-plan, jamais bloquant.
+        PresenceSawali.signaler(applicationContext)
     }
 }
 

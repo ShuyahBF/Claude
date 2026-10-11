@@ -1,10 +1,16 @@
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import ChampMotDePasse from "@/components/ChampMotDePasse";
+import EtatServeur from "@/components/EtatServeur";
+import Patientez from "@/components/Patientez";
 import { useAuth } from "@/context/AuthContext";
 import { messageErreur } from "@/lib/api";
+import { LIBELLE_VERSION } from "@/version";
 
 // Écrans de connexion et d'inscription (mode = "connexion" | "inscription").
 // Identification par numéro de téléphone OU adresse e-mail + mot de passe.
+// Mise en page (règles du propriétaire) : carte centrée avec le logo, état du
+// serveur, version déployée, œil sur le mot de passe, « Patientez… » pendant l'envoi.
 export default function Connexion({ mode = "connexion" }) {
   const { user, connexion, inscription } = useAuth();
   const navigate = useNavigate();
@@ -43,15 +49,16 @@ export default function Connexion({ mode = "connexion" }) {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-nuit-900 px-4 py-10">
-      <div className="mb-6 flex items-center gap-3 text-white">
-        <img src="/icone.svg" alt="" className="h-11 w-11" />
-        <div>
-          <p className="font-display text-2xl font-bold">Paiement Mobile</p>
-          <p className="text-xs uppercase tracking-[0.25em] text-primary-clair">Orange · Moov · Telecel</p>
-        </div>
-      </div>
+      {/* Jauge circulaire + toast « Patientez… » pendant la connexion / l'inscription */}
+      <Patientez actif={envoi} />
 
       <form onSubmit={envoyer} className="w-full max-w-sm space-y-4 rounded-2xl bg-white p-6 shadow-xl">
+        {/* En-tête de la carte : logo et nom de l'application */}
+        <div className="flex flex-col items-center gap-2 pb-2 text-center">
+          <img src="/icone.svg" alt="Paiement Mobile" className="h-14 w-14" />
+          <p className="font-display text-2xl font-bold text-ink">Paiement Mobile</p>
+          <p className="text-xs uppercase tracking-[0.25em] text-accent">Orange · Moov · Telecel</p>
+        </div>
         <h1 className="text-xl font-bold">{inscrire ? "Créer mon compte" : "Connexion"}</h1>
 
         {inscrire ? (
@@ -86,7 +93,7 @@ export default function Connexion({ mode = "connexion" }) {
 
         <div>
           <label className="label" htmlFor="mdp">Mot de passe</label>
-          <input id="mdp" className="input" type="password" required minLength={inscrire ? 8 : 1}
+          <ChampMotDePasse id="mdp" required minLength={inscrire ? 8 : 1}
             value={form.mot_de_passe} onChange={champ("mot_de_passe")}
             autoComplete={inscrire ? "new-password" : "current-password"} />
           {inscrire && <p className="mt-1 text-xs text-gray-500">8 caractères au minimum.</p>}
@@ -100,6 +107,11 @@ export default function Connexion({ mode = "connexion" }) {
           {inscrire ? "Déjà un compte ? " : "Pas encore de compte ? "}
           <Link to={lienAutre} className="font-semibold text-primary">{inscrire ? "Se connecter" : "Créer un compte"}</Link>
         </p>
+        {/* Pied de la carte : état du serveur et version déployée */}
+        <div className="space-y-1 border-t border-gray-100 pt-3">
+          <EtatServeur />
+          <p className="text-center text-xs text-gray-400">{LIBELLE_VERSION}</p>
+        </div>
       </form>
       {/* Contact officiel de SAWALI SMART SYSTEMS */}
       <p className="mt-6 text-center text-xs text-gray-400">

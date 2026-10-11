@@ -22,6 +22,10 @@ interface ServiceDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(services: List<ServiceEntity>)
+
+    /** Vide le catalogue local (appelé dans une transaction, juste avant de le remplacer). */
+    @Query("DELETE FROM services")
+    suspend fun deleteAll()
 }
 
 @Dao

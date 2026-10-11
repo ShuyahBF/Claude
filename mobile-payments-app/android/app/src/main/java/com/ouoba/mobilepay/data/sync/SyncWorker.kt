@@ -11,7 +11,7 @@ import com.ouoba.mobilepay.data.repository.ProfileRepository
 /**
  * Tâche de fond (WorkManager) : ne se déclenche que lorsqu'une connexion réseau est
  * disponible (contrainte posée par SyncScheduler) et rattrape tout ce qui a été créé
- * hors-ligne : profil utilisateur non synchronisé, marchands en attente. `POST /api/merchants`
+ * hors-ligne : profil utilisateur non synchronisé, marchands en attente. `POST /api/android/merchants`
  * fait un upsert côté backend, donc sans risque en cas de double exécution.
  */
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {

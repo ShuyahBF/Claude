@@ -12,12 +12,15 @@ android {
         applicationId = "com.ouoba.mobilepay"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
 
-        // URL de base de l'API backend. Remplacez par l'URL de production avant publication,
-        // ou surchargez via -PapiBaseUrl=... / un fichier local.properties.
-        buildConfigField("String", "API_BASE_URL", "\"${project.findProperty("apiBaseUrl") ?: "http://10.0.2.2:3000/"}\"")
+        // URL de base de l'API : par défaut l'API de PRODUCTION (lot 13, API unique FastAPI partagée
+        // avec le site web). Surcharge possible : -PapiBaseUrl=http://10.0.2.2:8000/ (émulateur + API locale).
+        // L'adresse doit se terminer par « / ».
+        buildConfigField("String", "API_BASE_URL", "\"${project.findProperty("apiBaseUrl") ?: "https://paiement-mobile-api.onrender.com/"}\"")
+        // Date et heure de compilation (UTC, ISO 8601) : « deploye_le » du signal de présence SAWALI
+        buildConfigField("String", "DATE_BUILD", "\"${java.time.Instant.now()}\"")
     }
 
     buildTypes {

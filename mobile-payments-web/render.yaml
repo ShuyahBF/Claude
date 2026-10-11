@@ -1,11 +1,18 @@
 # Déploiement Render (New > Blueprint > ce dépôt, fichier mobile-payments-web/render.yaml).
-# Même organisation qu'adLyn : une API FastAPI + un site statique React.
-# Les variables marquées « sync: false » se renseignent dans le tableau de bord Render
-# (jamais de secret dans ce fichier).
+# UN SEUL serveur pour le site ET l'application Android (lot 13) : l'API FastAPI
+# ci-dessous. L'ancien serveur Node (mobile-payments-app/backend) n'est plus déployé.
+#
+# Les variables marquées « sync: false » sont des SECRETS : Render les demande au
+# premier déploiement et les garde chiffrées (jamais de secret dans ce fichier).
 services:
+  # --------------------------------------------------------------------------
+  # API FastAPI : site web + app Android (/api/android/…) + version + présence SAWALI
+  # --------------------------------------------------------------------------
   - type: web
     name: paiement-mobile-api
     runtime: python
+    plan: starter            # payant : le service ne s'endort jamais (l'app Android l'appelle à toute heure)
+    autoDeploy: true
     rootDir: mobile-payments-web/backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
@@ -13,35 +20,45 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
+      # --- SECRETS (à saisir par le propriétaire dans le tableau de bord Render) ---
       - key: MONGO_URL          # chaîne Atlas mongodb+srv://…
         sync: false
-      - key: MONGO_DB_NAME
-        value: paiement_mobile
-      - key: JWT_SECRET
-        generateValue: true
-      # Adresse du site (CORS + cookie Secure). Ex. https://pay.exemple.com
-      - key: FRONTEND_ORIGIN
-        sync: false
-      - key: PUBLIC_SITE_URL
-        sync: false
-      # Compte administrateur (catalogue USSD), créé au démarrage
-      - key: ADMIN_EMAIL
+      - key: ADMIN_EMAIL        # compte administrateur (catalogue USSD), créé au démarrage
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
+      - key: LILUVINE_WA_HMAC   # clé HMAC de l'émetteur « paiementmobile » dans SAWALI (alerte WhatsApp)
+        sync: false
+      - key: JWT_SECRET         # généré par Render
+        generateValue: true
+      # --- Valeurs non secrètes ---
+      - key: MONGO_DB_NAME
+        value: paiement_mobile
+      # Adresse du site (CORS, cookie Secure, lien des QR marchands, « url_site » des alertes)
+      - key: FRONTEND_ORIGIN
+        value: https://paiement-mobile-site.onrender.com
+      - key: PUBLIC_SITE_URL
+        value: https://paiement-mobile-site.onrender.com
+      # Nom de l'émetteur déclaré dans SAWALI (en-tête X-Emetteur des alertes de connexion)
+      - key: LILUVINE_WA_EMETTEUR
+        value: paiementmobile
     # domains:
     #   - api.votre-domaine.com
 
+  # --------------------------------------------------------------------------
+  # Site statique React (gratuit)
+  # --------------------------------------------------------------------------
   - type: web
     name: paiement-mobile-site
     runtime: static
+    autoDeploy: true
     rootDir: mobile-payments-web/frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
     envVars:
-      # Adresse de l'API + /api, ex. https://api.votre-domaine.com/api
+      # Adresse de l'API + /api (lue à la compilation du site)
       - key: VITE_API_BASE_URL
-        sync: false
+        value: https://paiement-mobile-api.onrender.com/api
     routes:
       # Application React (React Router) : toute adresse retombe sur index.html
       - type: rewrite

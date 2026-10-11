@@ -9,6 +9,10 @@ architecture qu'adLyn (`ShuyahBF/telecom-boutique`) :
 | Site | React 19, Vite, Tailwind CSS | Render (site statique) |
 | Base de données | MongoDB Atlas (collections préfixées `mpw_`) | Atlas |
 
+**Une seule API pour tout le projet (lot 13)** : cette API FastAPI sert à la fois le site web et
+l'**application Android** (`../mobile-payments-app/android`, routes publiques `/api/android/…`).
+L'ancien serveur Node (`../mobile-payments-app/backend`) n'est plus déployé.
+
 ## Principe
 
 L'utilisateur choisit un opérateur, un service (paiement marchand, facture, transfert, crédit…) et
@@ -50,6 +54,44 @@ Aucun code secret n'est jamais demandé ni transmis.
   - Au premier démarrage, le catalogue de l'app Android (Orange, Moov Africa, Telecel Faso) est inséré.
     ⚠️ Vérifier les codes auprès de chaque opérateur.
 
+## Application Android (routes `/api/android/…`)
+
+Routes **publiques** (sans compte), au format JSON exact de l'app (`Models.kt`, champs en camelCase),
+limitées par adresse IP (`LIMITE_PUBLIQUE_PAR_MINUTE`, 60 écritures / 300 lectures par minute par défaut) :
+
+| Méthode | Route | Réponse |
+|---|---|---|
+| GET | `/api/android/operators` | `["Moov Africa", "Orange", …]` (opérateurs ayant un service actif) |
+| GET | `/api/android/services?operator=Orange` | `[{_id, operator, country, name, category, ussdTemplate, fields[{key,label,type,isMerchantCode}], description}]` |
+| GET | `/api/android/merchants/{operator}/{code}` | `{_id, code, operator, label}` ou 404 |
+| POST | `/api/android/merchants` | `{code, operator, label}` → 201 `{_id, code, operator, label}` |
+| POST | `/api/android/users` | `{nom, prenom, email?, telephone}` → 201 (profil créé ou mis à jour par téléphone) |
+
+- Mêmes données que le site : le **catalogue** géré dans la page Administration et l'**annuaire partagé**
+  des marchands. Un code créé dans l'app est visible sur le site, et inversement.
+- Code marchand numérique (20 chiffres max.), opérateur du catalogue obligatoire ; un intitulé déjà
+  enregistré n'est jamais écrasé ; les caractères non admis de l'intitulé sont retirés.
+- Les profils de l'app sont rangés à part (`mpw_profils_android`) : ils ne créent pas de compte sur le site.
+
+## Version, présence et alertes SAWALI
+
+- **Version et lot** : source unique `frontend/src/version.js` (`VERSION` +1 à chaque déploiement,
+  `LOT` = numéro de la PR fusionnée). Le commit et la date de compilation sont ajoutés par `vite.config.js`.
+  - Page de connexion et pied de page des pages connectées : « Version X · déployée le JJ/MM/AAAA HH:MM ».
+  - Page Administration : « Version X · Lot N · commit · déployée le … » (site et API).
+  - `GET /api/version` → `{version, lot, commit, demarrage, libelle, libelle_detaille}` (l'API relit `version.js`).
+- **Présence** : l'API envoie `POST https://api.sawalismartsystems.com/api/presence-logiciel`
+  (application `paiement-mobile`) 10 s après le démarrage puis toutes les 5 minutes, en arrière-plan.
+  `PRESENCE_SAWALI=0` la désactive. L'app Android envoie aussi sa présence (`paiement-mobile-android`)
+  au lancement et au retour au premier plan (au plus toutes les 5 minutes).
+- **Alerte WhatsApp de connexion** : à chaque connexion (ou inscription) réussie sur le site et à chaque
+  enregistrement du profil par l'app Android, l'API envoie à SAWALI
+  `POST /api/webhook/plateforme-connexion`, signé (`X-Emetteur`, `X-Timestamp`,
+  `X-Signature` = HMAC-SHA256(`LILUVINE_WA_HMAC`, "<horodatage>.<corps brut>")).
+  Les visiteurs non connectés sont signalés (type « visite ») au plus une fois toutes les 30 minutes par
+  navigateur (`POST /api/presence/visite`). Sans `LILUVINE_WA_HMAC`, rien n'est envoyé ; un échec n'empêche
+  jamais la connexion.
+
 ## Démarrer en local
 
 ```bash
@@ -74,20 +116,33 @@ Mettre l'adresse du cluster Atlas pour garder les données.
 - la construction des codes USSD et la normalisation des téléphones ;
 - la connexion par téléphone et par e-mail, le blocage et la protection CSRF ;
 - le parcours de paiement et le cloisonnement de l'historique entre utilisateurs ;
-- l'annuaire des marchands et l'administration du catalogue.
+- l'annuaire des marchands et l'administration du catalogue ;
+- les routes de l'app Android (format JSON, validation, limitation), `/api/version`, la présence et
+  les alertes SAWALI (faux serveur SAWALI, contrôle de la signature).
 
 ## Déployer sur Render
 
+Deux services seulement : l'API `paiement-mobile-api` (plan **starter**, ne s'endort pas) et le site
+statique gratuit `paiement-mobile-site`. **Aucun serveur Node à déployer.**
+
 1. Sur Render : **New > Blueprint**, choisir ce dépôt et le fichier `mobile-payments-web/render.yaml`.
-2. Renseigner les variables « sync: false » dans le tableau de bord Render :
-   - `MONGO_URL` (Atlas) ;
-   - `FRONTEND_ORIGIN` et `PUBLIC_SITE_URL` (adresse du site) ;
-   - `ADMIN_EMAIL` et `ADMIN_PASSWORD` ;
-   - `VITE_API_BASE_URL` (adresse de l'API + `/api`).
-   `JWT_SECRET` est généré par Render.
-3. **Noms de domaine** : donnez au site et à l'API deux sous-domaines du **même** domaine
-   (ex. `pay.exemple.com` et `api.exemple.com`). Sinon Safari (iPhone, Mac) refuse le cookie de session.
-   C'est la même consigne que pour adLyn.
+2. Saisir les **secrets** (« sync: false ») dans le tableau de bord Render :
+   - `MONGO_URL` (chaîne Atlas `mongodb+srv://…`) ;
+   - `ADMIN_EMAIL` et `ADMIN_PASSWORD` (compte administrateur, créé au démarrage) ;
+   - `LILUVINE_WA_HMAC` (clé de l'émetteur `paiementmobile` dans SAWALI, pour les alertes WhatsApp).
+   `JWT_SECRET` est généré par Render. Les autres valeurs sont déjà dans `render.yaml` :
+   `FRONTEND_ORIGIN` / `PUBLIC_SITE_URL` = `https://paiement-mobile-site.onrender.com`,
+   `VITE_API_BASE_URL` = `https://paiement-mobile-api.onrender.com/api`, `LILUVINE_WA_EMETTEUR` = `paiementmobile`.
+3. Le **catalogue USSD de départ** est chargé automatiquement au premier démarrage si la base est vide :
+   aucune commande à lancer.
+4. **Noms de domaine** : avec les adresses `*.onrender.com`, Safari (iPhone, Mac) refuse en général le
+   cookie de session du site (deux sites différents pour lui). Pour un usage durable, donnez au site et à
+   l'API deux sous-domaines du **même** domaine (ex. `pay.exemple.com` et `api.exemple.com`), puis mettez à
+   jour `FRONTEND_ORIGIN`, `PUBLIC_SITE_URL` et `VITE_API_BASE_URL`. L'app Android n'est pas concernée
+   (pas de cookie).
+5. **APK Android** : compilé par GitHub Actions (`Build APK - Raccourcis Paiement Mobile`) à chaque
+   modification de `mobile-payments-app/**` sur la branche par défaut ; il appelle
+   `https://paiement-mobile-api.onrender.com/` par défaut.
 
 ## Contact
 

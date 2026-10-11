@@ -1,6 +1,9 @@
 # Compile l'APK Android de "Raccourcis Paiement Mobile" (mobile-payments-app/android)
-# sans avoir besoin d'Android Studio en local. Déclenché à chaque push sur cette
-# branche, ou manuellement depuis l'onglet Actions (bouton "Run workflow").
+# sans avoir besoin d'Android Studio en local.
+# Déclenchement (lot 13) :
+#   - automatiquement à chaque push sur la branche par défaut qui modifie mobile-payments-app/** ;
+#   - manuellement depuis l'onglet Actions (bouton "Run workflow"), avec une adresse d'API au choix.
+# Par défaut, l'APK appelle l'API de PRODUCTION (API unique FastAPI partagée avec le site web).
 #
 # Le wrapper Gradle (gradlew) n'est pas versionné dans ce dépôt (généré par une
 # sandbox sans accès réseau à l'origine) : on installe donc directement une
@@ -10,15 +13,18 @@ name: Build APK - Raccourcis Paiement Mobile
 
 on:
   push:
-    branches: [feat/mobile-payments-apk]
+    branches: [claude/python-gmail-pdf-script-3bnn5j]
+    paths:
+      - 'mobile-payments-app/**'
+      - '.github/workflows/mobile-payments-apk.yml'
   workflow_dispatch:
     inputs:
       api_base_url:
         description: >-
-          URL de l'API backend en production (ex: https://mobile-payments-backend.onrender.com/).
-          Laisser vide pour garder l'URL de dev (http://10.0.2.2:3000/, émulateur uniquement).
+          URL de l'API (terminée par /). Par défaut : l'API de production
+          https://paiement-mobile-api.onrender.com/ (émulateur + API locale : http://10.0.2.2:8000/).
         required: false
-        default: ''
+        default: 'https://paiement-mobile-api.onrender.com/'
 
 jobs:
   build:
@@ -45,13 +51,13 @@ jobs:
           gradle-version: '8.7'
 
       - name: Compiler l'APK de debug (installable directement, non signé)
+        env:
+          # Adresse saisie au lancement manuel, sinon l'API de production.
+          # Passée par une variable d'environnement (et non insérée dans le script) par sécurité.
+          API_BASE_URL: ${{ github.event.inputs.api_base_url || 'https://paiement-mobile-api.onrender.com/' }}
         run: |
-          if [ -n "${{ github.event.inputs.api_base_url }}" ]; then
-            echo "Compilation avec API_BASE_URL=${{ github.event.inputs.api_base_url }}"
-            gradle assembleDebug --stacktrace -PapiBaseUrl="${{ github.event.inputs.api_base_url }}"
-          else
-            gradle assembleDebug --stacktrace
-          fi
+          echo "Compilation avec API_BASE_URL=$API_BASE_URL"
+          gradle assembleDebug --stacktrace -PapiBaseUrl="$API_BASE_URL"
 
       - name: Publier l'APK comme fichier téléchargeable (onglet Actions -> Artifacts)
         uses: actions/upload-artifact@v4

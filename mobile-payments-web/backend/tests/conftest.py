@@ -9,6 +9,9 @@ os.environ.update({
     "JWT_SECRET": "secret-de-test",
     "ADMIN_EMAIL": "admin@test.bf",
     "ADMIN_PASSWORD": "admin-motdepasse",
+    # Pas de signal de présence vers SAWALI pendant les tests (aucun accès réseau)
+    "PRESENCE_SAWALI": "0",
+    "FRONTEND_ORIGIN": "https://paiement-mobile-site.onrender.com",
 })
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
