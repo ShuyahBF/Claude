@@ -1,16 +1,23 @@
 package com.ouoba.mobilepay
 
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -19,7 +26,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -37,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ouoba.mobilepay.data.model.Service
@@ -46,37 +53,29 @@ import com.ouoba.mobilepay.ui.PaymentViewModel
 import com.ouoba.mobilepay.ui.Step
 import com.ouoba.mobilepay.ui.UiState
 import com.ouoba.mobilepay.ui.onboarding.OnboardingFlow
-import com.ouoba.mobilepay.util.callUssdDirectly
+import com.ouoba.mobilepay.util.URL_CONFIDENTIALITE
 import com.ouoba.mobilepay.util.openDialerWithUssd
+import com.ouoba.mobilepay.util.ouvrirDansNavigateur
 
 class MainActivity : ComponentActivity() {
 
-    private var pendingUssdCode: String? = null
-
-    private val requestCallPermission = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        val code = pendingUssdCode
-        pendingUssdCode = null
-        if (granted && code != null) {
-            callUssdDirectly(this, code)
-        } else if (code != null) {
-            openDialerWithUssd(this, code)
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Lot 16 — Android 15 (targetSdk 35) impose l'affichage « bord à bord » : l'app dessine
+        // aussi sous la barre d'état (heure, batterie) et sous la barre de navigation.
+        // enableEdgeToEdge() rend ces barres transparentes ; les marges qui évitent d'écrire
+        // dessous sont gérées par les Scaffold (TopAppBar + « padding » transmis au contenu).
+        // Style « clair » imposé : l'app est toujours en thème clair, donc icônes sombres
+        // dans les barres système, même si le téléphone est en mode sombre.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+        )
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    RootApp(
-                        onOpenDialer = { code -> openDialerWithUssd(this, code) },
-                        onCallDirectly = { code ->
-                            pendingUssdCode = code
-                            requestCallPermission.launch(android.Manifest.permission.CALL_PHONE)
-                        }
-                    )
+                    // Un seul mode depuis le lot 16 : ouvrir le composeur avec le code pré-rempli
+                    RootApp(onOpenDialer = { code -> openDialerWithUssd(this, code) })
                 }
             }
         }
@@ -97,7 +96,7 @@ class MainActivity : ComponentActivity() {
  * réseau à cet endroit.
  */
 @Composable
-fun RootApp(onOpenDialer: (String) -> Unit, onCallDirectly: (String) -> Unit) {
+fun RootApp(onOpenDialer: (String) -> Unit) {
     val context = LocalContext.current
     // null = vérification en cours, true = accueil à afficher, false = profil déjà présent
     var showOnboarding by remember { mutableStateOf<Boolean?>(null) }
@@ -109,25 +108,39 @@ fun RootApp(onOpenDialer: (String) -> Unit, onCallDirectly: (String) -> Unit) {
     when (showOnboarding) {
         null -> CenteredLoader()
         true -> OnboardingFlow(onFinished = { showOnboarding = false })
-        false -> PaymentApp(onOpenDialer = onOpenDialer, onCallDirectly = onCallDirectly)
+        false -> PaymentApp(onOpenDialer = onOpenDialer)
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun PaymentApp(
     viewModel: PaymentViewModel = viewModel(),
-    onOpenDialer: (String) -> Unit,
-    onCallDirectly: (String) -> Unit
+    onOpenDialer: (String) -> Unit
 ) {
     val state by viewModel.uiState.collectAsState()
+    // Fenêtre « À propos » (mention de non-affiliation + politique de confidentialité)
+    var aProposVisible by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text(titleFor(state.step)) })
+            // La TopAppBar de Material 3 ajoute d'elle-même la hauteur de la barre d'état (bord à bord)
+            TopAppBar(
+                title = { Text(titleFor(state.step)) },
+                actions = { TextButton(onClick = { aProposVisible = true }) { Text("À propos") } }
+            )
         }
     ) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+        // « padding » = hauteur de la barre du haut + barre de navigation du bas (insets système) ;
+        // consumeWindowInsets évite de compter deux fois ces marges, imePadding remonte le contenu
+        // au-dessus du clavier virtuel quand il s'ouvre.
+        Box(
+            modifier = Modifier
+                .padding(padding)
+                .consumeWindowInsets(padding)
+                .imePadding()
+                .fillMaxSize()
+        ) {
             when (state.step) {
                 Step.OPERATORS -> OperatorScreen(
                     operators = state.operators,
@@ -145,7 +158,6 @@ fun PaymentApp(
                     ussdCode = state.ussdCode.orEmpty(),
                     serviceName = state.selectedService?.name.orEmpty(),
                     onOpenDialer = onOpenDialer,
-                    onCallDirectly = onCallDirectly,
                     onBack = viewModel::backToForm
                 )
             }
@@ -158,8 +170,55 @@ fun PaymentApp(
                     text = { Text(message) }
                 )
             }
+
+            if (aProposVisible) {
+                AProposDialog(onDismiss = { aProposVisible = false })
+            }
         }
     }
+}
+
+/** Mention de non-affiliation, imposée par les règles du Play Store (noms d'opérateurs cités). */
+const val MENTION_NON_AFFILIATION =
+    "Paiement Mobile n'est affilié ni à Orange, ni à Moov Africa, ni à Telecel Faso ; " +
+        "les marques citées appartiennent à leurs propriétaires."
+
+/**
+ * Fenêtre « À propos » (lot 16) : rôle de l'app, mention de non-affiliation, version,
+ * contact officiel et lien vers la politique de confidentialité (ouverte dans le navigateur).
+ */
+@Composable
+fun AProposDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("À propos") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("Raccourcis Paiement Mobile — version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "L'application prépare le code USSD et ouvre le composeur de votre téléphone. " +
+                        "Elle ne réalise aucune transaction et ne demande jamais votre code secret : " +
+                        "le paiement est traité par le réseau de votre opérateur.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(MENTION_NON_AFFILIATION, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "Contact : contact@sawalismartsystems.com · +226 25 65 81 65",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { ouvrirDansNavigateur(context, URL_CONFIDENTIALITE) }) {
+                Text("Politique de confidentialité")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Fermer") } }
+    )
 }
 
 private fun titleFor(step: Step): String = when (step) {
@@ -175,6 +234,7 @@ fun OperatorScreen(operators: List<String>, loading: Boolean, onSelect: (String)
         CenteredLoader()
         return
     }
+    val context = LocalContext.current
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         items(operators) { operator ->
             ListItem(
@@ -184,6 +244,25 @@ fun OperatorScreen(operators: List<String>, loading: Boolean, onSelect: (String)
                     .clickable { onSelect(operator) }
                     .padding(horizontal = 8.dp)
             )
+        }
+        // Bas de l'accueil (lot 16) : mention de non-affiliation + lien vers la confidentialité
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    MENTION_NON_AFFILIATION,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+                TextButton(onClick = { ouvrirDansNavigateur(context, URL_CONFIDENTIALITE) }) {
+                    Text("Politique de confidentialité")
+                }
+            }
         }
     }
 }
@@ -226,9 +305,11 @@ fun FormScreen(viewModel: PaymentViewModel) {
     val state by viewModel.uiState.collectAsState()
     val service = state.selectedService ?: return
 
+    // verticalScroll : le formulaire défile si le clavier ou un petit écran manque de place
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -303,7 +384,6 @@ fun ConfirmScreen(
     ussdCode: String,
     serviceName: String,
     onOpenDialer: (String) -> Unit,
-    onCallDirectly: (String) -> Unit,
     onBack: () -> Unit
 ) {
     Column(
@@ -317,15 +397,14 @@ fun ConfirmScreen(
         Text("Code à composer :", style = MaterialTheme.typography.bodyMedium)
         Text(ussdCode, style = MaterialTheme.typography.headlineSmall)
 
+        // Lot 16 : un seul bouton — ouvre le composeur avec le code pré-rempli (aucune permission)
         Button(onClick = { onOpenDialer(ussdCode) }, modifier = Modifier.fillMaxWidth()) {
-            Text("Ouvrir dans le composeur")
-        }
-        OutlinedButton(onClick = { onCallDirectly(ussdCode) }, modifier = Modifier.fillMaxWidth()) {
-            Text("Appeler directement")
+            Text("Composer le code")
         }
         Text(
-            "\"Ouvrir dans le composeur\" pré-remplit le clavier d'appel : vous appuyez vous-même sur Appeler. " +
-                "\"Appeler directement\" compose immédiatement le code (autorisation d'appel requise).",
+            "Le clavier de votre téléphone s'ouvre avec le code déjà saisi : vérifiez-le puis appuyez " +
+                "vous-même sur Appeler. Votre code secret Mobile Money se saisit ensuite sur le menu " +
+                "de l'opérateur ; l'application ne le voit jamais.",
             style = MaterialTheme.typography.bodySmall
         )
     }

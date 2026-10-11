@@ -75,23 +75,49 @@ L'APK est compilé par GitHub Actions (*Build APK - Raccourcis Paiement Mobile*)
 ## Application Android
 
 - Kotlin + Jetpack Compose + Material 3, Retrofit/OkHttp/Gson pour l'accès réseau.
-- `minSdk 24`, `compileSdk`/`targetSdk 34`.
+- `minSdk 24`, `compileSdk`/`targetSdk 35` (Android 15, lot 16). Outils : Android Gradle Plugin 8.7.3, Gradle 8.9, Kotlin 1.9.24 / KSP 1.9.24-1.0.20 / compilateur Compose 1.5.14, Java 17.
+- Affichage « bord à bord » (imposé par Android 15) : `enableEdgeToEdge()` dans `MainActivity` ; les `Scaffold` transmettent les marges des barres système au contenu, le clavier virtuel est géré par `imePadding()`.
 - Parcours : Opérateur → Service → Formulaire (avec résolution du code marchand) → Confirmation → lancement.
-- Deux modes de lancement du code USSD :
-  - **Ouvrir dans le composeur** (`ACTION_DIAL`) : pré-remplit le clavier d'appel, l'utilisateur appuie lui-même sur "Appeler". Ne nécessite aucune permission sensible — recommandé par défaut pour la publication sur le Play Store.
-  - **Appeler directement** (`ACTION_CALL`) : compose immédiatement le code, nécessite la permission `CALL_PHONE` demandée à l'exécution.
+- Lancement du code USSD : un seul bouton **« Composer le code »** (`ACTION_DIAL`) qui pré-remplit le clavier d'appel (le `#` est encodé en `%23`) ; l'utilisateur appuie lui-même sur « Appeler ». Depuis le lot 16, plus d'appel direct ni de permission `CALL_PHONE` : l'app n'utilise que des permissions « normales » (`INTERNET`, `ACCESS_NETWORK_STATE`, plus celles de WorkManager pour la synchro en arrière-plan).
+- Écran « À propos » (bouton en haut à droite) et bas de l'accueil : mention de non-affiliation aux opérateurs et lien vers la politique de confidentialité `https://paiement-mobile-site.onrender.com/confidentialite`.
 
 ### Configuration et build
 
 1. Ouvrir le dossier `android/` dans Android Studio (Koala ou plus récent). Android Studio proposera de régénérer le Gradle Wrapper automatiquement si besoin (les binaires du wrapper ne sont pas inclus dans ce dépôt, la sandbox de génération n'ayant pas d'accès réseau vers `dl.google.com`) — sinon lancez `gradle wrapper` une fois en local.
 2. L'URL de l'API est définie dans `app/build.gradle.kts` (`buildConfigField "API_BASE_URL"`) : par défaut l'API de production `https://paiement-mobile-api-jo11.onrender.com/`. Pour tester contre une API lancée en local depuis l'émulateur : `-PapiBaseUrl=http://10.0.2.2:8000/`.
-3. `./gradlew assembleDebug` pour un APK de debug, `./gradlew bundleRelease` pour un App Bundle signé destiné au Play Store (configurer la signature dans Android Studio : *Build > Generate Signed Bundle*).
+3. `gradle assembleDebug` pour un APK de debug, `gradle bundleRelease` pour l'App Bundle (.aab) destiné au Play Store. Le plus simple : laisser GitHub le faire (workflow `.github/workflows/mobile-payments-apk.yml`, onglet **Actions** → « Build APK - Raccourcis Paiement Mobile » → **Run workflow**). Les fichiers produits sont dans le résumé de l'exécution, rubrique **Artifacts** : `mobile-payments-debug-apk` (APK à installer directement) et `mobile-payments-release-aab` (App Bundle pour la Play Console).
 
-### Avant publication sur le Play Store
+### Publication sur le Play Store (lot 16)
 
-- Remplacer l'icône placeholder (`app/src/main/res/drawable/ic_launcher.xml`) par une vraie identité visuelle (icône adaptative recommandée).
-- Déclarer dans la fiche Play Console l'usage de la permission `CALL_PHONE` (fonctionnalité "appel direct") et la politique de confidentialité (l'app transmet code marchand/montant à votre backend, ainsi que le profil saisi à l'accueil).
-- Envisager d'ajouter : un historique des paiements récents (côté app, en local), une recherche/filtrage des services.
+**1. Créer la clé de publication (une seule fois, sur votre PC).** Il faut Java (le JDK fourni avec Android Studio convient) :
+
+```
+keytool -genkeypair -v -keystore paiement-mobile.jks -keyalg RSA -keysize 2048 -validity 10000 -alias paiementmobile
+```
+
+`keytool` demande un mot de passe pour le fichier, puis vos nom / organisation / ville / pays (BF), puis le mot de passe de la clé (vous pouvez reprendre le même). Notez-les dans votre coffre de mots de passe.
+
+**2. Convertir le fichier en base64** (texte à coller dans GitHub) :
+
+- Windows (PowerShell) : `[Convert]::ToBase64String([IO.File]::ReadAllBytes("paiement-mobile.jks")) | Set-Clipboard` (le texte est copié dans le presse-papiers) ;
+- Linux / macOS : `base64 -w0 paiement-mobile.jks > paiement-mobile.jks.b64` (macOS : `base64 -i paiement-mobile.jks -o paiement-mobile.jks.b64`).
+
+**3. Saisir les 4 secrets dans GitHub** : dépôt → **Settings → Secrets and variables → Actions → New repository secret** :
+
+| Secret | Valeur |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | le texte base64 de l'étape 2 |
+| `ANDROID_KEYSTORE_PASSWORD` | le mot de passe du fichier `.jks` |
+| `ANDROID_KEY_ALIAS` | `paiementmobile` |
+| `ANDROID_KEY_PASSWORD` | le mot de passe de la clé |
+
+Relancez ensuite le workflow : l'annotation « App Bundle signé avec la clé de publication » confirme la signature. Sans ces secrets, l'AAB est produit **non signé** (annotation « Secrets de signature absents ») et la Play Console le refusera. Le fichier de clés n'est jamais versionné : le workflow le reconstitue dans un dossier temporaire et l'efface en fin de tâche ; `app/build.gradle.kts` n'applique la signature que si les 4 valeurs sont présentes.
+
+**4. Conserver la clé en lieu sûr** (deux copies hors ligne + le coffre de mots de passe), et supprimer le fichier `.b64`. Activez **Play App Signing** dans la Play Console (recommandé, proposé par défaut) : Google garde la clé de signature définitive et votre `.jks` devient une simple « clé d'importation », remplaçable en cas de perte.
+
+**5. Play Console** (compte développeur Google, frais uniques de 25 $) : créer l'application, renseigner la fiche à partir de [`PLAYSTORE.md`](PLAYSTORE.md) (textes, formulaire « Sécurité des données », classification, déclaration « services financiers »), l'URL de confidentialité `https://paiement-mobile-site.onrender.com/confidentialite`, puis envoyer l'AAB en **test interne** avant la production. À chaque nouvel envoi, `versionCode` (dans `app/build.gradle.kts`) doit augmenter.
+
+Autres points : la version de publication est réduite par R8 (`isMinifyEnabled = true`) ; les règles de `app/proguard-rules.pro` protègent les modèles Gson, l'interface Retrofit et les entités Room. Icône : icône adaptative vectorielle (`res/drawable/ic_launcher_foreground.xml` + `ic_launcher_background.xml`, `res/mipmap-anydpi-v26/`), sans marque d'opérateur.
 
 ## Mode hors-ligne
 

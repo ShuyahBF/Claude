@@ -3,12 +3,17 @@ package com.ouoba.mobilepay.ui.onboarding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -16,22 +21,26 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ouoba.mobilepay.util.URL_CONFIDENTIALITE
+import com.ouoba.mobilepay.util.ouvrirDansNavigateur
 
 /**
  * Parcours d'accueil en 3 étapes, affiché une seule fois (tant qu'aucun profil local
  * n'existe, voir RootApp dans MainActivity.kt). Aucune étape ne bloque sur le réseau :
  * la synchronisation (étape 2/3) est toujours best-effort avec un délai maximum.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun OnboardingFlow(
     viewModel: OnboardingViewModel = viewModel(),
@@ -40,7 +49,16 @@ fun OnboardingFlow(
     val state by viewModel.uiState.collectAsState()
 
     Scaffold(topBar = { TopAppBar(title = { Text(titleFor(state.step)) }) }) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize().padding(24.dp)) {
+        // Lot 16 (Android 15, bord à bord) : « padding » contient la barre du haut + les barres
+        // système ; imePadding remonte les champs au-dessus du clavier virtuel.
+        Box(
+            modifier = Modifier
+                .padding(padding)
+                .consumeWindowInsets(padding)
+                .imePadding()
+                .fillMaxSize()
+                .padding(24.dp)
+        ) {
             when (state.step) {
                 OnboardingStep.PROFILE -> ProfileStep(state, viewModel)
                 OnboardingStep.SYNC -> SyncStep()
@@ -58,7 +76,11 @@ private fun titleFor(step: OnboardingStep): String = when (step) {
 
 @Composable
 private fun ProfileStep(state: OnboardingUiState, viewModel: OnboardingViewModel) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    // verticalScroll : les 4 champs restent accessibles quand le clavier est ouvert
+    Column(
+        modifier = Modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
         Text(
             "Quelques informations pour personnaliser l'application.",
             style = MaterialTheme.typography.bodyMedium
@@ -101,6 +123,16 @@ private fun ProfileStep(state: OnboardingUiState, viewModel: OnboardingViewModel
             enabled = state.nom.isNotBlank() && state.prenom.isNotBlank() && state.telephone.isNotBlank(),
             modifier = Modifier.fillMaxWidth()
         ) { Text("Continuer") }
+        // Lot 16 : information sur l'usage des données saisies, avec lien vers la politique publique
+        val context = LocalContext.current
+        Text(
+            "Ces informations servent uniquement à votre compte Paiement Mobile. " +
+                "Aucun code secret Mobile Money ne vous sera jamais demandé.",
+            style = MaterialTheme.typography.bodySmall
+        )
+        TextButton(onClick = { ouvrirDansNavigateur(context, URL_CONFIDENTIALITE) }) {
+            Text("Politique de confidentialité")
+        }
     }
 }
 

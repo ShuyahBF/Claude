@@ -176,10 +176,18 @@ def test_version_lue_dans_version_js(client):
     assert r.status_code == 200
     infos = r.json()
     assert set(infos) == {"version", "lot", "commit", "demarrage", "libelle", "libelle_detaille"}
-    assert infos["lot"] == 13 and isinstance(infos["version"], int)
+    # Lot 16 : le lot attendu est relu dans version.js (il change à chaque déploiement),
+    # au lieu d'un numéro figé qui faisait échouer le test à chaque nouveau lot.
+    import pathlib
+    import re
+    source = (pathlib.Path(__file__).resolve().parents[2] / "frontend" / "src" / "version.js").read_text(encoding="utf-8")
+    lot_attendu = int(re.search(r"export const LOT = (\d+);", source).group(1))
+    version_attendue = int(re.search(r"export const VERSION = (\d+);", source).group(1))
+    assert infos["lot"] == lot_attendu and infos["version"] == version_attendue
     assert infos["libelle"].startswith(f"Version {infos['version']} · déployée le ")
     assert "Lot" not in infos["libelle"]
-    assert infos["libelle_detaille"].startswith(f"Version {infos['version']} · Lot 13 · {infos['commit']} · déployée le ")
+    assert infos["libelle_detaille"].startswith(
+        f"Version {infos['version']} · Lot {lot_attendu} · {infos['commit']} · déployée le ")
 
 
 def test_libelle_version_formats():

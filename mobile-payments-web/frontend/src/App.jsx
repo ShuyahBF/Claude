@@ -4,6 +4,7 @@ import RouteProtegee from "@/components/RouteProtegee";
 import { ToastProvider } from "@/components/Toast";
 import { AuthProvider } from "@/context/AuthContext";
 import Admin from "@/pages/Admin";
+import Confidentialite from "@/pages/Confidentialite";
 import Connexion from "@/pages/Connexion";
 import Historique from "@/pages/Historique";
 import Marchands from "@/pages/Marchands";
@@ -11,7 +12,8 @@ import Payer from "@/pages/Payer";
 import Profil from "@/pages/Profil";
 
 // Routes du site. Tout est réservé aux utilisateurs connectés, sauf la
-// connexion et l'inscription ; « /admin » est réservé à l'administrateur.
+// connexion, l'inscription et la politique de confidentialité (publique, lot 16) ;
+// « /admin » est réservé à l'administrateur.
 export default function App() {
   return (
     <AuthProvider>
@@ -20,6 +22,8 @@ export default function App() {
           <Routes>
             <Route path="/connexion" element={<Connexion />} />
             <Route path="/inscription" element={<Connexion mode="inscription" />} />
+            {/* Page publique déclarée dans la Play Console (lot 16) */}
+            <Route path="/confidentialite" element={<Confidentialite />} />
             <Route element={<RouteProtegee><Layout /></RouteProtegee>}>
               <Route path="/" element={<Payer />} />
               <Route path="/historique" element={<Historique />} />

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icône ronde pour Android 7 (API 24-25), qui ne connaît pas les icônes adaptatives :
+     simple superposition du fond et du premier plan. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_launcher_background_round" />
+    <item android:drawable="@drawable/ic_launcher_foreground" />
+</layer-list>
