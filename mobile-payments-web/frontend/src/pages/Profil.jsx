@@ -4,7 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { apiClient, messageErreur } from "@/lib/api";
 import ChampMotDePasse from "@/components/ChampMotDePasse";
 import { etatAutorisation, geolocalisationDisponible, positionActuelle } from "@/lib/geoloc";
-import { abonnerPush, activerNotifications, desabonnerPush, ecrirePreferences, etatNotifications, jouerSon, lirePreferences, pushDisponible, vibrer } from "@/lib/alertes";
+import { abonnerPush, activerNotifications, declencherAlerteRenforcee, desabonnerPush, ecrirePreferences, etatNotifications, jouerSon, lirePreferences, pushDisponible, vibrer } from "@/lib/alertes";
 
 // Profil : coordonnées (téléphone et e-mail servent à se connecter) et mot de passe.
 export default function Profil() {
@@ -142,6 +142,17 @@ export default function Profil() {
         </div>
         <label className="flex items-center gap-3"><input type="checkbox" className="h-5 w-5" checked={alertes.vibration} onChange={(e) => regler({ vibration: e.target.checked })} />
           <span className="font-semibold">Vibrer (téléphone)</span></label>
+        {/* Alerte renforcée pour les malvoyants (lot 52) */}
+        <div className="space-y-2 rounded-xl border border-gray-200 p-3">
+          <label className="flex items-center gap-3"><input type="checkbox" className="h-5 w-5" checked={alertes.renforcee} onChange={(e) => regler({ renforcee: e.target.checked })} />
+            <span><b>♿ Alerte renforcée (malvoyants)</b><span className="block text-sm text-gray-500">À chaque rappel : écran qui clignote en jaune et noir avec de très gros caractères, vibration longue répétée, son répété. Dure jusqu'au toucher de « J'ai compris ».</span></span></label>
+          <div className={alertes.renforcee ? "space-y-2 pl-8" : "space-y-2 pl-8 opacity-50"}>
+            <label className="flex items-center gap-3"><input type="checkbox" className="h-5 w-5" checked={alertes.lecture} disabled={!alertes.renforcee} onChange={(e) => regler({ lecture: e.target.checked })} />
+              <span>Lire le rappel à voix haute</span></label>
+            <button type="button" className="btn-outline btn-sm" disabled={!alertes.renforcee}
+              onClick={() => declencherAlerteRenforcee([{ cle: "essai", type: "medicament", titre: "Essai", texte: "Prise de médicament à 10 heures" }])}>Tester l'alerte renforcée</button>
+          </div>
+        </div>
         <div>
           <label className="flex items-center gap-3"><input type="checkbox" className="h-5 w-5" checked={alertes.notifications && etatNotif === "granted"} disabled={etatNotif === "indisponible"}
             onChange={(e) => basculerNotifications(e.target.checked)} /><span className="font-semibold">Afficher une notification</span></label>

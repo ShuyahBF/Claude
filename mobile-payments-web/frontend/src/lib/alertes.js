@@ -12,7 +12,9 @@
 // ============================================================================
 const CLE_PREFS = "mpw_alertes";
 const CLE_VUES = "mpw_alertes_vues";
-const DEFAUT = { son: true, volume: 70, vibration: true, notifications: false };
+// renforcee : « alerte renforcée » pour les malvoyants (écran qui clignote en jaune et noir, grosses lettres, vibration longue répétée,
+// son répété) ; lecture : le rappel est aussi LU À VOIX HAUTE (synthèse vocale du téléphone, en français)
+const DEFAUT = { son: true, volume: 70, vibration: true, notifications: false, renforcee: false, lecture: true };
 
 export function lirePreferences() {
   try { return { ...DEFAUT, ...(JSON.parse(localStorage.getItem(CLE_PREFS)) || {}) }; } catch { return { ...DEFAUT }; }
@@ -67,6 +69,26 @@ export function jouerSon(type = "support", { force = false } = {}) {
 
 export function vibrer() {
   try { if (lirePreferences().vibration) navigator.vibrate?.([250, 120, 250]); } catch { /* sans importance */ }
+}
+
+/** Vibration LONGUE et insistante (alerte renforcée) : trois secousses fortes, la dernière plus longue. */
+export const MOTIF_VIBRATION_FORTE = [600, 200, 600, 200, 1000];
+export function vibrerFort() { try { navigator.vibrate?.(MOTIF_VIBRATION_FORTE); } catch { /* sans importance */ } }
+
+/** Lit un texte à voix haute en français (synthèse vocale du téléphone). Sans effet si le navigateur ne sait pas parler. */
+export function parler(texte) {
+  try {
+    if (!("speechSynthesis" in window) || !texte) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(texte);
+    u.lang = "fr-FR"; u.rate = 0.9; u.volume = Math.max(0.3, lirePreferences().volume / 100);
+    window.speechSynthesis.speak(u);
+  } catch { /* sans importance */ }
+}
+
+/** Déclenche l'alerte renforcée (écran clignotant) : écoutée par le composant AlerteRenforcee monté dans la mise en page. */
+export function declencherAlerteRenforcee(evenements) {
+  try { window.dispatchEvent(new CustomEvent("mpw:alerte-renforcee", { detail: evenements })); } catch { /* sans importance */ }
 }
 
 // ---- Notifications du système ----------------------------------------------
@@ -158,6 +180,7 @@ export function traiterEvenements(evenements, { afficher } = {}) {
   jouerSon(nouveaux[0].type);          // la liste arrive triée : médicaments d'abord
   vibrer();
   nouveaux.forEach((e) => notifier(e));
+  if (lirePreferences().renforcee) declencherAlerteRenforcee(nouveaux);       // malvoyants : écran clignotant, vibration, voix
   if (afficher) afficher(nouveaux.length === 1 ? `${nouveaux[0].titre} — ${nouveaux[0].texte}` : `${nouveaux.length} rappels : ${nouveaux.map((e) => e.titre).join(" · ")}`);
   return nouveaux.length;
 }
