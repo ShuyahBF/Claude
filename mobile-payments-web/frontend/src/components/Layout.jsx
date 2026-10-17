@@ -10,8 +10,8 @@ const MENUS = [
   { to: "/profil", libelle: "Profil", icone: "👤" },
 ];
 
-// Mise en page des écrans connectés : bandeau bleu nuit en haut, menu en
-// onglets (en bas de l'écran sur téléphone, en haut sur ordinateur).
+// Mise en page des écrans connectés : bandeau bleu nuit en haut et MENU FLOTTANT collé au bas de l'écran,
+// identique sur téléphone, tablette et ordinateur (règle du 17/10/2026).
 export default function Layout() {
   const { user, deconnexion } = useAuth();
   const navigate = useNavigate();
@@ -22,22 +22,19 @@ export default function Layout() {
     navigate("/connexion");
   };
 
+  // Un onglet du menu flottant : pastille bleue quand il est actif ; icône au-dessus du texte sur petit écran, à côté sur grand écran
   const style = ({ isActive }) =>
-    `flex flex-1 flex-col items-center gap-0.5 px-2 py-2 text-xs font-medium sm:flex-none sm:flex-row sm:gap-2 sm:rounded-lg sm:px-3 sm:text-sm ${
-      isActive ? "text-primary sm:bg-white/10 sm:text-white" : "text-gray-500 sm:text-gray-300 sm:hover:text-white"}`;
+    `flex flex-1 flex-col items-center gap-0.5 rounded-xl px-3 py-2 text-xs font-semibold transition sm:flex-none sm:flex-row sm:gap-2 sm:px-5 sm:text-sm ${
+      isActive ? "bg-primary text-white shadow" : "text-gray-600 hover:bg-gray-100"}`;
 
   return (
-    <div className="flex min-h-screen flex-col pb-16 sm:pb-0">
+    <div className="flex min-h-screen flex-col pb-28">
       <header className="no-print bg-nuit-900 text-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
           <NavLink to="/" className="flex items-center gap-2">
             <img src="/icone.svg" alt="" className="h-8 w-8" />
             <span className="font-display text-lg font-bold">Paiement Mobile</span>
           </NavLink>
-          {/* Menu en haut sur ordinateur */}
-          <nav className="hidden items-center gap-1 sm:flex">
-            {menus.map((m) => <NavLink key={m.to} to={m.to} end={m.fin} className={style}>{m.icone} {m.libelle}</NavLink>)}
-          </nav>
           <div className="flex items-center gap-3 text-sm">
             <span className="hidden text-gray-300 md:inline">{user?.prenom || user?.nom}</span>
             <button type="button" onClick={quitter} className="btn-clair btn-sm">Déconnexion</button>
@@ -56,14 +53,17 @@ export default function Layout() {
         {" · "}<NavLink to="/confidentialite" className="underline hover:text-gray-600">Confidentialité</NavLink>
       </footer>
 
-      {/* Menu en bas de l'écran sur téléphone (comme une application) */}
-      <nav className="no-print fixed inset-x-0 bottom-0 z-40 flex border-t border-gray-200 bg-white sm:hidden">
-        {menus.map((m) => (
-          <NavLink key={m.to} to={m.to} end={m.fin} className={style}>
-            <span className="text-lg">{m.icone}</span>{m.libelle}
-          </NavLink>
-        ))}
-      </nav>
+      {/* Menu FLOTTANT, toujours aligné sur le bas de l'écran (tous appareils) ; la marge basse respecte la zone de geste des téléphones */}
+      <div className="no-print pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <nav aria-label="Menu principal"
+          className="pointer-events-auto flex w-full max-w-md gap-1 rounded-2xl border border-gray-200 bg-white/95 p-1.5 shadow-xl backdrop-blur sm:w-auto sm:max-w-none">
+          {menus.map((m) => (
+            <NavLink key={m.to} to={m.to} end={m.fin} className={style}>
+              <span className="text-lg leading-none">{m.icone}</span>{m.libelle}
+            </NavLink>
+          ))}
+        </nav>
+      </div>
     </div>
   );
 }
