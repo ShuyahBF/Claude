@@ -1,0 +1,227 @@
+// ============================================================================
+// SupportSawali.jsx — icône d'assistance + fenêtre de discussion avec le support
+// SAWALI (lot 24).
+//
+// Deux présentations (prop `variante`) :
+//   - "carte" : petite icône posée en bas à droite de la fenêtre de connexion ;
+//   - "menu"  : onglet du menu flottant (écrans connectés), à la place de « Payer ».
+// Les messages partent vers CE serveur (/api/support-sawali/…) qui les relaie à SAWALI
+// par une requête signée : aucun secret dans le navigateur. Un visiteur non connecté
+// est identifié par un code aléatoire gardé dans le navigateur (localStorage) + le nom
+// et le contact qu'il saisit. Fenêtre ouverte : le fil est relu toutes les 5 s ;
+// fermée : une pastille rouge compte les réponses non lues (vérification toutes les 60 s)
+// et un SON est joué à chaque nouvelle réponse. L'icône reste cachée si la clé SAWALI est absente.
+// ============================================================================
+import { useCallback, useEffect, useRef, useState } from "react";
+import { apiClient, messageErreur } from "@/lib/api";
+import Patientez from "@/components/Patientez";
+
+const RAFRAICHIR_OUVERT_MS = 5000;
+const RAFRAICHIR_FERME_MS = 60000;
+const CLE_VISITEUR = "mpw_visiteur_support";
+const CLE_COORD = "mpw_coordonnees_support";
+
+// Les relectures du fil sont silencieuses : seul l'envoi d'un message affiche « Patientez… »
+const EN_ARRIERE_PLAN = {};
+
+// Code aléatoire du visiteur, créé une fois puis relu dans le navigateur
+function codeVisiteur() {
+  try {
+    let v = localStorage.getItem(CLE_VISITEUR);
+    if (!v) {
+      v = (crypto.randomUUID?.() || `${Date.now()}${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, "");
+      localStorage.setItem(CLE_VISITEUR, v);
+    }
+    return v;
+  } catch { return "anonyme-navigateur"; }
+}
+
+// Son de notification (3 notes montantes) : autorisé après un premier clic
+let contexteAudio = null;
+function jouerSon() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    contexteAudio = contexteAudio || new Ctx();
+    if (contexteAudio.state === "suspended") contexteAudio.resume().catch(() => {});
+    const t0 = contexteAudio.currentTime + 0.02;
+    [[659.25, 0, 0.18], [783.99, 0.14, 0.18], [1046.5, 0.28, 0.32]].forEach(([f, debut, duree]) => {
+      const osc = contexteAudio.createOscillator();
+      const env = contexteAudio.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(f, t0 + debut);
+      env.gain.setValueAtTime(0.0001, t0 + debut);
+      env.gain.exponentialRampToValueAtTime(0.5, t0 + debut + 0.02);
+      env.gain.exponentialRampToValueAtTime(0.0001, t0 + debut + duree);
+      osc.connect(env); env.connect(contexteAudio.destination);
+      osc.start(t0 + debut); osc.stop(t0 + debut + duree + 0.02);
+    });
+  } catch { /* son impossible : sans importance */ }
+}
+
+const heure = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+};
+const ETATS = { attente: "⏳ En attente du support", active: "💬 En cours", terminee: "✅ Terminée" };
+
+// Pictogramme « casque d'assistance »
+const Casque = ({ taille = 20 }) => (
+  <svg width={taille} height={taille} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M3 14v-2a9 9 0 0 1 18 0v2" /><path d="M21 15a2 2 0 0 1-2 2h-1v-6h1a2 2 0 0 1 2 2z" />
+    <path d="M3 15a2 2 0 0 0 2 2h1v-6H5a2 2 0 0 0-2 2z" /><path d="M18 17v1a3 3 0 0 1-3 3h-3" />
+  </svg>
+);
+
+export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
+  const [actif, setActif] = useState(false);
+  const [ouvert, setOuvert] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [requete, setRequete] = useState(null);
+  const [nonLus, setNonLus] = useState(0);
+  const [texte, setTexte] = useState("");
+  const [coord, setCoord] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(CLE_COORD)) || { nom: "", contact: "" }; } catch { return { nom: "", contact: "" }; }
+  });
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState("");
+  const visiteur = useRef(codeVisiteur()).current;
+  const dernierRef = useRef("");
+  const nonLusRef = useRef(0);
+  const filRef = useRef(null);
+
+  // L'icône n'apparaît que si la plateforme est reliée à SAWALI
+  useEffect(() => {
+    apiClient.get("/support-sawali/etat", EN_ARRIERE_PLAN).then((r) => setActif(!!r.data?.actif)).catch(() => setActif(false));
+  }, []);
+
+  // Lecture du fil (fenêtre ouverte)
+  const lireFil = useCallback(async () => {
+    try {
+      const r = await apiClient.post("/support-sawali/fil", { visiteur, depuis: dernierRef.current || null, marquer_lu: true }, EN_ARRIERE_PLAN);
+      const nouveaux = r.data?.messages || [];
+      if (nouveaux.length) {
+        if (dernierRef.current && nouveaux.some((m) => m.de === "support")) jouerSon();
+        dernierRef.current = nouveaux[nouveaux.length - 1].le;
+        setMessages((avant) => {
+          const connus = new Set(avant.map((m) => m.id));
+          return [...avant, ...nouveaux.filter((m) => !connus.has(m.id))];
+        });
+      }
+      setRequete(r.data?.requete || null);
+      setNonLus(0); nonLusRef.current = 0;
+      setErreur("");
+    } catch (e) {
+      setErreur(messageErreur(e, "Support SAWALI injoignable : réessayez dans un instant."));
+    }
+  }, [visiteur]);
+
+  // Fenêtre fermée : simple comptage des réponses non lues
+  const verifierNonLus = useCallback(async () => {
+    try {
+      const r = await apiClient.post("/support-sawali/fil", { visiteur, depuis: dernierRef.current || null, marquer_lu: false }, EN_ARRIERE_PLAN);
+      const n = r.data?.non_lus || 0;
+      if (n > nonLusRef.current) jouerSon();
+      nonLusRef.current = n;
+      setNonLus(n);
+    } catch { /* silencieux */ }
+  }, [visiteur]);
+
+  useEffect(() => {
+    if (!actif) return undefined;
+    const action = ouvert ? lireFil : verifierNonLus;
+    action();
+    const minuterie = setInterval(action, ouvert ? RAFRAICHIR_OUVERT_MS : RAFRAICHIR_FERME_MS);
+    return () => clearInterval(minuterie);
+  }, [actif, ouvert, lireFil, verifierNonLus]);
+
+  useEffect(() => { if (filRef.current) filRef.current.scrollTop = filRef.current.scrollHeight; }, [messages, ouvert]);
+
+  // Envoi d'un message
+  const envoyer = async (e) => {
+    e.preventDefault();
+    const t = texte.trim();
+    if (!t || envoi) return;
+    setEnvoi(true);
+    try {
+      try { localStorage.setItem(CLE_COORD, JSON.stringify(coord)); } catch { /* sans importance */ }
+      const r = await apiClient.post("/support-sawali/messages", { visiteur, texte: t, nom: coord.nom, contact: coord.contact });
+      setTexte("");
+      if (r.data?.requete) setRequete(r.data.requete);
+      await lireFil();
+    } catch (err) {
+      setErreur(messageErreur(err, "Envoi impossible : votre message est conservé, réessayez."));
+    } finally { setEnvoi(false); }
+  };
+
+  if (!actif) return null;
+  const pastille = nonLus > 0 && (
+    <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">{nonLus}</span>
+  );
+
+  return (
+    <>
+      {variante === "menu" ? (
+        // Onglet du menu flottant (même gabarit que les autres onglets)
+        <button type="button" onClick={() => setOuvert((v) => !v)} aria-label="Assistance — écrire au support SAWALI"
+          className={`relative ${classeMenu}`}>
+          <span className="text-lg leading-none"><Casque /></span>Support{pastille}
+        </button>
+      ) : (
+        // Petite icône discrète en bas à droite de la carte de connexion
+        <button type="button" onClick={() => setOuvert((v) => !v)} title="Assistance — écrire au support SAWALI"
+          aria-label="Assistance — écrire au support SAWALI"
+          className="relative grid h-9 w-9 shrink-0 place-items-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-primary">
+          <Casque />{pastille}
+        </button>
+      )}
+
+      <Patientez actif={envoi} />
+
+      {ouvert && (
+        <div className="no-print fixed inset-x-2 bottom-2 z-[80] flex h-[70dvh] max-h-[560px] flex-col overflow-hidden rounded-2xl bg-white text-ink shadow-2xl ring-1 ring-gray-200 sm:inset-x-auto sm:right-4 sm:w-[360px]"
+          role="dialog" aria-label="Support SAWALI">
+          <div className="flex items-center gap-2 bg-nuit-900 px-4 py-3 text-white">
+            <div className="min-w-0 flex-1">
+              <p className="font-display text-sm font-bold">Support SAWALI</p>
+              <p className="truncate text-xs text-white/70">
+                {requete ? `${requete.numero} · ${ETATS[requete.statut] || requete.libelle || ""}` : "Posez votre question, nous vous répondons ici."}
+              </p>
+            </div>
+            <button type="button" onClick={() => setOuvert(false)} className="rounded-lg px-2 py-1 text-lg leading-none hover:bg-white/10" aria-label="Fermer">×</button>
+          </div>
+          <div ref={filRef} className="flex-1 space-y-2 overflow-y-auto bg-creme p-3">
+            {messages.length === 0 && <p className="py-6 text-center text-sm italic text-gray-400">Aucun message pour l'instant.</p>}
+            {messages.map((m) => (
+              <div key={m.id} className={`flex ${m.de === "moi" ? "justify-end" : "justify-start"}`}>
+                <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow-sm ${m.systeme ? "bg-amber-50 text-amber-900 ring-1 ring-amber-200" : m.de === "moi" ? "bg-primary text-white" : "bg-white ring-1 ring-gray-200"}`}>
+                  {m.de !== "moi" && !m.systeme && <p className="mb-0.5 text-[11px] font-bold text-gray-500">{m.auteur}</p>}
+                  {m.texte && <p className="whitespace-pre-wrap break-words">{m.texte}</p>}
+                  <p className={`mt-1 text-right text-[10px] ${m.de === "moi" ? "text-white/70" : "text-gray-400"}`}>{heure(m.le)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          {erreur && <p className="bg-red-50 px-3 py-1 text-xs text-red-700">{erreur}</p>}
+          <form onSubmit={envoyer} className="space-y-2 p-2">
+            {/* Nom et contact : pour que le support puisse répondre (utile surtout aux visiteurs) */}
+            <div className="grid grid-cols-2 gap-2">
+              <input className="input text-sm" placeholder="Votre nom" maxLength={80} value={coord.nom}
+                onChange={(e) => setCoord({ ...coord, nom: e.target.value })} aria-label="Votre nom" />
+              <input className="input text-sm" placeholder="Téléphone ou e-mail" maxLength={80} value={coord.contact}
+                onChange={(e) => setCoord({ ...coord, contact: e.target.value })} aria-label="Téléphone ou e-mail" />
+            </div>
+            <div className="flex gap-2">
+              <textarea value={texte} onChange={(e) => setTexte(e.target.value)} rows={2} maxLength={2000}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) envoyer(e); }}
+                placeholder="Votre message…" className="input min-w-0 flex-1 resize-none text-sm" />
+              <button type="submit" disabled={envoi || !texte.trim()} className="btn-primary btn-sm">
+                {envoi ? "Patientez…" : "Envoyer"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </>
+  );
+}
