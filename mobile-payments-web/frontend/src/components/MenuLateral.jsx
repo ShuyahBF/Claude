@@ -13,6 +13,7 @@ import { LIBELLE_VER, VERSION } from "@/version";
 
 // Entrées du menu (même liste que les pages de /pages/Bientot.jsx)
 export const ENTREES_MENU = [
+  { to: "/abonnement", icone: "🎟️", libelle: "Abonnement" },
   { to: "/pharmacies-de-garde", icone: "🏥", libelle: "Pharmacies de garde" },
   { to: "/meteo", icone: "☀️", libelle: "Météo" },
   { to: "/anniversaires", icone: "🎂", libelle: "Anniversaires à souhaiter" },
