@@ -1,10 +1,10 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import SupportSawali from "@/components/SupportSawali";
 import { useAuth } from "@/context/AuthContext";
 import { LIBELLE_VERSION } from "@/version";
 
-// Menus de l'application (l'entrée « Administration » n'apparaît qu'à l'administrateur)
+// Menus de l'application (« Payer » est la bulle flottante « + » ; « Support » ouvre le chat SAWALI) (l'entrée « Administration » n'apparaît qu'à l'administrateur)
 const MENUS = [
-  { to: "/", libelle: "Payer", icone: "💳", fin: true },
   { to: "/historique", libelle: "Historique", icone: "🕘" },
   { to: "/marchands", libelle: "Marchands", icone: "🏪" },
   { to: "/profil", libelle: "Profil", icone: "👤" },
@@ -58,6 +58,8 @@ export default function Layout() {
       <div className="no-print pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <nav aria-label="Menu principal"
           className="pointer-events-auto flex w-full max-w-md gap-0.5 overflow-hidden rounded-2xl border border-gray-200 bg-white/95 p-1.5 shadow-xl backdrop-blur sm:w-auto sm:max-w-none">
+          {/* Onglet Support SAWALI : à la place de « Payer » (masqué si SAWALI n'est pas relié) */}
+          <SupportSawali variante="menu" classeMenu={style({ isActive: false })} />
           {menus.map((m) => (
             <NavLink key={m.to} to={m.to} end={m.fin} className={style}>
               <span className="text-lg leading-none">{m.icone}</span>{m.libelle}
@@ -65,6 +67,13 @@ export default function Layout() {
           ))}
         </nav>
       </div>
+
+      {/* Bulle flottante « + » = Payer : au-dessus du menu, qu'elle peut recouvrir en partie */}
+      <NavLink to="/" end aria-label="Payer" title="Payer"
+        className="no-print fixed right-4 z-50 grid h-14 w-14 place-items-center rounded-full bg-primary text-4xl font-light leading-none text-white shadow-2xl ring-4 ring-white transition hover:bg-primary-dark active:scale-95"
+        style={{ bottom: "calc(max(0.75rem, env(safe-area-inset-bottom)) + 2.75rem)" }}>
+        +
+      </NavLink>
     </div>
   );
 }

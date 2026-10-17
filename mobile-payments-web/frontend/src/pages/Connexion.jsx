@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import ChampMotDePasse from "@/components/ChampMotDePasse";
 import EtatServeur from "@/components/EtatServeur";
 import Patientez from "@/components/Patientez";
+import SupportSawali from "@/components/SupportSawali";
 import { useAuth } from "@/context/AuthContext";
 import { messageErreur } from "@/lib/api";
 import { LIBELLE_VERSION } from "@/version";
@@ -108,9 +109,13 @@ export default function Connexion({ mode = "connexion" }) {
           <Link to={lienAutre} className="font-semibold text-primary">{inscrire ? "Se connecter" : "Créer un compte"}</Link>
         </p>
         {/* Pied de la carte : état du serveur et version déployée */}
-        <div className="space-y-1 border-t border-gray-100 pt-3">
-          <EtatServeur />
-          <p className="text-center text-xs text-gray-400">{LIBELLE_VERSION}</p>
+        {/* Informations alignées à gauche ; icône de support SAWALI en bas à droite */}
+        <div className="flex items-end justify-between gap-3 border-t border-gray-100 pt-3">
+          <div className="min-w-0 space-y-1">
+            <EtatServeur />
+            <p className="text-xs text-gray-400">{LIBELLE_VERSION}</p>
+          </div>
+          <SupportSawali variante="carte" />
         </div>
       </form>
       {/* Contact officiel de SAWALI SMART SYSTEMS */}

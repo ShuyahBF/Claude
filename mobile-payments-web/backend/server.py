@@ -10,7 +10,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from catalogue_defaut import initialiser_catalogue
@@ -18,7 +18,9 @@ from config import get_settings
 from db import db, ensure_indexes
 import presence_sawali
 import version_plateforme
+from signal_connexion import adresse_ip
 from routes import android, auth, catalogue, marchands, paiements, presence
+import support_sawali
 from securite import hash_password
 from ussd import normaliser_email
 
@@ -38,14 +40,16 @@ app.add_middleware(
 # Toutes les routes sous « /api » : site web (auth, catalogue, marchands, paiements),
 # application Android (« /api/android/… ») et visites du site (« /api/presence/visite »).
 api = APIRouter(prefix="/api")
-for module in (auth, catalogue, marchands, paiements, android, presence):
+# support_sawali : discussion avec le support SAWALI (icône de la page de connexion, lot 24)
+for module in (auth, catalogue, marchands, paiements, android, presence, support_sawali):
     api.include_router(module.router)
 
 
 @api.get("/health")
-async def health():
-    """Santé du serveur (utilisée par Render et par l'état « Serveur actif » de la page de connexion)."""
-    return {"ok": True}
+async def health(request: Request):
+    """Santé du serveur (utilisée par Render et par l'état « Serveur actif » de la page de connexion).
+    Renvoie aussi l'adresse IP du visiteur (affichée en gris au-dessus de « Serveur actif »)."""
+    return {"ok": True, "ip": adresse_ip(request)}
 
 
 @api.get("/version")
