@@ -5,7 +5,8 @@
 // SAWALI en arrière-plan : le navigateur ne parle jamais à SAWALI.
 //   - une seule annonce : bannière fixe ; plusieurs : carrousel qui défile toutes les 5 s (pause au toucher),
 //     avec des points et des flèches ;
-//   - image ou vidéo (muette, en boucle) ; mention « Annonce » + nom de l'annonceur ;
+//   - image ou vidéo (muette au départ, en boucle ; bouton 🔊 pour activer le son : les téléphones n'acceptent le son que sur un geste volontaire) ;
+//     mention « Annonce » + nom de l'annonceur ;
 //   - impression comptée quand l'annonce s'affiche (une fois par annonce et par ouverture de l'écran) ;
 //   - clic : le serveur compte le clic et renvoie l'adresse à ouvrir (nouvel onglet) ;
 //   - aucune annonce ou serveur injoignable : rien n'est affiché (l'écran Payer n'est jamais gêné).
@@ -19,6 +20,8 @@ export default function Publicites() {
   const [annonces, setAnnonces] = useState([]);
   const [indice, setIndice] = useState(0);
   const [pause, setPause] = useState(false);
+  const [son, setSon] = useState(false);          // son activé par l'utilisateur (muet par défaut)
+  const lecteur = useRef(null);                   // balise <video> affichée
   const vues = useRef(new Set());   // annonces dont l'impression a déjà été signalée pendant cette ouverture
 
   // Lecture de la liste : si le serveur ne l'a pas encore reçue de SAWALI (en_cours), on réessaie 2 fois
@@ -41,10 +44,10 @@ export default function Publicites() {
 
   // Défilement automatique (sauf une seule annonce ou pause)
   useEffect(() => {
-    if (total < 2 || pause) return undefined;
+    if (total < 2 || pause || son) return undefined;      // son actif : on ne coupe pas la vidéo en cours
     const t = setInterval(() => setIndice((i) => (i + 1) % total), DEFILEMENT_MS);
     return () => clearInterval(t);
-  }, [total, pause]);
+  }, [total, pause, son]);
 
   // Impression : à l'affichage de chaque annonce, une seule fois par ouverture de l'écran
   useEffect(() => {
@@ -62,6 +65,19 @@ export default function Publicites() {
     } catch { /* sans importance */ }
   }, [courante]);
 
+  // Applique le choix du son à la vidéo affichée (propriété « muted » réglée directement : fiable sur téléphone après un toucher)
+  const poserLecteur = useCallback((el) => {
+    lecteur.current = el;
+    if (el) { el.muted = !son; if (son) el.play?.().catch(() => { el.muted = true; }); }
+  }, [son]);
+  const basculerSon = (e) => {
+    e.stopPropagation();
+    const voulu = !son;
+    setSon(voulu);
+    const v = lecteur.current;
+    if (v) { v.muted = !voulu; if (voulu) v.play?.().catch(() => { v.muted = true; setSon(false); }); }   // refus du navigateur : on reste muet
+  };
+
   if (!courante) return null;
   const aller = (delta) => setIndice((i) => (i + delta + total) % total);
 
@@ -71,11 +87,17 @@ export default function Publicites() {
       <button type="button" onClick={ouvrir} className="block w-full text-left" disabled={!courante.url}
         aria-label={`Annonce ${courante.nom || courante.annonceur || ""}`.trim()}>
         {courante.video ? (
-          <video key={courante.id} src={courante.image} className="aspect-[16/6] w-full object-cover" autoPlay muted loop playsInline />
+          <video key={courante.id} ref={poserLecteur} src={courante.image} className="aspect-[16/6] w-full object-cover" autoPlay muted loop playsInline />
         ) : (
           <img key={courante.id} src={courante.image} alt={courante.nom || "Annonce"} className="aspect-[16/6] w-full object-cover" loading="lazy" />
         )}
       </button>
+      {courante.video && (
+        <button type="button" onClick={basculerSon} aria-pressed={son} aria-label={son ? "Couper le son de l'annonce" : "Activer le son de l'annonce"}
+          className="absolute right-2 top-2 grid h-9 w-9 place-items-center rounded-full bg-black/55 text-lg text-white hover:bg-black/75">
+          {son ? "🔊" : "🔇"}
+        </button>
+      )}
       <span className="pointer-events-none absolute left-2 top-2 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">
         Annonce{courante.annonceur ? ` · ${courante.annonceur}` : ""}
       </span>
