@@ -5,6 +5,30 @@ import { useToast } from "@/components/Toast";
 import { apiClient, CATEGORIES, messageErreur } from "@/lib/api";
 import { libelleVersion } from "@/version";
 
+// Opérateurs proposés d'office (les opérateurs déjà présents dans le catalogue s'y ajoutent) et pays (code ISO).
+const OPERATEURS_BASE = ["Orange", "Moov", "Telecel"];
+const PAYS = [["BF", "Burkina Faso"], ["CI", "Côte d'Ivoire"], ["ML", "Mali"], ["SN", "Sénégal"], ["NE", "Niger"], ["TG", "Togo"],
+  ["BJ", "Bénin"], ["GN", "Guinée"], ["GH", "Ghana"], ["NG", "Nigéria"], ["CM", "Cameroun"], ["GA", "Gabon"], ["CG", "Congo"],
+  ["CD", "RD Congo"], ["MR", "Mauritanie"], ["TD", "Tchad"]];
+
+// Liste déroulante des opérateurs. « Autre opérateur… » ouvre une saisie libre, uniquement pour un nouvel opérateur.
+function ChoixOperateur({ valeur, connus, onChange }) {
+  const liste = [...new Set([...OPERATEURS_BASE, ...connus])];
+  const [autre, setAutre] = useState(false);
+  const modeAutre = autre || (!!valeur && !liste.includes(valeur));
+  return (
+    <div>
+      <select className="input" required value={modeAutre ? "__autre" : valeur}
+        onChange={(e) => { if (e.target.value === "__autre") { setAutre(true); onChange(""); } else { setAutre(false); onChange(e.target.value); } }}>
+        <option value="" disabled>Choisir…</option>
+        {liste.map((o) => <option key={o} value={o}>{o}</option>)}
+        <option value="__autre">Autre opérateur…</option>
+      </select>
+      {modeAutre && <input className="input mt-2" required placeholder="Nom du nouvel opérateur" value={valeur} onChange={(e) => onChange(e.target.value)} />}
+    </div>
+  );
+}
+
 const VIDE = { operateur: "", pays: "BF", nom: "", categorie: "merchant_payment", gabarit_ussd: "*",
   champs: [{ key: "amount", label: "Montant (FCFA)", type: "numeric", isMerchantCode: false }], description: "", actif: true };
 
@@ -81,9 +105,15 @@ export default function Admin() {
       <Modal ouvert={!!edition} titre={edition?.id ? "Modifier le service" : "Nouveau service"} onFermer={() => setEdition(null)} large>
         {edition && (
           <form onSubmit={enregistrer} className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div><label className="label">Opérateur</label><input className="input" required value={edition.operateur} onChange={(e) => setEdition({ ...edition, operateur: e.target.value })} /></div>
-              <div><label className="label">Pays (ISO)</label><input className="input" required maxLength={2} value={edition.pays} onChange={(e) => setEdition({ ...edition, pays: e.target.value.toUpperCase() })} /></div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div><label className="label">Opérateur</label>
+                <ChoixOperateur valeur={edition.operateur} connus={(services || []).map((x) => x.operateur)} onChange={(v) => setEdition({ ...edition, operateur: v })} /></div>
+              <div><label className="label">Pays</label>
+                <select className="input" required value={edition.pays} onChange={(e) => setEdition({ ...edition, pays: e.target.value })}>
+                  {/* Un pays déjà enregistré mais absent de la liste reste sélectionnable */}
+                  {!PAYS.some(([c]) => c === edition.pays) && edition.pays && <option value={edition.pays}>{edition.pays}</option>}
+                  {PAYS.map(([c, n]) => <option key={c} value={c}>{n} ({c})</option>)}
+                </select></div>
               <div><label className="label">Catégorie</label>
                 <select className="input" value={edition.categorie} onChange={(e) => setEdition({ ...edition, categorie: e.target.value })}>
                   {Object.entries(CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -99,7 +129,7 @@ export default function Admin() {
             <div className="space-y-2">
               <p className="label">Champs à saisir (clé = nom entre accolades dans le gabarit)</p>
               {edition.champs.map((c, i) => (
-                <div key={i} className="grid grid-cols-[6rem_1fr_7rem_auto_auto] items-center gap-2">
+                <div key={i} className="grid grid-cols-2 items-center gap-2 sm:grid-cols-[6rem_1fr_7rem_auto_auto]">
                   <input className="input font-mono" placeholder="clé" value={c.key} onChange={(e) => majChamp(i, "key", e.target.value.trim())} />
                   <input className="input" placeholder="Libellé" value={c.label} onChange={(e) => majChamp(i, "label", e.target.value)} />
                   <select className="input" value={c.type} onChange={(e) => majChamp(i, "type", e.target.value)}>

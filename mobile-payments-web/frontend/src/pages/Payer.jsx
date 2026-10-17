@@ -180,36 +180,35 @@ export default function Payer() {
         <button type="button" onClick={() => setScannerOuvert(true)} className="btn-outline btn-sm ml-auto">📷 Scanner un QR marchand</button>
       </div>
 
-      {/* Étape 1 : opérateur */}
+      {/* Étape 1 : opérateur — liste déroulante (règle : une liste finie se choisit dans une liste déroulante) */}
       {!operateur && (
         <section className="space-y-3">
           <h1 className="text-2xl font-bold">Avec quel opérateur payez-vous ?</h1>
           {operateurs.length === 0 && <p className="text-gray-500">Aucun opérateur disponible pour le moment.</p>}
-          <div className="grid gap-3 sm:grid-cols-3">
-            {operateurs.map((op) => (
-              <button key={op} type="button" className="choix" onClick={() => choisirOperateur(op)}>
-                <span className="h-10 w-10 shrink-0 rounded-full" style={{ background: couleurOperateur(op) }} />
-                <span className="font-display text-lg font-semibold">{op}</span>
-              </button>
-            ))}
+          <div>
+            <label className="label" htmlFor="choix-operateur">Opérateur</label>
+            <select id="choix-operateur" className="input text-lg" defaultValue="" disabled={operateurs.length === 0}
+              onChange={(e) => e.target.value && choisirOperateur(e.target.value)}>
+              <option value="" disabled>Choisir un opérateur…</option>
+              {operateurs.map((op) => <option key={op} value={op}>{op}</option>)}
+            </select>
           </div>
         </section>
       )}
 
-      {/* Étape 2 : service */}
+      {/* Étape 2 : service — liste déroulante du catalogue de l'opérateur */}
       {operateur && !service && (
         <section className="space-y-3">
           <h1 className="text-2xl font-bold">{operateur} : que voulez-vous faire ?</h1>
-          <div className="grid gap-3">
-            {services.map((s) => (
-              <button key={s.id} type="button" className="choix" onClick={() => choisirService(s)}>
-                <div className="flex-1">
-                  <p className="font-semibold">{s.nom}</p>
-                  {s.description && <p className="text-sm text-gray-500">{s.description}</p>}
-                </div>
-                <span className="badge bg-gray-100 text-gray-600">{CATEGORIES[s.categorie] || s.categorie}</span>
-              </button>
-            ))}
+          <div>
+            <label className="label" htmlFor="choix-service">Service</label>
+            <select id="choix-service" className="input text-lg" defaultValue=""
+              onChange={(e) => { const s = services.find((x) => x.id === e.target.value); if (s) choisirService(s); }}>
+              <option value="" disabled>Choisir un service…</option>
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>{s.nom} — {CATEGORIES[s.categorie] || s.categorie}</option>
+              ))}
+            </select>
           </div>
         </section>
       )}
