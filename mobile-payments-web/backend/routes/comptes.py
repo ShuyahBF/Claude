@@ -26,6 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 import journal_connexions
+from operateurs_tel import operateur_bf
 import reglages_securite
 from db import SANS_ID, db
 from routes.abonnement import SERVICE, utilisateur_sawali  # noqa: F401 — SERVICE : nom cité dans les messages d'erreur
@@ -47,7 +48,7 @@ def _fiche(u: dict) -> dict:
     """Ce que l'administrateur voit d'un compte (jamais le hash du mot de passe)."""
     ouverte = u.get("derniere_connexion")
     fermee = u.get("derniere_deconnexion")
-    return {"id": u["id"], "nom": u.get("nom"), "prenom": u.get("prenom"), "telephone": u.get("telephone"), "email": u.get("email"),
+    return {"id": u["id"], "nom": u.get("nom"), "prenom": u.get("prenom"), "telephone": u.get("telephone"), "operateur": operateur_bf(u.get("telephone")), "email": u.get("email"),
             "role": u.get("role"), "cree_le": u.get("cree_le"), "derniere_connexion": ouverte, "derniere_deconnexion": fermee,
             "derniere_ip": u.get("derniere_ip"),
             # Session probablement ouverte : connexion plus récente que la dernière déconnexion

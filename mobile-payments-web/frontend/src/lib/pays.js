@@ -1,25 +1,26 @@
 // ============================================================================
 // Pays et indicatifs téléphoniques (lot 55) : liste unique utilisée partout où un numéro de téléphone est attendu
 // (connexion, inscription, profil, anniversaires, support). Burkina Faso par défaut.
+//   longueur : nombre EXACT de chiffres du numéro national quand il est fixe (Burkina Faso : 8, règle du propriétaire du 11/10/2026) ;
 //   zero : le numéro national peut s'écrire avec un 0 de tête qui doit disparaître en format international (ex. France 06… → +33 6…).
 // ============================================================================
 export const PAYS = [
-  { code: "BF", nom: "Burkina Faso", indicatif: "226", drapeau: "🇧🇫" },
+  { longueur: 8, code: "BF", nom: "Burkina Faso", indicatif: "226", drapeau: "🇧🇫" },
   { code: "CI", nom: "Côte d'Ivoire", indicatif: "225", drapeau: "🇨🇮" },
-  { code: "ML", nom: "Mali", indicatif: "223", drapeau: "🇲🇱" },
-  { code: "SN", nom: "Sénégal", indicatif: "221", drapeau: "🇸🇳" },
-  { code: "NE", nom: "Niger", indicatif: "227", drapeau: "🇳🇪" },
-  { code: "TG", nom: "Togo", indicatif: "228", drapeau: "🇹🇬" },
+  { longueur: 8, code: "ML", nom: "Mali", indicatif: "223", drapeau: "🇲🇱" },
+  { longueur: 9, code: "SN", nom: "Sénégal", indicatif: "221", drapeau: "🇸🇳" },
+  { longueur: 8, code: "NE", nom: "Niger", indicatif: "227", drapeau: "🇳🇪" },
+  { longueur: 8, code: "TG", nom: "Togo", indicatif: "228", drapeau: "🇹🇬" },
   { code: "BJ", nom: "Bénin", indicatif: "229", drapeau: "🇧🇯" },
-  { code: "GN", nom: "Guinée", indicatif: "224", drapeau: "🇬🇳" },
-  { code: "MR", nom: "Mauritanie", indicatif: "222", drapeau: "🇲🇷" },
+  { longueur: 9, code: "GN", nom: "Guinée", indicatif: "224", drapeau: "🇬🇳" },
+  { longueur: 8, code: "MR", nom: "Mauritanie", indicatif: "222", drapeau: "🇲🇷" },
   { code: "GH", nom: "Ghana", indicatif: "233", drapeau: "🇬🇭", zero: true },
   { code: "NG", nom: "Nigéria", indicatif: "234", drapeau: "🇳🇬", zero: true },
-  { code: "CM", nom: "Cameroun", indicatif: "237", drapeau: "🇨🇲" },
+  { longueur: 9, code: "CM", nom: "Cameroun", indicatif: "237", drapeau: "🇨🇲" },
   { code: "GA", nom: "Gabon", indicatif: "241", drapeau: "🇬🇦" },
   { code: "CG", nom: "Congo", indicatif: "242", drapeau: "🇨🇬" },
   { code: "CD", nom: "RD Congo", indicatif: "243", drapeau: "🇨🇩", zero: true },
-  { code: "TD", nom: "Tchad", indicatif: "235", drapeau: "🇹🇩" },
+  { longueur: 8, code: "TD", nom: "Tchad", indicatif: "235", drapeau: "🇹🇩" },
   { code: "MA", nom: "Maroc", indicatif: "212", drapeau: "🇲🇦", zero: true },
   { code: "DZ", nom: "Algérie", indicatif: "213", drapeau: "🇩🇿", zero: true },
   { code: "TN", nom: "Tunisie", indicatif: "216", drapeau: "🇹🇳" },

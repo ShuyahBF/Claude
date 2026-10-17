@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import Chargement from "@/components/Chargement";
 import Modal from "@/components/Modal";
 import OngletsAdmin from "@/components/OngletsAdmin";
+import PastilleOperateur from "@/components/PastilleOperateur";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
 import { apiClient, dateHeure, messageErreur } from "@/lib/api";
+import { formaterTelephone } from "@/lib/operateurs";
 
 // Liste des comptes (administrateur, lot 45) : dernière connexion / déconnexion, adresse IP, abonnements actifs
 // avec leur date d'expiration, et blocage d'un compte.
@@ -119,7 +121,7 @@ export default function AdminComptes() {
               <tr key={c.id} onClick={() => setSelection(c.id)} aria-selected={selection === c.id}
                 className={selection === c.id ? "ligne-selectionnee cursor-pointer" : "cursor-pointer"}>
                 <td>{c.prenom} {c.nom}{c.role === "admin" && <span className="badge ml-1 bg-gray-100 text-gray-600">admin</span>}
-                  <div className="text-xs text-gray-500">{c.telephone}{c.email ? ` · ${c.email}` : ""}</div></td>
+                  <div className="text-xs text-gray-500">{formaterTelephone(c.telephone)}<PastilleOperateur telephone={c.telephone} />{c.email ? ` · ${c.email}` : ""}</div></td>
                 <td>{c.derniere_connexion ? dateHeure(c.derniere_connexion) : <span className="text-xs text-gray-400">Jamais</span>}
                   {c.session_ouverte && <div className="text-xs text-green-700">session ouverte</div>}</td>
                 <td>{c.derniere_deconnexion ? dateHeure(c.derniere_deconnexion) : <span className="text-xs text-gray-400">—</span>}</td>
@@ -154,7 +156,7 @@ export default function AdminComptes() {
       <Modal ouvert={!!aBloquer} titre={aBloquer?.bloque ? "Débloquer ce compte ?" : "Bloquer ce compte ?"} onFermer={() => setABloquer(null)}>
         {aBloquer && (
           <div className="space-y-3">
-            <p className="text-sm">{aBloquer.prenom} {aBloquer.nom} ({aBloquer.telephone})</p>
+            <p className="text-sm">{aBloquer.prenom} {aBloquer.nom} ({formaterTelephone(aBloquer.telephone)})</p>
             <p className="text-sm text-gray-600">{aBloquer.bloque ? "Le compte pourra de nouveau se connecter."
               : "Le compte est déconnecté aussitôt et ne pourra plus se connecter tant qu'il n'est pas débloqué."}</p>
             <div className="flex gap-2">
@@ -169,7 +171,7 @@ export default function AdminComptes() {
       <Modal ouvert={!!aDeconnecter} titre={aDeconnecter === "tous" ? "Déconnecter tous les utilisateurs ?" : "Déconnecter ce compte ?"} onFermer={() => setADeconnecter(null)}>
         {aDeconnecter && (
           <div className="space-y-3">
-            {aDeconnecter !== "tous" && <p className="text-sm">{aDeconnecter.prenom} {aDeconnecter.nom} ({aDeconnecter.telephone})</p>}
+            {aDeconnecter !== "tous" && <p className="text-sm">{aDeconnecter.prenom} {aDeconnecter.nom} ({formaterTelephone(aDeconnecter.telephone)})</p>}
             <p className="text-sm text-gray-600">Un message d'attente avec un compte à rebours de 30 secondes s'affiche sur son écran, puis sa session est fermée
               et il doit se reconnecter. Votre propre session n'est jamais fermée ainsi{aDeconnecter === "tous" ? ", et les autres administrateurs non plus" : ""}.</p>
             <div className="flex gap-2">
