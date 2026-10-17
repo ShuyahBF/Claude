@@ -14,7 +14,7 @@ const CLE_PREFS = "mpw_alertes";
 const CLE_VUES = "mpw_alertes_vues";
 // renforcee : « alerte renforcée » pour les malvoyants (écran qui clignote en jaune et noir, grosses lettres, vibration longue répétée,
 // son répété) ; lecture : le rappel est aussi LU À VOIX HAUTE (synthèse vocale du téléphone, en français)
-const DEFAUT = { son: true, volume: 70, vibration: true, notifications: false, renforcee: false, lecture: true };
+const DEFAUT = { son: true, volume: 90, vibration: true, notifications: false, renforcee: false, lecture: true };
 
 export function lirePreferences() {
   try { return { ...DEFAUT, ...(JSON.parse(localStorage.getItem(CLE_PREFS)) || {}) }; } catch { return { ...DEFAUT }; }
@@ -43,26 +43,38 @@ const MELODIES = {
   support: [[659.25, 0, 0.18], [783.99, 0.14, 0.18], [1046.5, 0.28, 0.32]],
 };
 
-/** Joue la mélodie du type donné au volume réglé (0 = muet). `force` : joue même si le son est désactivé (bouton « Tester »). */
-export function jouerSon(type = "support", { force = false } = {}) {
+/** Joue la mélodie du type donné au volume réglé (0 = muet). `force` : joue même si le son est désactivé (bouton « Tester »).
+ *  `maximum` : volume au maximum quel que soit le réglage (alerte renforcée pour les malvoyants).
+ *  Son renforcé (lot 52, « le son n'est pas très fort ») : onde carrée (beaucoup plus de puissance qu'une onde triangulaire) doublée de son
+ *  octave, volume proportionnel au réglage (et non plus au carré, qui rendait les réglages moyens très faibles), puis un limiteur
+ *  (compresseur) qui évite la saturation et remonte le niveau moyen. */
+export function jouerSon(type = "support", { force = false, maximum = false } = {}) {
   try {
     const p = lirePreferences();
-    if ((!p.son && !force) || p.volume <= 0) return;
+    const volume = maximum ? 100 : p.volume;
+    if ((!p.son && !force && !maximum) || volume <= 0) return;
     const c = audio();
     if (!c) return;
-    // Volume ressenti ≈ proportionnel au carré du réglage (l'oreille est logarithmique) ; 0,9 maximum pour éviter la saturation
-    const crete = 0.9 * (p.volume / 100) ** 2;
+    const niveau = (volume / 100) ** 1.2;                 // 0 → 1
+    const sortie = c.createGain();
+    sortie.gain.value = 1.6;                              // rehausse générale, contenue par le limiteur ci-dessous
+    const limiteur = c.createDynamicsCompressor();
+    limiteur.threshold.value = -10; limiteur.knee.value = 6; limiteur.ratio.value = 12; limiteur.attack.value = 0.003; limiteur.release.value = 0.15;
+    sortie.connect(limiteur); limiteur.connect(c.destination);
     const t0 = c.currentTime + 0.02;
     (MELODIES[type] || MELODIES.support).forEach(([f, debut, duree]) => {
-      const osc = c.createOscillator();
-      const env = c.createGain();
-      osc.type = "triangle";
-      osc.frequency.setValueAtTime(f, t0 + debut);
-      env.gain.setValueAtTime(0.0001, t0 + debut);
-      env.gain.exponentialRampToValueAtTime(Math.max(crete, 0.0002), t0 + debut + 0.02);
-      env.gain.exponentialRampToValueAtTime(0.0001, t0 + debut + duree);
-      osc.connect(env); env.connect(c.destination);
-      osc.start(t0 + debut); osc.stop(t0 + debut + duree + 0.02);
+      [[f, 0.45], [f * 2, 0.22]].forEach(([freq, part]) => {          // note + octave
+        const osc = c.createOscillator();
+        const env = c.createGain();
+        osc.type = "square";
+        osc.frequency.setValueAtTime(freq, t0 + debut);
+        env.gain.setValueAtTime(0.0001, t0 + debut);
+        env.gain.exponentialRampToValueAtTime(Math.max(part * niveau, 0.0002), t0 + debut + 0.015);
+        env.gain.setValueAtTime(Math.max(part * niveau, 0.0002), t0 + debut + Math.max(0.02, duree - 0.05));
+        env.gain.exponentialRampToValueAtTime(0.0001, t0 + debut + duree);
+        osc.connect(env); env.connect(sortie);
+        osc.start(t0 + debut); osc.stop(t0 + debut + duree + 0.02);
+      });
     });
   } catch { /* son impossible : sans importance */ }
 }

@@ -30,9 +30,9 @@ export default function AlerteRenforcee() {
       setEvenements(liste);
       const dire = () => { if (lirePreferences().lecture) parler(liste.map((x) => `${x.titre}. ${x.texte}`).join(". ")); };
       const type = liste[0].type;
-      vibrerFort(); jouerSon(type, { force: true }); dire();
+      vibrerFort(); jouerSon(type, { maximum: true }); dire();
       minuteries.current.push(setInterval(vibrerFort, 4000));
-      minuteries.current.push(setInterval(() => jouerSon(type, { force: true }), 8000));
+      minuteries.current.push(setInterval(() => jouerSon(type, { maximum: true }), 8000));
       minuteries.current.push(setInterval(dire, 20000));
       minuteries.current.push(setTimeout(arreter, DUREE_MAX_MS));
     };
