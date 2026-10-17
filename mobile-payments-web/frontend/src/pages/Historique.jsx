@@ -16,7 +16,7 @@ const PERIODES = [
   ["tout", "Toute la période"], ["aujourdhui", "Aujourd'hui"], ["7j", "7 derniers jours"], ["30j", "30 derniers jours"],
   ["mois", "Ce mois-ci"], ["mois-1", "Mois dernier"], ["perso", "Dates personnalisées…"],
 ];
-const PAS_DE_FILTRE = { periode: "30j", du: "", au: "", operateur: "", statut: "", q: "", classement: "effectue" };
+const PAS_DE_FILTRE = { periode: "30j", du: "", au: "", operateur: "", statut: "effectue", q: "", classement: "effectue" };
 const TAILLE_PAGE = 20;
 
 // Date « AAAA-MM-JJ » (heure UTC = heure de Ouagadougou), décalée de n jours
@@ -43,7 +43,8 @@ function bornes(f) {
 // Paramètres envoyés au serveur (les champs vides sont omis)
 function parametres(f) {
   const { du, au } = bornes(f);
-  const p = { du, au, operateur: f.operateur, statut: f.statut, q: f.q.trim() };
+  // statut « tous » = aucun filtre ; par défaut seuls les paiements confirmés (« Payé ») sont listés
+  const p = { du, au, operateur: f.operateur, statut: f.statut === "tous" ? "" : f.statut, q: f.q.trim() };
   return Object.fromEntries(Object.entries(p).filter(([, v]) => v));
 }
 
@@ -95,7 +96,8 @@ export default function Historique() {
   const charger = useCallback(async () => {
     try {
       const [s, l] = await Promise.all([
-        apiClient.get("/paiements/statistiques", { params: { ...params, classement: filtres.classement } }),
+        // Les statistiques ne dépendent pas du choix d'affichage : elles comptent les « Payé » et signalent les non confirmés
+        apiClient.get("/paiements/statistiques", { params: { ...params, statut: undefined, classement: filtres.classement } }),
         apiClient.get("/paiements", { params: { ...params, limite: 500 } }),
       ]);
       setStats(s.data);
@@ -166,10 +168,12 @@ export default function Historique() {
             </>
           )}
           <div>
-            <label className="label" htmlFor="f-statut">Statut</label>
+            <label className="label" htmlFor="f-statut">Afficher</label>
             <select id="f-statut" className="input" value={filtres.statut} onChange={(e) => modifier("statut", e.target.value)}>
-              <option value="">Tous les statuts</option>
-              {Object.entries(STATUTS).map(([v, [n]]) => <option key={v} value={v}>{n}</option>)}
+              <option value="effectue">Payés (confirmés)</option>
+              <option value="prepare">Non confirmés (préparés)</option>
+              <option value="abandonne">Abandonnés</option>
+              <option value="tous">Tous les statuts</option>
             </select>
           </div>
           <div>
@@ -294,6 +298,13 @@ export default function Historique() {
           {paiements.length > 0 && <button type="button" className="btn-outline btn-sm" onClick={() => exporterCsv(paiements)}>⬇ Exporter en CSV</button>}
         </div>
         {paiements.length === 0 && <p className="card text-gray-500">Aucun paiement pour ces critères.</p>}
+        {/* Rappel : par défaut les codes non confirmés sont masqués */}
+        {filtres.statut === "effectue" && (t.prepares > 0 || t.abandonnes > 0) && (
+          <p className="text-sm text-gray-500">
+            {(t.prepares ?? 0) + (t.abandonnes ?? 0)} code(s) non confirmé(s) masqué(s).{" "}
+            <button type="button" className="font-semibold text-primary underline" onClick={() => modifier("statut", "tous")}>Les afficher</button>
+          </p>
+        )}
         <ul className="space-y-2">
           {paiements.slice(0, nbAffiches).map((p) => {
             const [libelle, style] = STATUTS[p.statut] || STATUTS.prepare;
