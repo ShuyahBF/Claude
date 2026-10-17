@@ -14,6 +14,7 @@
 // ============================================================================
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useAuth } from "@/context/AuthContext";
 import { apiClient, messageErreur } from "@/lib/api";
 import Patientez from "@/components/Patientez";
 
@@ -21,6 +22,16 @@ const RAFRAICHIR_OUVERT_MS = 5000;
 const RAFRAICHIR_FERME_MS = 60000;
 const CLE_VISITEUR = "mpw_visiteur_support";
 const CLE_COORD = "mpw_coordonnees_support";
+
+// Numéro au format international « +22670000000 » (même règle que le serveur, ussd.py) ; null si invalide.
+// « 70 00 00 00 » (8 chiffres) reçoit l'indicatif du Burkina Faso 226 ; « + » ou « 00 » = numéro étranger (8 à 15 chiffres).
+function normaliserTelephone(brut) {
+  const texte = (brut || "").trim();
+  let chiffres = texte.replace(/\D/g, "");
+  if (texte.startsWith("00")) chiffres = chiffres.slice(2);
+  else if (!texte.startsWith("+") && chiffres.length === 8) chiffres = `226${chiffres}`;
+  return chiffres.length >= 8 && chiffres.length <= 15 ? `+${chiffres}` : null;
+}
 
 // Les relectures du fil sont silencieuses : seul l'envoi d'un message affiche « Patientez… »
 const EN_ARRIERE_PLAN = {};
@@ -75,6 +86,7 @@ const Casque = ({ taille = 20 }) => (
 );
 
 export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
+  const { user } = useAuth();                      // connecté : nom et numéro du compte, non modifiables
   const [actif, setActif] = useState(false);
   const [ouvert, setOuvert] = useState(false);
   const [nouveau, setNouveau] = useState(false);   // réponse arrivée fenêtre déployée : la fenêtre clignote jusqu'au prochain geste
@@ -167,10 +179,13 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
     e.preventDefault();
     const t = texte.trim();
     if (!t || envoi) return;
+    // Visiteur : numéro obligatoire et valide (le support lui répond par téléphone / WhatsApp)
+    const numero = user ? "" : normaliserTelephone(coord.contact);
+    if (!user && !numero) { setErreur("Numéro invalide : 8 chiffres au Burkina Faso (ex. 70 00 00 00)."); return; }
     setEnvoi(true);
     try {
       try { localStorage.setItem(CLE_COORD, JSON.stringify(coord)); } catch { /* sans importance */ }
-      const r = await apiClient.post("/support-sawali/messages", { visiteur, texte: t, nom: coord.nom, contact: coord.contact });
+      const r = await apiClient.post("/support-sawali/messages", { visiteur, texte: t, nom: user ? "" : coord.nom, contact: numero });
       setTexte("");
       if (r.data?.requete) setRequete(r.data.requete);
       await lireFil();
@@ -215,7 +230,7 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
       {ouvert && reduit && createPortal(
         <button type="button" onClick={() => setReduit(false)} aria-label="Déployer la fenêtre du support SAWALI"
           style={variante === "menu" && posBarre ? { left: posBarre.left, bottom: posBarre.bottom } : { right: "0.5rem", bottom: "0.75rem" }}
-          className={`no-print fixed z-[80] flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-ink shadow-2xl ring-1 ring-gray-200 ${nonLus > 0 ? "clignote" : ""}`}>
+          className={`no-print fixed z-[80] flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-ink shadow-2xl border border-primary ${nonLus > 0 ? "clignote" : ""}`}>
           <span className="text-primary"><Casque taille={16} /></span>Support SAWALI
           {nonLus > 0 && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold">{nonLus}</span>}
           <span aria-hidden="true" className="text-gray-500">▴</span>
@@ -226,7 +241,7 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
       {/* Fenêtre déployée : étroite (≈ 17 rem au plus) pour ne pas cacher l'écran derrière */}
       {ouvert && !reduit && createPortal(
         <div onPointerDown={() => setNouveau(false)} onFocusCapture={() => setNouveau(false)}
-          className={`no-print fixed bottom-2 right-2 z-[80] flex h-[60dvh] max-h-[440px] w-[min(17rem,calc(100vw-1rem))] flex-col overflow-hidden rounded-2xl bg-white text-ink shadow-2xl ring-1 ring-gray-200 sm:right-4 ${nouveau ? "clignote" : ""}`}
+          className={`no-print fixed bottom-2 right-2 z-[80] flex h-[60dvh] max-h-[440px] w-[min(17rem,calc(100vw-1rem))] flex-col overflow-hidden rounded-2xl bg-white text-ink shadow-2xl border border-primary sm:right-4 ${nouveau ? "clignote" : ""}`}
           role="dialog" aria-label="Support SAWALI">
           <div className="flex items-center gap-2 border-b border-gray-200 bg-white px-4 py-3 text-ink">
             <div className="min-w-0 flex-1">
@@ -255,10 +270,14 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
           <form onSubmit={envoyer} className="space-y-2 p-2">
             {/* Nom et contact : pour que le support puisse répondre (utile surtout aux visiteurs) */}
             <div className="grid grid-cols-2 gap-2">
-              <input className="input text-sm" placeholder="Votre nom" maxLength={80} value={coord.nom}
+              {/* Connecté : nom et numéro du compte, grisés. Visiteur : saisie (numéro obligatoire) */}
+              <input className="input text-sm disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500" placeholder="Votre nom" maxLength={80}
+                disabled={!!user} value={user ? `${user.prenom || ""} ${user.nom || ""}`.trim() : coord.nom}
                 onChange={(e) => setCoord({ ...coord, nom: e.target.value })} aria-label="Votre nom" />
-              <input className="input text-sm" placeholder="Téléphone ou e-mail" maxLength={80} value={coord.contact}
-                onChange={(e) => setCoord({ ...coord, contact: e.target.value })} aria-label="Téléphone ou e-mail" />
+              <input className="input text-sm disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500" placeholder="Téléphone 70 00 00 00" maxLength={20}
+                type="tel" inputMode="tel" autoComplete="tel" required={!user}
+                disabled={!!user} value={user ? user.telephone || "" : coord.contact}
+                onChange={(e) => setCoord({ ...coord, contact: e.target.value })} aria-label="Numéro de téléphone" />
             </div>
             <div className="flex gap-2">
               <textarea value={texte} onChange={(e) => setTexte(e.target.value)} rows={2} maxLength={2000}
