@@ -138,7 +138,7 @@ export default function Profil() {
               onChange={(e) => regler({ volume: Number(e.target.value) })} />
             <button type="button" className="btn-outline btn-sm shrink-0" onClick={() => { jouerSon("medicament", { force: true }); vibrer(); }}>▶ Tester le son</button>
           </div>
-          <p className="mt-1 text-xs text-gray-500">Chaque type de rappel a sa mélodie : médicament (double appel), paiement, anniversaire, support.</p>
+          <p className="mt-1 text-xs text-gray-500">Chaque type de rappel a sa mélodie : médicament (double appel), paiement, anniversaire, support. Le son suit le volume « multimédia » du téléphone : montez-le avec les touches de volume si le son reste faible.</p>
         </div>
         <label className="flex items-center gap-3"><input type="checkbox" className="h-5 w-5" checked={alertes.vibration} onChange={(e) => regler({ vibration: e.target.checked })} />
           <span className="font-semibold">Vibrer (téléphone)</span></label>
