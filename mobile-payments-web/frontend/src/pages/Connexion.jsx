@@ -56,7 +56,7 @@ export default function Connexion({ mode = "connexion" }) {
         {/* En-tête de la carte : logo et nom de l'application */}
         <div className="flex flex-col items-center gap-2 pb-2 text-center">
           <img src="/icone.svg" alt="Paiement Mobile" className="h-14 w-14" />
-          <p className="font-display text-2xl font-bold text-ink">Paiement Mobile</p>
+          <p className="logo-ecrit text-5xl text-accent">Paiement Mobile</p>
           <p className="text-xs uppercase tracking-[0.25em] text-accent">Orange · Moov · Telecel</p>
         </div>
         <h1 className="text-xl font-bold">{inscrire ? "Créer mon compte" : "Connexion"}</h1>

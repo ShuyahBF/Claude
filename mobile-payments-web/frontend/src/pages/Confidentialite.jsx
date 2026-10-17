@@ -98,12 +98,12 @@ const SECTIONS = [
 
 export default function Confidentialite() {
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-creme">
       {/* En-tête bleu nuit avec le logo, comme les autres pages du site */}
       <header className="bg-nuit-900 text-white">
         <div className="mx-auto flex max-w-3xl items-center gap-2 px-4 py-4">
           <img src="/icone.svg" alt="" className="h-8 w-8" />
-          <span className="font-display text-lg font-bold">Paiement Mobile</span>
+          <span className="logo-ecrit text-4xl">Paiement Mobile</span>
         </div>
       </header>
 
