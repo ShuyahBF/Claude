@@ -3,6 +3,7 @@ import { useToast } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
 import { apiClient, messageErreur } from "@/lib/api";
 import ChampMotDePasse from "@/components/ChampMotDePasse";
+import { activerNotifications, ecrirePreferences, etatNotifications, jouerSon, lirePreferences, vibrer } from "@/lib/alertes";
 
 // Profil : coordonnées (téléphone et e-mail servent à se connecter) et mot de passe.
 export default function Profil() {
@@ -10,6 +11,19 @@ export default function Profil() {
   const toast = useToast();
   const [form, setForm] = useState({ nom: user.nom, prenom: user.prenom, telephone: user.telephone, email: user.email || "" });
   const [mdp, setMdp] = useState({ ancien: "", nouveau: "" });
+  // Sons et notifications (lot 40) : réglages gardés dans le navigateur de cet appareil
+  const [alertes, setAlertes] = useState(lirePreferences);
+  const [etatNotif, setEtatNotif] = useState(etatNotifications);
+  const regler = (maj) => { const p = { ...alertes, ...maj }; setAlertes(p); ecrirePreferences(p); };
+  const basculerNotifications = async (voulu) => {
+    if (!voulu) { regler({ notifications: false }); return; }
+    const etat = await activerNotifications();          // demande l'autorisation au navigateur
+    setEtatNotif(etat);
+    regler({ notifications: etat === "granted" });
+    if (etat === "granted") toast.succes("Notifications activées");
+    else if (etat === "denied") toast.erreur("Notifications bloquées : autorisez-les dans les réglages du navigateur pour ce site.");
+    else if (etat === "indisponible") toast.erreur("Les notifications ne sont pas disponibles sur cet appareil.");
+  };
 
   const enregistrer = async (e) => {
     e.preventDefault();
@@ -54,6 +68,38 @@ export default function Profil() {
         <p className="text-xs text-gray-500">Vous pouvez vous connecter avec votre téléphone ou votre e-mail.</p>
         <button type="submit" className="btn-primary">Enregistrer</button>
       </form>
+
+      {/* Sons et notifications des rappels (médicaments, paiements, anniversaires) et du support */}
+      <section className="card space-y-4" data-testid="alertes">
+        <h2 className="text-lg font-bold">🔔 Sons et notifications</h2>
+        <label className="flex items-center gap-3"><input type="checkbox" className="h-5 w-5" checked={alertes.son} onChange={(e) => regler({ son: e.target.checked })} />
+          <span className="font-semibold">Jouer un son à chaque rappel</span></label>
+        <div className={alertes.son ? "" : "opacity-50"}>
+          <label className="label" htmlFor="volume">Intensité du son : <span className="tabular-nums">{alertes.volume} %</span></label>
+          <div className="flex items-center gap-3">
+            <input id="volume" type="range" min={0} max={100} step={5} className="w-full" value={alertes.volume} disabled={!alertes.son}
+              onChange={(e) => regler({ volume: Number(e.target.value) })} />
+            <button type="button" className="btn-outline btn-sm shrink-0" onClick={() => { jouerSon("medicament", { force: true }); vibrer(); }}>▶ Tester</button>
+          </div>
+          <p className="mt-1 text-xs text-gray-500">Chaque type de rappel a sa mélodie : médicament (double appel), paiement, anniversaire, support.</p>
+        </div>
+        <label className="flex items-center gap-3"><input type="checkbox" className="h-5 w-5" checked={alertes.vibration} onChange={(e) => regler({ vibration: e.target.checked })} />
+          <span className="font-semibold">Vibrer (téléphone)</span></label>
+        <div>
+          <label className="flex items-center gap-3"><input type="checkbox" className="h-5 w-5" checked={alertes.notifications && etatNotif === "granted"} disabled={etatNotif === "indisponible"}
+            onChange={(e) => basculerNotifications(e.target.checked)} /><span className="font-semibold">Afficher une notification</span></label>
+          <p className="mt-1 text-xs text-gray-500">
+            {etatNotif === "granted" && "Autorisées par ce navigateur."}
+            {etatNotif === "denied" && "Bloquées dans le navigateur : autorisez-les dans les réglages du site pour pouvoir les activer."}
+            {etatNotif === "default" && "Le navigateur vous demandera l'autorisation à l'activation."}
+            {etatNotif === "indisponible" && "Non disponibles sur cet appareil."}
+          </p>
+        </div>
+        <p className="rounded-lg bg-sky-50 p-3 text-xs text-sky-900">
+          Les alertes sonnent tant que Paiement Mobile est ouvert (y compris en arrière-plan sur le téléphone). Application fermée, aucune alerte n'est envoyée pour le moment.
+          Ces réglages sont propres à cet appareil.
+        </p>
+      </section>
 
       <form onSubmit={changerMotDePasse} className="card space-y-4">
         <h2 className="text-lg font-bold">Mot de passe</h2>

@@ -130,3 +130,35 @@ def test_resume_du_menu(client, utilisateur):
     r = client.get("/api/rappels/resume", headers=h).json()
     assert r["anniversaires"] == 1 and r["paiements"] == 1 and r["medicaments"] >= 0 and r["total"] == sum(r[k] for k in ("anniversaires", "paiements", "medicaments"))
     assert client.get("/api/rappels/resume").status_code == 401
+
+
+# ---------------------------------------------------------------- lot 40 : événements sonores
+def test_evenements_prises_repetes_puis_arretes():
+    m = datetime(2026, 10, 17, 9, 0, tzinfo=timezone.utc)
+    def prise(h, pris=False):
+        return {"rappel_id": "m1", "medicament": "Paracétamol", "dose": "1 comprimé", "heure": h, "pris": pris, "en_retard": False}
+    ev = med.evenements_prises([prise("09:00"), prise("09:20"), prise("08:50"), prise("08:00", pris=True), prise("05:30")], m)
+    par_heure = {e["cle"].split(":", 2)[2]: e for e in ev}
+    assert set(par_heure) == {"09:00:0", "08:50:0"}                       # 09:20 (futur), 08:00 (pris), 05:30 (> 3 h) : aucune alerte
+    assert par_heure["08:50:0"]["texte"].endswith("(en retard de 10 min)") and "(en retard" not in par_heure["09:00:0"]["texte"]
+    # Plus tard, la MÊME prise oubliée a une autre clé : le navigateur sonne de nouveau
+    plus_tard = datetime(2026, 10, 17, 9, 35, tzinfo=timezone.utc)
+    cles = {e["cle"] for e in med.evenements_prises([prise("09:00")], plus_tard)}
+    assert cles == {"med:m1:09:00:2"}
+    assert {e["cle"] for e in med.evenements_prises([prise("09:00")], datetime(2026, 10, 17, 11, 0, tzinfo=timezone.utc))} == {"med:m1:09:00:3"}   # plafonné à 3
+
+
+def test_resume_contient_les_evenements(client, utilisateur):
+    _, h, _ = utilisateur
+    auj = aujourdhui()
+    client.post("/api/anniversaires", headers=h, json={"nom": "Awa", "jour": auj.day, "mois": auj.month, "annee": 1990})
+    client.post("/api/rappels-paiements", headers=h, json=_paiement(libelle="Loyer", montant=75000))
+    client.post("/api/rappels-medicaments", headers=h, json=_traitement(heures=["00:00"]))
+    ev = client.get("/api/rappels/resume", headers=h).json()["evenements"]
+    types = [e["type"] for e in ev]
+    assert "paiement" in types and "anniversaire" in types and types == sorted(types, key=["medicament", "paiement", "anniversaire"].index)
+    pai = next(e for e in ev if e["type"] == "paiement")
+    assert pai["titre"] == "🔁 Loyer" and "à payer aujourd'hui" in pai["texte"] and "75 000 FCFA" in pai["texte"] and pai["lien"] == "/rappels-paiements"
+    ann = next(e for e in ev if e["type"] == "anniversaire")
+    assert "36 ans" in ann["texte"] or "ans" in ann["texte"]
+    assert len({e["cle"] for e in ev}) == len(ev)                         # clés uniques

@@ -102,6 +102,37 @@ async def a_prendre(user_id: str) -> int:
     return a_prendre_compte(prises_du_jour(rappels, cochees, m), m)
 
 
+REPETITION_MINUTES = 15   # une prise oubliée est rappelée toutes les 15 minutes…
+REPETITIONS_MAX = 3       # …jusqu'à 3 fois, puis on laisse l'indicateur « En retard » de la page
+FENETRE_MINUTES = 180     # au-delà de 3 h de retard, plus aucun rappel sonore
+
+
+def evenements_prises(prises: List[dict], maintenant: datetime) -> List[dict]:
+    """Prises non cochées DONT L'HEURE EST ARRIVÉE (et pas trop ancienne) : une alerte à l'heure, puis jusqu'à 3 rappels.
+    La clé change à chaque rappel (…:0, …:1…) : le navigateur n'alerte qu'une fois par clé."""
+    hhmm_min = maintenant.hour * 60 + maintenant.minute
+    out = []
+    for p in prises:
+        if p["pris"]:
+            continue
+        h, m = (int(x) for x in p["heure"].split(":"))
+        retard = hhmm_min - (h * 60 + m)
+        if retard < 0 or retard > FENETRE_MINUTES:
+            continue
+        n = min(REPETITIONS_MAX, retard // REPETITION_MINUTES)
+        dose = f" — {p['dose']}" if p.get("dose") else ""
+        texte = f"Prise de {p['heure']}{dose}" + (f" (en retard de {retard} min)" if retard >= 5 else "")
+        out.append({"cle": f"med:{p['rappel_id']}:{p['heure']}:{n}", "type": "medicament", "titre": f"💊 {p['medicament']}",
+                    "texte": texte, "lien": "/medicaments", "repetition": n})
+    return out
+
+
+async def evenements(user_id: str) -> List[dict]:
+    rappels, cochees = await _charger(user_id)
+    m = _maintenant()
+    return evenements_prises(prises_du_jour(rappels, cochees, m), m)
+
+
 def _donnees(t: Traitement) -> dict:
     nom = t.medicament.strip()
     if not nom:
