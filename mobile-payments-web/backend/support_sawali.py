@@ -35,6 +35,7 @@ from config import get_settings
 from db import SANS_ID, db
 from limiteur import Limiteur
 from securite import decode_access_token
+from ussd import ErreurSaisie, normaliser_telephone
 
 DELAI_SECONDES = 15   # délai maximal d'un appel à SAWALI
 # Au plus 120 appels par minute et par adresse IP (la fenêtre ouverte relit le fil toutes les 5 s)
@@ -81,6 +82,9 @@ async def appeler_sawali(chemin: str, corps: Dict[str, Any]) -> Dict[str, Any]:
 async def utilisateur_facultatif(request: Request) -> Optional[dict]:
     """Compte connecté (cookie de session) ou None pour un visiteur. Ne lève jamais d'erreur."""
     jeton = request.cookies.get(get_settings().session_cookie_nom)
+    entete = request.headers.get("authorization", "")
+    if not jeton and entete.lower().startswith("bearer "):   # même règle que securite.get_current_user (tests, outils)
+        jeton = entete[7:].strip()
     donnees = decode_access_token(jeton) if jeton else None
     if not donnees:
         return None
@@ -97,10 +101,9 @@ def identite(user: Optional[dict], visiteur: str, nom: str = "", contact: str = 
         return {"id": str(user.get("id", "")), "nom": f"{user.get('prenom', '')} {user.get('nom', '')}".strip() or user.get("email") or "",
                 "role": user.get("role") or "", "contexte": "Paiement Mobile",
                 "email": user.get("email") or "", "telephone": user.get("telephone") or ""}
-    contact = contact.strip()
+    # Visiteur : téléphone normalisé au format international « +22670000000 » (règle du Burkina Faso, voir ussd.py)
     return {"id": f"visiteur-{visiteur}", "nom": nom.strip() or "Visiteur", "role": "visiteur",
-            "contexte": "Paiement Mobile (page de connexion)",
-            "email": contact if "@" in contact else "", "telephone": "" if "@" in contact else contact}
+            "contexte": "Paiement Mobile (page de connexion)", "email": "", "telephone": contact.strip()}
 
 
 class Identifiant(BaseModel):
@@ -111,7 +114,7 @@ class Identifiant(BaseModel):
 class MessageEntree(Identifiant):
     texte: str = Field(..., min_length=1, max_length=2000)
     nom: str = Field("", max_length=80)
-    contact: str = Field("", max_length=80)   # téléphone ou e-mail, pour que le support puisse répondre
+    contact: str = Field("", max_length=30)   # téléphone du visiteur (obligatoire hors connexion) : le support lui répond
 
 
 class FilEntree(Identifiant):
@@ -131,8 +134,15 @@ async def envoyer(entree: MessageEntree, user: Optional[dict] = Depends(utilisat
     texte = entree.texte.strip()
     if not texte:
         raise HTTPException(422, "Message vide")
+    contact = ""
+    if not user:
+        # Visiteur : numéro obligatoire (8 chiffres au Burkina Faso, indicatif +226 ajouté ; « + » ou « 00 » pour l'étranger)
+        try:
+            contact = normaliser_telephone(entree.contact)
+        except ErreurSaisie:
+            raise HTTPException(422, "Numéro de téléphone invalide : 8 chiffres au Burkina Faso (ex. 70 00 00 00)")
     return await appeler_sawali("/support-plateforme/messages",
-                                {"utilisateur": identite(user, entree.visiteur, entree.nom, entree.contact), "texte": texte})
+                                {"utilisateur": identite(user, entree.visiteur, entree.nom, contact), "texte": texte})
 
 
 @router.post("/fil", dependencies=[Depends(limiter)])

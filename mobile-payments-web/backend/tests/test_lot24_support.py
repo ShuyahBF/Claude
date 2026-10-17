@@ -47,7 +47,7 @@ def test_visiteur_message_signe(client, sawali):
     assert envoi.headers["X-Emetteur"] == "paiementmobile" and envoi.headers["X-Signature"]
     corps = json.loads(envoi.content)
     assert corps["utilisateur"]["id"] == "visiteur-abcdef123456"
-    assert corps["utilisateur"]["telephone"] == "70 00 00 00" and corps["utilisateur"]["role"] == "visiteur"
+    assert corps["utilisateur"]["telephone"] == "+22670000000" and corps["utilisateur"]["role"] == "visiteur"
 
 
 def test_fil_visiteur(client, sawali):
@@ -64,3 +64,19 @@ def test_identifiant_invalide_refuse(client, sawali):
 def test_sans_cle_503(client):
     r = client.post("/api/support-sawali/fil", json={"visiteur": "abcdef123456"})
     assert r.status_code == 503
+
+
+def test_visiteur_sans_numero_valide_refuse(client, sawali):
+    for contact in ("", "abc", "1234"):
+        r = client.post("/api/support-sawali/messages", json={"visiteur": "abcdef123456", "texte": "Bonjour", "contact": contact})
+        assert r.status_code == 422, contact
+    assert not sawali
+
+
+def test_compte_connecte_utilise_son_numero(client, sawali, utilisateur):
+    fiche, h, _ = utilisateur
+    r = client.post("/api/support-sawali/messages", headers=h, json={"visiteur": "abcdef123456", "texte": "Bonjour",
+                                                                    "contact": "00 00 00 00 00"})   # ignoré : identité du compte
+    assert r.status_code == 200
+    u = json.loads(sawali[0].content)["utilisateur"]
+    assert u["role"] != "visiteur" and u["telephone"] == fiche["telephone"]
