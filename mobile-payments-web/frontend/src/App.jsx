@@ -5,6 +5,7 @@ import { ToastProvider } from "@/components/Toast";
 import { AuthProvider } from "@/context/AuthContext";
 import Abonnement from "@/pages/Abonnement";
 import Admin from "@/pages/Admin";
+import AdminComptes from "@/pages/AdminComptes";
 import Anniversaires from "@/pages/Anniversaires";
 import Bientot from "@/pages/Bientot";
 import Confidentialite from "@/pages/Confidentialite";
@@ -51,6 +52,7 @@ export default function App() {
                 <Route key={c} path={`/${c}`} element={<Bientot />} />
               ))}
               <Route path="/admin" element={<RouteProtegee admin><Admin /></RouteProtegee>} />
+              <Route path="/admin/comptes" element={<RouteProtegee admin><AdminComptes /></RouteProtegee>} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
