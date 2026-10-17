@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import CarteCodeUssd from "@/components/CarteCodeUssd";
 import Chargement from "@/components/Chargement";
+import Publicites from "@/components/Publicites";
 import ScannerQr from "@/components/ScannerQr";
 import { useToast } from "@/components/Toast";
 import { apiClient, CATEGORIES, couleurOperateur, messageErreur } from "@/lib/api";
@@ -169,6 +170,8 @@ export default function Payer() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
+      {/* Annonces de la régie SAWALI (carrousel), en haut de l'écran */}
+      <Publicites />
       {/* Fil d'étapes cliquable */}
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <button type="button" onClick={recommencer} className={operateur ? "text-primary" : "font-semibold"}>1. Opérateur</button>
