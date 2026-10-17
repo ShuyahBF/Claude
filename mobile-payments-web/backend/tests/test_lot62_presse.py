@@ -243,3 +243,26 @@ def test_image_manquante_ou_miniature_completee_par_la_page_de_l_article():
     finally:
         presse._transport = ancien
     assert arts[0]["image"] == "https://img.media.test/une.jpg"
+
+
+def test_pastille_traduit_vers_fr(client, admin, utilisateur, sawali, sans_semis):
+    """Lot 68 : un résumé IA d'un article ANGLAIS porte « traduit » ; un article français ou sans IA non."""
+    assert presse.langue_probable("How to build a morning routine that works for you and your family") == "en"
+    assert presse.langue_probable("Le gouvernement annonce un plan de soutien pour les commerçants des marchés") == "fr"
+    assert presse.langue_probable("") == "fr"
+    flux = """<?xml version="1.0"?><rss version="2.0"><channel><title>T</title>
+<item><title>How to build a morning routine that works</title><link>https://media.test/en/1</link><description>This is the way you can start the day with the right habits and the energy that you need.</description></item>
+<item><title>Un plan de soutien pour les commerçants</title><link>https://media.test/fr/2</link><description>Le gouvernement a présenté un plan pour les commerçants des marchés de la ville.</description></item>
+</channel></rss>"""
+    ancien = presse._transport
+    presse._transport = httpx.MockTransport(lambda q: httpx.Response(200, text=flux, headers={"content-type": "application/rss+xml"}))
+    try:
+        _, h, _ = utilisateur
+        cat = client.post("/api/admin/presse/categories", headers=admin, json={"nom": "Coaching", "icone": "🧠"}).json()
+        client.post("/api/admin/presse/sources", headers=admin, json={"nom": "Média", "url": "https://media.test/feed", "categorie_id": cat["id"]})
+        asyncio.run(presse.passage())
+    finally:
+        presse._transport = ancien
+    # Le résumé IA simulé ne porte que sur le premier article (l'anglais) : il est traduit ; le second n'a pas de résumé IA
+    arts = client.get("/api/presse", headers=h).json()["categories"][0]["medias"][0]["articles"]
+    assert [(a["ia"], a["traduit"]) for a in arts] == [(True, True), (False, False)]
