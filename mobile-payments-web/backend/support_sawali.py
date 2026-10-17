@@ -53,10 +53,10 @@ async def limiter(request: Request) -> None:
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Trop de requêtes : réessayez dans une minute")
 
 
-async def appeler_sawali(chemin: str, corps: Dict[str, Any]) -> Dict[str, Any]:
-    """POST signé vers SAWALI ; renvoie le JSON ou lève une HTTPException lisible."""
+async def appeler_sawali(chemin: str, corps: Dict[str, Any], service: str = "Support SAWALI", delai: float = DELAI_SECONDES) -> Dict[str, Any]:
+    """POST signé vers SAWALI ; renvoie le JSON ou lève une HTTPException lisible (`service` : nom cité dans les messages)."""
     if not signal_connexion.configure():
-        raise HTTPException(503, "Support SAWALI non configuré sur cette plateforme")
+        raise HTTPException(503, f"{service} non configuré sur cette plateforme")
     s = get_settings()
     # Corps sérialisé UNE SEULE FOIS : ce sont exactement ces octets qui sont signés et envoyés
     brut = json.dumps(corps, ensure_ascii=False)
@@ -64,19 +64,26 @@ async def appeler_sawali(chemin: str, corps: Dict[str, Any]) -> Dict[str, Any]:
     entetes = {"Content-Type": "application/json", "X-Emetteur": s.liluvine_wa_emetteur or "paiementmobile",
                "X-Timestamp": ts, "X-Signature": signal_connexion.signer(signal_connexion.cle(), ts, brut)}
     try:
-        async with httpx.AsyncClient(timeout=DELAI_SECONDES, transport=_transport) as client:
+        async with httpx.AsyncClient(timeout=delai, transport=_transport) as client:
             r = await client.post(f"{s.sawali_url.rstrip('/')}/api{chemin}", content=brut.encode("utf-8"), headers=entetes)
     except httpx.HTTPError:
-        raise HTTPException(503, "Support SAWALI injoignable : réessayez dans un instant")
+        raise HTTPException(503, f"{service} injoignable : réessayez dans un instant")
     # 403 chez SAWALI : la plateforme n'est pas (encore) autorisée à utiliser le support
     if r.status_code == 403:
-        raise HTTPException(503, "Support SAWALI pas encore activé pour cette plateforme")
+        raise HTTPException(503, f"{service} pas encore activé pour cette plateforme")
+    if r.status_code in (404, 409, 422):
+        # Refus « métier » de SAWALI (code de parrainage inconnu, déjà utilisé…) : son message est transmis tel quel
+        try:
+            detail = r.json().get("detail")
+        except ValueError:
+            detail = None
+        raise HTTPException(r.status_code, detail if isinstance(detail, str) else "Demande refusée")
     if r.status_code >= 400:
-        raise HTTPException(502, "Le support SAWALI a refusé la demande")
+        raise HTTPException(502, f"{service} a refusé la demande")
     try:
         return r.json()
     except ValueError:
-        raise HTTPException(502, "Réponse illisible du support SAWALI")
+        raise HTTPException(502, f"Réponse illisible de {service}")
 
 
 async def utilisateur_facultatif(request: Request) -> Optional[dict]:

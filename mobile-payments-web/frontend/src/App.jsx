@@ -3,6 +3,7 @@ import Layout from "@/components/Layout";
 import RouteProtegee from "@/components/RouteProtegee";
 import { ToastProvider } from "@/components/Toast";
 import { AuthProvider } from "@/context/AuthContext";
+import Abonnement from "@/pages/Abonnement";
 import Admin from "@/pages/Admin";
 import Anniversaires from "@/pages/Anniversaires";
 import Bientot from "@/pages/Bientot";
@@ -38,6 +39,7 @@ export default function App() {
               <Route path="/rappels-paiements" element={<RappelsPaiements />} />
               <Route path="/medicaments" element={<Medicaments />} />
               <Route path="/meteo" element={<Meteo />} />
+              <Route path="/abonnement" element={<Abonnement />} />
               {/* Services du menu latéral (lot 33) : pages d'attente, ouvertes une à une */}
               {["pharmacies-de-garde", "ordonnances", "breves", "presse"].map((c) => (
                 <Route key={c} path={`/${c}`} element={<Bientot />} />
