@@ -96,7 +96,10 @@ async def au_demarrage():
         # Notifications push (application fermée) : passage toutes les minutes en arrière-plan (lot 41)
         _taches_fond.add(asyncio.get_running_loop().create_task(push.boucle_push()))
     # Résumés de presse : un passage par jour à l'heure choisie par l'administrateur (6 h par défaut), en arrière-plan (lot 62)
-    _taches_fond.add(asyncio.get_running_loop().create_task(presse.boucle_presse()))
+    # (pas avec la base en mémoire des essais : aucun accès réseau pendant les tests)
+    if not get_settings().mongo_url.startswith("mongomock://"):
+        await presse.semer()
+        _taches_fond.add(asyncio.get_running_loop().create_task(presse.boucle_presse()))
 
 
 # Référence des tâches de fond (sinon Python pourrait les effacer en cours de route)

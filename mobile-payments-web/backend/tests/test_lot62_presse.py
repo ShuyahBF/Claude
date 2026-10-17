@@ -20,12 +20,38 @@ ARTICLE = """<html><body><header><p>Menu du site avec beaucoup de texte de navig
 <p>Court</p><p>Les commerçants salueront cette décision qui répond à une longue attente dans le secteur du commerce.</p></body></html>"""
 
 
+FLUX = """<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+<channel><title>Média test</title>
+<item><title>Article avec image jointe</title><link>https://media.test/a1</link><description>Premier extrait de l'article, assez long pour être résumé.</description>
+<media:content url="https://img.media.test/photo1.jpg" type="image/jpeg"/></item>
+<item><title>Article avec vignette</title><link>https://media.test/a2</link><media:content/><description>Deuxième extrait de l'article.</description>
+<media:thumbnail url="https://img.media.test/vignette2.jpeg" width="960" height="1200"/></item>
+<item><title>Article dont la pièce jointe est une vidéo</title><link>https://media.test/a3</link><description>Troisième extrait.</description>
+<enclosure url="https://img.media.test/clip.mp4" type="video/mp4" length="1"/>
+<content:encoded><![CDATA[<p>Texte.</p><img src="https://img.media.test/pixel.png" width="1" height="1"><img src="https://img.media.test/dessin3.png" width="640" height="400">]]></content:encoded></item>
+<item><title>Article sans aucune image</title><link>https://media.test/a4</link><description>&lt;p&gt;Quatrième extrait &lt;b&gt;échappé&lt;/b&gt; deux fois.&lt;/p&gt;</description></item>
+</channel></rss>"""
+
+
+@pytest.fixture
+def sans_semis():
+    """Désactive le semis des médias prédéfinis (les tests créent leurs propres catégories et médias)."""
+    asyncio.run(presse.db.presse_etat.update_one({"_id": "semis"}, {"$set": {"fait": True}}, upsert=True))
+
+
 @pytest.fixture(autouse=True)
 def reseau():
+    # Base de la presse remise à zéro avant chaque essai (la base en mémoire est partagée entre les essais)
+    async def vider():
+        for nom in ("presse_categories", "presse_sources", "presse_resumes", "presse_etat"):
+            await getattr(presse.db, nom).delete_many({})
+    asyncio.run(vider())
     presse._controle_hote = False
     pages = {"/": ACCUEIL}
 
     def site(q: httpx.Request) -> httpx.Response:
+        if q.url.path == "/feed":
+            return httpx.Response(200, text=FLUX, headers={"content-type": "application/rss+xml; charset=utf-8"})
         if q.url.path.startswith("/actu/"):
             return httpx.Response(200, text=ARTICLE, headers={"content-type": "text/html; charset=utf-8"})
         return httpx.Response(200, text=pages.get(q.url.path, ""), headers={"content-type": "text/html; charset=utf-8"})
@@ -78,8 +104,9 @@ def test_hote_public_refuse_le_reseau_interne():
     assert not presse.adresse_valide("file:///etc/passwd") and not presse.adresse_valide("http://u:p@site.test/") and presse.adresse_valide("https://site.test/x")
 
 
-def test_admin_sources_et_lecture(client, admin, utilisateur, sawali):
+def test_admin_sources_et_lecture(client, admin, utilisateur, sawali, sans_semis):
     _, h, _ = utilisateur
+    client.post("/api/admin/presse/categories", headers=admin, json={"nom": "Presse locale", "icone": "📰"})
     assert client.get("/api/admin/presse/sources", headers=h).status_code in (401, 403)
     r = client.post("/api/admin/presse/sources", headers=admin, json={"nom": "Le Journal", "url": "https://journal.test/"})
     assert r.status_code == 201
@@ -87,9 +114,9 @@ def test_admin_sources_et_lecture(client, admin, utilisateur, sawali):
     assert client.put("/api/admin/presse/reglages", headers=admin, json={"heure": "6h"}).status_code == 422
     assert client.put("/api/admin/presse/reglages", headers=admin, json={"heure": "05:30"}).json()["heure"] == "05:30"
     # Rien de collecté : les utilisateurs ne voient rien
-    assert client.get("/api/presse", headers=h).json()["medias"] == []
+    assert client.get("/api/presse", headers=h).json()["categories"] == []
     asyncio.run(presse.passage())
-    medias = client.get("/api/presse", headers=h).json()["medias"]
+    medias = client.get("/api/presse", headers=h).json()["categories"][0]["medias"]
     assert len(medias) == 1 and medias[0]["nom"] == "Le Journal" and len(medias[0]["articles"]) == 2
     a = medias[0]["articles"]
     assert a[0]["ia"] is True and "Résumé IA" in a[0]["resume"]
@@ -97,20 +124,22 @@ def test_admin_sources_et_lecture(client, admin, utilisateur, sawali):
     # Média désactivé : plus visible
     sid = client.get("/api/admin/presse/sources", headers=admin).json()["sources"][0]["id"]
     client.put(f"/api/admin/presse/sources/{sid}", headers=admin, json={"nom": "Le Journal", "url": "https://journal.test/", "actif": False})
-    assert client.get("/api/presse", headers=h).json()["medias"] == []
+    assert client.get("/api/presse", headers=h).json()["categories"] == []
     assert client.delete(f"/api/admin/presse/sources/{sid}", headers=admin).status_code == 200
 
 
-def test_sawali_indisponible_repli(client, admin, utilisateur, sawali):
+def test_sawali_indisponible_repli(client, admin, utilisateur, sawali, sans_semis):
+    client.post("/api/admin/presse/categories", headers=admin, json={"nom": "Presse locale", "icone": "📰"})
     _, mode = sawali
     mode["ok"] = False
     client.post("/api/admin/presse/sources", headers=admin, json={"nom": "Le Journal", "url": "https://journal.test/"})
     asyncio.run(presse.passage())
-    arts = client.get("/api/presse", headers=utilisateur[1]).json()["medias"][0]["articles"]
+    arts = client.get("/api/presse", headers=utilisateur[1]).json()["categories"][0]["medias"][0]["articles"]
     assert arts and all(not x["ia"] and x["resume"] for x in arts)
 
 
-def test_un_seul_passage_par_jour(client, admin, sawali):
+def test_un_seul_passage_par_jour(client, admin, sawali, sans_semis):
+    client.post("/api/admin/presse/categories", headers=admin, json={"nom": "Presse locale", "icone": "📰"})
     recues, _ = sawali
     client.post("/api/admin/presse/sources", headers=admin, json={"nom": "Le Journal", "url": "https://journal.test/"})
     t = datetime(2026, 10, 18, 6, 1, tzinfo=timezone.utc)
@@ -119,3 +148,75 @@ def test_un_seul_passage_par_jour(client, admin, sawali):
     assert asyncio.run(presse.verifier_et_passer(t.replace(hour=9))) is False            # même jour : aucun nouveau passage
     assert len(recues) == appels
     assert asyncio.run(presse.verifier_et_passer(t.replace(day=19))) is True              # lendemain : nouveau passage
+
+
+# ---------------------------------------------------------------------------
+# Lot 65 — catégories, flux RSS, illustrations (jamais de vidéo)
+# ---------------------------------------------------------------------------
+def test_images_photos_et_dessins_seulement():
+    assert presse.image_valide("https://img.test/a.jpg") and presse.image_valide("https://img.test/a?w=600&fmt=webp")
+    assert not presse.image_valide("https://img.test/clip.mp4") and not presse.image_valide("https://img.test/a.gif")
+    assert not presse.image_valide("https://img.test/a", type_mime="video/mp4") and not presse.image_valide("https://img.test/a", medium="video")
+    assert not presse.image_valide("data:image/png;base64,AAAA") and not presse.image_valide("ftp://x.test/a.jpg") and not presse.image_valide("")
+
+
+def test_lecture_d_un_flux_rss():
+    assert presse.est_un_flux(FLUX) and not presse.est_un_flux(ACCUEIL)
+    a = presse.lire_flux(FLUX)
+    assert [x["titre"] for x in a] == ["Article avec image jointe", "Article avec vignette", "Article dont la pièce jointe est une vidéo", "Article sans aucune image"]
+    assert a[0]["image"] == "https://img.media.test/photo1.jpg"
+    assert a[1]["image"] == "https://img.media.test/vignette2.jpeg"
+    assert a[2]["image"] == "https://img.media.test/dessin3.png"           # vidéo et pastille de 1 pixel écartées
+    assert a[3]["image"] == "" and a[3]["texte"] == "Quatrième extrait échappé deux fois."
+    with pytest.raises(ValueError):
+        presse.lire_flux("<rss><channel><item></rss>")
+
+
+def test_image_de_partage_d_une_page():
+    page = '<html><head><meta property="og:image" content="/media/une.jpg"><meta name="x" content="y"></head></html>'
+    assert presse.image_og(page, "https://journal.test/a") == "https://journal.test/media/une.jpg"
+    assert presse.image_og('<meta property="og:image" content="https://v.test/film.mp4">', "https://journal.test/") == ""
+
+
+def test_collecte_d_un_flux_garde_les_images(client, admin, utilisateur, sawali, sans_semis):
+    cat = client.post("/api/admin/presse/categories", headers=admin, json={"nom": "Tech", "icone": "💻"}).json()
+    r = client.post("/api/admin/presse/sources", headers=admin, json={"nom": "Média test", "url": "https://media.test/feed", "categorie_id": cat["id"]})
+    assert r.status_code == 201
+    asyncio.run(presse.passage())
+    c = client.get("/api/presse", headers=utilisateur[1]).json()["categories"]
+    assert [x["nom"] for x in c] == ["Tech"]
+    arts = c[0]["medias"][0]["articles"]
+    assert [bool(a["image"]) for a in arts] == [True, True, True, False]
+    s = client.get("/api/admin/presse/sources", headers=admin).json()["sources"][0]
+    assert s["nb_articles"] == 4 and s["nb_images"] == 3
+
+
+def test_semis_des_medias_predefinis_une_seule_fois(client, admin):
+    assert asyncio.run(presse.semer()) is True and asyncio.run(presse.semer()) is False
+    cats = client.get("/api/admin/presse/categories", headers=admin).json()
+    assert [c["nom"] for c in cats["categories"]] == ["Presse locale", "Tech", "Mode", "Coaching personnel"] and "📰" in cats["icones"]
+    sources = client.get("/api/admin/presse/sources", headers=admin).json()["sources"]
+    assert len(sources) == sum(len(m) for _, _, m in presse.CATEGORIES_DEFAUT) and all(s["actif"] and s["predefini"] for s in sources)
+    # Ce que l'administrateur retire n'est jamais recréé
+    client.delete(f"/api/admin/presse/sources/{sources[0]['id']}", headers=admin)
+    assert asyncio.run(presse.semer()) is False
+    assert len(client.get("/api/admin/presse/sources", headers=admin).json()["sources"]) == len(sources) - 1
+
+
+def test_categories_creation_suppression(client, admin, sans_semis):
+    r = client.post("/api/admin/presse/categories", headers=admin, json={"nom": "Sport", "icone": "⚽"})
+    assert r.status_code == 201
+    cid = r.json()["id"]
+    assert client.post("/api/admin/presse/categories", headers=admin, json={"nom": "sport", "icone": "⚽"}).status_code == 409        # doublon
+    assert client.put(f"/api/admin/presse/categories/{cid}", headers=admin, json={"nom": "Sports", "icone": "⚽"}).status_code == 200
+    assert client.post("/api/admin/presse/sources", headers=admin, json={"nom": "Média", "url": "https://media.test/feed", "categorie_id": "inconnue"}).status_code == 422
+    client.post("/api/admin/presse/sources", headers=admin, json={"nom": "Média", "url": "https://media.test/feed", "categorie_id": cid})
+    assert client.delete(f"/api/admin/presse/categories/{cid}", headers=admin).status_code == 409             # elle contient un média
+    r = client.delete(f"/api/admin/presse/categories/{cid}?avec_medias=true", headers=admin)
+    assert r.status_code == 200 and r.json()["medias_supprimes"] == 1
+    assert client.get("/api/admin/presse/sources", headers=admin).json()["sources"] == []
+
+
+def test_les_utilisateurs_ne_gerent_pas_les_categories(client, utilisateur, sans_semis):
+    _, h, _ = utilisateur
+    assert client.post("/api/admin/presse/categories", headers=h, json={"nom": "Pirate", "icone": "☠"}).status_code in (401, 403)
