@@ -13,6 +13,7 @@ import Annonceur from "@/pages/Annonceur";
 import AdminPresse from "@/pages/AdminPresse";
 import Presse from "@/pages/Presse";
 import Ussd from "@/pages/Ussd";
+import Installer from "@/pages/Installer";
 import AdminUssd from "@/pages/AdminUssd";
 import Rappels, { Vers } from "@/pages/Rappels";
 import Archives from "@/pages/Archives";
@@ -60,6 +61,7 @@ export default function App() {
               <Route path="/medicaments" element={<Vers onglet="medicaments" />} />
               <Route path="/presse" element={<Presse />} />
               <Route path="/ussd" element={<Ussd />} />
+              <Route path="/installer" element={<Installer />} />
               <Route path="/meteo" element={<Meteo />} />
               <Route path="/abonnement" element={<Abonnement />} />
               <Route path="/ordonnances" element={<Ordonnances />} />
