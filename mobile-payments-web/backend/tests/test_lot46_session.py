@@ -116,6 +116,14 @@ def test_deconnexion_generale_epargne_les_administrateurs(client, admin, utilisa
     client.portal.call(db.users.update_many, {}, {"$unset": {"deconnexion_a": ""}})
 
 
+def test_un_administrateur_peut_en_deconnecter_un_autre(client, admin):
+    client.portal.call(db.users.insert_one, {"id": "second-admin", "nom": "Autre", "prenom": "Admin", "telephone": "+22670999901", "role": "admin",
+                                              "password_hash": "x", "version_session": 0, "cree_le": datetime.now(timezone.utc).isoformat()})
+    assert client.put("/api/admin/comptes/second-admin/deconnexion", headers=admin).status_code == 200      # un autre administrateur : permis
+    assert client.get("/api/auth/session", headers=admin).json() == {"deconnexion_dans": None}               # l'administrateur lui-même : jamais annoncé
+    client.portal.call(db.users.delete_one, {"id": "second-admin"})
+
+
 def test_la_deconnexion_volontaire_ferme_la_session(client, utilisateur):
     user, _, mdp = utilisateur
     h = _connecter(client, user, mdp)

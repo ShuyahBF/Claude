@@ -76,6 +76,9 @@ async def ensure_indexes() -> None:
     await db.journal_connexions.create_index([("user_id", 1), ("ouverte_le", -1)])
     await db.journal_connexions.create_index("ouverte_le", expireAfterSeconds=180 * 24 * 3600)
     await db.users.create_index([("derniere_connexion", -1)])
+    # Lieux des marchands (lot 49) : un lieu par opérateur et code ; recherche des proches par rectangle de coordonnées
+    await db.marchands_lieux.create_index([("operateur", 1), ("code", 1)], unique=True)
+    await db.marchands_lieux.create_index([("lat", 1), ("lon", 1)])
     # Profils saisis à l'accueil de l'app Android : un profil par téléphone (lot 13)
     await db.profils_android.create_index("telephone", unique=True)
     # Échecs de connexion (anti force brute)

@@ -18,6 +18,7 @@ from typing import Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
+import lieux_marchands
 from db import SANS_ID, db
 from securite import get_current_user
 from ussd import ErreurSaisie, construire_code, lien_tel
@@ -25,9 +26,17 @@ from ussd import ErreurSaisie, construire_code, lien_tel
 router = APIRouter(prefix="/paiements", tags=["Paiements"])
 
 
+class Position(BaseModel):
+    """Position du téléphone au moment du paiement (envoyée seulement si le compte a activé sa géolocalisation)."""
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+    precision: Optional[float] = Field(None, ge=0, le=100_000)    # mètres
+
+
 class Preparation(BaseModel):
     service_id: str = Field(min_length=1, max_length=64)
     valeurs: dict[str, str] = Field(default_factory=dict)
+    position: Optional[Position] = None
 
 
 class Statut(BaseModel):
@@ -65,6 +74,12 @@ async def preparer(data: Preparation, user: dict = Depends(get_current_user)):
         "valeurs": valeurs, "marchand": marchand, "montant": montant, "code_ussd": code, "statut": "prepare",
         "cree_le": datetime.now(timezone.utc).isoformat(),
     }
+    # Géolocalisation (lot 49) : seulement si le compte l'a activée. La position est gardée dans l'historique de CE compte (arrondie à
+    # environ 10 m) et sert à situer le marchand ; sans géolocalisation, toute position envoyée est ignorée.
+    if data.position and user.get("geoloc"):
+        paiement["position"] = {"lat": round(data.position.lat, 4), "lon": round(data.position.lon, 4), "precision": data.position.precision}
+        if marchand:
+            await lieux_marchands.noter(service["operateur"], marchand["code"], data.position.lat, data.position.lon, data.position.precision)
     await db.paiements.insert_one(paiement.copy())
     return _avec_lien(paiement)
 

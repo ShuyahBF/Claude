@@ -57,11 +57,26 @@ def _base() -> str:
     return get_settings().sawali_url.rstrip("/")
 
 
+def _absolue(adresse: str) -> str:
+    """Adresse complète d'un média ou d'un lien d'annonce. SAWALI enregistre ses fichiers téléversés en adresse RELATIVE
+    (« /api/files/<id> ») : lue telle quelle par ce site, elle pointerait vers Paiement Mobile (vidéo introuvable, clic sur une
+    autre page de Paiement Mobile). Les adresses « /api/… » sont donc rattachées au serveur de SAWALI, les autres pages « /… » au
+    site de SAWALI (même adresse sans « api. »)."""
+    a = (adresse or "").strip()
+    if a.startswith("//"):
+        return "https:" + a
+    if not a.startswith("/"):
+        return a                                               # déjà complète (https://…) ou vide
+    if a.startswith("/api/"):
+        return _base() + a
+    return _base().replace("://api.", "://", 1) + a
+
+
 def _vue(b: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Champs d'une annonce utiles à l'affichage ; None si elle est inutilisable (pas d'image ni d'identifiant)."""
     if not b.get("id") or not b.get("image_url"):
         return None
-    return {"id": str(b["id"]), "image": b["image_url"], "url": b.get("target_url") or "",
+    return {"id": str(b["id"]), "image": _absolue(b["image_url"]), "url": _absolue(b.get("target_url") or ""),
             "video": b.get("media_kind") == "video", "nom": b.get("name") or "", "annonceur": b.get("advertiser_name") or "",
             "variante": b.get("active_variant") if b.get("active_variant") in ("a", "b") else "a"}
 

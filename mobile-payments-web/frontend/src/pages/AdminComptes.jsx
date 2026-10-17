@@ -3,12 +3,14 @@ import Chargement from "@/components/Chargement";
 import Modal from "@/components/Modal";
 import OngletsAdmin from "@/components/OngletsAdmin";
 import { useToast } from "@/components/Toast";
+import { useAuth } from "@/context/AuthContext";
 import { apiClient, dateHeure, messageErreur } from "@/lib/api";
 
 // Liste des comptes (administrateur, lot 45) : dernière connexion / déconnexion, adresse IP, abonnements actifs
 // avec leur date d'expiration, et blocage d'un compte.
 export default function AdminComptes() {
   const toast = useToast();
+  const { user: moi } = useAuth();
   const [donnees, setDonnees] = useState(null);      // {total, page, par_page, comptes} ; null = chargement
   const [page, setPage] = useState(1);
   const [terme, setTerme] = useState("");
@@ -126,7 +128,7 @@ export default function AdminComptes() {
                 <td>{c.bloque ? <span className="badge bg-red-100 text-red-800">Bloqué</span> : <span className="badge bg-green-100 text-green-800">Actif</span>}</td>
                 <td className="whitespace-nowrap">
                   <button type="button" className="btn-outline btn-sm mr-1" onClick={(e) => { e.stopPropagation(); voirHistorique(c); }}>Sessions</button>
-                  {c.role !== "admin" && !c.bloque && (
+                  {c.id !== moi.id && !c.bloque && (
                     <button type="button" className="btn-outline btn-sm mr-1" onClick={(e) => { e.stopPropagation(); setADeconnecter(c); }}>Déconnecter</button>
                   )}
                   {c.role !== "admin" && (
@@ -169,7 +171,7 @@ export default function AdminComptes() {
           <div className="space-y-3">
             {aDeconnecter !== "tous" && <p className="text-sm">{aDeconnecter.prenom} {aDeconnecter.nom} ({aDeconnecter.telephone})</p>}
             <p className="text-sm text-gray-600">Un message d'attente avec un compte à rebours de 30 secondes s'affiche sur son écran, puis sa session est fermée
-              et il doit se reconnecter. Les administrateurs ne sont jamais déconnectés ainsi.</p>
+              et il doit se reconnecter. Votre propre session n'est jamais fermée ainsi{aDeconnecter === "tous" ? ", et les autres administrateurs non plus" : ""}.</p>
             <div className="flex gap-2">
               <button type="button" className="btn-primary flex-1" onClick={confirmerDeconnexion}>Déconnecter</button>
               <button type="button" className="btn-outline flex-1" onClick={() => setADeconnecter(null)}>Annuler</button>

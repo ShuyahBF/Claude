@@ -173,6 +173,18 @@ async def modifier_profil(data: Profil, user: dict = Depends(get_current_user)):
     return utilisateur_public(await db.users.find_one({"id": user["id"]}, SANS_ID))
 
 
+class Geolocalisation(BaseModel):
+    actif: bool
+
+
+@router.put("/geolocalisation")
+async def geolocalisation(data: Geolocalisation, user: dict = Depends(get_current_user)):
+    """Chaque compte active ou désactive SA géolocalisation (suivi des paiements, marchand retrouvé à l'arrivée).
+    Désactivée (réglage de départ) : aucune position n'est enregistrée ni utilisée pour ce compte."""
+    await db.users.update_one({"id": user["id"]}, {"$set": {"geoloc": data.actif}})
+    return utilisateur_public(await db.users.find_one({"id": user["id"]}, SANS_ID))
+
+
 class ModeDemo(BaseModel):
     actif: bool
 

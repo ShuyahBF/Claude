@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import DeconnexionAdmin from "@/components/DeconnexionAdmin";
 import DeconnexionInactivite from "@/components/DeconnexionInactivite";
 import Layout from "@/components/Layout";
+import MiseAJourSite from "@/components/MiseAJourSite";
 import ProtectionCaptures from "@/components/ProtectionCaptures";
 import RouteProtegee from "@/components/RouteProtegee";
 import { ToastProvider } from "@/components/Toast";
@@ -36,6 +37,7 @@ export default function App() {
           <ProtectionCaptures />
           <DeconnexionInactivite />
           <DeconnexionAdmin />
+          <MiseAJourSite />
           <Routes>
             <Route path="/connexion" element={<Connexion />} />
             <Route path="/inscription" element={<Connexion mode="inscription" />} />
