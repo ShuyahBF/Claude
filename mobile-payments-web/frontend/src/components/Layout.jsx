@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import MenuLateral from "@/components/MenuLateral";
 import SupportSawali from "@/components/SupportSawali";
 import { useAuth } from "@/context/AuthContext";
+import { apiClient } from "@/lib/api";
 
 // Menus de l'application (« Payer » est la bulle flottante « + » ; « Support » ouvre le chat SAWALI) (l'entrée « Administration » n'apparaît qu'à l'administrateur)
 const MENUS = [
@@ -17,6 +18,16 @@ export default function Layout() {
   const { user, deconnexion } = useAuth();
   const navigate = useNavigate();
   const [menuOuvert, setMenuOuvert] = useState(false);   // menu latéral glissant (lot 33)
+  const { pathname } = useLocation();
+  // Rappels du jour (anniversaires, paiements, médicaments) : relus à chaque changement de page et chaque minute
+  const [rappels, setRappels] = useState({});
+  useEffect(() => {
+    let actif = true;
+    const lire = () => apiClient.get("/rappels/resume").then(({ data }) => actif && setRappels(data)).catch(() => {});
+    lire();
+    const t = setInterval(lire, 60000);
+    return () => { actif = false; clearInterval(t); };
+  }, [pathname]);
   const menus = user?.role === "admin" ? [...MENUS, { to: "/admin", libelle: "Admin", icone: "⚙️" }] : MENUS;
 
   const quitter = async () => {
@@ -37,7 +48,9 @@ export default function Layout() {
           <div className="flex items-center gap-2 sm:contents">
           {/* Bouton ☰ : ouvre le menu latéral (à gauche) */}
           <button type="button" onClick={() => setMenuOuvert(true)} aria-label="Ouvrir le menu" aria-expanded={menuOuvert}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-2xl leading-none text-white hover:bg-white/10 sm:col-start-1 sm:justify-self-start">☰</button>
+            className="relative grid h-10 w-10 shrink-0 place-items-center rounded-lg text-2xl leading-none text-white hover:bg-white/10 sm:col-start-1 sm:justify-self-start">
+            ☰{rappels.total > 0 && <span className="absolute right-1 top-1 h-3 w-3 rounded-full bg-red-500 ring-2 ring-nuit-900" aria-label={`${rappels.total} rappel(s) à traiter`} />}
+          </button>
           <NavLink to="/" className="flex items-center gap-2 sm:col-start-2">
             <img src="/icone.svg" alt="" className="h-8 w-8 sm:hidden" />
             <span className="logo-ecrit whitespace-nowrap text-3xl sm:text-6xl">Paiement Mobile</span>
@@ -59,7 +72,7 @@ export default function Layout() {
         <NavLink to="/confidentialite" className="underline hover:text-gray-600">Confidentialité</NavLink>
       </footer>
 
-      <MenuLateral ouvert={menuOuvert} fermer={() => setMenuOuvert(false)} />
+      <MenuLateral ouvert={menuOuvert} fermer={() => setMenuOuvert(false)} compteurs={rappels} />
 
       {/* Menu FLOTTANT, toujours aligné sur le bas de l'écran (tous appareils) ; la marge basse respecte la zone de geste des téléphones */}
       <div className="no-print pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">

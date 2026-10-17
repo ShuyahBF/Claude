@@ -84,6 +84,13 @@ def enrichir(fiche: dict, aujourdhui: date) -> dict:
             "age": d.year - fiche["annee"] if fiche.get("annee") else None}
 
 
+async def a_souhaiter(user_id: str) -> int:
+    """Nombre d'anniversaires aujourd'hui (pastille du menu)."""
+    auj = _aujourdhui()
+    docs = await db.anniversaires.find({"user_id": user_id}, SANS_ID).to_list(MAXIMUM + 5)
+    return sum(1 for d in docs if prochain_anniversaire(d["jour"], d["mois"], auj) == auj)
+
+
 @router.get("")
 async def lister(user: dict = Depends(get_current_user)):
     docs = await db.anniversaires.find({"user_id": user["id"]}, SANS_ID).to_list(MAXIMUM + 5)
