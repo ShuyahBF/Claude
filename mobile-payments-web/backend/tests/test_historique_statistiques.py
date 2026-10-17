@@ -41,15 +41,19 @@ def test_statistiques_pures_top_et_operateurs():
     liste = [p(1, "Orange", 1000, "effectue"), p(2, "Orange", 5000, "effectue", "B"), p(3, "Moov Africa", 700, "abandonne"),
              p(4, "Orange", 9000, "prepare", "B")]
     st = calculer_statistiques(liste)
-    assert st["totaux"]["nombre"] == 4 and st["totaux"]["payes"] == 2 and st["totaux"]["taux_payes"] == 50
-    assert st["totaux"]["montant_total"] == 15700 and st["totaux"]["plus_gros"] == 9000 and st["totaux"]["montant_paye"] == 6000
+    # Seuls les paiements « Payé » sont comptés ; préparés et abandonnés le sont à part
+    assert st["totaux"]["nombre"] == 2 and st["totaux"]["operations"] == 4 and st["totaux"]["payes"] == 2
+    assert st["totaux"]["prepares"] == 1 and st["totaux"]["abandonnes"] == 1 and st["totaux"]["taux_payes"] == 50
+    assert st["totaux"]["montant_total"] == 6000 and st["totaux"]["plus_gros"] == 5000 and st["totaux"]["montant_paye"] == 6000
     orange = next(o for o in st["par_operateur"] if o["operateur"] == "Orange")
-    assert orange["nombre"] == 3 and orange["payes"] == 2 and orange["montant_paye"] == 6000
+    assert orange["nombre"] == 2 and orange["payes"] == 2 and orange["montant_paye"] == 6000 and orange["non_payes"] == 1
+    # Moov n'a que du « abandonné » : aucune carte
+    assert [o["operateur"] for o in st["par_operateur"]] == ["Orange"]
     # Classement sur les paiements PAYÉS : le montant 9000 (préparé) n'y figure pas
     assert [t["montant"] for t in st["top_montants"]] == [5000, 1000]
     assert st["top_beneficiaires"][0]["libelle"] == "Boutique B" and st["top_beneficiaires"][0]["montant"] == 5000
     assert [t["montant"] for t in calculer_statistiques(liste, "tous")["top_montants"]][0] == 9000
-    assert [j["jour"] for j in st["par_jour"]] == ["2026-10-11", "2026-10-12", "2026-10-13", "2026-10-14"]
+    assert [j["jour"] for j in st["par_jour"]] == ["2026-10-11", "2026-10-12"]
 
 
 def test_historique_filtre_par_periode_operateur_et_recherche(client, utilisateur):

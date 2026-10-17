@@ -189,12 +189,11 @@ export default function Historique() {
 
       {/* Chiffres clés */}
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3" data-testid="chiffres">
-        <Chiffre titre="Paiements" valeur={t.nombre ?? 0} detail={`${t.payes ?? 0} payés · ${t.prepares ?? 0} préparés · ${t.abandonnes ?? 0} abandonnés`} />
-        <Chiffre titre="Montant payé" valeur={fcfa(t.montant_paye ?? 0)} detail={`Taux de paiements payés : ${t.taux_payes ?? 0} %`} />
-        <Chiffre titre="Montant total préparé" valeur={fcfa(t.montant_total ?? 0)} />
-        <Chiffre titre="Montant moyen" valeur={fcfa(t.montant_moyen ?? 0)} />
+        <Chiffre titre="Paiements effectués" valeur={t.nombre ?? 0} detail={`Non comptés : ${t.prepares ?? 0} préparé${(t.prepares ?? 0) > 1 ? "s" : ""} · ${t.abandonnes ?? 0} abandonné${(t.abandonnes ?? 0) > 1 ? "s" : ""}`} />
+        <Chiffre titre="Montant payé" valeur={fcfa(t.montant_paye ?? 0)} detail={`Payés sur l'ensemble des codes : ${t.taux_payes ?? 0} %`} />
+                <Chiffre titre="Montant moyen" valeur={fcfa(t.montant_moyen ?? 0)} />
         <Chiffre titre="Plus gros paiement" valeur={fcfa(t.plus_gros ?? 0)} />
-        <Chiffre titre="Opérateurs utilisés" valeur={stats.par_operateur.length} />
+        <Chiffre titre="Opérateurs payés" valeur={stats.par_operateur.length} />
       </section>
 
       {/* Une carte par opérateur */}
@@ -211,8 +210,8 @@ export default function Historique() {
                 <div className="h-2 overflow-hidden rounded-full bg-gray-100">
                   <div className="h-full rounded-full" style={{ width: `${(o.nombre / maxOp) * 100}%`, background: couleurOperateur(o.operateur) }} />
                 </div>
-                <p className="text-xs text-gray-600">{o.payes} payé{o.payes > 1 ? "s" : ""} · {fcfa(o.montant_paye)} payés</p>
-                <p className="text-xs text-gray-500">Total préparé : {fcfa(o.montant)}</p>
+                <p className="text-xs text-gray-600">{fcfa(o.montant_paye)} payés</p>
+                {o.non_payes > 0 && <p className="text-xs text-gray-500">{o.non_payes} code{o.non_payes > 1 ? "s" : ""} non confirmé{o.non_payes > 1 ? "s" : ""} (non compté{o.non_payes > 1 ? "s" : ""})</p>}
               </div>
             ))}
           </div>
