@@ -68,10 +68,10 @@ export default function Layout() {
         </nav>
       </div>
 
-      {/* Bulle flottante « + » = Payer : au-dessus du menu, qu'elle peut recouvrir en partie */}
+      {/* Bulle flottante « + » = Payer : soulevée au-dessus du menu */}
       <NavLink to="/" end aria-label="Payer" title="Payer"
         className="no-print fixed right-4 z-50 grid h-14 w-14 place-items-center rounded-full bg-primary text-4xl font-light leading-none text-white shadow-2xl ring-4 ring-white transition hover:bg-primary-dark active:scale-95"
-        style={{ bottom: "calc(max(0.75rem, env(safe-area-inset-bottom)) + 2.75rem)" }}>
+        style={{ bottom: "calc(max(0.75rem, env(safe-area-inset-bottom)) + 4.25rem)" }}>
         +
       </NavLink>
     </div>
