@@ -4,7 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { apiClient, messageErreur } from "@/lib/api";
 import ChampMotDePasse from "@/components/ChampMotDePasse";
 import { etatAutorisation, geolocalisationDisponible, positionActuelle } from "@/lib/geoloc";
-import { abonnerPush, activerNotifications, declencherAlerteRenforcee, desabonnerPush, ecrirePreferences, etatNotifications, jouerSon, lirePreferences, pushDisponible, vibrer } from "@/lib/alertes";
+import { abonnerPush, activerNotifications, CHOIX_TONALITE, declencherAlerteRenforcee, desabonnerPush, ecrirePreferences, etatNotifications, jouerSon, lirePreferences, pushDisponible, vibrer } from "@/lib/alertes";
 
 // Profil : coordonnées (téléphone et e-mail servent à se connecter) et mot de passe.
 export default function Profil() {
@@ -138,6 +138,11 @@ export default function Profil() {
               onChange={(e) => regler({ volume: Number(e.target.value) })} />
             <button type="button" className="btn-outline btn-sm shrink-0" onClick={() => { jouerSon("medicament", { force: true }); vibrer(); }}>▶ Tester le son</button>
           </div>
+          <label className="label mt-3" htmlFor="tonalite">Tonalité du son</label>
+          <select id="tonalite" className="input" value={alertes.tonalite} disabled={!alertes.son}
+            onChange={(e) => { regler({ tonalite: e.target.value }); setTimeout(() => jouerSon("medicament", { force: true }), 0); }}>
+            {CHOIX_TONALITE.map(([valeur, libelle]) => <option key={valeur} value={valeur}>{libelle}</option>)}
+          </select>
           <p className="mt-1 text-xs text-gray-500">Chaque type de rappel a sa mélodie : médicament (double appel), paiement, anniversaire, support. Le son suit le volume « multimédia » du téléphone : montez-le avec les touches de volume si le son reste faible.</p>
         </div>
         <label className="flex items-center gap-3"><input type="checkbox" className="h-5 w-5" checked={alertes.vibration} onChange={(e) => regler({ vibration: e.target.checked })} />

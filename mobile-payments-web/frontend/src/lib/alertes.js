@@ -14,7 +14,10 @@ const CLE_PREFS = "mpw_alertes";
 const CLE_VUES = "mpw_alertes_vues";
 // renforcee : « alerte renforcée » pour les malvoyants (écran qui clignote en jaune et noir, grosses lettres, vibration longue répétée,
 // son répété) ; lecture : le rappel est aussi LU À VOIX HAUTE (synthèse vocale du téléphone, en français)
-const DEFAUT = { son: true, volume: 90, vibration: true, notifications: false, renforcee: false, lecture: true };
+// tonalite : hauteur du son (liste de choix) ; « aiguë » par défaut : les petits haut-parleurs de téléphone rendent bien mieux 2 000 à 4 000 Hz que les sons graves
+const TONALITES = { normale: 1, aigue: 2, tres_aigue: 3 };
+export const CHOIX_TONALITE = [["normale", "Normale"], ["aigue", "Aiguë (recommandée)"], ["tres_aigue", "Très aiguë"]];
+const DEFAUT = { son: true, volume: 90, tonalite: "aigue", vibration: true, notifications: false, renforcee: false, lecture: true };
 
 export function lirePreferences() {
   try { return { ...DEFAUT, ...(JSON.parse(localStorage.getItem(CLE_PREFS)) || {}) }; } catch { return { ...DEFAUT }; }
@@ -56,6 +59,7 @@ export function jouerSon(type = "support", { force = false, maximum = false } = 
     const c = audio();
     if (!c) return;
     const niveau = (volume / 100) ** 1.2;                 // 0 → 1
+    const hauteur = TONALITES[p.tonalite] || TONALITES.aigue;      // multiplicateur de fréquence
     const sortie = c.createGain();
     sortie.gain.value = 1.6;                              // rehausse générale, contenue par le limiteur ci-dessous
     const limiteur = c.createDynamicsCompressor();
@@ -63,7 +67,9 @@ export function jouerSon(type = "support", { force = false, maximum = false } = 
     sortie.connect(limiteur); limiteur.connect(c.destination);
     const t0 = c.currentTime + 0.02;
     (MELODIES[type] || MELODIES.support).forEach(([f, debut, duree]) => {
-      [[f, 0.45], [f * 2, 0.22]].forEach(([freq, part]) => {          // note + octave
+      const fondamentale = Math.min(f * hauteur, 4200);               // jamais au-delà de 4 200 Hz (désagréable et mal rendu)
+      // note + octave (l'octave est omise quand elle passerait au-dessus de 6 000 Hz)
+      [[fondamentale, 0.45], ...(fondamentale * 2 <= 6000 ? [[fondamentale * 2, 0.22]] : [])].forEach(([freq, part]) => {
         const osc = c.createOscillator();
         const env = c.createGain();
         osc.type = "square";
