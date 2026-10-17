@@ -70,6 +70,8 @@ async def ensure_indexes() -> None:
     await db.push_abonnements.create_index("endpoint", unique=True)
     await db.push_abonnements.create_index("user_id")
     await db.push_envoyes.create_index([("user_id", 1), ("cle", 1), ("jour", 1)], unique=True)
+    # Recherches de pharmacies de garde : un compteur par utilisateur et par jour (lot 43)
+    await db.garde_recherches.create_index([("user_id", 1), ("jour", 1)], unique=True)
     # Profils saisis à l'accueil de l'app Android : un profil par téléphone (lot 13)
     await db.profils_android.create_index("telephone", unique=True)
     # Échecs de connexion (anti force brute)

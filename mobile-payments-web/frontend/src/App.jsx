@@ -9,6 +9,7 @@ import Anniversaires from "@/pages/Anniversaires";
 import Bientot from "@/pages/Bientot";
 import Confidentialite from "@/pages/Confidentialite";
 import Connexion from "@/pages/Connexion";
+import Garde from "@/pages/Garde";
 import Historique from "@/pages/Historique";
 import Marchands from "@/pages/Marchands";
 import Medicaments from "@/pages/Medicaments";
@@ -44,8 +45,9 @@ export default function App() {
               <Route path="/abonnement" element={<Abonnement />} />
               <Route path="/ordonnances" element={<Ordonnances />} />
               <Route path="/transcription" element={<Voix />} />
+              <Route path="/pharmacies-de-garde" element={<Garde />} />
               {/* Services du menu latéral (lot 33) : pages d'attente, ouvertes une à une */}
-              {["pharmacies-de-garde", "breves", "presse"].map((c) => (
+              {["breves", "presse"].map((c) => (
                 <Route key={c} path={`/${c}`} element={<Bientot />} />
               ))}
               <Route path="/admin" element={<RouteProtegee admin><Admin /></RouteProtegee>} />
