@@ -105,6 +105,7 @@ async def utilisateur_facultatif(request: Request) -> Optional[dict]:
     user = await db.users.find_one({"id": donnees.get("sub")}, SANS_ID)
     if not user or user.get("desactive") or int(user.get("version_session", 0)) != int(donnees.get("v", 0)):
         return None
+    user["sid"] = donnees.get("sid")      # session du journal (utilisée par la déconnexion)
     return user
 
 

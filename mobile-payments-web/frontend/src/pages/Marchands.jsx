@@ -10,6 +10,16 @@ import { analyserQr } from "@/lib/qrOperateurs";
 // Annuaire des codes marchands + création d'un « QR marchand » imprimable.
 // Le QR contient l'adresse du site avec l'opérateur, le service et le code :
 // le client le scanne avec son téléphone, choisit le montant, puis compose.
+// Pendant que l'affiche est ouverte, l'impression est permise (classe lue par index.css et ProtectionCaptures)
+function AutoriserImpression({ actif }) {
+  useEffect(() => {
+    if (!actif) return undefined;
+    document.body.classList.add("impression-autorisee");
+    return () => document.body.classList.remove("impression-autorisee");
+  }, [actif]);
+  return null;
+}
+
 export default function Marchands() {
   const toast = useToast();
   const [operateurs, setOperateurs] = useState([]);
@@ -143,7 +153,8 @@ export default function Marchands() {
         </ul>
       )}
 
-      {/* Affiche imprimable du QR marchand */}
+      {/* Affiche imprimable du QR marchand (seule page autorisée à l'impression : le reste du site est blanc à l'impression) */}
+      <AutoriserImpression actif={!!affiche} />
       <Modal ouvert={!!affiche} titre="QR marchand" onFermer={() => setAffiche(null)} imprimable>
         {affiche && (
           <div className="space-y-4 text-center">

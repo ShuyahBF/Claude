@@ -17,12 +17,15 @@ export default function AdminComptes() {
   const [selection, setSelection] = useState(null);  // compte sélectionné (fond orange)
   const [aBloquer, setABloquer] = useState(null);    // compte dont le blocage/déblocage est à confirmer
   const [historique, setHistorique] = useState(null); // {compte, connexions}
+  const [aDeconnecter, setADeconnecter] = useState(null); // compte à déconnecter, ou "tous"
+  const [inactivite, setInactivite] = useState({ secondes: 180, choix: [60, 120, 180, 300, 600, 900, 1800] });
 
   // 1. Les comptes s'affichent d'abord ; 2. les abonnements arrivent ensuite (lecture chez SAWALI, section séparée)
   const charger = useCallback(() => {
     setAbonnes(null);
     apiClient.get("/admin/comptes", { params: { q: recherche, page } }).then(({ data }) => {
       setDonnees(data);
+      setInactivite({ secondes: data.inactivite_secondes, choix: data.choix_inactivite });
       if (data.comptes.length === 0) { setAbonnes({}); return; }
       apiClient.post("/admin/comptes/abonnements", { ids: data.comptes.map((c) => c.id) })
         .then((r) => setAbonnes(r.data.abonnes)).catch(() => setAbonnes(undefined));   // undefined = indisponible
@@ -39,6 +42,32 @@ export default function AdminComptes() {
       charger();
     } catch (err) { toast.erreur(messageErreur(err, "Action impossible")); }
   };
+
+  // Déconnexion forcée : l'utilisateur voit un compte à rebours de 30 s puis revient à la page de connexion
+  const confirmerDeconnexion = async () => {
+    const cible = aDeconnecter;
+    try {
+      if (cible === "tous") {
+        const { data } = await apiClient.post("/admin/comptes/deconnexion-generale");
+        toast.succes(`Déconnexion annoncée à ${data.annonces} compte(s) : fermeture dans ${data.delai_s} s`);
+      } else {
+        const { data } = await apiClient.put(`/admin/comptes/${cible.id}/deconnexion`);
+        toast.succes(`Déconnexion annoncée : fermeture dans ${data.delai_s} s`);
+      }
+      setADeconnecter(null);
+      charger();
+    } catch (err) { toast.erreur(messageErreur(err, "Action impossible")); }
+  };
+
+  // Durée d'inactivité avant fermeture de la session (liste déroulante)
+  const changerInactivite = async (secondes) => {
+    try {
+      const { data } = await apiClient.put("/admin/comptes/reglage-inactivite", { secondes: Number(secondes) });
+      setInactivite((i) => ({ ...i, secondes: data.inactivite_secondes }));
+      toast.succes("Durée d'inactivité enregistrée");
+    } catch (err) { toast.erreur(messageErreur(err, "Réglage impossible")); }
+  };
+  const libelleDuree = (s) => (s < 120 ? `${s} secondes` : `${s / 60} minutes`);
 
   const voirHistorique = async (c) => {
     try { const { data } = await apiClient.get(`/admin/comptes/${c.id}/connexions`); setHistorique({ compte: c, connexions: data.connexions }); }
@@ -63,6 +92,18 @@ export default function AdminComptes() {
     <div className="space-y-4">
       <OngletsAdmin />
       <h1 className="text-2xl font-bold">Comptes <span className="text-base font-normal text-gray-500">({donnees.total})</span></h1>
+      {/* Sécurité des sessions : fermeture après inactivité et déconnexion de tous les utilisateurs */}
+      <section className="card flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <label className="label" htmlFor="inactivite">Fermer la session après inactivité de</label>
+          <select id="inactivite" className="input" value={inactivite.secondes} onChange={(e) => changerInactivite(e.target.value)}>
+            {inactivite.choix.map((s) => <option key={s} value={s}>{libelleDuree(s)}</option>)}
+          </select>
+          <p className="mt-1 text-xs text-gray-500">Un compte à rebours de 30 s propose « Rester connecté » avant la fermeture.</p>
+        </div>
+        <button type="button" className="btn-outline" onClick={() => setADeconnecter("tous")}>Déconnecter tous les utilisateurs</button>
+      </section>
+
       <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); setPage(1); setRecherche(terme.trim()); }}>
         <input className="input min-w-0 flex-1" placeholder="Nom, téléphone, e-mail, adresse IP…" value={terme} maxLength={60} onChange={(e) => setTerme(e.target.value)} />
         <button type="submit" className="btn-primary">Chercher</button>
@@ -85,6 +126,9 @@ export default function AdminComptes() {
                 <td>{c.bloque ? <span className="badge bg-red-100 text-red-800">Bloqué</span> : <span className="badge bg-green-100 text-green-800">Actif</span>}</td>
                 <td className="whitespace-nowrap">
                   <button type="button" className="btn-outline btn-sm mr-1" onClick={(e) => { e.stopPropagation(); voirHistorique(c); }}>Sessions</button>
+                  {c.role !== "admin" && !c.bloque && (
+                    <button type="button" className="btn-outline btn-sm mr-1" onClick={(e) => { e.stopPropagation(); setADeconnecter(c); }}>Déconnecter</button>
+                  )}
                   {c.role !== "admin" && (
                     <button type="button" className="btn-outline btn-sm" onClick={(e) => { e.stopPropagation(); setABloquer(c); }}>{c.bloque ? "Débloquer" : "Bloquer"}</button>
                   )}
@@ -114,6 +158,21 @@ export default function AdminComptes() {
             <div className="flex gap-2">
               <button type="button" className="btn-primary flex-1" onClick={confirmerBlocage}>{aBloquer.bloque ? "Débloquer" : "Bloquer"}</button>
               <button type="button" className="btn-outline flex-1" onClick={() => setABloquer(null)}>Annuler</button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Confirmation de la déconnexion forcée */}
+      <Modal ouvert={!!aDeconnecter} titre={aDeconnecter === "tous" ? "Déconnecter tous les utilisateurs ?" : "Déconnecter ce compte ?"} onFermer={() => setADeconnecter(null)}>
+        {aDeconnecter && (
+          <div className="space-y-3">
+            {aDeconnecter !== "tous" && <p className="text-sm">{aDeconnecter.prenom} {aDeconnecter.nom} ({aDeconnecter.telephone})</p>}
+            <p className="text-sm text-gray-600">Un message d'attente avec un compte à rebours de 30 secondes s'affiche sur son écran, puis sa session est fermée
+              et il doit se reconnecter. Les administrateurs ne sont jamais déconnectés ainsi.</p>
+            <div className="flex gap-2">
+              <button type="button" className="btn-primary flex-1" onClick={confirmerDeconnexion}>Déconnecter</button>
+              <button type="button" className="btn-outline flex-1" onClick={() => setADeconnecter(null)}>Annuler</button>
             </div>
           </div>
         )}

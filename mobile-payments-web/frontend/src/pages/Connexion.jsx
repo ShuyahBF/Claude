@@ -5,7 +5,7 @@ import EtatServeur from "@/components/EtatServeur";
 import Patientez from "@/components/Patientez";
 import SupportSawali from "@/components/SupportSawali";
 import { useAuth } from "@/context/AuthContext";
-import { messageErreur } from "@/lib/api";
+import { messageErreur, MOTIF_DECONNEXION_KEY } from "@/lib/api";
 import { LIBELLE_VERSION } from "@/version";
 
 // Écrans de connexion et d'inscription (mode = "connexion" | "inscription").
@@ -22,6 +22,11 @@ export default function Connexion({ mode = "connexion" }) {
 
   const [form, setForm] = useState({ identifiant: "", nom: "", prenom: "", telephone: "", email: "", mot_de_passe: "" });
   const [erreur, setErreur] = useState("");
+  // Motif d'une fermeture de session (inactivité, administrateur…) : affiché jusqu'à la prochaine connexion réussie
+  // (lu sans être effacé tout de suite : la page peut être recréée pendant la vérification de la session)
+  const [motif] = useState(() => {
+    try { return sessionStorage.getItem(MOTIF_DECONNEXION_KEY); } catch { return null; }
+  });
   const [envoi, setEnvoi] = useState(false);
   const champ = (cle) => (e) => setForm({ ...form, [cle]: e.target.value });
 
@@ -38,6 +43,7 @@ export default function Connexion({ mode = "connexion" }) {
       } else {
         await connexion(form.identifiant, form.mot_de_passe);
       }
+      try { sessionStorage.removeItem(MOTIF_DECONNEXION_KEY); } catch { /* stockage indisponible */ }
       navigate(suite, { replace: true });
     } catch (err) {
       setErreur(messageErreur(err, inscrire ? "Inscription impossible" : "Connexion impossible"));
@@ -61,6 +67,7 @@ export default function Connexion({ mode = "connexion" }) {
           <p className="text-xs uppercase tracking-[0.25em] text-accent">Orange · Moov · Telecel</p>
         </div>
         <h1 className="text-xl font-bold">{inscrire ? "Créer mon compte" : "Connexion"}</h1>
+        {motif && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="status">🔒 {motif}</p>}
 
         {inscrire ? (
           <>

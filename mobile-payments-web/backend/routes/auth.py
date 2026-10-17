@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from pymongo.errors import DuplicateKeyError
 
 import journal_connexions
+import reglages_securite
 import signal_connexion
 from db import SANS_ID, db
 from securite import (create_access_token, effacer_cookie_session, effacer_echecs, get_current_user, hash_password,
@@ -69,9 +70,9 @@ def _signaler_connexion(request: Request, user: dict, page: str) -> None:
                               role=user.get("role"), page=page)
 
 
-def _session(response: Response, user: dict) -> dict:
-    """Pose le cookie de session et renvoie la fiche + le jeton (utile aux outils/tests)."""
-    jeton = create_access_token(user["id"], int(user.get("version_session", 0)))
+def _session(response: Response, user: dict, sid: Optional[str] = None) -> dict:
+    """Pose le cookie de session et renvoie la fiche + le jeton (utile aux outils/tests). `sid` = session du journal."""
+    jeton = create_access_token(user["id"], int(user.get("version_session", 0)), sid)
     poser_cookie_session(response, jeton)
     return {"user": utilisateur_public(user), "access_token": jeton}
 
@@ -93,8 +94,8 @@ async def inscription(data: Inscription, request: Request, response: Response):
                       status.HTTP_409_CONFLICT) from exc
     # L'inscription connecte aussitôt l'utilisateur : elle est signalée comme une connexion
     _signaler_connexion(request, user, "/inscription")
-    await journal_connexions.ouvrir(user["id"], signal_connexion.adresse_ip(request))
-    return _session(response, user)
+    sid = await journal_connexions.ouvrir(user["id"], signal_connexion.adresse_ip(request))
+    return _session(response, user, sid)
 
 
 @router.post("/connexion")
@@ -115,16 +116,41 @@ async def connexion(data: Connexion, request: Request, response: Response):
         raise _erreur("Identifiant ou mot de passe incorrect", status.HTTP_401_UNAUTHORIZED)
     await effacer_echecs(cle)
     _signaler_connexion(request, user, "/connexion")
-    await journal_connexions.ouvrir(user["id"], signal_connexion.adresse_ip(request))
-    return _session(response, user)
+    sid = await journal_connexions.ouvrir(user["id"], signal_connexion.adresse_ip(request))
+    return _session(response, user, sid)
 
 
 @router.post("/deconnexion")
 async def deconnexion(response: Response, user: Optional[dict] = Depends(utilisateur_facultatif)):
     if user:
-        await journal_connexions.fermer(user["id"])      # date de déconnexion pour l'administrateur
+        await journal_connexions.fermer(user["id"], user.get("sid"))      # date de déconnexion pour l'administrateur
     effacer_cookie_session(response)
     return {"ok": True}
+
+
+@router.post("/activite")
+async def activite(user: dict = Depends(get_current_user)):
+    """Le site signale que l'utilisateur est ACTIF (toucher, clic, frappe) : au plus toutes les 30 s.
+    Les lectures de fond du site (rappels, état de session…) ne passent jamais par ici."""
+    await journal_connexions.noter_activite(user.get("sid"))
+    return {"ok": True}
+
+
+@router.get("/inactivite")
+async def inactivite(_: dict = Depends(get_current_user)):
+    """Durée d'inactivité réglée par l'administrateur et durée du compte à rebours d'avertissement (secondes)."""
+    return {"secondes": await reglages_securite.secondes_inactivite(), "avertissement_secondes": reglages_securite.AVERTISSEMENT_SECONDES}
+
+
+@router.get("/session")
+async def etat_session(user: dict = Depends(get_current_user)):
+    """Lecture de fond (toutes les quelques secondes) : une déconnexion forcée est-elle annoncée par l'administrateur ?
+    Renvoie les secondes restantes avant la fermeture, sinon null. Ne compte pas comme une activité."""
+    a = user.get("deconnexion_a")
+    if not a:
+        return {"deconnexion_dans": None}
+    reste = (datetime.fromisoformat(a) - datetime.now(timezone.utc)).total_seconds()
+    return {"deconnexion_dans": max(0, int(reste + 0.999))}
 
 
 @router.get("/moi")
