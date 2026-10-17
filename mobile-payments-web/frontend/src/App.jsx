@@ -13,6 +13,7 @@ import Historique from "@/pages/Historique";
 import Marchands from "@/pages/Marchands";
 import Medicaments from "@/pages/Medicaments";
 import Meteo from "@/pages/Meteo";
+import Ordonnances from "@/pages/Ordonnances";
 import Payer from "@/pages/Payer";
 import Profil from "@/pages/Profil";
 import RappelsPaiements from "@/pages/RappelsPaiements";
@@ -40,8 +41,9 @@ export default function App() {
               <Route path="/medicaments" element={<Medicaments />} />
               <Route path="/meteo" element={<Meteo />} />
               <Route path="/abonnement" element={<Abonnement />} />
+              <Route path="/ordonnances" element={<Ordonnances />} />
               {/* Services du menu latéral (lot 33) : pages d'attente, ouvertes une à une */}
-              {["pharmacies-de-garde", "ordonnances", "breves", "presse"].map((c) => (
+              {["pharmacies-de-garde", "breves", "presse"].map((c) => (
                 <Route key={c} path={`/${c}`} element={<Bientot />} />
               ))}
               <Route path="/admin" element={<RouteProtegee admin><Admin /></RouteProtegee>} />

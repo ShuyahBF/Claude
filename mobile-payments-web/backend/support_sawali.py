@@ -71,7 +71,14 @@ async def appeler_sawali(chemin: str, corps: Dict[str, Any], service: str = "Sup
     # 403 chez SAWALI : la plateforme n'est pas (encore) autorisée à utiliser le support
     if r.status_code == 403:
         raise HTTPException(503, f"{service} pas encore activé pour cette plateforme")
-    if r.status_code in (404, 409, 422):
+    if r.status_code == 402:
+        # Abonnement requis : SAWALI renvoie {code, message, formule{nom, prix, duree_jours}} transmis tel quel à l'écran
+        try:
+            detail = r.json().get("detail")
+        except ValueError:
+            detail = None
+        raise HTTPException(402, detail if detail else "Abonnement requis")
+    if r.status_code in (404, 409, 413, 422, 429):
         # Refus « métier » de SAWALI (code de parrainage inconnu, déjà utilisé…) : son message est transmis tel quel
         try:
             detail = r.json().get("detail")
