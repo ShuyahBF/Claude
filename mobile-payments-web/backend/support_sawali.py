@@ -78,7 +78,7 @@ async def appeler_sawali(chemin: str, corps: Dict[str, Any], service: str = "Sup
         except ValueError:
             detail = None
         raise HTTPException(402, detail if detail else "Abonnement requis")
-    if r.status_code in (404, 409, 413, 422, 429):
+    if r.status_code in (404, 409, 413, 422, 429, 503):
         # Refus « métier » de SAWALI (code de parrainage inconnu, déjà utilisé…) : son message est transmis tel quel
         try:
             detail = r.json().get("detail")
