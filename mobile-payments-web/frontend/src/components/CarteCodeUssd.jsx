@@ -1,3 +1,4 @@
+import LogoMode from "@/components/LogoMode";
 import QrCode from "@/components/QrCode";
 import { useToast } from "@/components/Toast";
 import { couleurOperateur, fcfa } from "@/lib/api";
@@ -24,6 +25,7 @@ export default function CarteCodeUssd({ paiement, onStatut }) {
     <div className="space-y-5">
       {/* Récapitulatif */}
       <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-1.5 py-1 text-xs font-semibold text-gray-700"><LogoMode mode="clavier" taille={24} className="ring-0" /> Clavier numéroteur</span>
         <span className="badge text-white" style={{ background: couleurOperateur(paiement.operateur) }}>{paiement.operateur}</span>
         <span className="font-semibold">{paiement.service_nom}</span>
         {paiement.montant ? <span className="ml-auto text-lg font-bold text-accent">{fcfa(paiement.montant)}</span> : null}
