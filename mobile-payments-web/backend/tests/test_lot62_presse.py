@@ -220,3 +220,26 @@ def test_categories_creation_suppression(client, admin, sans_semis):
 def test_les_utilisateurs_ne_gerent_pas_les_categories(client, utilisateur, sans_semis):
     _, h, _ = utilisateur
     assert client.post("/api/admin/presse/categories", headers=h, json={"nom": "Pirate", "icone": "☠"}).status_code in (401, 403)
+
+
+def test_image_manquante_ou_miniature_completee_par_la_page_de_l_article():
+    """Lot 67 : un flux sans image (Burkina24) ou avec une miniature (Lefaso.net) reçoit l'image de partage de la page de l'article."""
+    assert presse.image_insuffisante("") and presse.image_insuffisante("https://x.test/cache-vignettes/L150xH101/a.jpg?1")
+    assert not presse.image_insuffisante("https://x.test/cache-vignettes/L480xH320/a.jpg") and not presse.image_insuffisante("https://x.test/photo.jpg")
+    flux = """<?xml version="1.0"?><rss version="2.0"><channel><title>T</title>
+<item><title>Article sans image dans le flux</title><link>https://media.test/article/1</link><description>Extrait assez long pour le test.</description></item>
+</channel></rss>"""
+    page = '<html><head><meta property="og:image" content="https://img.media.test/une.jpg"></head><body></body></html>'
+
+    def site(q: httpx.Request) -> httpx.Response:
+        if q.url.path == "/feed":
+            return httpx.Response(200, text=flux, headers={"content-type": "application/rss+xml"})
+        return httpx.Response(200, text=page, headers={"content-type": "text/html"})
+
+    ancien = presse._transport
+    presse._transport = httpx.MockTransport(site)
+    try:
+        arts = asyncio.run(presse.collecter({"url": "https://media.test/feed", "nom": "T"}))
+    finally:
+        presse._transport = ancien
+    assert arts[0]["image"] == "https://img.media.test/une.jpg"
