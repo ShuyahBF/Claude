@@ -39,7 +39,7 @@ def utilisateur(client):
     _compteur["n"] += 1
     n = _compteur["n"]
     r = client.post("/api/auth/inscription", json={
-        "nom": f"Ouédraogo{n}", "prenom": "Awa", "telephone": f"70 00 {n:02d} {n:02d}",
+        "nom": f"Ouédraogo{n}", "prenom": "Awa", "telephone": f"70 {n // 100:02d} {n % 100:02d} 00",
         "email": f"awa{n}@test.bf", "mot_de_passe": "motdepasse-123"})
     assert r.status_code == 201, r.text
     client.cookies.clear()  # les tests s'authentifient par jeton « Bearer »
