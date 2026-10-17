@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import CarteCodeUssd from "@/components/CarteCodeUssd";
 import Chargement from "@/components/Chargement";
 import Publicites from "@/components/Publicites";
+import WidgetAujourdhui from "@/components/WidgetAujourdhui";
 import QrOperateur from "@/components/QrOperateur";
 import ScannerQr from "@/components/ScannerQr";
 import { useToast } from "@/components/Toast";
@@ -170,7 +171,9 @@ export default function Payer() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      {/* Annonces de la régie SAWALI (carrousel), en haut de l'écran */}
+      {/* Widget « Aujourd'hui » : météo, prochaine prise, paiements et anniversaires proches (lot 41) */}
+      <WidgetAujourdhui />
+      {/* Annonces de la régie SAWALI (carrousel) */}
       <Publicites />
       {/* Fil d'étapes cliquable */}
       <div className="flex flex-wrap items-center gap-2 text-sm">

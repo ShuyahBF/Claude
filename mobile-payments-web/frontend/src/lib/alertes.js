@@ -100,6 +100,41 @@ export async function notifier({ titre, texte, lien = "/", cle }) {
   } catch { /* sans importance */ }
 }
 
+// ---- Notifications push (application fermée) ---------------------------------
+// L'appareil s'abonne auprès du service de notification de son navigateur ; le serveur de Paiement Mobile reçoit l'adresse et les clés
+// de chiffrement (/api/push/abonner) et envoie lui-même les alertes (prise à l'heure, paiement à régler, anniversaire).
+function cleEnOctets(base64url) {
+  const b = (base64url + "=".repeat((4 - (base64url.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/");
+  return Uint8Array.from(atob(b), (c) => c.charCodeAt(0));
+}
+export function pushDisponible() { return "serviceWorker" in navigator && "PushManager" in window && notificationsDisponibles(); }
+
+/** Abonne cet appareil au push (autorisation déjà accordée). Renvoie true si le serveur a enregistré l'appareil. Idempotent. */
+export async function abonnerPush(apiClient) {
+  try {
+    if (!pushDisponible() || etatNotifications() !== "granted") return false;
+    const reg = await enregistrement();
+    if (!reg) return false;
+    const { data } = await apiClient.get("/push/cle");
+    let ab = await reg.pushManager.getSubscription();
+    if (!ab) ab = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: cleEnOctets(data.cle_publique) });
+    const j = ab.toJSON();
+    await apiClient.post("/push/abonner", { endpoint: j.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth } });
+    return true;
+  } catch { return false; }
+}
+
+/** Désabonne cet appareil (côté navigateur et côté serveur). */
+export async function desabonnerPush(apiClient) {
+  try {
+    const reg = await enregistrement();
+    const ab = reg && (await reg.pushManager.getSubscription());
+    if (!ab) return;
+    await apiClient.post("/push/desabonner", { endpoint: ab.endpoint }).catch(() => {});
+    await ab.unsubscribe();
+  } catch { /* sans importance */ }
+}
+
 // ---- Événements du serveur ---------------------------------------------------
 function vues() {
   const jour = new Date().toISOString().slice(0, 10);

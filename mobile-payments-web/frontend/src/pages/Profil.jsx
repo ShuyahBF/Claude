@@ -3,7 +3,7 @@ import { useToast } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
 import { apiClient, messageErreur } from "@/lib/api";
 import ChampMotDePasse from "@/components/ChampMotDePasse";
-import { activerNotifications, ecrirePreferences, etatNotifications, jouerSon, lirePreferences, vibrer } from "@/lib/alertes";
+import { abonnerPush, activerNotifications, desabonnerPush, ecrirePreferences, etatNotifications, jouerSon, lirePreferences, pushDisponible, vibrer } from "@/lib/alertes";
 
 // Profil : coordonnées (téléphone et e-mail servent à se connecter) et mot de passe.
 export default function Profil() {
@@ -14,13 +14,22 @@ export default function Profil() {
   // Sons et notifications (lot 40) : réglages gardés dans le navigateur de cet appareil
   const [alertes, setAlertes] = useState(lirePreferences);
   const [etatNotif, setEtatNotif] = useState(etatNotifications);
+  const tester = async () => {
+    jouerSon("medicament", { force: true }); vibrer();
+    try { await apiClient.post("/push/test"); toast.succes("Notification d'essai envoyée par le serveur : elle doit apparaître dans quelques secondes."); }
+    catch (err) { toast.erreur(messageErreur(err, "Envoi d'essai impossible")); }
+  };
   const regler = (maj) => { const p = { ...alertes, ...maj }; setAlertes(p); ecrirePreferences(p); };
   const basculerNotifications = async (voulu) => {
-    if (!voulu) { regler({ notifications: false }); return; }
+    if (!voulu) { await desabonnerPush(apiClient); regler({ notifications: false }); return; }
     const etat = await activerNotifications();          // demande l'autorisation au navigateur
     setEtatNotif(etat);
     regler({ notifications: etat === "granted" });
-    if (etat === "granted") toast.succes("Notifications activées");
+    if (etat === "granted") {
+      // Abonnement push : le serveur pourra alerter même application fermée
+      const abonne = await abonnerPush(apiClient);
+      toast.succes(abonne ? "Notifications activées, même application fermée" : "Notifications activées (application ouverte seulement)");
+    }
     else if (etat === "denied") toast.erreur("Notifications bloquées : autorisez-les dans les réglages du navigateur pour ce site.");
     else if (etat === "indisponible") toast.erreur("Les notifications ne sont pas disponibles sur cet appareil.");
   };
@@ -79,7 +88,7 @@ export default function Profil() {
           <div className="flex items-center gap-3">
             <input id="volume" type="range" min={0} max={100} step={5} className="w-full" value={alertes.volume} disabled={!alertes.son}
               onChange={(e) => regler({ volume: Number(e.target.value) })} />
-            <button type="button" className="btn-outline btn-sm shrink-0" onClick={() => { jouerSon("medicament", { force: true }); vibrer(); }}>▶ Tester</button>
+            <button type="button" className="btn-outline btn-sm shrink-0" onClick={() => { jouerSon("medicament", { force: true }); vibrer(); }}>▶ Tester le son</button>
           </div>
           <p className="mt-1 text-xs text-gray-500">Chaque type de rappel a sa mélodie : médicament (double appel), paiement, anniversaire, support.</p>
         </div>
@@ -88,16 +97,17 @@ export default function Profil() {
         <div>
           <label className="flex items-center gap-3"><input type="checkbox" className="h-5 w-5" checked={alertes.notifications && etatNotif === "granted"} disabled={etatNotif === "indisponible"}
             onChange={(e) => basculerNotifications(e.target.checked)} /><span className="font-semibold">Afficher une notification</span></label>
+          {alertes.notifications && etatNotif === "granted" && <button type="button" className="btn-outline btn-sm mt-2" onClick={tester}>🔔 Tester une notification (envoyée par le serveur)</button>}
           <p className="mt-1 text-xs text-gray-500">
-            {etatNotif === "granted" && "Autorisées par ce navigateur."}
+            {etatNotif === "granted" && (pushDisponible() ? "Autorisées : le serveur vous alerte même application fermée." : "Autorisées (application ouverte seulement : ce navigateur ne gère pas le push).")}
             {etatNotif === "denied" && "Bloquées dans le navigateur : autorisez-les dans les réglages du site pour pouvoir les activer."}
             {etatNotif === "default" && "Le navigateur vous demandera l'autorisation à l'activation."}
             {etatNotif === "indisponible" && "Non disponibles sur cet appareil."}
           </p>
         </div>
         <p className="rounded-lg bg-sky-50 p-3 text-xs text-sky-900">
-          Les alertes sonnent tant que Paiement Mobile est ouvert (y compris en arrière-plan sur le téléphone). Application fermée, aucune alerte n'est envoyée pour le moment.
-          Ces réglages sont propres à cet appareil.
+          Avec les notifications activées, le serveur vous alerte même application fermée (prise de médicament à l'heure, paiement à régler, anniversaire). Le son choisi ici
+          accompagne les alertes affichées dans l'application ouverte. Sur iPhone, ajoutez d'abord Paiement Mobile à l'écran d'accueil. Ces réglages sont propres à cet appareil.
         </p>
       </section>
 
