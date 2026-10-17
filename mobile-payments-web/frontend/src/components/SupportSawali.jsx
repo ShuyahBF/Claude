@@ -77,6 +77,7 @@ const Casque = ({ taille = 20 }) => (
 export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
   const [actif, setActif] = useState(false);
   const [ouvert, setOuvert] = useState(false);
+  const [nouveau, setNouveau] = useState(false);   // réponse arrivée fenêtre déployée : la fenêtre clignote jusqu'au prochain geste
   const [reduit, setReduit] = useState(false);   // fenêtre rabattue : seule une petite barre reste visible
   const [messages, setMessages] = useState([]);
   const [requete, setRequete] = useState(null);
@@ -103,7 +104,7 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
       const r = await apiClient.post("/support-sawali/fil", { visiteur, depuis: dernierRef.current || null, marquer_lu: true }, EN_ARRIERE_PLAN);
       const nouveaux = r.data?.messages || [];
       if (nouveaux.length) {
-        if (dernierRef.current && nouveaux.some((m) => m.de === "support")) jouerSon();
+        if (dernierRef.current && nouveaux.some((m) => m.de === "support")) { jouerSon(); setNouveau(true); }
         dernierRef.current = nouveaux[nouveaux.length - 1].le;
         setMessages((avant) => {
           const connus = new Set(avant.map((m) => m.id));
@@ -138,6 +139,12 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
     const minuterie = setInterval(action, ouvert ? RAFRAICHIR_OUVERT_MS : RAFRAICHIR_FERME_MS);
     return () => clearInterval(minuterie);
   }, [actif, ouvert, reduit, lireFil, verifierNonLus]);
+
+  useEffect(() => {
+    if (!nouveau) return undefined;
+    const t = setTimeout(() => setNouveau(false), 15000);   // au plus 15 s de clignotement
+    return () => clearTimeout(t);
+  }, [nouveau]);
 
   useEffect(() => { if (filRef.current) filRef.current.scrollTop = filRef.current.scrollHeight; }, [messages, ouvert, reduit]);
 
@@ -204,7 +211,8 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
 
       {/* Fenêtre déployée : étroite (≈ 17 rem au plus) pour ne pas cacher l'écran derrière */}
       {ouvert && !reduit && createPortal(
-        <div className="no-print fixed bottom-2 right-2 z-[80] flex h-[60dvh] max-h-[440px] w-[min(17rem,calc(100vw-1rem))] flex-col overflow-hidden rounded-2xl bg-white text-ink shadow-2xl ring-1 ring-gray-200 sm:right-4"
+        <div onPointerDown={() => setNouveau(false)} onFocusCapture={() => setNouveau(false)}
+          className={`no-print fixed bottom-2 right-2 z-[80] flex h-[60dvh] max-h-[440px] w-[min(17rem,calc(100vw-1rem))] flex-col overflow-hidden rounded-2xl bg-white text-ink shadow-2xl ring-1 ring-gray-200 sm:right-4 ${nouveau ? "clignote" : ""}`}
           role="dialog" aria-label="Support SAWALI">
           <div className="flex items-center gap-2 bg-nuit-900 px-4 py-3 text-white">
             <div className="min-w-0 flex-1">
