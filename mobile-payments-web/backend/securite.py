@@ -9,6 +9,7 @@ serveur), jamais depuis un paramètre envoyé par le navigateur.
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -16,6 +17,8 @@ import jwt
 from fastapi import Depends, HTTPException, Request, Response, status
 from passlib.context import CryptContext
 
+import journal_connexions
+import reglages_securite
 from config import get_settings
 from db import SANS_ID, db
 
@@ -27,6 +30,11 @@ ENTETE_CSRF = "x-paiement-mobile"
 METHODES_ECRITURE = {"POST", "PUT", "PATCH", "DELETE"}
 
 
+async def _rien():
+    """Valeur vide attendue par asyncio.gather quand le jeton n'a pas de « sid » (ancien jeton)."""
+    return None
+
+
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
@@ -35,11 +43,15 @@ def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(password, password_hash)
 
 
-def create_access_token(user_id: str, version: int = 0) -> str:
-    """Jeton signé ; `v` = version de session (l'augmenter déconnecte tous les appareils)."""
+def create_access_token(user_id: str, version: int = 0, sid: Optional[str] = None) -> str:
+    """Jeton signé ; `v` = version de session (l'augmenter déconnecte tous les appareils) ;
+    `sid` = identifiant de CETTE session dans le journal (fermeture après inactivité, déconnexion forcée)."""
     s = get_settings()
     expire = datetime.now(timezone.utc) + timedelta(minutes=s.jwt_expires_minutes)
-    return jwt.encode({"sub": user_id, "v": version, "exp": expire}, s.jwt_secret, algorithm=s.jwt_algorithm)
+    charge = {"sub": user_id, "v": version, "exp": expire}
+    if sid:
+        charge["sid"] = sid
+    return jwt.encode(charge, s.jwt_secret, algorithm=s.jwt_algorithm)
 
 
 def decode_access_token(token: str) -> Optional[dict]:
@@ -94,9 +106,23 @@ async def get_current_user(request: Request) -> dict:
     donnees = decode_access_token(jeton)
     if not donnees:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session expirée : reconnectez-vous")
-    user = await db.users.find_one({"id": donnees.get("sub")}, SANS_ID)
+    sid = donnees.get("sid")
+    # Compte, ligne de session et réglage lus EN MÊME TEMPS (règle 7)
+    user, session, secondes = await asyncio.gather(
+        db.users.find_one({"id": donnees.get("sub")}, SANS_ID),
+        db.journal_connexions.find_one({"id": sid}, SANS_ID) if sid else _rien(),
+        reglages_securite.secondes_inactivite())
     if not user or user.get("desactive") or int(user.get("version_session", 0)) != int(donnees.get("v", 0)):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session expirée : reconnectez-vous")
+    # Déconnexion forcée par l'administrateur arrivée à échéance : toutes les sessions du compte sont fermées
+    if user.get("deconnexion_a") and user["deconnexion_a"] <= datetime.now(timezone.utc).isoformat():
+        await journal_connexions.fermer_toutes(user["id"], "admin")
+        await db.users.update_one({"id": user["id"]}, {"$inc": {"version_session": 1}})   # ferme aussi les anciens jetons sans « sid »
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, journal_connexions.MESSAGE_ADMIN)
+    refus = await journal_connexions.verifier(session, secondes)
+    if refus:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, refus)
+    user["sid"] = sid      # non enregistré en base : sert à noter l'activité de CETTE session
     return user
 
 

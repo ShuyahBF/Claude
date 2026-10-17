@@ -14,6 +14,27 @@ export const apiClient = axios.create({
   headers: { "X-Paiement-Mobile": "1" },
 });
 
+// Motif de la dernière fermeture de session, affiché sur la page de connexion
+export const MOTIF_DECONNEXION_KEY = "mpw_motif_deconnexion";
+
+// Session fermée par le serveur (inactivité, déconnexion forcée par l'administrateur, session expirée) : le site revient à la
+// page de connexion avec le motif. Les écrans de connexion, d'inscription et la vérification d'ouverture du site sont exclus.
+apiClient.interceptors.response.use(
+  (reponse) => reponse,
+  (erreur) => {
+    const detail = erreur?.response?.data?.detail;
+    const url = erreur?.config?.url || "";
+    const fermee = erreur?.response?.status === 401 && typeof detail === "string" && (detail.startsWith("Session") || detail.startsWith("Votre session"));
+    if (fermee) {
+      if (!/^\/auth\/(connexion|inscription|moi)/.test(url)) {
+        try { sessionStorage.setItem(MOTIF_DECONNEXION_KEY, detail); } catch { /* stockage indisponible */ }
+        if (window.location.pathname !== "/connexion" && window.location.pathname !== "/inscription") window.location.assign("/connexion");
+      }
+    }
+    return Promise.reject(erreur);
+  },
+);
+
 // Messages génériques du framework (en anglais) : jamais affichés tels quels
 const MESSAGES_GENERIQUES = new Set(["not found", "method not allowed", "internal server error", "unauthorized",
   "forbidden", "unprocessable entity", "bad request"]);

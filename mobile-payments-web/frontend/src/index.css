@@ -68,3 +68,23 @@ tr[data-selected="true"] [class*="text-gray"]:not(.badge):not(button) { color: #
 }
 .clignote { animation: clignote 1s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .clignote { animation: none; box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.7); } }
+
+/* ===================================================================
+   Lot 46 — protection contre les captures d'écran et les regards indiscrets
+   (voir components/ProtectionCaptures.jsx) :
+   - .masque-capture : tout le site est flouté (fenêtre qui perd le focus, page masquée, Impr. écran) ;
+   - impression : page blanche ;
+   - photos, vidéos et QR codes : pas de sélection, de glisser ni de menu « Enregistrer » à l'appui long.
+   =================================================================== */
+html.masque-capture #root {
+  filter: blur(28px);
+  transition: filter 0.05s linear;
+}
+@media print {
+  body:not(.impression-autorisee) { display: none !important; }
+}
+img, video, picture, canvas {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}

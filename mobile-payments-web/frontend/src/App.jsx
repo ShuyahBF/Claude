@@ -1,5 +1,8 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import DeconnexionAdmin from "@/components/DeconnexionAdmin";
+import DeconnexionInactivite from "@/components/DeconnexionInactivite";
 import Layout from "@/components/Layout";
+import ProtectionCaptures from "@/components/ProtectionCaptures";
 import RouteProtegee from "@/components/RouteProtegee";
 import { ToastProvider } from "@/components/Toast";
 import { AuthProvider } from "@/context/AuthContext";
@@ -29,6 +32,10 @@ export default function App() {
     <AuthProvider>
       <ToastProvider>
         <BrowserRouter>
+          {/* Sécurité (lot 46) : écran flouté sans focus, fermeture après inactivité, déconnexion forcée par l'administrateur */}
+          <ProtectionCaptures />
+          <DeconnexionInactivite />
+          <DeconnexionAdmin />
           <Routes>
             <Route path="/connexion" element={<Connexion />} />
             <Route path="/inscription" element={<Connexion mode="inscription" />} />
