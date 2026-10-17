@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import Chargement from "@/components/Chargement";
 import Modal from "@/components/Modal";
 import { useToast } from "@/components/Toast";
@@ -13,6 +14,7 @@ const STATUT = { en_cours: ["En cours", "bg-green-100 text-green-800"], a_venir:
 
 export default function Medicaments() {
   const toast = useToast();
+  const location = useLocation();
   const [donnees, setDonnees] = useState(null);
   const [edition, setEdition] = useState(null);
   const [envoi, setEnvoi] = useState(false);
@@ -21,6 +23,11 @@ export default function Medicaments() {
     try { setDonnees((await apiClient.get("/rappels-medicaments")).data); }
     catch (err) { toast.erreur(messageErreur(err, "Liste indisponible")); setDonnees((d) => d || { rappels: [], aujourdhui: [], total: 0, maximum: 20, a_prendre: 0 }); }
   }, [toast]);
+  // Arrivée depuis l'OCR d'une ordonnance (lot 39) : le formulaire s'ouvre pré-rempli (nom, dose / posologie)
+  useEffect(() => {
+    const p = location.state?.prefill;
+    if (p) setEdition({ ...VIDE(), medicament: p.medicament || "", dose: p.dose || "" });
+  }, [location.state]);
   useEffect(() => { charger(); const t = setInterval(charger, 60000); return () => clearInterval(t); }, [charger]);   // retards remis à jour chaque minute
 
   const cocher = async (p) => {

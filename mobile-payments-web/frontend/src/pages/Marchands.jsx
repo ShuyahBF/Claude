@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
+import BoutonOcr from "@/components/BoutonOcr";
 import Chargement from "@/components/Chargement";
 import Modal from "@/components/Modal";
 import QrCode from "@/components/QrCode";
 import { useToast } from "@/components/Toast";
 import { apiClient, couleurOperateur, messageErreur } from "@/lib/api";
+import { analyserQr } from "@/lib/qrOperateurs";
 
 // Annuaire des codes marchands + création d'un « QR marchand » imprimable.
 // Le QR contient l'adresse du site avec l'opérateur, le service et le code :
@@ -16,6 +18,7 @@ export default function Marchands() {
   const [filtre, setFiltre] = useState({ operateur: "", q: "" });
   const [form, setForm] = useState({ operateur: "", code: "", libelle: "" });
   const [affiche, setAffiche] = useState(null); // marchand dont on affiche le QR
+  const [lecture, setLecture] = useState(null);  // plaque photographiée : { identifiantQr, incertains, texte } (lot 39)
 
   useEffect(() => {
     apiClient.get("/operateurs").then(({ data }) => {
@@ -35,10 +38,30 @@ export default function Marchands() {
     return () => clearTimeout(minuterie);
   }, [filtre]);
 
+  // Photo d'une plaque (lot 39) : le QR est décodé dans le navigateur, le texte est lu par l'IA (abonnés) ;
+  // le formulaire est PRÉ-REMPLI, jamais enregistré tout seul : l'utilisateur vérifie, surtout le code écrit à la main.
+  const surPlaque = async (d, fichier) => {
+    let identifiantQr = null;
+    try {
+      const { Html5Qrcode } = await import("html5-qrcode");
+      const texte = await new Html5Qrcode("zone-qr-cachee").scanFile(fichier, false);
+      const qr = analyserQr(texte);
+      if (qr?.type === "operateur") { identifiantQr = qr.identifiant; d = { ...d, operateur: d.operateur || qr.operateur }; }
+    } catch { /* pas de QR lisible sur la photo : sans importance */ }
+    setForm((f) => ({ operateur: operateurs.includes(d.operateur) ? d.operateur : f.operateur, code: d.code || "", libelle: d.nom || "" }));
+    setLecture({ identifiantQr: identifiantQr || null, incertains: d.incertains || [], texte: d.texte, aucun: !d.code && !d.nom });
+    toast.succes(d.code ? "Plaque lue : vérifiez le code avant d'enregistrer" : "Plaque lue : complétez ce qui manque");
+  };
+
   const ajouter = async (e) => {
     e.preventDefault();
     try {
       const { data } = await apiClient.post("/marchands", form);
+      // QR de plaque lu sur la photo : on mémorise « identifiant du QR → code marchand » (lot 38)
+      if (lecture?.identifiantQr) {
+        apiClient.post("/qr-operateurs", { operateur: form.operateur, identifiant: lecture.identifiantQr, code: form.code, libelle: form.libelle }).catch(() => {});
+      }
+      setLecture(null);
       setMarchands((m) => [data, ...(m || []).filter((x) => !(x.code === data.code && x.operateur === data.operateur))]);
       setForm({ ...form, code: "", libelle: "" });
       toast.succes("Marchand enregistré");
@@ -60,6 +83,7 @@ export default function Marchands() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <h1 className="no-print text-2xl font-bold">Marchands</h1>
+      <div id="zone-qr-cachee" className="hidden" />
 
       {/* Ajout d'un marchand (ou de son propre code marchand) */}
       <form onSubmit={ajouter} className="no-print card grid gap-3 sm:grid-cols-[1fr_1fr_1.4fr_auto] sm:items-end">
@@ -80,6 +104,17 @@ export default function Marchands() {
             onChange={(e) => setForm({ ...form, libelle: e.target.value })} />
         </div>
         <button type="submit" className="btn-primary">Ajouter</button>
+        {/* Photo de la plaque : QR + texte imprimé ou écrit à la main (réservé aux abonnés) */}
+        <div className="sm:col-span-4">
+          <BoutonOcr type="plaque_marchand" libelle="📷 Lire une plaque (photo : QR + texte)" onResultat={surPlaque} />
+          {lecture && (
+            <p className="mt-2 rounded-lg bg-sky-50 p-3 text-xs text-sky-900" role="status">
+              {lecture.aucun ? "Rien de lisible : refaites la photo de face, bien nette." : "Lecture automatique : comparez avec la plaque avant d'enregistrer."}
+              {lecture.incertains.length > 0 && ` Champs incertains : ${lecture.incertains.join(", ")}.`}
+              {lecture.identifiantQr && " QR de plaque reconnu : le lien sera mémorisé."}
+            </p>
+          )}
+        </div>
       </form>
 
       {/* Recherche */}
