@@ -77,6 +77,7 @@ const Casque = ({ taille = 20 }) => (
 export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
   const [actif, setActif] = useState(false);
   const [ouvert, setOuvert] = useState(false);
+  const [reduit, setReduit] = useState(false);   // fenêtre rabattue : seule une petite barre reste visible
   const [messages, setMessages] = useState([]);
   const [requete, setRequete] = useState(null);
   const [nonLus, setNonLus] = useState(0);
@@ -130,13 +131,15 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
 
   useEffect(() => {
     if (!actif) return undefined;
-    const action = ouvert ? lireFil : verifierNonLus;
+    const deploye = ouvert && !reduit;
+    const action = deploye ? lireFil : verifierNonLus;
     action();
+    // Fenêtre déployée ou rabattue : relecture toutes les 5 s (le clignotement doit être rapide)
     const minuterie = setInterval(action, ouvert ? RAFRAICHIR_OUVERT_MS : RAFRAICHIR_FERME_MS);
     return () => clearInterval(minuterie);
-  }, [actif, ouvert, lireFil, verifierNonLus]);
+  }, [actif, ouvert, reduit, lireFil, verifierNonLus]);
 
-  useEffect(() => { if (filRef.current) filRef.current.scrollTop = filRef.current.scrollHeight; }, [messages, ouvert]);
+  useEffect(() => { if (filRef.current) filRef.current.scrollTop = filRef.current.scrollHeight; }, [messages, ouvert, reduit]);
 
   // Envoi d'un message
   const envoyer = async (e) => {
@@ -155,6 +158,13 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
     } finally { setEnvoi(false); }
   };
 
+  // Clic sur l'icône : fermée → ouvre ; rabattue → déploie ; déployée → ferme
+  const basculer = () => {
+    if (!ouvert) { setOuvert(true); setReduit(false); }
+    else if (reduit) setReduit(false);
+    else setOuvert(false);
+  };
+
   if (!actif) return null;
   const pastille = nonLus > 0 && (
     <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">{nonLus}</span>
@@ -164,15 +174,15 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
     <>
       {variante === "menu" ? (
         // Onglet du menu flottant (même gabarit que les autres onglets)
-        <button type="button" onClick={() => setOuvert((v) => !v)} aria-label="Assistance — écrire au support SAWALI"
-          className={`relative ${classeMenu}`}>
+        <button type="button" onClick={basculer} aria-label="Assistance — écrire au support SAWALI"
+          className={`relative ${classeMenu} ${nonLus > 0 ? "clignote" : ""}`}>
           <span className="text-lg leading-none"><Casque /></span>Support{pastille}
         </button>
       ) : (
         // Petite icône discrète en bas à droite de la carte de connexion
-        <button type="button" onClick={() => setOuvert((v) => !v)} title="Assistance — écrire au support SAWALI"
+        <button type="button" onClick={basculer} title="Assistance — écrire au support SAWALI"
           aria-label="Assistance — écrire au support SAWALI"
-          className="relative grid h-9 w-9 shrink-0 place-items-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-primary">
+          className={`relative ${nonLus > 0 ? "clignote" : ""} grid h-9 w-9 shrink-0 place-items-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-primary`}>
           <Casque />{pastille}
         </button>
       )}
@@ -180,8 +190,21 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
       <Patientez actif={envoi} />
 
       {/* Portail vers <body> : sinon le menu flottant (flou + coins arrondis) découpe la fenêtre */}
-      {ouvert && createPortal(
-        <div className="no-print fixed inset-x-2 bottom-2 z-[80] flex h-[70dvh] max-h-[560px] flex-col overflow-hidden rounded-2xl bg-white text-ink shadow-2xl ring-1 ring-gray-200 sm:inset-x-auto sm:right-4 sm:w-[360px]"
+      {/* Fenêtre rabattue : petite barre en bas à droite, qui clignote à l'arrivée d'un message */}
+      {ouvert && reduit && createPortal(
+        <button type="button" onClick={() => setReduit(false)} aria-label="Déployer la fenêtre du support SAWALI"
+          style={{ bottom: variante === "menu" ? "calc(max(0.75rem, env(safe-area-inset-bottom)) + 8.5rem)" : "0.75rem" }}
+          className={`no-print fixed right-2 z-[80] flex items-center gap-2 rounded-full bg-nuit-900 px-4 py-2 text-sm font-semibold text-white shadow-2xl ring-1 ring-white/20 sm:right-4 ${nonLus > 0 ? "clignote" : ""}`}>
+          <Casque taille={16} />Support SAWALI
+          {nonLus > 0 && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold">{nonLus}</span>}
+          <span aria-hidden="true">▴</span>
+        </button>,
+        document.body
+      )}
+
+      {/* Fenêtre déployée : étroite (≈ 17 rem au plus) pour ne pas cacher l'écran derrière */}
+      {ouvert && !reduit && createPortal(
+        <div className="no-print fixed bottom-2 right-2 z-[80] flex h-[60dvh] max-h-[440px] w-[min(17rem,calc(100vw-1rem))] flex-col overflow-hidden rounded-2xl bg-white text-ink shadow-2xl ring-1 ring-gray-200 sm:right-4"
           role="dialog" aria-label="Support SAWALI">
           <div className="flex items-center gap-2 bg-nuit-900 px-4 py-3 text-white">
             <div className="min-w-0 flex-1">
@@ -190,7 +213,9 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
                 {requete ? `${requete.numero} · ${ETATS[requete.statut] || requete.libelle || ""}` : "Posez votre question, nous vous répondons ici."}
               </p>
             </div>
-            <button type="button" onClick={() => setOuvert(false)} className="rounded-lg px-2 py-1 text-lg leading-none hover:bg-white/10" aria-label="Fermer">×</button>
+            {/* Rabattre (la discussion reste active) / fermer */}
+            <button type="button" onClick={() => setReduit(true)} className="rounded-lg px-2 py-1 text-lg leading-none hover:bg-white/10" aria-label="Rabattre la fenêtre" title="Rabattre">▾</button>
+            <button type="button" onClick={() => setOuvert(false)} className="rounded-lg px-2 py-1 text-lg leading-none hover:bg-white/10" aria-label="Fermer" title="Fermer">×</button>
           </div>
           <div ref={filRef} className="flex-1 space-y-2 overflow-y-auto bg-creme p-3">
             {messages.length === 0 && <p className="py-6 text-center text-sm italic text-gray-400">Aucun message pour l'instant.</p>}

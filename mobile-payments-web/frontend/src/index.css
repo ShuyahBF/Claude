@@ -60,3 +60,11 @@ tr[data-selected="true"] [class*="text-gray"]:not(.badge):not(button) { color: #
   .no-print { display: none !important; }
   body { background: #fff; }
 }
+
+/* Clignotement (lot 26) : icône ou barre du support quand un message du support n'est pas lu */
+@keyframes clignote {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); filter: none; }
+  50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0.55); filter: brightness(1.25); }
+}
+.clignote { animation: clignote 1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .clignote { animation: none; box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.7); } }
