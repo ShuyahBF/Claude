@@ -19,6 +19,11 @@ export default function Profil() {
     try { await apiClient.post("/push/test"); toast.succes("Notification d'essai envoyée par le serveur : elle doit apparaître dans quelques secondes."); }
     catch (err) { toast.erreur(messageErreur(err, "Envoi d'essai impossible")); }
   };
+  // Super-administrateur : « mode démo » = soumis à l'abonnement comme un utilisateur (sinon fonctions payantes ouvertes sans paiement)
+  const basculerModeDemo = async (actif) => {
+    try { const { data } = await apiClient.put("/auth/mode-demo", { actif }); setUser(data); toast.succes(actif ? "Mode démo activé : l'abonnement s'applique aussi à vous" : "Mode démo désactivé : fonctions payantes ouvertes pour vous"); }
+    catch (err) { toast.erreur(messageErreur(err, "Réglage impossible")); }
+  };
   const regler = (maj) => { const p = { ...alertes, ...maj }; setAlertes(p); ecrirePreferences(p); };
   const basculerNotifications = async (voulu) => {
     if (!voulu) { await desabonnerPush(apiClient); regler({ notifications: false }); return; }
@@ -77,6 +82,18 @@ export default function Profil() {
         <p className="text-xs text-gray-500">Vous pouvez vous connecter avec votre téléphone ou votre e-mail.</p>
         <button type="submit" className="btn-primary">Enregistrer</button>
       </form>
+
+      {/* Réservé au super-administrateur : dispense d'abonnement et mode démo (lot 44) */}
+      {user.role === "admin" && (
+        <section className="card space-y-2" data-testid="mode-demo">
+          <h2 className="text-lg font-bold">🛡️ Abonnement du super-administrateur</h2>
+          <p className="text-sm text-gray-600">Les fonctions payantes (lecture OCR, transcription vocale) vous sont ouvertes sans abonnement.
+            Activez le mode démo pour voir ce que voit un utilisateur (refus avec le prix de la formule).</p>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={!!user.mode_demo} onChange={(e) => basculerModeDemo(e.target.checked)} /> Mode démo (m'appliquer l'abonnement)
+          </label>
+        </section>
+      )}
 
       {/* Sons et notifications des rappels (médicaments, paiements, anniversaires) et du support */}
       <section className="card space-y-4" data-testid="alertes">

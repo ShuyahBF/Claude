@@ -32,9 +32,13 @@ router = APIRouter(prefix="/abonnement", tags=["Abonnement"])
 
 
 def utilisateur_sawali(user: dict) -> Dict[str, str]:
-    """Identité transmise à SAWALI : numéro de compte, nom et téléphone (aucun secret)."""
+    """Identité transmise à SAWALI : numéro de compte, nom et téléphone (aucun secret) + dispense d'abonnement de l'administrateur."""
     nom = f"{user.get('prenom') or ''} {user.get('nom') or ''}".strip()
-    return {"id": str(user.get("id", "")), "nom": nom, "telephone": user.get("telephone") or ""}
+    ident = {"id": str(user.get("id", "")), "nom": nom, "telephone": user.get("telephone") or ""}
+    # Super-administrateur : fonctions soumises à abonnement ouvertes sans paiement, sauf s'il a activé le « mode démo »
+    if user.get("role") == "admin" and not user.get("mode_demo"):
+        ident["acces_libre"] = True
+    return ident
 
 
 async def relayer(chemin: str, user: dict, **plus) -> Dict[str, Any]:

@@ -75,7 +75,7 @@ def effacer_cookie_session(response: Response) -> None:
 
 def utilisateur_public(user: dict) -> dict:
     """Fiche renvoyée au navigateur : jamais le hash du mot de passe."""
-    return {k: user.get(k) for k in ("id", "nom", "prenom", "telephone", "email", "role", "cree_le")}
+    return {k: user.get(k) for k in ("id", "nom", "prenom", "telephone", "email", "role", "cree_le", "mode_demo")}
 
 
 async def get_current_user(request: Request) -> dict:
