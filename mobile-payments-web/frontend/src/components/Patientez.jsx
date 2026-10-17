@@ -8,7 +8,7 @@ export default function Patientez({ actif, texte = "Patientez…" }) {
       {/* Jauge circulaire : cercle de fond pâle + arc bleu qui tourne */}
       <svg viewBox="0 0 50 50" className="h-16 w-16 animate-spin" aria-hidden="true">
         <circle cx="25" cy="25" r="20" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="5" />
-        <circle cx="25" cy="25" r="20" fill="none" stroke="#1e90ff" strokeWidth="5" strokeLinecap="round"
+        <circle cx="25" cy="25" r="20" fill="none" stroke="#622e44" strokeWidth="5" strokeLinecap="round"
           strokeDasharray="90 126" />
       </svg>
       {/* Toast « Patientez… » */}

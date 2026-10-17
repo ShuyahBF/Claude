@@ -2,18 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Base : textes en Geist, titres en Space Grotesk (charte Sawali, comme adLyn) */
+/* Base : textes et titres en Open Sans, fond crème (charte du 17/10/2026) */
 @layer base {
-  body { @apply bg-gray-50 font-sans text-ink antialiased; }
+  body { @apply bg-creme font-sans text-ink antialiased; }
   /* Cases à cocher et boutons radio aux couleurs de la plateforme */
   input[type="checkbox"], input[type="radio"] { accent-color: #1e90ff; }
-  h1, h2, h3, h4 { @apply font-display tracking-tight; }
+  h1, h2, h3, h4 { @apply font-display font-semibold tracking-tight; }
   .font-extrabold, .font-black { font-weight: 700; }
 }
 
 /* Petits composants réutilisables (classes « maison ») */
 @layer components {
-  .btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 font-semibold transition disabled:cursor-not-allowed disabled:opacity-50; }
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-md px-5 py-2.5 text-sm font-semibold tracking-wide transition disabled:cursor-not-allowed disabled:opacity-50; }
   .btn-primary { @apply btn bg-primary text-white shadow-sm hover:bg-primary-dark; }
   .btn-outline { @apply btn border border-gray-300 bg-white text-ink hover:border-gray-400 hover:bg-gray-50; }
   .btn-clair { @apply btn border border-white/25 bg-transparent text-white hover:border-white/50 hover:bg-white/5; }
@@ -29,6 +29,8 @@
   .card { @apply rounded-xl border border-gray-200 bg-white p-5 shadow-sm; }
   .badge { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold; }
   .surtitre { @apply text-xs font-semibold uppercase tracking-[0.3em] text-accent; }
+  /* Nom de l'application, en écriture manuscrite (bandeau et carte de connexion) */
+  .logo-ecrit { @apply font-script font-normal leading-none; }
   /* Carte cliquable (choix d'un opérateur, d'un service) */
   .choix { @apply flex w-full items-center gap-3 rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:border-primary hover:shadow; }
   .table { @apply w-full text-left text-sm; }
