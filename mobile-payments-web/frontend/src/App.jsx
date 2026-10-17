@@ -17,7 +17,6 @@ import Archives from "@/pages/Archives";
 import AdminComptes from "@/pages/AdminComptes";
 import AdminMarchands from "@/pages/AdminMarchands";
 import MonMarchand from "@/pages/MonMarchand";
-import Bientot from "@/pages/Bientot";
 import Confidentialite from "@/pages/Confidentialite";
 import Connexion from "@/pages/Connexion";
 import Garde from "@/pages/Garde";
@@ -66,9 +65,7 @@ export default function App() {
               <Route path="/archives" element={<Archives />} />
               <Route path="/annonceur" element={<Annonceur />} />
               {/* Services du menu latéral (lot 33) : pages d'attente, ouvertes une à une */}
-              {["breves"].map((c) => (
-                <Route key={c} path={`/${c}`} element={<Bientot />} />
-              ))}
+              <Route path="/breves" element={<Navigate to="/presse" replace />} />
               <Route path="/admin" element={<RouteProtegee admin><Admin /></RouteProtegee>} />
               <Route path="/admin/presse" element={<RouteProtegee admin><AdminPresse /></RouteProtegee>} />
               <Route path="/admin/comptes" element={<RouteProtegee admin><AdminComptes /></RouteProtegee>} />
