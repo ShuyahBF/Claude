@@ -12,7 +12,7 @@ from pymongo.errors import DuplicateKeyError
 import signal_connexion
 from db import SANS_ID, db
 from securite import (create_access_token, effacer_cookie_session, effacer_echecs, get_current_user, hash_password,
-                      noter_echec, poser_cookie_session, utilisateur_public, verifier_non_bloque, verify_password)
+                      noter_echec, poser_cookie_session, require_admin, utilisateur_public, verifier_non_bloque, verify_password)
 from ussd import ErreurSaisie, analyser_identifiant, email_valide, normaliser_email, normaliser_telephone
 
 router = APIRouter(prefix="/auth", tags=["Authentification"])
@@ -135,6 +135,18 @@ async def modifier_profil(data: Profil, user: dict = Depends(get_current_user)):
         await db.users.update_one({"id": user["id"]}, maj)
     except DuplicateKeyError as exc:
         raise _erreur("Ce numéro ou cet e-mail est déjà utilisé par un autre compte", status.HTTP_409_CONFLICT) from exc
+    return utilisateur_public(await db.users.find_one({"id": user["id"]}, SANS_ID))
+
+
+class ModeDemo(BaseModel):
+    actif: bool
+
+
+@router.put("/mode-demo")
+async def mode_demo(data: ModeDemo, user: dict = Depends(require_admin)):
+    """Super-administrateur : « mode démo » activé = il est soumis à l'abonnement comme n'importe quel utilisateur
+    (désactivé = fonctions payantes ouvertes sans paiement, c'est le réglage normal)."""
+    await db.users.update_one({"id": user["id"]}, {"$set": {"mode_demo": data.actif}})
     return utilisateur_public(await db.users.find_one({"id": user["id"]}, SANS_ID))
 
 

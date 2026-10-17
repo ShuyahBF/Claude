@@ -28,6 +28,10 @@ function ChoixOperateur({ valeur, connus, onChange }) {
   );
 }
 
+// Affichage en français des noms de champs du gabarit (les clés techniques, elles, restent inchangées en base)
+const NOMS_CHAMPS = { amount: "montant", phone: "téléphone", code: "code", pin: "code secret" };
+const gabaritFrancais = (g) => g.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, k) => `{${NOMS_CHAMPS[k] || k}}`);
+
 const VIDE = { operateur: "", pays: "BF", nom: "", categorie: "merchant_payment", gabarit_ussd: "*",
   champs: [{ key: "amount", label: "Montant (FCFA)", type: "numeric", isMerchantCode: false }], description: "", actif: true };
 
@@ -81,7 +85,7 @@ export default function Admin() {
                 className={selection === s.id ? "ligne-selectionnee cursor-pointer" : "cursor-pointer"}>
                 <td>{s.operateur} <span className="text-xs text-gray-400">{s.pays}</span></td>
                 <td>{s.nom}<br /><span className="text-xs text-gray-500">{CATEGORIES[s.categorie]}</span></td>
-                <td className="font-mono">{s.gabarit_ussd}</td>
+                <td className="font-mono">{gabaritFrancais(s.gabarit_ussd)}</td>
                 <td>{s.actif ? <span className="badge bg-green-100 text-green-800">Actif</span> : <span className="badge bg-gray-100 text-gray-500">Désactivé</span>}</td>
                 <td><button type="button" className="btn-outline btn-sm" onClick={() => setEdition({ ...s })}>Modifier</button></td>
               </tr>
