@@ -16,7 +16,7 @@ export default function Modal({ ouvert, titre, onFermer, children, large = false
 
   if (!ouvert) return null;
   return (
-    <div className={`${imprimable ? "print:static print:bg-white print:p-0" : "no-print"} fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4`} onClick={onFermer}>
+    <div className={`${imprimable ? "print:static print:bg-white print:p-0" : "no-print"} fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4`} onClick={onFermer}>
       <div
         className={`max-h-[85vh] max-h-[85dvh] w-full animate-slide-up overflow-y-auto rounded-t-2xl bg-white p-4 shadow-xl sm:rounded-2xl sm:p-5 ${large ? "sm:max-w-xl" : "sm:max-w-md"}`}
         onClick={(e) => e.stopPropagation()}

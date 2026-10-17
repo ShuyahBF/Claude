@@ -55,6 +55,9 @@ async def ensure_indexes() -> None:
     # Historique des paiements préparés, par utilisateur
     await db.paiements.create_index("id", unique=True)
     await db.paiements.create_index([("user_id", 1), ("cree_le", -1)])
+    # Anniversaires à souhaiter : fiches d'un utilisateur (lot 34)
+    await db.anniversaires.create_index("id", unique=True)
+    await db.anniversaires.create_index("user_id")
     # Profils saisis à l'accueil de l'app Android : un profil par téléphone (lot 13)
     await db.profils_android.create_index("telephone", unique=True)
     # Échecs de connexion (anti force brute)
