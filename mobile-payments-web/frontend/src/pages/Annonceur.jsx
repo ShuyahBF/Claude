@@ -40,6 +40,7 @@ export default function Annonceur() {
   const [params] = useSearchParams();
   const [tarifs, setTarifs] = useState(null);
   const [abonne, setAbonne] = useState(true);
+  const [offre, setOffre] = useState([]);                    // formules « Annonceur » proposées (nom, prix, durée) tant que l'utilisateur n'en a pas
   const [campagnes, setCampagnes] = useState([]);
   const [form, setForm] = useState({ nom: "", annonceur: "", lien: "https://", format: "", debut: jourISO(1), fin: jourISO(7), options: [] });
   const [media, setMedia] = useState(null);                    // { url (data URL), nom, taille }
@@ -55,7 +56,7 @@ export default function Annonceur() {
   const charger = useCallback(async () => {
     try {
       const [t, c] = await Promise.all([apiClient.get("/annonceur/tarifs"), apiClient.get("/annonceur/campagnes")]);
-      setTarifs(t.data.tarifs); setAbonne(t.data.est_abonne); setCampagnes(c.data.campagnes);
+      setTarifs(t.data.tarifs); setAbonne(t.data.est_abonne); setOffre(t.data.formules || []); setCampagnes(c.data.campagnes);
       setForm((f) => (f.format ? f : { ...f, format: t.data.tarifs.formats[0]?.code || "" }));
     } catch (err) { toast.erreur(messageErreur(err, "Espace annonceur indisponible")); setTarifs(false); }
   }, [toast]);
@@ -152,10 +153,16 @@ export default function Annonceur() {
   const nonPayee = (c) => ["devis", "paiement_en_cours", "pispi_attente", "pispi_verification"].includes(c.statut);
   return (
     <div className="mx-auto max-w-3xl space-y-5">
-      <h1 className="text-2xl font-bold">📣 Mon espace annonceur</h1>
+      <h1 className="text-2xl font-bold">📣 {abonne ? "Mon espace annonceur" : "Devenir annonceur"}</h1>
       {!abonne && (
-        <div className="rounded-xl bg-amber-50 p-4 text-amber-900" role="status">
-          Pour passer une annonce, il faut être abonné. <Link to="/abonnement" className="font-semibold underline">Choisir une formule</Link>
+        <div className="card space-y-3" role="status" data-testid="devenir-annonceur">
+          <h2 className="text-lg font-semibold">Devenir annonceur</h2>
+          <p className="text-gray-700">Affichez votre annonce (image ou vidéo) en haut de l'écran Payer, voyez votre devis en direct et suivez vos statistiques. Il suffit de prendre l'abonnement Annonceur.</p>
+          {offre.length > 0 ? offre.map((f) => (
+            <p key={f.id} className="rounded-lg bg-creme p-3"><b>{f.nom}</b> · <span className="text-lg font-bold text-primary">{fcfa(f.prix)}</span> pour {f.duree_jours} jours</p>
+          )) : <p className="rounded-lg bg-amber-50 p-3 text-amber-900">L'abonnement Annonceur n'est pas encore proposé : revenez bientôt.</p>}
+          {offre.length > 0 && <Link to="/abonnement" className="btn-primary w-full">Prendre l'abonnement Annonceur</Link>}
+          <p className="text-sm text-gray-500">Une fois l'abonnement payé, vous revenez ici pour préparer votre annonce.</p>
         </div>
       )}
       {!tarifs.actif && <p className="rounded-xl bg-gray-100 p-3 text-gray-700">Les annonces ne sont pas ouvertes pour le moment.</p>}
