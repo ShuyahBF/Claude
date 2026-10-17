@@ -48,6 +48,7 @@ export default function Presse() {
                 )}
                 <div className="min-w-0 space-y-1">
                   <p className="font-medium">{a.titre}</p>
+                  {a.traduit && <span className="mb-1 inline-block rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800">🌐 Traduit vers FR</span>}
                   {a.resume && <p className="text-sm text-gray-700">{a.resume}{!a.ia && <span className="ml-1 text-xs text-gray-400">(début de l'article)</span>}</p>}
                   <a href={a.lien} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-primary underline">Lire l'article complet chez {m.nom} →</a>
                 </div>

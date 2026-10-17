@@ -308,6 +308,18 @@ def lire_flux(texte: str, maxi: int = ARTICLES_PAR_MEDIA) -> List[Dict[str, str]
     return out
 
 
+# Mots très courants servant à reconnaître la langue d'un texte (sans bibliothèque externe)
+_MOTS_EN = {"the", "and", "of", "to", "in", "is", "for", "with", "that", "on", "you", "your", "are", "this", "it", "how", "why", "what", "from", "can", "be", "as", "at", "by"}
+_MOTS_FR = {"le", "la", "les", "des", "du", "de", "et", "un", "une", "est", "pour", "dans", "que", "qui", "sur", "avec", "au", "aux", "en", "se", "ce", "pas", "par", "sont"}
+
+
+def langue_probable(texte: str) -> str:
+    """« en » si le texte est plutôt anglais, sinon « fr » (le français est la valeur par défaut en cas de doute)."""
+    mots = re.findall(r"[a-zà-ÿ']+", (texte or "").lower())
+    en, fr = sum(1 for m in mots if m in _MOTS_EN), sum(1 for m in mots if m in _MOTS_FR)
+    return "en" if en > fr and en >= 2 else "fr"
+
+
 def resume_de_repli(texte: str) -> str:
     """Sans IA : les deux premières phrases de l'article (300 caractères au plus)."""
     phrases = re.split(r"(?<=[.!?])\s+", texte.strip())
@@ -409,7 +421,9 @@ async def passage_media(source: Dict[str, Any]) -> None:
         for a in brut:
             r = ia.get(a["lien"])
             texte = r or resume_de_repli(a.get("texte", "")) or ""
-            articles.append({"titre": a["titre"], "lien": a["lien"], "resume": texte, "ia": bool(r), "image": a.get("image") or ""})
+            articles.append({"titre": a["titre"], "lien": a["lien"], "resume": texte, "ia": bool(r), "image": a.get("image") or "",
+                             # Pastille « Traduit vers FR » : résumé fait par l'IA à partir d'un article écrit en anglais
+                             "traduit": bool(r) and langue_probable(f"{a['titre']} {a.get('texte', '')}") == "en"})
         if not brut:
             erreur = "Aucun article trouvé sur cette page"
     except Exception as exc:  # noqa: BLE001
