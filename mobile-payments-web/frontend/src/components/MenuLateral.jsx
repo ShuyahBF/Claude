@@ -13,6 +13,8 @@ import { LIBELLE_VER, VERSION } from "@/version";
 
 // Entrées du menu (même liste que les pages de /pages/Bientot.jsx)
 export const ENTREES_MENU = [
+  // Première entrée : retour à la première page (écran Payer)
+  { to: "/", icone: "🏠", libelle: "Accueil", exact: true },
   { to: "/abonnement", icone: "🎟️", libelle: "Abonnement" },
   { to: "/pharmacies-de-garde", icone: "🏥", libelle: "Pharmacies de garde" },
   { to: "/archives", icone: "🗄️", libelle: "Archives" },
@@ -71,7 +73,7 @@ export default function MenuLateral({ ouvert, fermer, compteurs = {} }) {
         <ul className={`flex-1 space-y-1 overflow-y-auto ${reduit ? "p-1.5" : "p-3"}`}>
           {ENTREES_MENU.map((e) => (
             <li key={e.to}>
-              <NavLink to={e.to} title={e.libelle} aria-label={e.libelle}
+              <NavLink to={e.to} end={e.exact} title={e.libelle} aria-label={e.libelle}
                 className={({ isActive }) => `flex items-center rounded-xl text-sm font-semibold transition ${reduit ? "justify-center px-0 py-3" : "gap-3 px-3 py-3"} ${isActive ? "bg-primary text-white" : "text-gray-700 hover:bg-gray-100"}`}>
                 <span className="relative text-xl leading-none">
                   {e.icone}
