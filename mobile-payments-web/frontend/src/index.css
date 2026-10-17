@@ -76,9 +76,17 @@ tr[data-selected="true"] [class*="text-gray"]:not(.badge):not(button) { color: #
    - impression : page blanche ;
    - photos, vidéos et QR codes : pas de sélection, de glisser ni de menu « Enregistrer » à l'appui long.
    =================================================================== */
-html.masque-capture #root {
-  filter: blur(28px);
-  transition: filter 0.05s linear;
+/* Voile flouté sur TOUT l'écran (lot 52) : une couche plein écran au-dessus de tout (menu flottant, bulle « + », fenêtres, messages,
+   fenêtre du support). L'ancien flou posé sur #root laissait nets les éléments sortis de #root et déplaçait les éléments fixes. */
+html.masque-capture::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  -webkit-backdrop-filter: blur(28px);
+  backdrop-filter: blur(28px);
+  background: rgba(247, 245, 243, 0.82);      /* navigateur sans flou d'arrière-plan : l'écran est tout de même masqué */
+  pointer-events: auto;                       /* rien ne se touche pendant que l'écran est masqué */
 }
 @media print {
   body:not(.impression-autorisee) { display: none !important; }
@@ -88,3 +96,15 @@ img, video, picture, canvas {
   user-select: none;
   -webkit-touch-callout: none;
 }
+
+/* ===================================================================
+   Lot 52 — alerte renforcée pour les malvoyants (components/AlerteRenforcee.jsx) :
+   fond et texte alternent jaune vif / noir (contraste maximal), 2 fois par seconde au plus ; 1 fois par seconde si l'appareil
+   demande moins d'animations.
+   =================================================================== */
+@keyframes alerte-flash {
+  0%, 49.99% { background: #ffd400; color: #000; }
+  50%, 100% { background: #000; color: #ffd400; }
+}
+.alerte-renforcee { animation: alerte-flash 0.5s steps(1, end) infinite; }
+@media (prefers-reduced-motion: reduce) { .alerte-renforcee { animation-duration: 1s; } }

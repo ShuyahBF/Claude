@@ -10,6 +10,8 @@ self.addEventListener("push", (event) => {
   try { m = event.data ? event.data.json() : {}; } catch { m = { titre: "Paiement Mobile", texte: event.data ? event.data.text() : "" }; }
   event.waitUntil(self.registration.showNotification(m.titre || "Paiement Mobile", {
     body: m.texte || "", icon: "/icone.svg", badge: "/icone.svg", tag: m.cle, renotify: true, data: { lien: m.lien || "/" },
+    // Application fermée : vibration longue et notification qui reste affichée jusqu'au toucher (malvoyants, téléphone dans le sac)
+    vibrate: [600, 200, 600, 200, 1000], requireInteraction: true,
   }));
 });
 
