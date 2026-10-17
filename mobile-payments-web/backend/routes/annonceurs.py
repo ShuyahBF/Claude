@@ -26,13 +26,14 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 import signal_connexion
-from limiteur import limiter_appels_publics
 from routes.abonnement import utilisateur_sawali
 from securite import get_current_user
 from support_sawali import appeler_sawali
 
 SERVICE = "Le service des annonceurs"
 DELAI_MEDIA = 90.0        # l'envoi d'une vidéo chiffrée peut durer plusieurs secondes
+# Pas de limite « par minute et par IP » ici : toutes les routes exigent un compte connecté, et le devis en direct appelle le
+# serveur à chaque changement du formulaire (après une pause de saisie). SAWALI contrôle l'abonnement et valide chaque demande.
 router = APIRouter(prefix="/annonceur", tags=["Annonceur"])
 
 
@@ -67,43 +68,43 @@ class Declaration(Campagne):
     reference_bancaire: str = Field(..., min_length=4, max_length=120)
 
 
-@router.get("/tarifs", dependencies=[Depends(limiter_appels_publics)])
+@router.get("/tarifs")
 async def tarifs(user: dict = Depends(get_current_user)):
     return await relayer("tarifs", user)
 
 
-@router.post("/devis", dependencies=[Depends(limiter_appels_publics)])
+@router.post("/devis")
 async def devis(data: Periode, user: dict = Depends(get_current_user)):
     return await relayer("devis", user, **data.model_dump())
 
 
-@router.post("/creer", dependencies=[Depends(limiter_appels_publics)])
+@router.post("/creer")
 async def creer(data: Creation, user: dict = Depends(get_current_user)):
     return await relayer("creer", user, delai=DELAI_MEDIA, **data.model_dump())
 
 
-@router.get("/campagnes", dependencies=[Depends(limiter_appels_publics)])
+@router.get("/campagnes")
 async def campagnes(user: dict = Depends(get_current_user)):
     return await relayer("campagnes", user)
 
 
-@router.post("/payer", dependencies=[Depends(limiter_appels_publics)])
+@router.post("/payer")
 async def payer(data: Paiement, user: dict = Depends(get_current_user)):
     # Après la page PawaPay, l'utilisateur revient sur son espace annonceur
     retour = f"{signal_connexion.url_site().rstrip('/')}/annonceur?campagne={data.campagne_id}"
     return await relayer("payer", user, campagne_id=data.campagne_id, mode=data.mode, retour=retour)
 
 
-@router.post("/declarer", dependencies=[Depends(limiter_appels_publics)])
+@router.post("/declarer")
 async def declarer(data: Declaration, user: dict = Depends(get_current_user)):
     return await relayer("declarer", user, campagne_id=data.campagne_id, reference_bancaire=data.reference_bancaire.strip())
 
 
-@router.post("/etat", dependencies=[Depends(limiter_appels_publics)])
+@router.post("/etat")
 async def etat(data: Campagne, user: dict = Depends(get_current_user)):
     return await relayer("etat", user, campagne_id=data.campagne_id)
 
 
-@router.post("/stats", dependencies=[Depends(limiter_appels_publics)])
+@router.post("/stats")
 async def stats(data: Campagne, user: dict = Depends(get_current_user)):
     return await relayer("stats", user, campagne_id=data.campagne_id)
