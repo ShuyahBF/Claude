@@ -5,10 +5,40 @@ import Modal from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { apiClient, couleurOperateur, dateHeure, fcfa, messageErreur } from "@/lib/api";
 
+// Détail d'un paiement PI-SPI (lot 58) : référence, statut, déclaration de la référence bancaire, abandon. Seul le marchand confirme la réception.
+function DetailPispi({ paiement, onChange }) {
+  const toast = useToast();
+  const [reference, setReference] = useState("");
+  const [libelle] = STATUTS[paiement.statut] || STATUTS.prepare;
+  const agir = async (action) => {
+    try { await action(); onChange(); } catch (err) { toast.erreur(messageErreur(err, "Action impossible")); }
+  };
+  return (
+    <div className="space-y-3 text-sm">
+      <p className="font-semibold">{paiement.marchand?.libelle || "Marchand"} · <span className="text-primary">{fcfa(paiement.montant)}</span></p>
+      <p className="text-gray-600">Paiement par PI-SPI · référence <span className="font-mono font-bold">{paiement.reference}</span></p>
+      <p>Statut : <b>{libelle}</b></p>
+      {paiement.reference_bancaire && <p className="text-gray-600">Référence bancaire déclarée : <span className="font-mono">{paiement.reference_bancaire}</span></p>}
+      {paiement.statut === "prepare" && (
+        <form className="space-y-2 border-t border-gray-100 pt-3" onSubmit={(e) => { e.preventDefault(); agir(() => apiClient.post(`/paiements/${paiement.id}/pispi/declarer`, { reference_bancaire: reference.trim() })); }}>
+          <label className="label" htmlFor="h-ref">J'ai payé : référence bancaire de l'opération</label>
+          <input id="h-ref" className="input" required minLength={4} maxLength={120} value={reference} onChange={(e) => setReference(e.target.value)} autoComplete="off" />
+          <button type="submit" className="btn-primary w-full" disabled={reference.trim().length < 4}>Déclarer mon paiement</button>
+        </form>
+      )}
+      {(paiement.statut === "prepare" || paiement.statut === "declare") && (
+        <button type="button" className="btn-outline w-full" onClick={() => agir(() => apiClient.put(`/paiements/${paiement.id}/statut`, { statut: "abandonne" }))}>Abandonner ce paiement</button>
+      )}
+    </div>
+  );
+}
+
 const STATUTS = {
   prepare: ["Préparé", "bg-gray-100 text-gray-700"],
   effectue: ["Payé", "bg-green-100 text-green-800"],
   abandonne: ["Abandonné", "bg-red-100 text-red-700"],
+  declare: ["À confirmer par le marchand", "bg-amber-100 text-amber-900"],       // PI-SPI : référence déclarée, en attente du marchand
+  refuse: ["Refusé par le marchand", "bg-red-100 text-red-700"],
 };
 
 // Périodes proposées (liste déroulante) ; « perso » ouvre les champs « du » et « au »
@@ -335,7 +365,7 @@ export default function Historique() {
       <Modal ouvert={!!ouvert} titre="Paiement" onFermer={() => setOuvert(null)}>
         {ouvert && (
           <>
-            <CarteCodeUssd paiement={ouvert} onStatut={changerStatut} />
+            {ouvert.mode === "pispi" ? <DetailPispi paiement={ouvert} onChange={() => { setOuvert(null); charger(); }} /> : <CarteCodeUssd paiement={ouvert} onStatut={changerStatut} />}
             <button type="button" className="mt-4 w-full text-sm text-red-600 hover:underline" onClick={() => supprimer(ouvert)}>
               Supprimer de l'historique
             </button>

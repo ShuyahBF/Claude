@@ -79,6 +79,11 @@ async def ensure_indexes() -> None:
     # Lieux des marchands (lot 49) : un lieu par opérateur et code ; recherche des proches par rectangle de coordonnées
     await db.marchands_lieux.create_index([("operateur", 1), ("code", 1)], unique=True)
     await db.marchands_lieux.create_index([("lat", 1), ("lon", 1)])
+    # Comptes marchands (lot 58) : un compte par utilisateur ; recherche par code marchand
+    await db.comptes_marchands.create_index("id", unique=True)
+    await db.comptes_marchands.create_index("user_id", unique=True)
+    await db.comptes_marchands.create_index([("codes.operateur", 1), ("codes.code", 1)])
+    await db.paiements.create_index([("compte_marchand_id", 1), ("statut", 1)], sparse=True)
     # Profils saisis à l'accueil de l'app Android : un profil par téléphone (lot 13)
     await db.profils_android.create_index("telephone", unique=True)
     # Échecs de connexion (anti force brute)
