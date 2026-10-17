@@ -9,7 +9,7 @@ export default function Ordonnances() {
   const navigate = useNavigate();
   const [lecture, setLecture] = useState(null);
 
-  const creerRappel = (m) => navigate("/medicaments", { state: { prefill: { medicament: m.nom, dose: [m.dose, m.posologie].filter(Boolean).join(" · ").slice(0, 40) } } });
+  const creerRappel = (m) => navigate("/rappels?onglet=medicaments", { state: { prefill: { medicament: m.nom, dose: [m.dose, m.posologie].filter(Boolean).join(" · ").slice(0, 40) } } });
   const dateFr = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
 
   return (
