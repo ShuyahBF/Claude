@@ -9,10 +9,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from pymongo.errors import DuplicateKeyError
 
+import journal_connexions
 import signal_connexion
 from db import SANS_ID, db
 from securite import (create_access_token, effacer_cookie_session, effacer_echecs, get_current_user, hash_password,
                       noter_echec, poser_cookie_session, require_admin, utilisateur_public, verifier_non_bloque, verify_password)
+from support_sawali import utilisateur_facultatif
 from ussd import ErreurSaisie, analyser_identifiant, email_valide, normaliser_email, normaliser_telephone
 
 router = APIRouter(prefix="/auth", tags=["Authentification"])
@@ -91,6 +93,7 @@ async def inscription(data: Inscription, request: Request, response: Response):
                       status.HTTP_409_CONFLICT) from exc
     # L'inscription connecte aussitôt l'utilisateur : elle est signalée comme une connexion
     _signaler_connexion(request, user, "/inscription")
+    await journal_connexions.ouvrir(user["id"], signal_connexion.adresse_ip(request))
     return _session(response, user)
 
 
@@ -103,17 +106,23 @@ async def connexion(data: Connexion, request: Request, response: Response):
     cle = f"{champ}:{valeur}"
     await verifier_non_bloque(cle)
     user = await db.users.find_one({champ: valeur}, SANS_ID)
+    # Compte bloqué par l'administrateur : message clair, mais seulement si le mot de passe est le bon (on ne révèle rien sinon)
+    if user and user.get("desactive") and verify_password(data.mot_de_passe, user.get("password_hash", "")):
+        raise _erreur("Compte bloqué par l'administrateur : contactez le support", status.HTTP_403_FORBIDDEN)
     if not user or user.get("desactive") or not verify_password(data.mot_de_passe, user.get("password_hash", "")):
         await noter_echec(cle)
         # Même message dans tous les cas : on ne révèle pas si le compte existe
         raise _erreur("Identifiant ou mot de passe incorrect", status.HTTP_401_UNAUTHORIZED)
     await effacer_echecs(cle)
     _signaler_connexion(request, user, "/connexion")
+    await journal_connexions.ouvrir(user["id"], signal_connexion.adresse_ip(request))
     return _session(response, user)
 
 
 @router.post("/deconnexion")
-async def deconnexion(response: Response):
+async def deconnexion(response: Response, user: Optional[dict] = Depends(utilisateur_facultatif)):
+    if user:
+        await journal_connexions.fermer(user["id"])      # date de déconnexion pour l'administrateur
     effacer_cookie_session(response)
     return {"ok": True}
 

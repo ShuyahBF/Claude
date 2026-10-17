@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import Chargement from "@/components/Chargement";
 import Modal from "@/components/Modal";
+import OngletsAdmin from "@/components/OngletsAdmin";
 import { useToast } from "@/components/Toast";
 import { apiClient, CATEGORIES, messageErreur } from "@/lib/api";
 
@@ -69,6 +70,7 @@ export default function Admin() {
   if (services === null) return <Chargement />;
   return (
     <div className="space-y-4">
+      <OngletsAdmin />
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Catalogue des services USSD</h1>
         <button type="button" className="btn-primary" onClick={() => setEdition({ ...VIDE })}>+ Service</button>
