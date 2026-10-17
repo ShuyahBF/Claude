@@ -4,6 +4,7 @@ import RouteProtegee from "@/components/RouteProtegee";
 import { ToastProvider } from "@/components/Toast";
 import { AuthProvider } from "@/context/AuthContext";
 import Admin from "@/pages/Admin";
+import Anniversaires from "@/pages/Anniversaires";
 import Bientot from "@/pages/Bientot";
 import Confidentialite from "@/pages/Confidentialite";
 import Connexion from "@/pages/Connexion";
@@ -30,8 +31,9 @@ export default function App() {
               <Route path="/historique" element={<Historique />} />
               <Route path="/marchands" element={<Marchands />} />
               <Route path="/profil" element={<Profil />} />
+              <Route path="/anniversaires" element={<Anniversaires />} />
               {/* Services du menu latéral (lot 33) : pages d'attente, ouvertes une à une */}
-              {["pharmacies-de-garde", "anniversaires", "rappels-paiements", "medicaments", "ordonnances", "breves", "presse"].map((c) => (
+              {["pharmacies-de-garde", "rappels-paiements", "medicaments", "ordonnances", "breves", "presse"].map((c) => (
                 <Route key={c} path={`/${c}`} element={<Bientot />} />
               ))}
               <Route path="/admin" element={<RouteProtegee admin><Admin /></RouteProtegee>} />

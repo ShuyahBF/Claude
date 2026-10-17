@@ -19,7 +19,7 @@ from db import db, ensure_indexes
 import presence_sawali
 import version_plateforme
 from signal_connexion import adresse_ip
-from routes import android, auth, catalogue, marchands, paiements, presence, publicites
+from routes import android, anniversaires, auth, catalogue, marchands, paiements, presence, publicites
 import support_sawali
 from securite import hash_password
 from ussd import normaliser_email
@@ -41,7 +41,7 @@ app.add_middleware(
 # application Android (« /api/android/… ») et visites du site (« /api/presence/visite »).
 api = APIRouter(prefix="/api")
 # support_sawali : discussion avec le support SAWALI (icône de la page de connexion, lot 24)
-for module in (auth, catalogue, marchands, paiements, android, presence, support_sawali, publicites):
+for module in (auth, catalogue, marchands, paiements, android, presence, support_sawali, publicites, anniversaires):
     api.include_router(module.router)
 
 
