@@ -16,6 +16,7 @@ import Meteo from "@/pages/Meteo";
 import Ordonnances from "@/pages/Ordonnances";
 import Payer from "@/pages/Payer";
 import Profil from "@/pages/Profil";
+import Voix from "@/pages/Voix";
 import RappelsPaiements from "@/pages/RappelsPaiements";
 
 // Routes du site. Tout est réservé aux utilisateurs connectés, sauf la
@@ -42,6 +43,7 @@ export default function App() {
               <Route path="/meteo" element={<Meteo />} />
               <Route path="/abonnement" element={<Abonnement />} />
               <Route path="/ordonnances" element={<Ordonnances />} />
+              <Route path="/transcription" element={<Voix />} />
               {/* Services du menu latéral (lot 33) : pages d'attente, ouvertes une à une */}
               {["pharmacies-de-garde", "breves", "presse"].map((c) => (
                 <Route key={c} path={`/${c}`} element={<Bientot />} />

@@ -20,6 +20,7 @@ export const ENTREES_MENU = [
   { to: "/rappels-paiements", icone: "🔁", libelle: "Rappels de paiements récurrents" },
   { to: "/medicaments", icone: "💊", libelle: "Rappels de prise de médicaments" },
   { to: "/ordonnances", icone: "📄", libelle: "OCR sur ordonnances" },
+  { to: "/transcription", icone: "🎙️", libelle: "Transcription vocale" },
   { to: "/breves", icone: "📰", libelle: "Brèves actualités" },
   { to: "/presse", icone: "🗞️", libelle: "Résumés de la presse locale" },
 ];
