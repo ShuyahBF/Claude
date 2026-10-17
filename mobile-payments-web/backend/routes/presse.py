@@ -249,7 +249,9 @@ def image_insuffisante(url: str) -> bool:
     if not url:
         return True
     m = re.search(r"/L(\d+)xH(\d+)/", url)
-    return bool((m and int(m.group(1)) < 400) or "vignette" in url.lower() and not re.search(r"\d{3,4}x\d{3,4}", url))
+    if m:
+        return int(m.group(1)) < 400  # taille annoncée dans l'adresse : en dessous de 400 px de large = miniature
+    return "vignette" in url.lower() and not re.search(r"\d{3,4}x\d{3,4}", url)
 
 
 def texte_depuis_html(fragment: str, maxi: int = TEXTE_MAX) -> str:
