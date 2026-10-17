@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Chargement from "@/components/Chargement";
+import Modal from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { apiClient, fcfa, messageErreur } from "@/lib/api";
 
@@ -18,6 +19,9 @@ export default function Abonnement() {
   const [enCours, setEnCours] = useState("");        // formule en cours d'achat
   const [code, setCode] = useState("");
   const [envoiCode, setEnvoiCode] = useState(false);
+  const [pispi, setPispi] = useState(null);          // paiement PI-SPI en cours : { formule, reference, bloc, statut } (null = fenêtre fermée)
+  const [refBanque, setRefBanque] = useState("");    // référence bancaire saisie par l'utilisateur
+  const [envoiPispi, setEnvoiPispi] = useState(false);
 
   const charger = useCallback(async () => {
     try {
@@ -56,6 +60,40 @@ export default function Abonnement() {
       window.location.href = data.redirect_url;     // page de paiement PawaPay (Orange / Moov / Telecel)
     } catch (err) { toast.erreur(messageErreur(err, "Paiement indisponible")); setEnCours(""); }
   };
+  // Paiement PI-SPI (version manuelle) : 1. on affiche le QR de la banque et la référence ; 2. l'utilisateur paie puis déclare la référence bancaire ;
+  // 3. l'administrateur confirme chez SAWALI, la formule s'active (la fenêtre le vérifie toutes les 15 s).
+  const payerParPispi = async (f) => {
+    setEnCours(f.id);
+    try {
+      const { data } = await apiClient.post("/abonnement/pispi", { formule_id: f.id });
+      setRefBanque("");
+      setPispi({ formule: f, reference: data.reference, bloc: data.bloc, statut: data.statut });
+    } catch (err) { toast.erreur(messageErreur(err, "Paiement PI-SPI indisponible")); } finally { setEnCours(""); }
+  };
+  const declarerPispi = async (e) => {
+    e.preventDefault();
+    setEnvoiPispi(true);
+    try {
+      await apiClient.post("/abonnement/pispi/declarer", { reference: pispi.reference, reference_bancaire: refBanque });
+      setPispi((x) => ({ ...x, statut: "pispi_verification" }));
+      toast.succes("Paiement déclaré : il va être vérifié");
+    } catch (err) { toast.erreur(messageErreur(err, "Déclaration impossible")); } finally { setEnvoiPispi(false); }
+  };
+  const referencePispi = pispi?.reference;
+  const statutPispi = pispi?.statut;
+  useEffect(() => {
+    if (!referencePispi || statutPispi !== "pispi_verification") return undefined;
+    const t = setInterval(async () => {
+      try {
+        const { data } = await apiClient.get("/abonnement/achat", { params: { deposit_id: referencePispi } });
+        if (data.statut === "paye" || data.statut === "echec") { setPispi(null); setAchat(data.statut); charger(); }
+      } catch { /* nouvel essai dans 15 s */ }
+    }, 15000);
+    return () => clearInterval(t);
+  }, [referencePispi, statutPispi, charger]);
+  const copierReference = async () => {
+    try { await navigator.clipboard.writeText(pispi.reference); toast.succes("Référence copiée"); } catch { toast.info(pispi.reference); }
+  };
   const enregistrerCode = async (e) => {
     e.preventDefault();
     setEnvoiCode(true);
@@ -82,7 +120,7 @@ export default function Abonnement() {
         <div className={`rounded-lg p-3 text-sm ${achat === "paye" ? "bg-green-50 text-green-800" : achat === "echec" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-900"}`} role="status">
           {achat === "verification" && "Vérification de votre paiement…"}
           {achat === "paye" && "✅ Paiement reçu : votre formule est activée."}
-          {achat === "echec" && "Le paiement n'a pas abouti. Aucun montant n'a été activé ; vous pouvez réessayer."}
+          {achat === "echec" && "Le paiement n'a pas abouti ou a été refusé. Aucun montant n'a été activé ; vous pouvez réessayer."}
           {achat === "attente" && "Paiement en cours de confirmation : la formule s'activera dès qu'il sera confirmé (rechargez cette page dans un instant)."}
           {achat !== "verification" && <button type="button" className="ml-2 underline" onClick={fermerRetour}>Fermer</button>}
         </div>
@@ -125,12 +163,13 @@ export default function Abonnement() {
                 <button type="button" className="btn-primary w-full" disabled={!!enCours} onClick={() => acheter(f)}>
                   {enCours === f.id ? "Patientez…" : deja ? `Prolonger de ${f.duree_jours} jours` : "S'abonner"}
                 </button>
+                <button type="button" className="btn-outline w-full" disabled={!!enCours} onClick={() => payerParPispi(f)}>🏦 Payer par virement PI-SPI (banque)</button>
                 {deja && <p className="text-xs text-gray-500">La durée s'ajoute au temps qu'il vous reste.</p>}
               </li>
             );
           })}
         </ul>
-        <p className="text-xs text-gray-500">Paiement sécurisé par PawaPay (Orange, Moov, Telecel) : la formule s'active dès la confirmation du paiement.</p>
+        <p className="text-xs text-gray-500">Paiement sécurisé par PawaPay (Orange, Moov, Telecel) : la formule s'active dès la confirmation du paiement. Par virement PI-SPI, elle s'active après vérification de votre paiement.</p>
       </section>
 
       {/* Parrainage */}
@@ -156,6 +195,33 @@ export default function Abonnement() {
           {d.a_un_parrain && <p className="text-xs text-green-700">✓ Code de parrain enregistré.</p>}
         </section>
       )}
+
+      {/* Paiement PI-SPI (version manuelle) */}
+      <Modal ouvert={!!pispi} titre="Payer par PI-SPI" onFermer={() => setPispi(null)}>
+        {pispi && (
+          <div className="space-y-3 text-sm">
+            <p><b>{pispi.formule.nom}</b> · <span className="text-lg font-bold text-primary">{pispi.bloc.montant_texte}</span></p>
+            <div className="flex justify-center"><img src={pispi.bloc.qr_data_url} alt="QR code PI-SPI de la banque" className="h-48 w-48 rounded-lg border border-gray-200 bg-white p-2" /></div>
+            <dl className="space-y-1 rounded-lg bg-creme p-3">
+              <div><dt className="inline text-gray-500">Banque : </dt><dd className="inline font-semibold">{pispi.bloc.banque}</dd></div>
+              {pispi.bloc.titulaire && <div><dt className="inline text-gray-500">Bénéficiaire : </dt><dd className="inline font-semibold">{pispi.bloc.titulaire}</dd></div>}
+              <div><dt className="inline text-gray-500">Adresse de paiement : </dt><dd className="inline font-mono">{pispi.bloc.adresse_paiement}</dd></div>
+              <div className="flex items-center gap-2"><dt className="text-gray-500">Référence à indiquer :</dt><dd className="font-mono font-bold">{pispi.reference}</dd>
+                <button type="button" className="btn-outline btn-sm" onClick={copierReference}>Copier</button></div>
+            </dl>
+            <p className="text-gray-600">{pispi.bloc.consigne}</p>
+            {pispi.statut === "pispi_verification" ? (
+              <p className="rounded-lg bg-amber-50 p-3 text-amber-900" role="status">⏳ Paiement déclaré : il est en cours de vérification. Votre formule s'activera dès la confirmation (cette fenêtre se met à jour toute seule).</p>
+            ) : (
+              <form onSubmit={declarerPispi} className="space-y-2 border-t border-gray-100 pt-3">
+                <label className="label" htmlFor="ref-banque">Après le virement : référence bancaire de l'opération</label>
+                <input id="ref-banque" className="input" required minLength={4} maxLength={120} placeholder="Numéro reçu de votre banque" value={refBanque} onChange={(e) => setRefBanque(e.target.value)} autoComplete="off" />
+                <button type="submit" className="btn-primary w-full" disabled={envoiPispi || refBanque.trim().length < 4}>{envoiPispi ? "Patientez…" : "J'ai payé"}</button>
+              </form>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

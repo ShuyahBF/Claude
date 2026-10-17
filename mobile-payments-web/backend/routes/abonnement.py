@@ -49,6 +49,11 @@ class Achat(BaseModel):
     formule_id: str = Field(..., min_length=1, max_length=80)
 
 
+class PispiDeclaration(BaseModel):
+    reference: str = Field(..., min_length=4, max_length=40)
+    reference_bancaire: str = Field(..., min_length=4, max_length=120)
+
+
 class Parrainage(BaseModel):
     code: str = Field("", max_length=20)
 
@@ -63,6 +68,19 @@ async def acheter(data: Achat, user: dict = Depends(get_current_user)):
     # Après le paiement, PawaPay renvoie l'utilisateur sur cette page du site (SAWALI y ajoute le numéro du paiement)
     retour = f"{signal_connexion.url_site().rstrip('/')}/abonnement"
     return await relayer("acheter", user, formule_id=data.formule_id, retour=retour)
+
+
+@router.post("/pispi", dependencies=[Depends(limiter_appels_publics)])
+async def payer_par_pispi(data: Achat, user: dict = Depends(get_current_user)):
+    """Paiement par virement instantané PI-SPI (version manuelle, lot 48) : SAWALI renvoie la référence de la demande et le bloc
+    de paiement (banque, titulaire, QR de la banque, montant, consigne). L'utilisateur paie dans l'application de sa banque."""
+    return await relayer("pispi/demander", user, formule_id=data.formule_id)
+
+
+@router.post("/pispi/declarer", dependencies=[Depends(limiter_appels_publics)])
+async def declarer_pispi(data: PispiDeclaration, user: dict = Depends(get_current_user)):
+    """L'utilisateur a payé et donne la référence bancaire : l'administrateur la vérifie puis confirme chez SAWALI (la formule s'active)."""
+    return await relayer("pispi/declarer", user, reference=data.reference.strip(), reference_bancaire=data.reference_bancaire.strip())
 
 
 @router.get("/achat", dependencies=[Depends(limiter_appels_publics)])
