@@ -12,7 +12,7 @@
 // fermée : une pastille rouge compte les réponses non lues (vérification toutes les 60 s)
 // et un SON est joué à chaque nouvelle réponse. L'icône reste cachée si la clé SAWALI est absente.
 // ============================================================================
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { apiClient, messageErreur } from "@/lib/api";
 import Patientez from "@/components/Patientez";
@@ -78,7 +78,9 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
   const [actif, setActif] = useState(false);
   const [ouvert, setOuvert] = useState(false);
   const [nouveau, setNouveau] = useState(false);   // réponse arrivée fenêtre déployée : la fenêtre clignote jusqu'au prochain geste
-  const [reduit, setReduit] = useState(false);   // fenêtre rabattue : seule une petite barre reste visible
+  const [reduit, setReduit] = useState(false);
+  const boutonMenu = useRef(null);                 // onglet « Support » du menu : la barre rabattue se pose juste au-dessus
+  const [posBarre, setPosBarre] = useState(null);  // { left, bottom } de la barre rabattue (px)   // fenêtre rabattue : seule une petite barre reste visible
   const [messages, setMessages] = useState([]);
   const [requete, setRequete] = useState(null);
   const [nonLus, setNonLus] = useState(0);
@@ -146,6 +148,18 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
     return () => clearTimeout(t);
   }, [nouveau]);
 
+  // Barre rabattue : placée juste au-dessus de l'onglet « Support » du menu, sans le cacher
+  useLayoutEffect(() => {
+    if (!(ouvert && reduit && variante === "menu")) return undefined;
+    const placer = () => {
+      const r = boutonMenu.current?.getBoundingClientRect();
+      if (r) setPosBarre({ left: Math.max(8, r.left), bottom: window.innerHeight - r.top + 10 });
+    };
+    placer();
+    window.addEventListener("resize", placer);
+    return () => window.removeEventListener("resize", placer);
+  }, [ouvert, reduit, variante]);
+
   useEffect(() => { if (filRef.current) filRef.current.scrollTop = filRef.current.scrollHeight; }, [messages, ouvert, reduit]);
 
   // Envoi d'un message
@@ -181,7 +195,7 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
     <>
       {variante === "menu" ? (
         // Onglet du menu flottant (même gabarit que les autres onglets)
-        <button type="button" onClick={basculer} aria-label="Assistance — écrire au support SAWALI"
+        <button type="button" ref={boutonMenu} onClick={basculer} aria-label="Assistance — écrire au support SAWALI"
           className={`relative ${classeMenu} ${nonLus > 0 ? "clignote" : ""}`}>
           <span className="text-lg leading-none"><Casque /></span>Support{pastille}
         </button>
@@ -200,11 +214,11 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
       {/* Fenêtre rabattue : petite barre en bas à droite, qui clignote à l'arrivée d'un message */}
       {ouvert && reduit && createPortal(
         <button type="button" onClick={() => setReduit(false)} aria-label="Déployer la fenêtre du support SAWALI"
-          style={{ bottom: variante === "menu" ? "calc(max(0.75rem, env(safe-area-inset-bottom)) + 8.5rem)" : "0.75rem" }}
-          className={`no-print fixed right-2 z-[80] flex items-center gap-2 rounded-full bg-nuit-900 px-4 py-2 text-sm font-semibold text-white shadow-2xl ring-1 ring-white/20 sm:right-4 ${nonLus > 0 ? "clignote" : ""}`}>
-          <Casque taille={16} />Support SAWALI
+          style={variante === "menu" && posBarre ? { left: posBarre.left, bottom: posBarre.bottom } : { right: "0.5rem", bottom: "0.75rem" }}
+          className={`no-print fixed z-[80] flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-ink shadow-2xl ring-1 ring-gray-200 ${nonLus > 0 ? "clignote" : ""}`}>
+          <span className="text-primary"><Casque taille={16} /></span>Support SAWALI
           {nonLus > 0 && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold">{nonLus}</span>}
-          <span aria-hidden="true">▴</span>
+          <span aria-hidden="true" className="text-gray-500">▴</span>
         </button>,
         document.body
       )}
@@ -214,16 +228,16 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
         <div onPointerDown={() => setNouveau(false)} onFocusCapture={() => setNouveau(false)}
           className={`no-print fixed bottom-2 right-2 z-[80] flex h-[60dvh] max-h-[440px] w-[min(17rem,calc(100vw-1rem))] flex-col overflow-hidden rounded-2xl bg-white text-ink shadow-2xl ring-1 ring-gray-200 sm:right-4 ${nouveau ? "clignote" : ""}`}
           role="dialog" aria-label="Support SAWALI">
-          <div className="flex items-center gap-2 bg-nuit-900 px-4 py-3 text-white">
+          <div className="flex items-center gap-2 border-b border-gray-200 bg-white px-4 py-3 text-ink">
             <div className="min-w-0 flex-1">
               <p className="font-display text-sm font-bold">Support SAWALI</p>
-              <p className="truncate text-xs text-white/70">
+              <p className="truncate text-xs text-gray-500">
                 {requete ? `${requete.numero} · ${ETATS[requete.statut] || requete.libelle || ""}` : "Posez votre question, nous vous répondons ici."}
               </p>
             </div>
             {/* Rabattre (la discussion reste active) / fermer */}
-            <button type="button" onClick={() => setReduit(true)} className="rounded-lg px-2 py-1 text-lg leading-none hover:bg-white/10" aria-label="Rabattre la fenêtre" title="Rabattre">▾</button>
-            <button type="button" onClick={() => setOuvert(false)} className="rounded-lg px-2 py-1 text-lg leading-none hover:bg-white/10" aria-label="Fermer" title="Fermer">×</button>
+            <button type="button" onClick={() => setReduit(true)} className="rounded-lg px-2 py-1 text-lg leading-none text-gray-600 hover:bg-gray-100" aria-label="Rabattre la fenêtre" title="Rabattre">▾</button>
+            <button type="button" onClick={() => setOuvert(false)} className="rounded-lg px-2 py-1 text-lg leading-none text-gray-600 hover:bg-gray-100" aria-label="Fermer" title="Fermer">×</button>
           </div>
           <div ref={filRef} className="flex-1 space-y-2 overflow-y-auto bg-creme p-3">
             {messages.length === 0 && <p className="py-6 text-center text-sm italic text-gray-400">Aucun message pour l'instant.</p>}
