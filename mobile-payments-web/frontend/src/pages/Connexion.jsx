@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import ChampMotDePasse from "@/components/ChampMotDePasse";
-import ChampTelephone from "@/components/ChampTelephone";
+import ChampTelephone, { SelecteurPays } from "@/components/ChampTelephone";
 import EtatServeur from "@/components/EtatServeur";
 import Patientez from "@/components/Patientez";
 import SupportSawali from "@/components/SupportSawali";
 import { useAuth } from "@/context/AuthContext";
 import { messageErreur, MOTIF_DECONNEXION_KEY } from "@/lib/api";
-import { assembler, libellePays, PAYS, PAYS_DEFAUT, trouverPays } from "@/lib/pays";
+import { assembler, PAYS_DEFAUT, trouverPays } from "@/lib/pays";
 import { LIBELLE_VERSION } from "@/version";
 
 // Écrans de connexion et d'inscription (mode = "connexion" | "inscription").
@@ -103,9 +103,7 @@ export default function Connexion({ mode = "connexion" }) {
             <div className="flex gap-2">
               {/* Pays du numéro : proposé tant que la saisie n'est ni un e-mail ni un numéro déjà écrit avec son indicatif */}
               {!/[@+]/.test(form.identifiant) && !form.identifiant.startsWith("00") && (
-                <select className="input w-auto max-w-[60%] shrink-0 px-2 text-sm" value={paysConnexion} onChange={(e) => setPaysConnexion(e.target.value)} aria-label="Pays du numéro">
-                  {PAYS.map((p) => <option key={p.code} value={p.code}>{libellePays(p)}</option>)}
-                </select>
+                <SelecteurPays code={paysConnexion} indicatif={trouverPays(paysConnexion).indicatif} onChange={setPaysConnexion} />
               )}
               <input id="identifiant" className="input min-w-0 flex-1" required placeholder="70 00 00 00 ou nom@exemple.com"
                 value={form.identifiant} onChange={champ("identifiant")} autoComplete="username" />

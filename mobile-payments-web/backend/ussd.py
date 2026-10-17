@@ -91,6 +91,9 @@ def normaliser_telephone(telephone: str) -> str:
         chiffres = get_settings().indicatif_defaut + chiffres
     if not 8 <= len(chiffres) <= 15:
         raise ErreurSaisie("Numéro de téléphone invalide")
+    # Burkina Faso : EXACTEMENT 8 chiffres après l'indicatif 226 (règle du propriétaire, lot 57)
+    if chiffres.startswith("226") and len(chiffres) != 11:
+        raise ErreurSaisie("Numéro du Burkina Faso invalide : 8 chiffres attendus après +226")
     return "+" + chiffres
 
 
