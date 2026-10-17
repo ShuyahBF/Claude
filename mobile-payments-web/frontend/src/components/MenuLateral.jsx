@@ -24,7 +24,8 @@ export const ENTREES_MENU = [
   { to: "/rappels", icone: "🔔", libelle: "Rappels" },
   { to: "/ordonnances", icone: "📄", libelle: "OCR sur ordonnances" },
   { to: "/transcription", icone: "🎙️", libelle: "Transcription vocale" },
-  { to: "/presse", icone: "📰", libelle: "Actualités" },       // lot 65 : presse locale, tech, mode, coaching… (catégories réglées par l'administrateur)
+  { to: "/presse", icone: "📰", libelle: "Actualités" },
+  { to: "/ussd", icone: "📞", libelle: "Codes USSD" },       // lot 66 : carnet de codes pratiques par opérateur       // lot 65 : presse locale, tech, mode, coaching… (catégories réglées par l'administrateur)
 ];
 
 const CLE_REDUIT = "mpw_menu_reduit";

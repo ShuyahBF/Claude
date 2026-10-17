@@ -12,6 +12,8 @@ import Admin from "@/pages/Admin";
 import Annonceur from "@/pages/Annonceur";
 import AdminPresse from "@/pages/AdminPresse";
 import Presse from "@/pages/Presse";
+import Ussd from "@/pages/Ussd";
+import AdminUssd from "@/pages/AdminUssd";
 import Rappels, { Vers } from "@/pages/Rappels";
 import Archives from "@/pages/Archives";
 import AdminComptes from "@/pages/AdminComptes";
@@ -57,6 +59,7 @@ export default function App() {
               <Route path="/rappels-paiements" element={<Vers onglet="paiements" />} />
               <Route path="/medicaments" element={<Vers onglet="medicaments" />} />
               <Route path="/presse" element={<Presse />} />
+              <Route path="/ussd" element={<Ussd />} />
               <Route path="/meteo" element={<Meteo />} />
               <Route path="/abonnement" element={<Abonnement />} />
               <Route path="/ordonnances" element={<Ordonnances />} />
@@ -67,6 +70,7 @@ export default function App() {
               {/* Services du menu latéral (lot 33) : pages d'attente, ouvertes une à une */}
               <Route path="/breves" element={<Navigate to="/presse" replace />} />
               <Route path="/admin" element={<RouteProtegee admin><Admin /></RouteProtegee>} />
+              <Route path="/admin/ussd" element={<RouteProtegee admin><AdminUssd /></RouteProtegee>} />
               <Route path="/admin/presse" element={<RouteProtegee admin><AdminPresse /></RouteProtegee>} />
               <Route path="/admin/comptes" element={<RouteProtegee admin><AdminComptes /></RouteProtegee>} />
               <Route path="/admin/marchands" element={<RouteProtegee admin><AdminMarchands /></RouteProtegee>} />
