@@ -114,7 +114,8 @@ class Recherche(BaseModel):
     q: str = Field(min_length=2, max_length=60)
 
 
-@router.post("/recherche", dependencies=[Depends(limiter_appels_publics)])
+# Pas de limiteur par minute ici : la recherche exige une connexion et est déjà plafonnée à 10 par jour
+@router.post("/recherche")
 async def rechercher(corps: Recherche, user: dict = Depends(get_current_user)):
     d = _liste()
     if d is None:
