@@ -3,7 +3,9 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import MenuLateral from "@/components/MenuLateral";
 import SupportSawali from "@/components/SupportSawali";
 import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/components/Toast";
 import { apiClient } from "@/lib/api";
+import { debloquerAudio, traiterEvenements } from "@/lib/alertes";
 
 // Menus de l'application (« Payer » est la bulle flottante « + » ; « Support » ouvre le chat SAWALI) (l'entrée « Administration » n'apparaît qu'à l'administrateur)
 const MENUS = [
@@ -19,15 +21,28 @@ export default function Layout() {
   const navigate = useNavigate();
   const [menuOuvert, setMenuOuvert] = useState(false);   // menu latéral glissant (lot 33)
   const { pathname } = useLocation();
-  // Rappels du jour (anniversaires, paiements, médicaments) : relus à chaque changement de page et chaque minute
+  const toast = useToast();
+  // Rappels du jour (anniversaires, paiements, médicaments) : relus à chaque changement de page et toutes les 30 s.
+  // Chaque événement NOUVEAU (heure d'une prise arrivée, paiement à régler, anniversaire) déclenche un son au volume réglé,
+  // une vibration, une notification du système (si autorisée) et un message à l'écran (lot 40).
   const [rappels, setRappels] = useState({});
   useEffect(() => {
     let actif = true;
-    const lire = () => apiClient.get("/rappels/resume").then(({ data }) => actif && setRappels(data)).catch(() => {});
+    const lire = () => apiClient.get("/rappels/resume").then(({ data }) => {
+      if (!actif) return;
+      setRappels(data);
+      traiterEvenements(data.evenements, { afficher: (texte) => toast.info(texte) });
+    }).catch(() => {});
     lire();
-    const t = setInterval(lire, 60000);
+    const t = setInterval(lire, 30000);
     return () => { actif = false; clearInterval(t); };
-  }, [pathname]);
+  }, [pathname, toast]);
+  // Le navigateur n'autorise le son qu'après un premier toucher : on débloque l'audio dès le premier clic
+  useEffect(() => {
+    const debloquer = () => { debloquerAudio(); window.removeEventListener("pointerdown", debloquer); };
+    window.addEventListener("pointerdown", debloquer);
+    return () => window.removeEventListener("pointerdown", debloquer);
+  }, []);
   const menus = user?.role === "admin" ? [...MENUS, { to: "/admin", libelle: "Admin", icone: "⚙️" }] : MENUS;
 
   const quitter = async () => {

@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "@/context/AuthContext";
+import { jouerSon as jouer } from "@/lib/alertes";
 import { apiClient, messageErreur } from "@/lib/api";
 import Patientez from "@/components/Patientez";
 
@@ -46,29 +47,6 @@ function codeVisiteur() {
     }
     return v;
   } catch { return "anonyme-navigateur"; }
-}
-
-// Son de notification (3 notes montantes) : autorisé après un premier clic
-let contexteAudio = null;
-function jouerSon() {
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return;
-    contexteAudio = contexteAudio || new Ctx();
-    if (contexteAudio.state === "suspended") contexteAudio.resume().catch(() => {});
-    const t0 = contexteAudio.currentTime + 0.02;
-    [[659.25, 0, 0.18], [783.99, 0.14, 0.18], [1046.5, 0.28, 0.32]].forEach(([f, debut, duree]) => {
-      const osc = contexteAudio.createOscillator();
-      const env = contexteAudio.createGain();
-      osc.type = "triangle";
-      osc.frequency.setValueAtTime(f, t0 + debut);
-      env.gain.setValueAtTime(0.0001, t0 + debut);
-      env.gain.exponentialRampToValueAtTime(0.5, t0 + debut + 0.02);
-      env.gain.exponentialRampToValueAtTime(0.0001, t0 + debut + duree);
-      osc.connect(env); env.connect(contexteAudio.destination);
-      osc.start(t0 + debut); osc.stop(t0 + debut + duree + 0.02);
-    });
-  } catch { /* son impossible : sans importance */ }
 }
 
 const heure = (iso) => {
@@ -118,7 +96,7 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
       const r = await apiClient.post("/support-sawali/fil", { visiteur, depuis: dernierRef.current || null, marquer_lu: true }, EN_ARRIERE_PLAN);
       const nouveaux = r.data?.messages || [];
       if (nouveaux.length) {
-        if (dernierRef.current && nouveaux.some((m) => m.de === "support")) { jouerSon(); setNouveau(true); }
+        if (dernierRef.current && nouveaux.some((m) => m.de === "support")) { jouer("support"); setNouveau(true); }
         dernierRef.current = nouveaux[nouveaux.length - 1].le;
         setMessages((avant) => {
           const connus = new Set(avant.map((m) => m.id));
@@ -138,7 +116,7 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
     try {
       const r = await apiClient.post("/support-sawali/fil", { visiteur, depuis: dernierRef.current || null, marquer_lu: false }, EN_ARRIERE_PLAN);
       const n = r.data?.non_lus || 0;
-      if (n > nonLusRef.current) jouerSon();
+      if (n > nonLusRef.current) jouer("support");
       nonLusRef.current = n;
       setNonLus(n);
     } catch { /* silencieux */ }

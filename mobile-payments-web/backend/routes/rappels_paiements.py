@@ -88,6 +88,22 @@ async def a_traiter(user_id: str) -> int:
     return sum(1 for d in docs if enrichir(d, auj)["a_traiter"])
 
 
+async def evenements(user_id: str) -> list[dict]:
+    """Paiements à traiter (en retard, aujourd'hui, ou dans le délai choisi) : une alerte par rappel, par échéance et par état."""
+    auj = _aujourdhui()
+    docs = await db.rappels_paiements.find({"user_id": user_id}, SANS_ID).to_list(MAXIMUM + 5)
+    out = []
+    for r in (enrichir(d, auj) for d in docs):
+        if not r["a_traiter"]:
+            continue
+        quand = (f"en retard de {-r['dans_jours']} jour{'s' if r['dans_jours'] < -1 else ''}" if r["etat"] == "retard"
+                 else "à payer aujourd'hui" if r["etat"] == "aujourdhui" else f"dans {r['dans_jours']} jour{'s' if r['dans_jours'] > 1 else ''}")
+        montant = f" · {r['montant']:,} FCFA".replace(",", " ") if r.get("montant") else ""
+        out.append({"cle": f"pai:{r['id']}:{r['echeance']}:{r['etat']}", "type": "paiement", "titre": f"🔁 {r['libelle']}",
+                    "texte": f"Paiement {quand}{montant}", "lien": "/rappels-paiements"})
+    return out
+
+
 def _donnees(r: Rappel) -> dict:
     libelle = r.libelle.strip()
     if not libelle:

@@ -91,6 +91,15 @@ async def a_souhaiter(user_id: str) -> int:
     return sum(1 for d in docs if prochain_anniversaire(d["jour"], d["mois"], auj) == auj)
 
 
+async def evenements(user_id: str) -> list[dict]:
+    """Anniversaires du jour : une alerte par personne et par jour."""
+    auj = _aujourdhui()
+    docs = await db.anniversaires.find({"user_id": user_id}, SANS_ID).to_list(MAXIMUM + 5)
+    return [{"cle": f"ann:{d['id']}:{auj.isoformat()}", "type": "anniversaire", "titre": f"🎂 {d['nom']}",
+             "texte": "C'est son anniversaire aujourd'hui !" + (f" ({auj.year - d['annee']} ans)" if d.get("annee") else ""), "lien": "/anniversaires"}
+            for d in docs if prochain_anniversaire(d["jour"], d["mois"], auj) == auj]
+
+
 @router.get("")
 async def lister(user: dict = Depends(get_current_user)):
     docs = await db.anniversaires.find({"user_id": user["id"]}, SANS_ID).to_list(MAXIMUM + 5)
