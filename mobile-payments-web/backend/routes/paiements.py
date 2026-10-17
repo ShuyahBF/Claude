@@ -125,25 +125,30 @@ async def _charger(user: dict, du: Optional[str], au: Optional[str], operateur: 
 
 def calculer_statistiques(paiements: list[dict], top_statut: str = "effectue") -> dict:
     """Totaux, répartition par opérateur / service / jour, et classements (Top 10 montants et bénéficiaires).
-    top_statut : « effectue » = classements sur les paiements indiqués payés seulement ; « tous » = tous les statuts."""
-    montants = [p["montant"] for p in paiements if p.get("montant") is not None]
+    Seuls les paiements marqués « Payé » (statut « effectue ») entrent dans les chiffres et les graphiques :
+    un code seulement préparé ou abandonné n'est jamais un paiement effectué (il est compté à part).
+    top_statut : « effectue » = classements sur les paiements payés ; « tous » = tous les statuts."""
     compte = defaultdict(int)
     for p in paiements:
         compte[p.get("statut", "prepare")] += 1
     payes = [p for p in paiements if p.get("statut") == "effectue"]
-    montant_paye = sum(p["montant"] for p in payes if p.get("montant") is not None)
+    montants = [p["montant"] for p in payes if p.get("montant") is not None]
+    montant_paye = sum(montants)
 
     par_op: dict[str, dict] = {}
     par_service: dict[tuple, dict] = {}
     par_jour: dict[str, dict] = {}
     for p in paiements:
+        o = par_op.setdefault(p["operateur"], {"operateur": p["operateur"], "nombre": 0, "montant": 0, "payes": 0,
+                                               "montant_paye": 0, "non_payes": 0})
+        if p.get("statut") != "effectue":
+            o["non_payes"] += 1          # préparé ou abandonné : affiché à part, hors des chiffres
+            continue
         m = p.get("montant") or 0
-        o = par_op.setdefault(p["operateur"], {"operateur": p["operateur"], "nombre": 0, "montant": 0, "payes": 0, "montant_paye": 0})
         o["nombre"] += 1
         o["montant"] += m
-        if p.get("statut") == "effectue":
-            o["payes"] += 1
-            o["montant_paye"] += m
+        o["payes"] += 1
+        o["montant_paye"] += m
         sv = par_service.setdefault((p["operateur"], p["service_nom"]),
                                     {"operateur": p["operateur"], "service": p["service_nom"], "nombre": 0, "montant": 0})
         sv["nombre"] += 1
@@ -152,6 +157,8 @@ def calculer_statistiques(paiements: list[dict], top_statut: str = "effectue") -
         j = par_jour.setdefault(jour, {"jour": jour, "nombre": 0, "montant": 0})
         j["nombre"] += 1
         j["montant"] += m
+    # Un opérateur sans aucun paiement payé n'a pas de carte (ses codes seulement préparés restent dans la liste)
+    par_op = {k: v for k, v in par_op.items() if v["nombre"]}
 
     base_top = payes if top_statut == "effectue" else paiements
     top_montants = sorted((p for p in base_top if p.get("montant") is not None), key=lambda p: p["montant"], reverse=True)[:10]
@@ -164,7 +171,7 @@ def calculer_statistiques(paiements: list[dict], top_statut: str = "effectue") -
         e["montant"] += p.get("montant") or 0
     return {
         "totaux": {
-            "nombre": len(paiements), "montant_total": sum(montants),
+            "nombre": len(payes), "operations": len(paiements), "montant_total": sum(montants),
             "montant_moyen": round(sum(montants) / len(montants)) if montants else 0,
             "plus_gros": max(montants) if montants else 0,
             "payes": compte["effectue"], "abandonnes": compte["abandonne"], "prepares": compte["prepare"],
