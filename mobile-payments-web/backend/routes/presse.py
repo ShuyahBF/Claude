@@ -243,6 +243,17 @@ def image_og(html: str, base: str) -> str:
     return ""
 
 
+def image_insuffisante(url: str) -> bool:
+    """Vrai si le flux n'a donné AUCUNE image ou seulement une miniature (ex. Lefaso.net : .../cache-vignettes/L150xH101/...).
+    Dans ce cas on cherche l'image de partage (og:image) dans la page de l'article."""
+    if not url:
+        return True
+    m = re.search(r"/L(\d+)xH(\d+)/", url)
+    if m:
+        return int(m.group(1)) < 400  # taille annoncée dans l'adresse : en dessous de 400 px de large = miniature
+    return "vignette" in url.lower() and not re.search(r"\d{3,4}x\d{3,4}", url)
+
+
 def texte_depuis_html(fragment: str, maxi: int = TEXTE_MAX) -> str:
     """Texte brut d'un extrait de flux (HTML parfois échappé deux fois) : balises retirées, espaces réduits."""
     t = html_lib.unescape(fragment or "")
@@ -346,9 +357,23 @@ async def collecter(source: Dict[str, Any]) -> List[Dict[str, str]]:
         accueil = await lire_page(client, source["url"])
         if est_un_flux(accueil):
             try:
-                return lire_flux(accueil)
+                articles = lire_flux(accueil)
             except ValueError:
                 return []
+            # Image manquante ou miniature dans le flux (ex. Burkina24, Lefaso.net) : une lecture de la page de l'article pour son image de partage
+            sem_flux = asyncio.Semaphore(3)
+
+            async def completer(a):
+                if image_insuffisante(a.get("image", "")) and a.get("lien"):
+                    async with sem_flux:
+                        try:
+                            img = image_og(await lire_page(client, a["lien"]), a["lien"])
+                            if img:
+                                a["image"] = img
+                        except Exception:  # noqa: BLE001 — un article illisible garde l'image du flux, ou aucune
+                            pass
+                return a
+            return list(await asyncio.gather(*[completer(a) for a in articles]))
         articles = extraire_articles(accueil, source["url"])
         sem = asyncio.Semaphore(3)
 
