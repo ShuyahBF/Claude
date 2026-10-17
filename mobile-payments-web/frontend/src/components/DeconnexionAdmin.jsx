@@ -3,7 +3,7 @@ import { useAuth } from "@/context/AuthContext";
 import { apiClient, MOTIF_DECONNEXION_KEY } from "@/lib/api";
 
 const MESSAGE = "Votre session a été fermée par l'administrateur. Reconnectez-vous.";
-const INTERVALLE_MS = 8000;      // lecture de fond : l'administrateur a-t-il annoncé une déconnexion ?
+const INTERVALLE_MS = 5000;      // lecture de fond : l'administrateur a-t-il annoncé une déconnexion ?
 
 // Déconnexion FORCÉE par l'administrateur (lot 46) : un message d'attente avec compte à rebours (30 s) apparaît sur l'écran de
 // l'utilisateur, puis sa session est fermée et il revient à la page de connexion. Montée une seule fois dans App.
@@ -20,7 +20,11 @@ export default function DeconnexionAdmin() {
     const lire = () => apiClient.get("/auth/session").then(({ data }) => { if (actif) setReste(data.deconnexion_dans); }).catch(() => {});
     lire();
     const t = setInterval(lire, INTERVALLE_MS);
-    return () => { actif = false; clearInterval(t); };
+    // Retour sur l'écran (téléphone qu'on rallume, autre application quittée) : lecture immédiate, les minuteries ayant été ralenties
+    const surVisibilite = () => { if (document.visibilityState === "visible") lire(); };
+    document.addEventListener("visibilitychange", surVisibilite);
+    window.addEventListener("focus", lire);
+    return () => { actif = false; clearInterval(t); document.removeEventListener("visibilitychange", surVisibilite); window.removeEventListener("focus", lire); };
   }, [identifiant]);
 
   // 2. Compte à rebours local (une seconde par une seconde), puis fermeture et retour à la connexion

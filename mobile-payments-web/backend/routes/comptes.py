@@ -12,6 +12,7 @@ Pour un développeur WinDev :
   - PUT  /api/admin/comptes/reglage-inactivite {secondes} → durée d'inactivité avant fermeture de la session (liste déroulante de l'écran) ;
   - PUT  /api/admin/comptes/{id}/blocage {bloque} → bloquer / débloquer. Un compte bloqué est déconnecté aussitôt
         (la session est refusée à la requête suivante) et ne peut plus se connecter. Impossible sur soi-même ou un administrateur.
+  (La déconnexion forcée, elle, vise aussi un autre administrateur, jamais soi-même.)
 Tout est réservé à l'administrateur.
 """
 from __future__ import annotations
@@ -141,8 +142,9 @@ async def deconnecter(compte_id: str, admin: dict = Depends(require_admin)):
     cible = await db.users.find_one({"id": compte_id}, SANS_ID)
     if not cible:
         raise HTTPException(404, "Compte introuvable")
-    if cible["id"] == admin["id"] or cible.get("role") == "admin":
-        raise HTTPException(422, "Un compte administrateur ne peut pas être déconnecté ainsi")
+    # Un administrateur peut déconnecter un AUTRE administrateur (téléphone perdu, poste oublié), jamais lui-même
+    if cible["id"] == admin["id"]:
+        raise HTTPException(422, "Vous ne pouvez pas vous déconnecter vous-même ainsi : utilisez « Déconnexion »")
     await db.users.update_one({"id": compte_id}, {"$set": {"deconnexion_a": _echeance()}})
     return {"delai_s": DELAI_DECONNEXION_S}
 

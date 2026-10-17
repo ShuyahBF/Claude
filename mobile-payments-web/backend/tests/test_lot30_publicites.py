@@ -100,3 +100,14 @@ def test_sawali_injoignable_ne_casse_rien(client, utilisateur):
     finally:
         publicites._transport = None
         publicites.vider_cache()
+
+
+def test_adresses_relatives_de_sawali_rendues_completes():
+    """Lot 49 : une annonce dont le fichier est « /api/files/<id> » doit pointer vers SAWALI, jamais vers Paiement Mobile."""
+    from routes.publicites import _absolue, _vue
+    a = _vue({"id": "x", "image_url": "/api/files/abc", "target_url": "/api/files/abc", "media_kind": "video"})
+    assert a["image"] == "https://api.sawalismartsystems.com/api/files/abc" and a["url"] == a["image"] and a["video"] is True
+    assert _absolue("/garde") == "https://sawalismartsystems.com/garde"                      # page du site de SAWALI
+    assert _absolue("https://exemple.com/pub.mp4") == "https://exemple.com/pub.mp4"          # adresse complète : inchangée
+    assert _absolue("//cdn.exemple.com/p.jpg") == "https://cdn.exemple.com/p.jpg"
+    assert _absolue("") == ""

@@ -7,6 +7,8 @@ import WidgetAujourdhui from "@/components/WidgetAujourdhui";
 import QrOperateur from "@/components/QrOperateur";
 import ScannerQr from "@/components/ScannerQr";
 import { useToast } from "@/components/Toast";
+import { useAuth } from "@/context/AuthContext";
+import { positionActuelle } from "@/lib/geoloc";
 import { apiClient, CATEGORIES, couleurOperateur, messageErreur } from "@/lib/api";
 import { analyserQr } from "@/lib/qrOperateurs";
 
@@ -15,6 +17,7 @@ import { analyserQr } from "@/lib/qrOperateurs";
 // Un QR code marchand (page Marchands) ouvre cette page avec ?operateur=…&service=…&code=…
 export default function Payer() {
   const toast = useToast();
+  const { user } = useAuth();
   const [params, setParams] = useSearchParams();
 
   const [operateurs, setOperateurs] = useState(null);
@@ -118,7 +121,9 @@ export default function Payer() {
     e.preventDefault();
     setEnvoi(true);
     try {
-      const { data } = await apiClient.post("/paiements", { service_id: service.id, valeurs });
+      // Géolocalisation (si le compte l'a activée) : la position part avec la demande ; 4 s au plus d'attente, jamais bloquant
+      const position = user?.geoloc ? await positionActuelle({ delaiMs: 4000 }) : null;
+      const { data } = await apiClient.post("/paiements", { service_id: service.id, valeurs, ...(position ? { position } : {}) });
       setPaiement(data);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {

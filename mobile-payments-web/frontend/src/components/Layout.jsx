@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import ArriveeMarchand from "@/components/ArriveeMarchand";
 import MenuLateral from "@/components/MenuLateral";
 import SupportSawali from "@/components/SupportSawali";
 import { useAuth } from "@/context/AuthContext";
@@ -82,6 +83,7 @@ export default function Layout() {
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
         <Outlet />
+        <ArriveeMarchand />
       </main>
 
       {/* Pied de page : lien vers la politique de confidentialité (lot 16). La version est dans le menu latéral (lot 33) */}

@@ -3,6 +3,7 @@ import { useToast } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
 import { apiClient, messageErreur } from "@/lib/api";
 import ChampMotDePasse from "@/components/ChampMotDePasse";
+import { etatAutorisation, geolocalisationDisponible, positionActuelle } from "@/lib/geoloc";
 import { abonnerPush, activerNotifications, desabonnerPush, ecrirePreferences, etatNotifications, jouerSon, lirePreferences, pushDisponible, vibrer } from "@/lib/alertes";
 
 // Profil : coordonnées (téléphone et e-mail servent à se connecter) et mot de passe.
@@ -23,6 +24,25 @@ export default function Profil() {
   const basculerModeDemo = async (actif) => {
     try { const { data } = await apiClient.put("/auth/mode-demo", { actif }); setUser(data); toast.succes(actif ? "Mode démo activé : l'abonnement s'applique aussi à vous" : "Mode démo désactivé : fonctions payantes ouvertes pour vous"); }
     catch (err) { toast.erreur(messageErreur(err, "Réglage impossible")); }
+  };
+  // Géolocalisation du compte (lot 49) : activer demande d'abord l'autorisation au navigateur (fenêtre du téléphone)
+  const [geoEnCours, setGeoEnCours] = useState(false);
+  const basculerGeoloc = async (voulu) => {
+    setGeoEnCours(true);
+    try {
+      if (voulu) {
+        if (!geolocalisationDisponible()) { toast.erreur("Ce navigateur ne sait pas géolocaliser."); return; }
+        const pos = await positionActuelle({ delaiMs: 12000, ageMaxMs: 0 });      // déclenche la demande d'autorisation
+        if (!pos) {
+          const etat = await etatAutorisation();
+          toast.erreur(etat === "denied" ? "Localisation refusée : autorisez-la pour ce site dans les réglages du navigateur." : "Position introuvable : activez le GPS du téléphone et réessayez.");
+          return;
+        }
+      }
+      const { data } = await apiClient.put("/auth/geolocalisation", { actif: voulu });
+      setUser(data);
+      toast.succes(voulu ? "Géolocalisation activée" : "Géolocalisation désactivée");
+    } catch (err) { toast.erreur(messageErreur(err, "Réglage impossible")); } finally { setGeoEnCours(false); }
   };
   const regler = (maj) => { const p = { ...alertes, ...maj }; setAlertes(p); ecrirePreferences(p); };
   const basculerNotifications = async (voulu) => {
@@ -82,6 +102,17 @@ export default function Profil() {
         <p className="text-xs text-gray-500">Vous pouvez vous connecter avec votre téléphone ou votre e-mail.</p>
         <button type="submit" className="btn-primary">Enregistrer</button>
       </form>
+
+      {/* Géolocalisation du compte (lot 49) */}
+      <section className="card space-y-2" data-testid="geolocalisation">
+        <h2 className="text-lg font-bold">📍 Géolocalisation des paiements</h2>
+        <p className="text-sm text-gray-600">Activée, elle garde le lieu de vos paiements dans votre historique et rattache le code marchand à son
+          emplacement. À l'ouverture de l'application, si vous êtes chez un marchand déjà connu, elle propose d'ouvrir le paiement avec lui.
+          Désactivée, aucune position n'est utilisée. Le site ne suit pas vos déplacements : votre position n'est pas conservée en dehors de vos paiements.</p>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={!!user.geoloc} disabled={geoEnCours} onChange={(e) => basculerGeoloc(e.target.checked)} /> Activer la géolocalisation sur mon compte
+        </label>
+      </section>
 
       {/* Réservé au super-administrateur : dispense d'abonnement et mode démo (lot 44) */}
       {user.role === "admin" && (
