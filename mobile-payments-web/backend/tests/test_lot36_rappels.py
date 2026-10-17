@@ -162,3 +162,23 @@ def test_resume_contient_les_evenements(client, utilisateur):
     ann = next(e for e in ev if e["type"] == "anniversaire")
     assert "36 ans" in ann["texte"] or "ans" in ann["texte"]
     assert len({e["cle"] for e in ev}) == len(ev)                         # clés uniques
+
+
+# ---------------------------------------------------------------- lot 41 : widget « Aujourd'hui »
+def test_widget_aujourdhui(client, utilisateur):
+    _, h, _ = utilisateur
+    vide = client.get("/api/rappels/aujourdhui", headers=h).json()
+    assert vide == {"prises_total": 0, "prises_faites": 0, "prochaine_prise": None, "paiements": [], "anniversaires": []}
+    auj = aujourdhui()
+    client.post("/api/anniversaires", headers=h, json={"nom": "Awa", "jour": auj.day, "mois": auj.month})
+    lointain = auj + timedelta(days=60)
+    client.post("/api/anniversaires", headers=h, json={"nom": "Lointain", "jour": lointain.day, "mois": lointain.month})
+    for lib, d in (("Loyer", 3), ("Netflix", 10), ("Eau", -1)):
+        client.post("/api/rappels-paiements", headers=h, json=_paiement(libelle=lib, echeance=(auj + timedelta(days=d)).isoformat()))
+    rid = client.post("/api/rappels-medicaments", headers=h, json=_traitement(heures=["00:00", "23:59"])).json()["id"]
+    client.post(f"/api/rappels-medicaments/{rid}/prises", headers=h, json={"heure": "00:00", "pris": True})
+    w = client.get("/api/rappels/aujourdhui", headers=h).json()
+    assert w["prises_total"] == 2 and w["prises_faites"] == 1 and w["prochaine_prise"]["heure"] == "23:59"
+    assert [p["libelle"] for p in w["paiements"]] == ["Eau", "Loyer"] and w["paiements"][0]["etat"] == "retard"       # les 2 plus proches
+    assert [a["nom"] for a in w["anniversaires"]] == ["Awa"]                                                       # « Lointain » (> 30 jours) exclu
+    assert client.get("/api/rappels/aujourdhui").status_code == 401

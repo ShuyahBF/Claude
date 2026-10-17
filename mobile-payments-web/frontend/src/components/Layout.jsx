@@ -5,7 +5,7 @@ import SupportSawali from "@/components/SupportSawali";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/components/Toast";
 import { apiClient } from "@/lib/api";
-import { debloquerAudio, traiterEvenements } from "@/lib/alertes";
+import { abonnerPush, debloquerAudio, lirePreferences, traiterEvenements } from "@/lib/alertes";
 
 // Menus de l'application (« Payer » est la bulle flottante « + » ; « Support » ouvre le chat SAWALI) (l'entrée « Administration » n'apparaît qu'à l'administrateur)
 const MENUS = [
@@ -37,6 +37,8 @@ export default function Layout() {
     const t = setInterval(lire, 30000);
     return () => { actif = false; clearInterval(t); };
   }, [pathname, toast]);
+  // Notifications push activées sur cet appareil : on confirme l'abonnement au serveur à chaque ouverture (l'adresse peut changer)
+  useEffect(() => { if (lirePreferences().notifications) abonnerPush(apiClient); }, []);
   // Le navigateur n'autorise le son qu'après un premier toucher : on débloque l'audio dès le premier clic
   useEffect(() => {
     const debloquer = () => { debloquerAudio(); window.removeEventListener("pointerdown", debloquer); };

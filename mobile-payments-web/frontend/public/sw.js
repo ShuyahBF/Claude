@@ -3,6 +3,16 @@
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 
+// Notification « push » envoyée par le serveur (application fermée) : le contenu est déjà déchiffré par le navigateur.
+// Même « tag » (la clé de l'événement) que les alertes de l'écran : jamais deux bandeaux pour le même événement.
+self.addEventListener("push", (event) => {
+  let m = {};
+  try { m = event.data ? event.data.json() : {}; } catch { m = { titre: "Paiement Mobile", texte: event.data ? event.data.text() : "" }; }
+  event.waitUntil(self.registration.showNotification(m.titre || "Paiement Mobile", {
+    body: m.texte || "", icon: "/icone.svg", badge: "/icone.svg", tag: m.cle, renotify: true, data: { lien: m.lien || "/" },
+  }));
+});
+
 // Toucher une notification : on ramène l'application au premier plan sur la page concernée (ou on l'ouvre)
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
