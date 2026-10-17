@@ -3,9 +3,11 @@ import { useSearchParams } from "react-router-dom";
 import CarteCodeUssd from "@/components/CarteCodeUssd";
 import Chargement from "@/components/Chargement";
 import Publicites from "@/components/Publicites";
+import QrOperateur from "@/components/QrOperateur";
 import ScannerQr from "@/components/ScannerQr";
 import { useToast } from "@/components/Toast";
 import { apiClient, CATEGORIES, couleurOperateur, messageErreur } from "@/lib/api";
+import { analyserQr } from "@/lib/qrOperateurs";
 
 // Parcours de paiement, comme l'app Android :
 // Opérateur -> Service -> Formulaire (avec résolution du code marchand) -> Code USSD + QR.
@@ -22,6 +24,7 @@ export default function Payer() {
   const [paiement, setPaiement] = useState(null); // paiement préparé (étape finale)
   const [envoi, setEnvoi] = useState(false);
   const [scannerOuvert, setScannerOuvert] = useState(false);
+  const [qrOperateur, setQrOperateur] = useState(null);   // QR d'une plaque d'opérateur lu par la caméra (lot 38)
 
   // Marchand : null = pas encore cherché ; { trouve, libelle } sinon
   const [marchand, setMarchand] = useState(null);
@@ -141,17 +144,14 @@ export default function Payer() {
     setValeurs({});
   };
 
-  // Lecture d'un QR marchand avec la caméra (site ouvert sur le téléphone)
+  // Lecture d'un QR code avec la caméra (site ouvert sur le téléphone) : QR marchand Paiement Mobile,
+  // ou QR d'une plaque d'opérateur (Orange…) dont le code marchand est mémorisé à la première fois (lot 38)
   const surScan = useCallback((texte) => {
     setScannerOuvert(false);
-    try {
-      const url = new URL(texte);
-      const op = url.searchParams.get("operateur");
-      if (!op) throw new Error("pas un QR marchand");
-      ouvrirDepuisQr(op, url.searchParams.get("service"), url.searchParams.get("code") || "");
-    } catch {
-      toast.erreur("Ce QR code n'est pas un QR marchand Paiement Mobile.");
-    }
+    const qr = analyserQr(texte);
+    if (qr?.type === "paiement-mobile") ouvrirDepuisQr(qr.operateur, qr.service, qr.code);
+    else if (qr?.type === "operateur") setQrOperateur(qr);
+    else toast.erreur("QR code non reconnu (QR marchand Paiement Mobile ou plaque Orange Money).");
   }, [ouvrirDepuisQr, toast]);
   const fermerScanner = useCallback(() => setScannerOuvert(false), []);
 
@@ -268,6 +268,9 @@ export default function Payer() {
       )}
 
       <ScannerQr ouvert={scannerOuvert} onFermer={fermerScanner} onResultat={surScan} />
+      {/* QR d'une plaque d'opérateur : code marchand mémorisé ou à saisir une fois */}
+      <QrOperateur qr={qrOperateur} onFermer={() => setQrOperateur(null)}
+        onUtiliser={(op, code) => { setQrOperateur(null); ouvrirDepuisQr(op, null, code); }} />
     </div>
   );
 }
