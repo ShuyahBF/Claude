@@ -9,6 +9,7 @@ import { ToastProvider } from "@/components/Toast";
 import { AuthProvider } from "@/context/AuthContext";
 import Abonnement from "@/pages/Abonnement";
 import Admin from "@/pages/Admin";
+import Archives from "@/pages/Archives";
 import AdminComptes from "@/pages/AdminComptes";
 import Anniversaires from "@/pages/Anniversaires";
 import Bientot from "@/pages/Bientot";
@@ -56,6 +57,7 @@ export default function App() {
               <Route path="/ordonnances" element={<Ordonnances />} />
               <Route path="/transcription" element={<Voix />} />
               <Route path="/pharmacies-de-garde" element={<Garde />} />
+              <Route path="/archives" element={<Archives />} />
               {/* Services du menu latéral (lot 33) : pages d'attente, ouvertes une à une */}
               {["breves", "presse"].map((c) => (
                 <Route key={c} path={`/${c}`} element={<Bientot />} />
