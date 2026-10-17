@@ -30,13 +30,25 @@ export const ENTREES_MENU = [
 
 const CLE_REDUIT = "mpw_menu_reduit";
 
+// Sous-menus de « Rappels » (déployé seulement) : un onglet de la page /rappels chacun, avec sa propre pastille
+const SOUS_RAPPELS = [
+  { cle: "paiements", icone: "🔁", libelle: "Paiements récurrents" },
+  { cle: "medicaments", icone: "💊", libelle: "Prise de médicaments" },
+  { cle: "anniversaires", icone: "🎂", libelle: "Anniversaires à souhaiter" },
+];
+
 // compteurs : { anniversaires, paiements, medicaments } = ce qui demande une action maintenant (pastille rouge)
 // Un seul menu « Rappels » : la pastille additionne les trois types de rappels
 const COMPTEUR = { "/rappels": ["anniversaires", "paiements", "medicaments"] };
 const nombre = (compteurs, to) => (COMPTEUR[to] || []).reduce((t, k) => t + (compteurs[k] || 0), 0);
 
 export default function MenuLateral({ ouvert, fermer, compteurs = {} }) {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
+  // Sous-menus de « Rappels » : ouverts d'office sur la page des rappels, repliables au toucher du titre
+  const surRappels = pathname === "/rappels";
+  const ongletActif = new URLSearchParams(search).get("onglet") || "paiements";
+  const [rappelsOuvert, setRappelsOuvert] = useState(surRappels);
+  useEffect(() => { if (surRappels) setRappelsOuvert(true); }, [surRappels]);
   // Choix de l'utilisateur : menu réduit (icônes seules) ou déployé (icônes + texte), relu au chargement
   const [reduit, setReduit] = useState(() => { try { return localStorage.getItem(CLE_REDUIT) === "1"; } catch { return false; } });
   const basculer = () => setReduit((v) => {
@@ -45,7 +57,7 @@ export default function MenuLateral({ ouvert, fermer, compteurs = {} }) {
   });
 
   // Fermeture au changement de page et à la touche Échap
-  useEffect(() => { fermer(); }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fermer(); }, [pathname, search]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!ouvert) return undefined;
     const touche = (e) => { if (e.key === "Escape") fermer(); };
@@ -72,7 +84,35 @@ export default function MenuLateral({ ouvert, fermer, compteurs = {} }) {
           </div>
         </div>
         <ul className={`flex-1 space-y-1 overflow-y-auto ${reduit ? "p-1.5" : "p-3"}`}>
-          {ENTREES_MENU.map((e) => (
+          {ENTREES_MENU.map((e) => (e.to === "/rappels" && !reduit ? (
+            <li key={e.to}>
+              <button type="button" aria-expanded={rappelsOuvert} onClick={() => setRappelsOuvert((v) => !v)}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold transition ${surRappels ? "bg-primary text-white" : "text-gray-700 hover:bg-gray-100"}`}>
+                <span className="text-xl leading-none">{e.icone}</span>
+                <span className="min-w-0 flex-1">{e.libelle}</span>
+                {!rappelsOuvert && nombre(compteurs, e.to) > 0 && (
+                  <span className="grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">{nombre(compteurs, e.to)}</span>
+                )}
+                <span aria-hidden="true" className="text-xs">{rappelsOuvert ? "▾" : "▸"}</span>
+              </button>
+              {rappelsOuvert && (
+                <ul className="mt-1 space-y-1 border-l-2 border-gray-200 pl-3 ml-5">
+                  {SOUS_RAPPELS.map((r) => {
+                    const actif = surRappels && ongletActif === r.cle;
+                    return (
+                      <li key={r.cle}>
+                        <NavLink to={`/rappels?onglet=${r.cle}`} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${actif ? "bg-primary text-white" : "text-gray-700 hover:bg-gray-100"}`}>
+                          <span className="text-lg leading-none">{r.icone}</span>
+                          <span className="min-w-0 flex-1">{r.libelle}</span>
+                          {(compteurs[r.cle] || 0) > 0 && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">{compteurs[r.cle]}</span>}
+                        </NavLink>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </li>
+          ) : (
             <li key={e.to}>
               <NavLink to={e.to} end={e.exact} title={e.libelle} aria-label={e.libelle}
                 className={({ isActive }) => `flex items-center rounded-xl text-sm font-semibold transition ${reduit ? "justify-center px-0 py-3" : "gap-3 px-3 py-3"} ${isActive ? "bg-primary text-white" : "text-gray-700 hover:bg-gray-100"}`}>
@@ -89,7 +129,7 @@ export default function MenuLateral({ ouvert, fermer, compteurs = {} }) {
                 )}
               </NavLink>
             </li>
-          ))}
+          )))}
         </ul>
         {/* Seule information du site : « Ver X · date » (réduit : « Ver X ») */}
         <p className={`border-t border-gray-200 py-3 text-gray-400 ${reduit ? "px-1 text-center text-[10px]" : "px-4 text-xs"}`}>
