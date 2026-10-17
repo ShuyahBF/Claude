@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import ChampMotDePasse from "@/components/ChampMotDePasse";
+import ChampTelephone from "@/components/ChampTelephone";
 import EtatServeur from "@/components/EtatServeur";
 import Patientez from "@/components/Patientez";
 import SupportSawali from "@/components/SupportSawali";
 import { useAuth } from "@/context/AuthContext";
 import { messageErreur, MOTIF_DECONNEXION_KEY } from "@/lib/api";
+import { assembler, libellePays, PAYS, PAYS_DEFAUT, trouverPays } from "@/lib/pays";
 import { LIBELLE_VERSION } from "@/version";
 
 // Écrans de connexion et d'inscription (mode = "connexion" | "inscription").
@@ -22,6 +24,7 @@ export default function Connexion({ mode = "connexion" }) {
 
   const [form, setForm] = useState({ identifiant: "", nom: "", prenom: "", telephone: "", email: "", mot_de_passe: "" });
   const [erreur, setErreur] = useState("");
+  const [paysConnexion, setPaysConnexion] = useState(PAYS_DEFAUT);     // pays appliqué à un numéro saisi sans indicatif
   // Motif d'une fermeture de session (inactivité, administrateur…) : affiché jusqu'à la prochaine connexion réussie
   // (lu sans être effacé tout de suite : la page peut être recréée pendant la vérification de la session)
   const [motif] = useState(() => {
@@ -41,7 +44,11 @@ export default function Connexion({ mode = "connexion" }) {
         await inscription({ nom: form.nom, prenom: form.prenom, telephone: form.telephone,
           email: form.email.trim() || null, mot_de_passe: form.mot_de_passe });
       } else {
-        await connexion(form.identifiant, form.mot_de_passe);
+        // E-mail : tel quel. Numéro sans indicatif (« 70 00 00 00 ») : on y ajoute celui du pays choisi (Burkina Faso par défaut)
+        const saisie = form.identifiant.trim();
+        const international = saisie.startsWith("+") || saisie.startsWith("00");
+        const p = trouverPays(paysConnexion);
+        await connexion(saisie.includes("@") || international ? saisie : assembler(p.indicatif, saisie, !!p.zero) || saisie, form.mot_de_passe);
       }
       try { sessionStorage.removeItem(MOTIF_DECONNEXION_KEY); } catch { /* stockage indisponible */ }
       navigate(suite, { replace: true });
@@ -83,8 +90,7 @@ export default function Connexion({ mode = "connexion" }) {
             </div>
             <div>
               <label className="label" htmlFor="telephone">Numéro de téléphone</label>
-              <input id="telephone" className="input" type="tel" inputMode="tel" required placeholder="70 00 00 00"
-                value={form.telephone} onChange={champ("telephone")} autoComplete="tel" />
+              <ChampTelephone id="telephone" required valeur={form.telephone} onChange={(v) => setForm((f) => ({ ...f, telephone: v }))} />
             </div>
             <div>
               <label className="label" htmlFor="email">E-mail <span className="font-normal text-gray-400">(facultatif)</span></label>
@@ -94,8 +100,16 @@ export default function Connexion({ mode = "connexion" }) {
         ) : (
           <div>
             <label className="label" htmlFor="identifiant">Téléphone ou e-mail</label>
-            <input id="identifiant" className="input" required placeholder="70 00 00 00 ou nom@exemple.com"
-              value={form.identifiant} onChange={champ("identifiant")} autoComplete="username" />
+            <div className="flex gap-2">
+              {/* Pays du numéro : proposé tant que la saisie n'est ni un e-mail ni un numéro déjà écrit avec son indicatif */}
+              {!/[@+]/.test(form.identifiant) && !form.identifiant.startsWith("00") && (
+                <select className="input w-auto max-w-[60%] shrink-0 px-2 text-sm" value={paysConnexion} onChange={(e) => setPaysConnexion(e.target.value)} aria-label="Pays du numéro">
+                  {PAYS.map((p) => <option key={p.code} value={p.code}>{libellePays(p)}</option>)}
+                </select>
+              )}
+              <input id="identifiant" className="input min-w-0 flex-1" required placeholder="70 00 00 00 ou nom@exemple.com"
+                value={form.identifiant} onChange={champ("identifiant")} autoComplete="username" />
+            </div>
           </div>
         )}
 

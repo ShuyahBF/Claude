@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Chargement from "@/components/Chargement";
+import LogoMode from "@/components/LogoMode";
 import Modal from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { apiClient, fcfa, messageErreur } from "@/lib/api";
@@ -160,10 +161,15 @@ export default function Abonnement() {
                   <div className="min-w-0"><p className="font-semibold">{f.nom}</p>{f.description && <p className="text-sm text-gray-600">{f.description}</p>}</div>
                   <div className="shrink-0 text-right"><p className="text-lg font-bold text-primary">{fcfa(f.prix)}</p><p className="text-xs text-gray-500">pour {f.duree_jours} jours</p></div>
                 </div>
-                <button type="button" className="btn-primary w-full" disabled={!!enCours} onClick={() => acheter(f)}>
-                  {enCours === f.id ? "Patientez…" : deja ? `Prolonger de ${f.duree_jours} jours` : "S'abonner"}
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Payer avec</p>
+                <button type="button" className="btn-primary w-full justify-start gap-3" disabled={!!enCours} onClick={() => acheter(f)}>
+                  <LogoMode mode="pawapay" />
+                  <span className="flex-1 text-left">{enCours === f.id ? "Patientez…" : <>{deja ? `Prolonger de ${f.duree_jours} jours` : "S'abonner"} · PawaPay<span className="block text-xs font-normal opacity-90">Orange, Moov, Telecel (Mobile Money)</span></>}</span>
                 </button>
-                <button type="button" className="btn-outline w-full" disabled={!!enCours} onClick={() => payerParPispi(f)}>🏦 Payer par virement PI-SPI (banque)</button>
+                <button type="button" className="btn-outline w-full justify-start gap-3" disabled={!!enCours} onClick={() => payerParPispi(f)}>
+                  <LogoMode mode="pispi" />
+                  <span className="flex-1 text-left">Virement PI-SPI<span className="block text-xs font-normal text-gray-500">Avec l'application de votre banque</span></span>
+                </button>
                 {deja && <p className="text-xs text-gray-500">La durée s'ajoute au temps qu'il vous reste.</p>}
               </li>
             );

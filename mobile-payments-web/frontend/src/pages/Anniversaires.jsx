@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import ChampTelephone from "@/components/ChampTelephone";
 import Chargement from "@/components/Chargement";
 import Modal from "@/components/Modal";
 import { useToast } from "@/components/Toast";
@@ -137,7 +138,7 @@ export default function Anniversaires() {
             </div>
             <div>
               <label className="label" htmlFor="an-tel">Téléphone <span className="font-normal text-gray-400">(facultatif, pour écrire sur WhatsApp)</span></label>
-              <input id="an-tel" className="input" type="tel" inputMode="tel" maxLength={30} placeholder="70 00 00 00" value={edition.telephone} onChange={champ("telephone")} />
+              <ChampTelephone key={edition.id || "nouveau"} id="an-tel" valeur={edition.telephone} onChange={(v) => setEdition((x) => ({ ...x, telephone: v }))} />
             </div>
             <div>
               <label className="label" htmlFor="an-note">Note <span className="font-normal text-gray-400">(facultatif)</span></label>

@@ -12,6 +12,7 @@
 // fermée : une pastille rouge compte les réponses non lues (vérification toutes les 60 s)
 // et un SON est joué à chaque nouvelle réponse. L'icône reste cachée si la clé SAWALI est absente.
 // ============================================================================
+import ChampTelephone from "@/components/ChampTelephone";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "@/context/AuthContext";
@@ -247,15 +248,13 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
           {erreur && <p className="bg-red-50 px-3 py-1 text-xs text-red-700">{erreur}</p>}
           <form onSubmit={envoyer} className="space-y-2 p-2">
             {/* Nom et contact : pour que le support puisse répondre (utile surtout aux visiteurs) */}
-            <div className="grid grid-cols-2 gap-2">
-              {/* Connecté : nom et numéro du compte, grisés. Visiteur : saisie (numéro obligatoire) */}
+            <div className="space-y-2">
+              {/* Connecté : nom et numéro du compte, grisés. Visiteur : saisie (numéro obligatoire, avec la liste des pays) */}
               <input className="input text-sm disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500" placeholder="Votre nom" maxLength={80}
                 disabled={!!user} value={user ? `${user.prenom || ""} ${user.nom || ""}`.trim() : coord.nom}
                 onChange={(e) => setCoord({ ...coord, nom: e.target.value })} aria-label="Votre nom" />
-              <input className="input text-sm disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500" placeholder="Téléphone 70 00 00 00" maxLength={20}
-                type="tel" inputMode="tel" autoComplete="tel" required={!user}
-                disabled={!!user} value={user ? user.telephone || "" : coord.contact}
-                onChange={(e) => setCoord({ ...coord, contact: e.target.value })} aria-label="Numéro de téléphone" />
+              <ChampTelephone key={user ? "compte" : "visiteur"} required={!user} disabled={!!user} classeSaisie="input text-sm"
+                valeur={user ? user.telephone || "" : coord.contact} onChange={(v) => setCoord((c) => ({ ...c, contact: v }))} />
             </div>
             <div className="flex gap-2">
               <textarea value={texte} onChange={(e) => setTexte(e.target.value)} rows={2} maxLength={2000}

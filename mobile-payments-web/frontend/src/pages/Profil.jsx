@@ -3,6 +3,7 @@ import { useToast } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
 import { apiClient, messageErreur } from "@/lib/api";
 import ChampMotDePasse from "@/components/ChampMotDePasse";
+import ChampTelephone from "@/components/ChampTelephone";
 import { etatAutorisation, geolocalisationDisponible, positionActuelle } from "@/lib/geoloc";
 import { abonnerPush, activerNotifications, CHOIX_TONALITE, declencherAlerteRenforcee, desabonnerPush, ecrirePreferences, etatNotifications, jouerSon, lirePreferences, pushDisponible, vibrer } from "@/lib/alertes";
 
@@ -93,7 +94,7 @@ export default function Profil() {
         </div>
         <div>
           <label className="label" htmlFor="p-tel">Téléphone</label>
-          <input id="p-tel" className="input" type="tel" required value={form.telephone} onChange={champ("telephone")} />
+          <ChampTelephone id="p-tel" required valeur={form.telephone} onChange={(v) => setForm((f) => ({ ...f, telephone: v }))} />
         </div>
         <div>
           <label className="label" htmlFor="p-email">E-mail <span className="font-normal text-gray-400">(facultatif)</span></label>
