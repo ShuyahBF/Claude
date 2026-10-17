@@ -180,7 +180,14 @@ export default function Payer() {
           className={service ? "text-primary" : operateur ? "font-semibold" : "text-gray-400"}>2. Service</button>
         <span className="text-gray-300">›</span>
         <span className={service ? "font-semibold" : "text-gray-400"}>3. Montant</span>
-        <button type="button" onClick={() => setScannerOuvert(true)} className="btn-outline btn-sm ml-auto">📷 Scanner un QR marchand</button>
+        {/* Pictogramme QR code : scanne le QR d'un marchand (le nom reste lu au survol / par les lecteurs d'écran) */}
+        <button type="button" onClick={() => setScannerOuvert(true)} className="btn-outline ml-auto grid h-10 w-10 place-items-center !p-0"
+          aria-label="Scanner un QR marchand" title="Scanner un QR marchand">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
+            <path d="M14 14h3v3h-3zM20 14v.01M14 20h3M20 17v4" />
+          </svg>
+        </button>
       </div>
 
       {/* Étape 1 : opérateur — liste déroulante (règle : une liste finie se choisit dans une liste déroulante) */}

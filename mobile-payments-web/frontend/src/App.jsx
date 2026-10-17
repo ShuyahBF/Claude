@@ -10,8 +10,11 @@ import Confidentialite from "@/pages/Confidentialite";
 import Connexion from "@/pages/Connexion";
 import Historique from "@/pages/Historique";
 import Marchands from "@/pages/Marchands";
+import Medicaments from "@/pages/Medicaments";
+import Meteo from "@/pages/Meteo";
 import Payer from "@/pages/Payer";
 import Profil from "@/pages/Profil";
+import RappelsPaiements from "@/pages/RappelsPaiements";
 
 // Routes du site. Tout est réservé aux utilisateurs connectés, sauf la
 // connexion, l'inscription et la politique de confidentialité (publique, lot 16) ;
@@ -32,8 +35,11 @@ export default function App() {
               <Route path="/marchands" element={<Marchands />} />
               <Route path="/profil" element={<Profil />} />
               <Route path="/anniversaires" element={<Anniversaires />} />
+              <Route path="/rappels-paiements" element={<RappelsPaiements />} />
+              <Route path="/medicaments" element={<Medicaments />} />
+              <Route path="/meteo" element={<Meteo />} />
               {/* Services du menu latéral (lot 33) : pages d'attente, ouvertes une à une */}
-              {["pharmacies-de-garde", "rappels-paiements", "medicaments", "ordonnances", "breves", "presse"].map((c) => (
+              {["pharmacies-de-garde", "ordonnances", "breves", "presse"].map((c) => (
                 <Route key={c} path={`/${c}`} element={<Bientot />} />
               ))}
               <Route path="/admin" element={<RouteProtegee admin><Admin /></RouteProtegee>} />

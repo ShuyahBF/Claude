@@ -14,6 +14,7 @@ import { LIBELLE_VER, VERSION } from "@/version";
 // Entrées du menu (même liste que les pages de /pages/Bientot.jsx)
 export const ENTREES_MENU = [
   { to: "/pharmacies-de-garde", icone: "🏥", libelle: "Pharmacies de garde" },
+  { to: "/meteo", icone: "☀️", libelle: "Météo" },
   { to: "/anniversaires", icone: "🎂", libelle: "Anniversaires à souhaiter" },
   { to: "/rappels-paiements", icone: "🔁", libelle: "Rappels de paiements récurrents" },
   { to: "/medicaments", icone: "💊", libelle: "Rappels de prise de médicaments" },
@@ -24,7 +25,10 @@ export const ENTREES_MENU = [
 
 const CLE_REDUIT = "mpw_menu_reduit";
 
-export default function MenuLateral({ ouvert, fermer }) {
+// compteurs : { anniversaires, paiements, medicaments } = ce qui demande une action maintenant (pastille rouge)
+const COMPTEUR = { "/anniversaires": "anniversaires", "/rappels-paiements": "paiements", "/medicaments": "medicaments" };
+
+export default function MenuLateral({ ouvert, fermer, compteurs = {} }) {
   const { pathname } = useLocation();
   // Choix de l'utilisateur : menu réduit (icônes seules) ou déployé (icônes + texte), relu au chargement
   const [reduit, setReduit] = useState(() => { try { return localStorage.getItem(CLE_REDUIT) === "1"; } catch { return false; } });
@@ -65,8 +69,17 @@ export default function MenuLateral({ ouvert, fermer }) {
             <li key={e.to}>
               <NavLink to={e.to} title={e.libelle} aria-label={e.libelle}
                 className={({ isActive }) => `flex items-center rounded-xl text-sm font-semibold transition ${reduit ? "justify-center px-0 py-3" : "gap-3 px-3 py-3"} ${isActive ? "bg-primary text-white" : "text-gray-700 hover:bg-gray-100"}`}>
-                <span className="text-xl leading-none">{e.icone}</span>
-                {!reduit && e.libelle}
+                <span className="relative text-xl leading-none">
+                  {e.icone}
+                  {/* Pastille : nombre d'éléments à traiter (simple point quand le menu est réduit) */}
+                  {compteurs[COMPTEUR[e.to]] > 0 && (
+                    <span className={`absolute -right-2 -top-2 grid place-items-center rounded-full bg-red-600 font-bold text-white ${reduit ? "h-2.5 w-2.5" : "hidden"}`} />
+                  )}
+                </span>
+                {!reduit && <span className="min-w-0 flex-1">{e.libelle}</span>}
+                {!reduit && compteurs[COMPTEUR[e.to]] > 0 && (
+                  <span className="grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">{compteurs[COMPTEUR[e.to]]}</span>
+                )}
               </NavLink>
             </li>
           ))}
