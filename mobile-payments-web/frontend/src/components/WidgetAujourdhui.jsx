@@ -17,6 +17,8 @@ const emoji = (icone = "") => {
   return i.includes("moon") ? "🌙" : i.includes("storm") ? "⛈️" : i.includes("rain") || i.includes("drizzle") ? "🌧️" : i.includes("snow") ? "❄️"
     : i.includes("fog") ? "🌫️" : i.includes("cloud") ? (i.includes("sun") ? "⛅" : "☁️") : i.includes("sun") ? "☀️" : "🌤️";
 };
+// Prénom abrégé dans l'en-tête de la carte : au-delà de 8 caractères, on garde les 6 premiers et les 2 derniers (« Jean-Francois » → « Jean-F…is »)
+const prenomCourt = (p = "") => { const t = String(p).trim(); return t.length > 8 ? `${t.slice(0, 6)}…${t.slice(-2)}` : t; };
 const quand = (n) => (n < 0 ? `en retard de ${-n} j` : n === 0 ? "aujourd'hui" : n === 1 ? "demain" : `dans ${n} jours`);
 
 // Rubrique repliable : une seule ligne se montre telle quelle ; à partir de 2 lignes, un en-tête « titre (n) » les replie / déplie
@@ -66,7 +68,7 @@ export default function WidgetAujourdhui() {
   return (
     <section className="overflow-hidden rounded-2xl border border-primary/30 bg-white shadow-sm" aria-label="Aujourd'hui" data-testid="widget-aujourdhui">
       <button type="button" onClick={basculer} aria-expanded={!replie} className="flex w-full items-center justify-between gap-3 bg-primary px-4 py-2.5 text-left text-white">
-        <span className="min-w-0 truncate font-semibold">Bonjour {user?.prenom || ""} <span className="font-normal capitalize text-white/80">· {date}</span></span>
+        <span className="min-w-0 truncate font-semibold">Bonjour {prenomCourt(user?.prenom)} <span className="font-normal capitalize text-white/80">· {date}</span></span>
         <span className="flex shrink-0 items-center gap-2 text-sm">
           {replie && total > 0 && <span className="rounded-full bg-white/25 px-2 text-xs font-semibold" aria-label={`${total} rappel(s)`}>{total}</span>}
           {meteo && <span>{emoji(meteo.icone)} {Math.round(meteo.temperature)}°C</span>}
