@@ -18,6 +18,7 @@ export const ENTREES_MENU = [
   { to: "/abonnement", icone: "🎟️", libelle: "Abonnement" },
   { to: "/pharmacies-de-garde", icone: "🏥", libelle: "Pharmacies de garde" },
   { to: "/archives", icone: "🗄️", libelle: "Archives" },
+  { to: "/annonceur", icone: "📣", libelle: "Mon espace annonceur" },
   { to: "/mon-marchand", icone: "🏪", libelle: "Mon compte marchand" },
   { to: "/meteo", icone: "☀️", libelle: "Météo" },
   { to: "/anniversaires", icone: "🎂", libelle: "Anniversaires à souhaiter" },
