@@ -4,6 +4,7 @@ import AlerteRenforcee from "@/components/AlerteRenforcee";
 import ArriveeMarchand from "@/components/ArriveeMarchand";
 import MenuLateral from "@/components/MenuLateral";
 import SupportSawali from "@/components/SupportSawali";
+import VerrouEcran from "@/components/VerrouEcran";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/components/Toast";
 import { apiClient } from "@/lib/api";
@@ -84,6 +85,7 @@ export default function Layout() {
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
         <Outlet />
+        <VerrouEcran />
         <ArriveeMarchand />
         <AlerteRenforcee />
       </main>
