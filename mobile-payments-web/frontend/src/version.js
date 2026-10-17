@@ -27,10 +27,10 @@
 // ============================================================================
 
 // Compteur de déploiements : +1 à chaque déploiement.
-export const VERSION = 18;
+export const VERSION = 19;
 
 // Numéro de la PR GitHub fusionnée pour ce déploiement.
-export const LOT = 32;
+export const LOT = 33;
 
 // Hash court du commit compilé (RENDER_GIT_COMMIT sur Render, sinon `git`),
 // injecté par vite.config.js. "dev" si introuvable.
@@ -70,3 +70,7 @@ export function libelleVersion(detaille = false) {
 
 // Libellé court (connexion et pages connectées).
 export const LIBELLE_VERSION = libelleVersion(false);
+
+// Libellé « ver » du menu latéral (lot 33) : uniquement la version et la date de déploiement du site,
+// ex. « Ver 19 · 17/10/2026 08:09 ». Ni lot, ni commit, ni information sur l'API.
+export const LIBELLE_VER = `Ver ${VERSION}${DATE_BUILD_FR ? ` · ${DATE_BUILD_FR}` : ""}`;
