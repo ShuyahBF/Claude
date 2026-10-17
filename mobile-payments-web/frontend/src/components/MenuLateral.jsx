@@ -21,9 +21,7 @@ export const ENTREES_MENU = [
   { to: "/annonceur", icone: "📣", libelle: "Devenir annonceur" },
   { to: "/mon-marchand", icone: "🏪", libelle: "Mon compte marchand" },
   { to: "/meteo", icone: "☀️", libelle: "Météo" },
-  { to: "/anniversaires", icone: "🎂", libelle: "Anniversaires à souhaiter" },
-  { to: "/rappels-paiements", icone: "🔁", libelle: "Rappels de paiements récurrents" },
-  { to: "/medicaments", icone: "💊", libelle: "Rappels de prise de médicaments" },
+  { to: "/rappels", icone: "🔔", libelle: "Rappels" },
   { to: "/ordonnances", icone: "📄", libelle: "OCR sur ordonnances" },
   { to: "/transcription", icone: "🎙️", libelle: "Transcription vocale" },
   { to: "/breves", icone: "📰", libelle: "Brèves actualités" },
@@ -33,7 +31,9 @@ export const ENTREES_MENU = [
 const CLE_REDUIT = "mpw_menu_reduit";
 
 // compteurs : { anniversaires, paiements, medicaments } = ce qui demande une action maintenant (pastille rouge)
-const COMPTEUR = { "/anniversaires": "anniversaires", "/rappels-paiements": "paiements", "/medicaments": "medicaments" };
+// Un seul menu « Rappels » : la pastille additionne les trois types de rappels
+const COMPTEUR = { "/rappels": ["anniversaires", "paiements", "medicaments"] };
+const nombre = (compteurs, to) => (COMPTEUR[to] || []).reduce((t, k) => t + (compteurs[k] || 0), 0);
 
 export default function MenuLateral({ ouvert, fermer, compteurs = {} }) {
   const { pathname } = useLocation();
@@ -79,13 +79,13 @@ export default function MenuLateral({ ouvert, fermer, compteurs = {} }) {
                 <span className="relative text-xl leading-none">
                   {e.icone}
                   {/* Pastille : nombre d'éléments à traiter (simple point quand le menu est réduit) */}
-                  {compteurs[COMPTEUR[e.to]] > 0 && (
+                  {nombre(compteurs, e.to) > 0 && (
                     <span className={`absolute -right-2 -top-2 grid place-items-center rounded-full bg-red-600 font-bold text-white ${reduit ? "h-2.5 w-2.5" : "hidden"}`} />
                   )}
                 </span>
                 {!reduit && <span className="min-w-0 flex-1">{e.libelle}</span>}
-                {!reduit && compteurs[COMPTEUR[e.to]] > 0 && (
-                  <span className="grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">{compteurs[COMPTEUR[e.to]]}</span>
+                {!reduit && nombre(compteurs, e.to) > 0 && (
+                  <span className="grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">{nombre(compteurs, e.to)}</span>
                 )}
               </NavLink>
             </li>

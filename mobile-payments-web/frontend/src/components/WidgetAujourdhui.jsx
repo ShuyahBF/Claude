@@ -80,7 +80,7 @@ export default function WidgetAujourdhui() {
           {meteo && <Link to="/meteo" className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-50"><span>{emoji(meteo.icone)}</span><span>{ville.nom} : {Math.round(meteo.temperature)}°C, {meteo.libelle}</span></Link>}
           {jour === null && <p className="px-2 py-1.5 text-gray-400">Chargement…</p>}
           {jour && jour.prises_total > 0 && (
-            <Link to="/medicaments" className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-50">
+            <Link to="/rappels?onglet=medicaments" className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-50">
               <span>💊</span>
               <span>{jour.prochaine_prise ? <>Prochaine prise <b className="tabular-nums">{jour.prochaine_prise.heure}</b> · {jour.prochaine_prise.medicament}</> : "Toutes les prises du jour sont faites ✅"}
                 <span className="text-gray-400"> ({jour.prises_faites}/{jour.prises_total})</span></span>
@@ -89,7 +89,7 @@ export default function WidgetAujourdhui() {
           {jour && jour.paiements.length > 0 && (
             <Rubrique cle="paiements" icone="🔁" titre="Paiements à venir" n={jour.paiements.length} ouverte={ouverte("paiements", jour.paiements.length)} basculer={basculerSection}>
               {jour.paiements.map((p) => (
-                <Link key={p.libelle} to="/rappels-paiements" className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-50">
+                <Link key={p.libelle} to="/rappels?onglet=paiements" className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-50">
                   <span>🔁</span><span><b>{p.libelle}</b> <span className={p.dans_jours <= 0 ? "font-semibold text-primary" : "text-gray-600"}>{quand(p.dans_jours)}</span></span>
                 </Link>
               ))}
@@ -98,7 +98,7 @@ export default function WidgetAujourdhui() {
           {jour && jour.anniversaires.length > 0 && (
             <Rubrique cle="anniversaires" icone="🎂" titre="Anniversaires" n={jour.anniversaires.length} ouverte={ouverte("anniversaires", jour.anniversaires.length)} basculer={basculerSection}>
               {jour.anniversaires.map((a) => (
-                <Link key={a.nom} to="/anniversaires" className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-50">
+                <Link key={a.nom} to="/rappels?onglet=anniversaires" className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-50">
                   <span>🎂</span><span><b>{a.nom}</b> <span className={a.dans_jours === 0 ? "font-semibold text-primary" : "text-gray-600"}>{quand(a.dans_jours)}</span></span>
                 </Link>
               ))}

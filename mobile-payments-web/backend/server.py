@@ -19,7 +19,7 @@ from db import db, ensure_indexes
 import presence_sawali
 import version_plateforme
 from signal_connexion import adresse_ip
-from routes import abonnement, annonceurs, android, anniversaires, archives, auth, catalogue, comptes, comptes_marchands, garde, marchands, meteo, ocr, paiements, presence, publicites, push, qr_operateurs, rappels, rappels_medicaments, rappels_paiements, voix
+from routes import abonnement, annonceurs, presse, android, anniversaires, archives, auth, catalogue, comptes, comptes_marchands, garde, marchands, meteo, ocr, paiements, presence, publicites, push, qr_operateurs, rappels, rappels_medicaments, rappels_paiements, voix
 import support_sawali
 from securite import hash_password
 from ussd import normaliser_email
@@ -41,7 +41,7 @@ app.add_middleware(
 # application Android (« /api/android/… ») et visites du site (« /api/presence/visite »).
 api = APIRouter(prefix="/api")
 # support_sawali : discussion avec le support SAWALI (icône de la page de connexion, lot 24)
-for module in (auth, catalogue, marchands, paiements, android, presence, support_sawali, publicites, anniversaires, meteo, rappels, rappels_medicaments, rappels_paiements, abonnement, qr_operateurs, ocr, push, voix, garde, comptes, archives, comptes_marchands, annonceurs):
+for module in (auth, catalogue, marchands, paiements, android, presence, support_sawali, publicites, anniversaires, meteo, rappels, rappels_medicaments, rappels_paiements, abonnement, qr_operateurs, ocr, push, voix, garde, comptes, archives, comptes_marchands, annonceurs, presse):
     api.include_router(module.router)
 
 
@@ -95,6 +95,8 @@ async def au_demarrage():
         publicites.lancer_actualisation()
         # Notifications push (application fermée) : passage toutes les minutes en arrière-plan (lot 41)
         _taches_fond.add(asyncio.get_running_loop().create_task(push.boucle_push()))
+    # Résumés de presse : un passage par jour à l'heure choisie par l'administrateur (6 h par défaut), en arrière-plan (lot 62)
+    _taches_fond.add(asyncio.get_running_loop().create_task(presse.boucle_presse()))
 
 
 # Référence des tâches de fond (sinon Python pourrait les effacer en cours de route)
