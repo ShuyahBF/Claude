@@ -36,3 +36,31 @@ async def definir_secondes_inactivite(secondes: int) -> int:
 
 def vider_cache() -> None:
     _cache.update(valeur=DEFAUT_SECONDES, lu_le=0.0)
+
+
+# ---------------------------------------------------------------------------
+# Verrou de l'écran (lot 64) : après combien de secondes passées HORS de la page (autre onglet, autre application, écran éteint)
+# le mot de passe du compte est redemandé pour retirer le flou. 0 = toujours (dès le moindre départ de la page).
+# Retour plus rapide que ce délai : simple retrait du flou, sans mot de passe (appel, notification…).
+# ---------------------------------------------------------------------------
+CHOIX_VERROU: Tuple[int, ...] = (0, 10, 30, 60, 120, 300)
+DEFAUT_VERROU = 30
+_cache_verrou = {"valeur": DEFAUT_VERROU, "lu_le": 0.0}
+
+
+async def secondes_verrou() -> int:
+    if time.monotonic() - _cache_verrou["lu_le"] > DUREE_CACHE:
+        doc = await db.reglages_plateforme.find_one({"_id": "verrou"}) or {}
+        v = doc.get("secondes")
+        _cache_verrou.update(valeur=v if v in CHOIX_VERROU else DEFAUT_VERROU, lu_le=time.monotonic())
+    return _cache_verrou["valeur"]
+
+
+async def definir_secondes_verrou(secondes: int) -> int:
+    await db.reglages_plateforme.update_one({"_id": "verrou"}, {"$set": {"secondes": secondes}}, upsert=True)
+    _cache_verrou.update(valeur=secondes, lu_le=time.monotonic())
+    return secondes
+
+
+def vider_cache_verrou() -> None:
+    _cache_verrou.update(valeur=DEFAUT_VERROU, lu_le=0.0)

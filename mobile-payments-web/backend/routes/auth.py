@@ -128,6 +128,30 @@ async def deconnexion(response: Response, user: Optional[dict] = Depends(utilisa
     return {"ok": True}
 
 
+@router.get("/verrou")
+async def verrou(_: dict = Depends(get_current_user)):
+    """Délai (secondes) hors de la page au-delà duquel le mot de passe est redemandé pour retirer le flou (lot 64)."""
+    return {"secondes": await reglages_securite.secondes_verrou()}
+
+
+class Deverrouillage(BaseModel):
+    mot_de_passe: str = Field(min_length=1, max_length=128)
+
+
+@router.post("/deverrouiller")
+async def deverrouiller(data: Deverrouillage, user: dict = Depends(get_current_user)):
+    """Écran verrouillé (lot 64) : l'utilisateur redonne le mot de passe de SON compte. Même protection que la connexion :
+    trop d'essais ratés → blocage temporaire (clé propre au compte, indépendante de celle de la connexion)."""
+    cle = f"verrou:{user['id']}"
+    await verifier_non_bloque(cle)
+    fiche = await db.users.find_one({"id": user["id"]}, SANS_ID) or {}
+    if not verify_password(data.mot_de_passe, fiche.get("password_hash", "")):
+        await noter_echec(cle)
+        raise _erreur("Mot de passe incorrect", status.HTTP_401_UNAUTHORIZED)
+    await effacer_echecs(cle)
+    return {"ok": True}
+
+
 @router.post("/activite")
 async def activite(user: dict = Depends(get_current_user)):
     """Le site signale que l'utilisateur est ACTIF (toucher, clic, frappe) : au plus toutes les 30 s.

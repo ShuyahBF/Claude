@@ -67,7 +67,8 @@ async def liste(q: str = Query("", max_length=60), page: int = Query(1, ge=1, le
     # Les plus récemment connectés d'abord ; les comptes jamais connectés (champ absent) ferment la marche
     curseur = db.users.find(filtre, SANS_ID).sort([("derniere_connexion", -1), ("cree_le", -1)]).skip((page - 1) * PAR_PAGE).limit(PAR_PAGE)
     return {"total": total, "page": page, "par_page": PAR_PAGE, "comptes": [_fiche(u) async for u in curseur],
-            "inactivite_secondes": await reglages_securite.secondes_inactivite(), "choix_inactivite": list(reglages_securite.CHOIX_SECONDES)}
+            "inactivite_secondes": await reglages_securite.secondes_inactivite(), "choix_inactivite": list(reglages_securite.CHOIX_SECONDES),
+            "verrou_secondes": await reglages_securite.secondes_verrou(), "choix_verrou": list(reglages_securite.CHOIX_VERROU)}
 
 
 class Ids(BaseModel):
@@ -129,6 +130,14 @@ async def deconnexion_generale(_: dict = Depends(require_admin)):
 
 class Reglage(BaseModel):
     secondes: int
+
+
+@router.put("/reglage-verrou")
+async def reglage_verrou(corps: Reglage, _: dict = Depends(require_admin)):
+    """Délai avant que le mot de passe soit redemandé au retour sur la page (0 = toujours) — lot 64."""
+    if corps.secondes not in reglages_securite.CHOIX_VERROU:
+        raise HTTPException(422, "Durée non proposée")
+    return {"verrou_secondes": await reglages_securite.definir_secondes_verrou(corps.secondes)}
 
 
 @router.put("/reglage-inactivite")

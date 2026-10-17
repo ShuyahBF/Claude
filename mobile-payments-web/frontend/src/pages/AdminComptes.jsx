@@ -23,6 +23,7 @@ export default function AdminComptes() {
   const [historique, setHistorique] = useState(null); // {compte, connexions}
   const [aDeconnecter, setADeconnecter] = useState(null); // compte à déconnecter, ou "tous"
   const [inactivite, setInactivite] = useState({ secondes: 180, choix: [60, 120, 180, 300, 600, 900, 1800] });
+  const [verrou, setVerrou] = useState({ secondes: 30, choix: [0, 10, 30, 60, 120, 300] });   // délai hors de la page avant mot de passe (lot 64)
 
   // 1. Les comptes s'affichent d'abord ; 2. les abonnements arrivent ensuite (lecture chez SAWALI, section séparée)
   const charger = useCallback(() => {
@@ -30,6 +31,7 @@ export default function AdminComptes() {
     apiClient.get("/admin/comptes", { params: { q: recherche, page } }).then(({ data }) => {
       setDonnees(data);
       setInactivite({ secondes: data.inactivite_secondes, choix: data.choix_inactivite });
+      setVerrou({ secondes: data.verrou_secondes, choix: data.choix_verrou });
       if (data.comptes.length === 0) { setAbonnes({}); return; }
       apiClient.post("/admin/comptes/abonnements", { ids: data.comptes.map((c) => c.id) })
         .then((r) => setAbonnes(r.data.abonnes)).catch(() => setAbonnes(undefined));   // undefined = indisponible
@@ -71,6 +73,15 @@ export default function AdminComptes() {
       toast.succes("Durée d'inactivité enregistrée");
     } catch (err) { toast.erreur(messageErreur(err, "Réglage impossible")); }
   };
+  // Délai hors de la page avant que le mot de passe soit redemandé (liste déroulante ; 0 = toujours)
+  const changerVerrou = async (secondes) => {
+    try {
+      const { data } = await apiClient.put("/admin/comptes/reglage-verrou", { secondes: Number(secondes) });
+      setVerrou((v) => ({ ...v, secondes: data.verrou_secondes }));
+      toast.succes("Délai de verrouillage enregistré");
+    } catch (err) { toast.erreur(messageErreur(err, "Réglage impossible")); }
+  };
+  const libelleVerrou = (s) => (s === 0 ? "Toujours (dès le moindre départ de la page)" : s < 60 ? `${s} secondes` : `${s / 60} minute${s > 60 ? "s" : ""}`);
   const libelleDuree = (s) => (s < 120 ? `${s} secondes` : `${s / 60} minutes`);
 
   const voirHistorique = async (c) => {
@@ -104,6 +115,13 @@ export default function AdminComptes() {
             {inactivite.choix.map((s) => <option key={s} value={s}>{libelleDuree(s)}</option>)}
           </select>
           <p className="mt-1 text-xs text-gray-500">Un compte à rebours de 30 s propose « Rester connecté » avant la fermeture.</p>
+        </div>
+        <div>
+          <label className="label" htmlFor="verrou">Redemander le mot de passe après une absence de</label>
+          <select id="verrou" className="input" value={verrou.secondes} onChange={(e) => changerVerrou(e.target.value)}>
+            {verrou.choix.map((s) => <option key={s} value={s}>{libelleVerrou(s)}</option>)}
+          </select>
+          <p className="mt-1 text-xs text-gray-500">L'écran est flouté dès que la page est quittée ; plus tôt que ce délai, il se rouvre seul.</p>
         </div>
         <button type="button" className="btn-outline" onClick={() => setADeconnecter("tous")}>Déconnecter tous les utilisateurs</button>
       </section>

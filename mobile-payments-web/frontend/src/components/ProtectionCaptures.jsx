@@ -59,6 +59,8 @@ export default function ProtectionCaptures() {
     // Jusqu'à quand (horodatage ms) une perte de focus est « normale » car
     // provoquée par le site lui-même (confirmation, sélecteur de fichier).
     let tolereJusqua = 0;
+    // Partagée avec VerrouEcran : un départ provoqué par le site lui-même (confirmation, sélecteur de fichier) ne verrouille pas l'écran
+    const fixerTolerance = (t) => { tolereJusqua = t; window.__mpwTolerance = t; };
     // Minuteries du flou temporaire (perte de focus, Impr. écran)
     let verification = null;
     let delaiMax = null;
@@ -111,12 +113,12 @@ export default function ProtectionCaptures() {
     ["confirm", "alert", "prompt"].forEach((nom) => {
       originaux[nom] = window[nom];
       window[nom] = function (...args) {
-        tolereJusqua = Date.now() + 60000; // pendant la fenêtre
+        fixerTolerance(Date.now() + 60000); // pendant la fenêtre
         try {
           return originaux[nom].apply(window, args);
         } finally {
           // Les événements blur/focus peuvent arriver juste après le retour
-          tolereJusqua = Date.now() + TOLERANCE_DIALOGUE_MS;
+          fixerTolerance(Date.now() + TOLERANCE_DIALOGUE_MS);
           demasquer();
         }
       };
@@ -132,12 +134,12 @@ export default function ProtectionCaptures() {
         const etiquette = cible?.closest?.("label");
         champ = etiquette?.control || etiquette?.querySelector?.('input[type="file"]');
       }
-      if (champ?.type === "file") tolereJusqua = Date.now() + TOLERANCE_FICHIER_MS;
+      if (champ?.type === "file") fixerTolerance(Date.now() + TOLERANCE_FICHIER_MS);
     };
     // Fichier choisi ou sélection annulée : fin de la tolérance (petit délai)
     const surFinSelection = (e) => {
       if (e.target?.type === "file") {
-        tolereJusqua = Date.now() + TOLERANCE_DIALOGUE_MS;
+        fixerTolerance(Date.now() + TOLERANCE_DIALOGUE_MS);
         demasquer();
       }
     };
