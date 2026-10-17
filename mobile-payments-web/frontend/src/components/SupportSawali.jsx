@@ -13,6 +13,7 @@
 // et un SON est joué à chaque nouvelle réponse. L'icône reste cachée si la clé SAWALI est absente.
 // ============================================================================
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { apiClient, messageErreur } from "@/lib/api";
 import Patientez from "@/components/Patientez";
 
@@ -178,7 +179,8 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
 
       <Patientez actif={envoi} />
 
-      {ouvert && (
+      {/* Portail vers <body> : sinon le menu flottant (flou + coins arrondis) découpe la fenêtre */}
+      {ouvert && createPortal(
         <div className="no-print fixed inset-x-2 bottom-2 z-[80] flex h-[70dvh] max-h-[560px] flex-col overflow-hidden rounded-2xl bg-white text-ink shadow-2xl ring-1 ring-gray-200 sm:inset-x-auto sm:right-4 sm:w-[360px]"
           role="dialog" aria-label="Support SAWALI">
           <div className="flex items-center gap-2 bg-nuit-900 px-4 py-3 text-white">
@@ -220,7 +222,8 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
               </button>
             </div>
           </form>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
