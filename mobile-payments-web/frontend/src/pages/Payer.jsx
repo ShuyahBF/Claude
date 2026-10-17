@@ -5,6 +5,8 @@ import Chargement from "@/components/Chargement";
 import Publicites from "@/components/Publicites";
 import WidgetAujourdhui from "@/components/WidgetAujourdhui";
 import QrOperateur from "@/components/QrOperateur";
+import LogoMode from "@/components/LogoMode";
+import PaiementPispi from "@/components/PaiementPispi";
 import ScannerQr from "@/components/ScannerQr";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
@@ -34,6 +36,11 @@ export default function Payer() {
   const [marchand, setMarchand] = useState(null);
   const [nouveauLibelle, setNouveauLibelle] = useState("");
   const [marchandsConnus, setMarchandsConnus] = useState([]);
+
+  // Mode de paiement (lot 58) : « clavier » (code USSD, par défaut) ou « pispi » (marchand vérifié avec QR PI-SPI)
+  const [mode, setMode] = useState("clavier");
+  const [pispiDispo, setPispiDispo] = useState(null);        // null = inconnu ; {disponible, nom, banque}
+  const [pispiOuvert, setPispiOuvert] = useState(null);      // {paiement, bloc} : fenêtre de paiement PI-SPI
 
   const champMarchand = useMemo(() => service?.champs.find((c) => c.isMerchantCode) || null, [service]);
   const codeMarchand = champMarchand ? (valeurs[champMarchand.key] || "") : "";
@@ -104,6 +111,17 @@ export default function Payer() {
     return () => clearTimeout(minuterie);
   }, [champMarchand, codeMarchand, operateur]);
 
+  // Ce marchand accepte-t-il PI-SPI ? (compte marchand vérifié) ; le mode revient à « clavier » quand le code change
+  useEffect(() => {
+    setMode("clavier");
+    if (!champMarchand || codeMarchand.length < 3) { setPispiDispo(null); return undefined; }
+    const minuterie = setTimeout(() => {
+      apiClient.get(`/marchands/${encodeURIComponent(operateur)}/${encodeURIComponent(codeMarchand)}/pispi`)
+        .then(({ data }) => setPispiDispo(data)).catch(() => setPispiDispo(null));
+    }, 450);
+    return () => clearTimeout(minuterie);
+  }, [champMarchand, codeMarchand, operateur]);
+
   // Code marchand inconnu : l'utilisateur lui donne un nom (annuaire partagé)
   const enregistrerMarchand = async () => {
     try {
@@ -121,6 +139,13 @@ export default function Payer() {
     e.preventDefault();
     setEnvoi(true);
     try {
+      // PI-SPI : bloc de paiement du marchand (QR de sa banque) au lieu du code USSD
+      if (mode === "pispi") {
+        const montant = parseInt(String(valeurs.amount || "").replace(/\D/g, ""), 10);
+        const { data } = await apiClient.post("/paiements/pispi", { operateur, code: codeMarchand, montant });
+        setPispiOuvert(data);
+        return;
+      }
       // Géolocalisation (si le compte l'a activée) : la position part avec la demande ; 4 s au plus d'attente, jamais bloquant
       const position = user?.geoloc ? await positionActuelle({ delaiMs: 4000 }) : null;
       const { data } = await apiClient.post("/paiements", { service_id: service.id, valeurs, ...(position ? { position } : {}) });
@@ -269,12 +294,32 @@ export default function Payer() {
             {marchandsConnus.map((m) => <option key={m.code} value={m.code}>{m.libelle}</option>)}
           </datalist>
 
+          {/* Mode de paiement : après le montant (clavier numéroteur par défaut ; PI-SPI si le marchand l'accepte) */}
+          {champMarchand && (
+            <fieldset className="space-y-2">
+              <legend className="label">Mode de paiement</legend>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" aria-pressed={mode === "clavier"} onClick={() => setMode("clavier")}
+                  className={`flex items-center gap-2 rounded-xl border p-2 text-left text-sm ${mode === "clavier" ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-gray-300 bg-white"}`}>
+                  <LogoMode mode="clavier" /><span className="font-semibold leading-tight">Clavier numéroteur</span>
+                </button>
+                <button type="button" aria-pressed={mode === "pispi"} disabled={!pispiDispo?.disponible} onClick={() => setMode("pispi")}
+                  className={`flex items-center gap-2 rounded-xl border p-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50 ${mode === "pispi" ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-gray-300 bg-white"}`}>
+                  <LogoMode mode="pispi" /><span className="font-semibold leading-tight">PI-SPI<span className="block text-xs font-normal text-gray-500">virement bancaire</span></span>
+                </button>
+              </div>
+              {codeMarchand.length >= 3 && pispiDispo && !pispiDispo.disponible && <p className="text-xs text-gray-500">Ce marchand n'accepte pas encore PI-SPI.</p>}
+              {pispiDispo?.disponible && <p className="text-xs text-green-700">✓ {pispiDispo.nom} accepte PI-SPI ({pispiDispo.banque}).</p>}
+            </fieldset>
+          )}
+
           <button type="submit" className="btn-primary w-full py-3 text-base" disabled={envoi}>
-            {envoi ? "Préparation…" : "Préparer le paiement →"}
+            {envoi ? "Préparation…" : mode === "pispi" ? "Payer par PI-SPI →" : "Préparer le paiement →"}
           </button>
         </form>
       )}
 
+      <PaiementPispi donnees={pispiOuvert} onFermer={() => setPispiOuvert(null)} onTermine={() => { /* le paiement reste dans l'historique */ }} />
       <ScannerQr ouvert={scannerOuvert} onFermer={fermerScanner} onResultat={surScan} />
       {/* QR d'une plaque d'opérateur : code marchand mémorisé ou à saisir une fois */}
       <QrOperateur qr={qrOperateur} onFermer={() => setQrOperateur(null)}

@@ -11,6 +11,8 @@ import Abonnement from "@/pages/Abonnement";
 import Admin from "@/pages/Admin";
 import Archives from "@/pages/Archives";
 import AdminComptes from "@/pages/AdminComptes";
+import AdminMarchands from "@/pages/AdminMarchands";
+import MonMarchand from "@/pages/MonMarchand";
 import Anniversaires from "@/pages/Anniversaires";
 import Bientot from "@/pages/Bientot";
 import Confidentialite from "@/pages/Confidentialite";
@@ -64,6 +66,8 @@ export default function App() {
               ))}
               <Route path="/admin" element={<RouteProtegee admin><Admin /></RouteProtegee>} />
               <Route path="/admin/comptes" element={<RouteProtegee admin><AdminComptes /></RouteProtegee>} />
+              <Route path="/admin/marchands" element={<RouteProtegee admin><AdminMarchands /></RouteProtegee>} />
+              <Route path="/mon-marchand" element={<MonMarchand />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

@@ -16,6 +16,7 @@ export const ENTREES_MENU = [
   { to: "/abonnement", icone: "🎟️", libelle: "Abonnement" },
   { to: "/pharmacies-de-garde", icone: "🏥", libelle: "Pharmacies de garde" },
   { to: "/archives", icone: "🗄️", libelle: "Archives" },
+  { to: "/mon-marchand", icone: "🏪", libelle: "Mon compte marchand" },
   { to: "/meteo", icone: "☀️", libelle: "Météo" },
   { to: "/anniversaires", icone: "🎂", libelle: "Anniversaires à souhaiter" },
   { to: "/rappels-paiements", icone: "🔁", libelle: "Rappels de paiements récurrents" },

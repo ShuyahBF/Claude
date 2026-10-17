@@ -10,6 +10,7 @@ téléphone qui dialogue avec l'opérateur) : l'utilisateur indique lui-même
 from __future__ import annotations
 
 import re
+import secrets
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -44,8 +45,8 @@ class Statut(BaseModel):
 
 
 def _avec_lien(p: dict) -> dict:
-    """Ajoute le lien « tel: » (calculé, jamais stocké)."""
-    return {**p, "lien_tel": lien_tel(p["code_ussd"])}
+    """Ajoute le lien « tel: » (calculé, jamais stocké). Un paiement PI-SPI n'a pas de code USSD."""
+    return {**p, "lien_tel": lien_tel(p["code_ussd"]) if p.get("code_ussd") else None}
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -82,6 +83,52 @@ async def preparer(data: Preparation, user: dict = Depends(get_current_user)):
             await lieux_marchands.noter(service["operateur"], marchand["code"], data.position.lat, data.position.lon, data.position.precision)
     await db.paiements.insert_one(paiement.copy())
     return _avec_lien(paiement)
+
+
+class DemandePispi(BaseModel):
+    operateur: str = Field(min_length=1, max_length=40)
+    code: str = Field(pattern=r"^[0-9]{1,20}$")
+    montant: int = Field(ge=100, le=100_000_000)
+
+
+class DeclarationPispi(BaseModel):
+    reference_bancaire: str = Field(min_length=4, max_length=120)
+
+
+def _montant_texte(n: int) -> str:
+    return f"{n:,}".replace(",", " ") + " FCFA"
+
+
+@router.post("/pispi", status_code=status.HTTP_201_CREATED)
+async def preparer_pispi(data: DemandePispi, user: dict = Depends(get_current_user)):
+    """Paiement chez un marchand par PI-SPI (lot 58) : bloc de paiement du marchand VÉRIFIÉ (QR de sa banque, référence à indiquer)."""
+    from routes.comptes_marchands import compte_verifie_pour
+    compte = await compte_verifie_pour(data.operateur, data.code)
+    if not compte:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ce marchand n'accepte pas le paiement PI-SPI")
+    reference = "PM-" + secrets.token_hex(4).upper()
+    p = compte["pispi"]
+    paiement = {
+        "id": str(uuid.uuid4()), "user_id": user["id"], "service_id": None, "operateur": data.operateur, "service_nom": "Paiement marchand par PI-SPI",
+        "categorie": "merchant_payment", "valeurs": {"code": data.code, "amount": str(data.montant)}, "marchand": {"code": data.code, "libelle": compte["nom"]},
+        "montant": data.montant, "code_ussd": None, "mode": "pispi", "reference": reference, "compte_marchand_id": compte["id"], "statut": "prepare",
+        "cree_le": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.paiements.insert_one(paiement.copy())
+    bloc = {"marchand": compte["nom"], "banque": p["banque"], "titulaire": p["titulaire"], "adresse_paiement": p["adresse_paiement"],
+            "montant": data.montant, "montant_texte": _montant_texte(data.montant), "reference": reference, "consigne": p.get("consigne") or "",
+            "qr_data_url": f"data:{p.get('qr_image_type') or 'image/png'};base64,{p['qr_image_b64']}"}
+    return {"paiement": _avec_lien(paiement), "bloc": bloc}
+
+
+@router.post("/{paiement_id}/pispi/declarer")
+async def declarer_pispi(paiement_id: str, data: DeclarationPispi, user: dict = Depends(get_current_user)):
+    """Le client a payé : il indique la référence bancaire ; le marchand la vérifie sur son relevé puis confirme."""
+    r = await db.paiements.update_one({"id": paiement_id, "user_id": user["id"], "mode": "pispi", "statut": {"$in": ["prepare", "declare"]}},
+                                      {"$set": {"statut": "declare", "reference_bancaire": data.reference_bancaire.strip(), "declare_le": datetime.now(timezone.utc).isoformat()}})
+    if not r.matched_count:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Paiement PI-SPI introuvable ou déjà traité")
+    return _avec_lien(await db.paiements.find_one({"id": paiement_id}, SANS_ID))
 
 
 # --------------------------------------------------------------------------------------------------------------------
@@ -226,6 +273,10 @@ async def statistiques(du: Optional[str] = None, au: Optional[str] = None, opera
 
 @router.put("/{paiement_id}/statut")
 async def changer_statut(paiement_id: str, data: Statut, user: dict = Depends(get_current_user)):
+    # PI-SPI (lot 58) : seul le MARCHAND confirme la réception ; le client peut seulement abandonner un paiement non encore confirmé
+    courant = await db.paiements.find_one({"id": paiement_id, "user_id": user["id"]}, SANS_ID)
+    if courant and courant.get("mode") == "pispi" and (data.statut != "abandonne" or courant.get("statut") in ("effectue", "refuse")):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Un paiement PI-SPI est confirmé par le marchand : vous pouvez seulement l'abandonner avant sa confirmation")
     # Le filtre user_id garantit qu'on ne modifie que SES paiements
     res = await db.paiements.update_one({"id": paiement_id, "user_id": user["id"]},
                                         {"$set": {"statut": data.statut,

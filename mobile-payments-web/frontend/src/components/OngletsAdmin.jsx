@@ -7,6 +7,7 @@ export default function OngletsAdmin() {
     <div className="flex flex-wrap gap-2">
       <NavLink to="/admin" end className={classe}>Catalogue USSD</NavLink>
       <NavLink to="/admin/comptes" className={classe}>Comptes</NavLink>
+      <NavLink to="/admin/marchands" className={classe}>Marchands</NavLink>
     </div>
   );
 }
