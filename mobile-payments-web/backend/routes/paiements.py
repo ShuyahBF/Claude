@@ -166,6 +166,24 @@ def _verifier_dates(du: Optional[str], au: Optional[str]) -> None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "La date de début doit précéder la date de fin")
 
 
+async def actualiser_marchands(docs: list[dict]) -> list[dict]:
+    """Met à jour le NOM du marchand de chaque ligne à partir de l'annuaire d'AUJOURD'HUI.
+    Un code marchand peut avoir été enregistré (ou corrigé) APRÈS le paiement : l'historique garde alors un nom vide ou périmé.
+    UNE SEULE lecture de l'annuaire pour toutes les lignes (jamais une lecture par ligne). Si l'annuaire n'a pas ce code, le nom
+    déjà gardé sur le paiement reste affiché."""
+    codes = {(p["operateur"], p["marchand"]["code"]) for p in docs if (p.get("marchand") or {}).get("code") and p.get("operateur")}
+    if not codes:
+        return docs
+    annuaire = await db.marchands.find({"code": {"$in": sorted({c for _, c in codes})}}, SANS_ID).to_list(len(codes) * 4 + 10)
+    noms = {(m["operateur"], m["code"]): m.get("libelle") for m in annuaire if m.get("libelle")}
+    for p in docs:
+        m = p.get("marchand") or {}
+        nom = noms.get((p.get("operateur"), m.get("code")))
+        if nom:
+            p["marchand"] = {**m, "libelle": nom}
+    return docs
+
+
 async def _charger(user: dict, du: Optional[str], au: Optional[str], operateur: Optional[str],
                    statut: Optional[str], q: Optional[str]) -> list[dict]:
     """Paiements de l'utilisateur filtrés par période, opérateur, statut et texte (du plus récent au plus ancien)."""
@@ -179,6 +197,7 @@ async def _charger(user: dict, du: Optional[str], au: Optional[str], operateur: 
     if statut:
         filtre["statut"] = statut
     docs = await db.paiements.find(filtre, SANS_ID).sort("cree_le", -1).to_list(LIMITE_ANALYSE)
+    await actualiser_marchands(docs)       # nom du marchand à jour AVANT la recherche (on retrouve un paiement par son nom actuel)
     if q and q.strip():
         mots = q.lower().split()
         docs = [p for p in docs if all(m in _texte_recherche(p) for m in mots)]   # tous les mots saisis doivent s'y trouver
@@ -283,7 +302,7 @@ async def changer_statut(paiement_id: str, data: Statut, user: dict = Depends(ge
                                                   "statut_le": datetime.now(timezone.utc).isoformat()}})
     if not res.matched_count:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Paiement introuvable")
-    return _avec_lien(await db.paiements.find_one({"id": paiement_id}, SANS_ID))
+    return _avec_lien((await actualiser_marchands([await db.paiements.find_one({"id": paiement_id}, SANS_ID)]))[0])
 
 
 @router.delete("/{paiement_id}")
