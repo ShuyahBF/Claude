@@ -17,9 +17,8 @@ const MENUS = [
   { to: "/profil", libelle: "Profil", icone: "👤" },
 ];
 
-// Mise en page des écrans connectés (lot 71, demande du 18/10/2026) : bandeau vert-bleu avec le nom de l'application, puis une BARRE DE MENU
-// HORIZONTALE VERTE ÉPINGLÉE EN HAUT de l'écran : elle reste visible quand on fait défiler la page (téléphone, tablette, ordinateur).
-// Elle porte le bouton ☰ (menu complet à gauche) et les entrées principales ; la bulle « + » (Payer) reste en bas à droite.
+// Mise en page des écrans connectés : bandeau bleu nuit en haut et MENU FLOTTANT collé au bas de l'écran,
+// identique sur téléphone, tablette et ordinateur (règle du 17/10/2026).
 export default function Layout() {
   const { user, deconnexion } = useAuth();
   const navigate = useNavigate();
@@ -56,17 +55,24 @@ export default function Layout() {
     navigate("/connexion");
   };
 
-  // Une entrée de la barre verte : pastille blanche quand elle est active ; icône au-dessus du texte sur petit écran, à côté sur grand écran
+  // Un onglet du menu flottant : pastille bleue quand il est actif ; icône au-dessus du texte sur petit écran, à côté sur grand écran
   const style = ({ isActive }) =>
-    `flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-[10px] font-semibold uppercase tracking-normal transition sm:flex-none sm:flex-row sm:gap-2 sm:px-4 sm:text-xs sm:tracking-wider ${
-      isActive ? "bg-white text-nuit-900 shadow" : "text-white/85 hover:bg-white/10 hover:text-white"}`;
+    `flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-1 py-2 text-[10px] font-semibold uppercase tracking-normal transition sm:flex-none sm:flex-row sm:gap-2 sm:px-5 sm:text-xs sm:tracking-wider ${
+      isActive ? "bg-primary text-white shadow" : "text-gray-600 hover:bg-gray-100"}`;
 
   return (
-    <div className="flex min-h-screen flex-col pb-24">
+    <div className="flex min-h-screen flex-col pb-28">
       {/* Bandeau vert-bleu : nom écrit à la main au centre sur grand écran, à gauche sur téléphone */}
-      <header className="no-print bg-nuit-900 text-white">
+      {/* Lot 72 (demande du 18/10/2026) : ce bandeau (nom « Paiement Mobile », bouton ☰, nom de l'utilisateur, Déconnexion) est ÉPINGLÉ en haut :
+          il reste visible quand on fait défiler la page. Le menu du bas ne change pas. */}
+      <header className="no-print sticky top-0 z-40 bg-nuit-900 text-white shadow-md">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:py-5">
           <div className="flex items-center gap-2 sm:contents">
+          {/* Bouton ☰ : ouvre le menu latéral (à gauche) */}
+          <button type="button" onClick={() => setMenuOuvert(true)} aria-label="Ouvrir le menu" aria-expanded={menuOuvert}
+            className="relative grid h-10 w-10 shrink-0 place-items-center rounded-lg text-2xl leading-none text-white hover:bg-white/10 sm:col-start-1 sm:justify-self-start">
+            ☰{rappels.total > 0 && <span className="absolute right-1 top-1 h-3 w-3 rounded-full bg-red-500 ring-2 ring-nuit-900" aria-label={`${rappels.total} rappel(s) à traiter`} />}
+          </button>
           <NavLink to="/" className="flex items-center gap-2 sm:col-start-2">
             <img src="/icone.svg" alt="" className="h-8 w-8 sm:hidden" />
             <span className="logo-ecrit whitespace-nowrap text-3xl sm:text-6xl">Paiement Mobile</span>
@@ -78,26 +84,6 @@ export default function Layout() {
           </div>
         </div>
       </header>
-
-      {/* BARRE DE MENU verte, ÉPINGLÉE en haut (sticky) : ☰ à gauche, puis les entrées principales (lot 71) */}
-      <div className="no-print sticky top-0 z-40 border-t border-white/10 bg-nuit-900 text-white shadow-md">
-        <nav aria-label="Menu principal" className="mx-auto flex max-w-5xl items-center gap-1 px-2 py-1.5 sm:px-4">
-          {/* Bouton ☰ : ouvre le menu complet (à gauche), avec le point rouge des rappels à traiter */}
-          <button type="button" onClick={() => setMenuOuvert(true)} aria-label="Ouvrir le menu" aria-expanded={menuOuvert}
-            className="relative grid h-10 w-10 shrink-0 place-items-center rounded-lg text-2xl leading-none text-white hover:bg-white/10">
-            ☰{rappels.total > 0 && <span className="absolute right-1 top-1 h-3 w-3 rounded-full bg-red-500 ring-2 ring-nuit-900" aria-label={`${rappels.total} rappel(s) à traiter`} />}
-          </button>
-          <div className="flex min-w-0 flex-1 gap-0.5 sm:justify-center">
-            {/* Onglet Support SAWALI : masqué si SAWALI n'est pas relié */}
-            <SupportSawali variante="menu" classeMenu={style({ isActive: false })} />
-            {menus.map((m) => (
-              <NavLink key={m.to} to={m.to} end={m.fin} className={style}>
-                <span className="text-lg leading-none">{m.icone}</span>{m.libelle}
-              </NavLink>
-            ))}
-          </div>
-        </nav>
-      </div>
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
         <Outlet />
@@ -113,10 +99,24 @@ export default function Layout() {
 
       <MenuLateral ouvert={menuOuvert} fermer={() => setMenuOuvert(false)} compteurs={rappels} />
 
-      {/* Bulle flottante « + » = Payer : en bas à droite (la barre de menu est maintenant en haut) */}
+      {/* Menu FLOTTANT, toujours aligné sur le bas de l'écran (tous appareils) ; la marge basse respecte la zone de geste des téléphones */}
+      <div className="no-print pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <nav aria-label="Menu principal"
+          className="pointer-events-auto flex w-full max-w-md gap-0.5 overflow-hidden rounded-2xl border border-gray-200 bg-white/95 p-1.5 shadow-xl backdrop-blur sm:w-auto sm:max-w-none">
+          {/* Onglet Support SAWALI : à la place de « Payer » (masqué si SAWALI n'est pas relié) */}
+          <SupportSawali variante="menu" classeMenu={style({ isActive: false })} />
+          {menus.map((m) => (
+            <NavLink key={m.to} to={m.to} end={m.fin} className={style}>
+              <span className="text-lg leading-none">{m.icone}</span>{m.libelle}
+            </NavLink>
+          ))}
+        </nav>
+      </div>
+
+      {/* Bulle flottante « + » = Payer : soulevée au-dessus du menu */}
       <NavLink to="/" end aria-label="Payer" title="Payer"
         className="no-print fixed right-4 z-50 grid h-14 w-14 place-items-center rounded-full bg-primary text-4xl font-light leading-none text-white shadow-2xl ring-4 ring-white transition hover:bg-primary-dark active:scale-95"
-        style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}>
+        style={{ bottom: "calc(max(0.75rem, env(safe-area-inset-bottom)) + 4.25rem)" }}>
         +
       </NavLink>
     </div>
