@@ -139,12 +139,12 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
     return () => clearTimeout(t);
   }, [nouveau]);
 
-  // Barre rabattue : placée juste au-dessus de l'onglet « Support » du menu, sans le cacher
+  // Barre rabattue : placée juste SOUS l'onglet « Support » de la barre de menu (en haut de l'écran), sans le cacher
   useLayoutEffect(() => {
     if (!(ouvert && reduit && variante === "menu")) return undefined;
     const placer = () => {
       const r = boutonMenu.current?.getBoundingClientRect();
-      if (r) setPosBarre({ left: Math.max(8, r.left), bottom: window.innerHeight - r.top + 10 });
+      if (r) setPosBarre({ left: Math.max(8, r.left), top: r.bottom + 10 });
     };
     placer();
     window.addEventListener("resize", placer);
@@ -208,7 +208,7 @@ export default function SupportSawali({ variante = "carte", classeMenu = "" }) {
       {/* Fenêtre rabattue : petite barre en bas à droite, qui clignote à l'arrivée d'un message */}
       {ouvert && reduit && createPortal(
         <button type="button" onClick={() => setReduit(false)} aria-label="Déployer la fenêtre du support SAWALI"
-          style={variante === "menu" && posBarre ? { left: posBarre.left, bottom: posBarre.bottom } : { right: "0.5rem", bottom: "0.75rem" }}
+          style={variante === "menu" && posBarre ? { left: posBarre.left, top: posBarre.top } : { right: "0.5rem", bottom: "0.75rem" }}
           className={`no-print fixed z-[80] flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-ink shadow-2xl border border-primary ${nonLus > 0 ? "clignote" : ""}`}>
           <span className="text-primary"><Casque taille={16} /></span>Support SAWALI
           {nonLus > 0 && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold">{nonLus}</span>}
