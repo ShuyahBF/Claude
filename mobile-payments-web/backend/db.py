@@ -58,6 +58,9 @@ async def ensure_indexes() -> None:
     # Anniversaires à souhaiter : fiches d'un utilisateur (lot 34)
     await db.anniversaires.create_index("id", unique=True)
     await db.anniversaires.create_index("user_id")
+    # Cartes virtuelles (lot 79) : cartes d'un utilisateur
+    await db.cartes.create_index("id", unique=True)
+    await db.cartes.create_index([("user_id", 1), ("cree_le", -1)])
     # Liens « identifiant du QR d'un opérateur → code marchand », une ligne par utilisateur (lot 38)
     await db.qr_operateurs.create_index([("operateur", 1), ("identifiant", 1), ("user_id", 1)], unique=True)
     # Rappels de paiements récurrents et de médicaments (lot 36)
