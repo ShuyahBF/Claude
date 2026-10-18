@@ -63,7 +63,7 @@ export default function Layout() {
   return (
     <div className="flex min-h-screen flex-col pb-28">
       {/* Bandeau vert-bleu : nom écrit à la main au centre sur grand écran, à gauche sur téléphone */}
-      {/* Lot 72 (demande du 18/10/2026) : ce bandeau (nom « Paiement Mobile », bouton ☰, nom de l'utilisateur, Déconnexion) est ÉPINGLÉ en haut :
+      {/* Lot 72 (demande du 18/10/2026) : ce bandeau (nom « auRor », bouton ☰, nom de l'utilisateur, Déconnexion) est ÉPINGLÉ en haut :
           il reste visible quand on fait défiler la page. Le menu du bas ne change pas. */}
       <header className="no-print sticky top-0 z-40 bg-nuit-900 text-white shadow-md">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:py-5">
@@ -74,8 +74,9 @@ export default function Layout() {
             ☰{rappels.total > 0 && <span className="absolute right-1 top-1 h-3 w-3 rounded-full bg-red-500 ring-2 ring-nuit-900" aria-label={`${rappels.total} rappel(s) à traiter`} />}
           </button>
           <NavLink to="/" className="flex items-center gap-2 sm:col-start-2">
-            <img src="/icone.svg" alt="" className="h-8 w-8 sm:hidden" />
-            <span className="logo-ecrit whitespace-nowrap text-3xl sm:text-6xl">Paiement Mobile</span>
+            {/* Lot 75 : identité auRor — pictogramme sur téléphone, mot blanc sur grand écran */}
+            <img src="/auror-marque.webp" alt="" className="h-8 w-auto sm:hidden" />
+            <img src="/auror-mot-blanc.webp" alt="auRor" className="h-9 w-auto sm:h-14" />
           </NavLink>
           </div>
           <div className="flex items-center gap-3 text-sm sm:col-start-3 sm:justify-self-end">
@@ -83,6 +84,8 @@ export default function Layout() {
             <button type="button" onClick={quitter} className="btn-clair btn-sm">Déconnexion</button>
           </div>
         </div>
+        {/* Trait d'orbite : filet dégradé cobalt → cyan → menthe sous le bandeau */}
+        <div className="trait-orbite" aria-hidden="true" />
       </header>
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">

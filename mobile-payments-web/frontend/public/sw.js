@@ -1,4 +1,4 @@
-// Petit « service worker » de Paiement Mobile (lot 40) : il sert à afficher les notifications
+// Petit « service worker » de auRor (lot 40) : il sert à afficher les notifications
 // (sur téléphone Android, Chrome n'accepte les notifications que par ce biais) et à ouvrir la bonne page au toucher.
 // Lot 69 (application Android installable) : en plus, quand l'ouverture d'une page échoue faute d'Internet, il affiche
 // la page « Pas de connexion » (offline.html) au lieu de l'erreur du navigateur. Rien d'autre n'est mis en cache :
@@ -19,9 +19,9 @@ self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 // Même « tag » (la clé de l'événement) que les alertes de l'écran : jamais deux bandeaux pour le même événement.
 self.addEventListener("push", (event) => {
   let m = {};
-  try { m = event.data ? event.data.json() : {}; } catch { m = { titre: "Paiement Mobile", texte: event.data ? event.data.text() : "" }; }
-  event.waitUntil(self.registration.showNotification(m.titre || "Paiement Mobile", {
-    body: m.texte || "", icon: "/icone.svg", badge: "/icone.svg", tag: m.cle, renotify: true, data: { lien: m.lien || "/" },
+  try { m = event.data ? event.data.json() : {}; } catch { m = { titre: "auRor", texte: event.data ? event.data.text() : "" }; }
+  event.waitUntil(self.registration.showNotification(m.titre || "auRor", {
+    body: m.texte || "", icon: "/icone-192.png", badge: "/favicon.png", tag: m.cle, renotify: true, data: { lien: m.lien || "/" },
     // Application fermée : vibration longue et notification qui reste affichée jusqu'au toucher (malvoyants, téléphone dans le sac)
     vibrate: [600, 200, 600, 200, 1000], requireInteraction: true,
   }));

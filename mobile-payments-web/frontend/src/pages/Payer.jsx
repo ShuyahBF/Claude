@@ -175,14 +175,14 @@ export default function Payer() {
     setValeurs({});
   };
 
-  // Lecture d'un QR code avec la caméra (site ouvert sur le téléphone) : QR marchand Paiement Mobile,
+  // Lecture d'un QR code avec la caméra (site ouvert sur le téléphone) : QR marchand auRor,
   // ou QR d'une plaque d'opérateur (Orange…) dont le code marchand est mémorisé à la première fois (lot 38)
   const surScan = useCallback((texte) => {
     setScannerOuvert(false);
     const qr = analyserQr(texte);
     if (qr?.type === "paiement-mobile") ouvrirDepuisQr(qr.operateur, qr.service, qr.code);
     else if (qr?.type === "operateur") setQrOperateur(qr);
-    else toast.erreur("QR code non reconnu (QR marchand Paiement Mobile ou plaque Orange Money).");
+    else toast.erreur("QR code non reconnu (QR marchand auRor ou plaque Orange Money).");
   }, [ouvrirDepuisQr, toast]);
   const fermerScanner = useCallback(() => setScannerOuvert(false), []);
 

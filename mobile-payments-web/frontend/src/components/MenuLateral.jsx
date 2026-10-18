@@ -75,7 +75,7 @@ export default function MenuLateral({ ouvert, fermer, compteurs = {} }) {
       <nav aria-label="Menu latéral"
         className={`absolute inset-y-0 left-0 flex max-w-[85vw] flex-col border-r border-primary bg-white transition-all duration-200 ${reduit ? "w-16" : "w-72"} ${ouvert ? "translate-x-0 shadow-2xl" : "-translate-x-full"}`}>
         <div className={`flex items-center border-b border-gray-200 py-3 ${reduit ? "flex-col gap-2 px-1" : "justify-between px-4"}`}>
-          {reduit ? <img src="/icone.svg" alt="Paiement Mobile" className="h-8 w-8" /> : <p className="logo-ecrit text-3xl text-accent">Paiement Mobile</p>}
+          {reduit ? <img src="/auror-marque.webp" alt="auRor" className="h-8 w-auto" /> : <img src="/auror-mot.webp" alt="auRor" className="h-9 w-auto" />}
           <div className={`flex items-center ${reduit ? "flex-col" : ""}`}>
             {/* Réduire / déployer le menu (choix mémorisé) */}
             <button type="button" onClick={basculer} aria-label={reduit ? "Déployer le menu" : "Réduire le menu (icônes seules)"}

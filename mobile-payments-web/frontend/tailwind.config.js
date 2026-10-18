@@ -1,28 +1,31 @@
 /** @type {import('tailwindcss').Config} */
 import colors from "tailwindcss/colors";
 
-// CHARTE du 17/10/2026 (inspirée du design « Nicole Windle Yoga » fourni par le propriétaire) :
-//   - vert-bleu profond #2b4447 pour les bandeaux, prune #622e44 pour les boutons et les liens (couleurs mesurées sur la maquette) ;
-//   - fond blanc / crème, textes en Open Sans, menus en petites capitales espacées, nom de l'application en écriture manuscrite.
+// CHARTE auRor du 18/10/2026 : les couleurs sont MESURÉES sur le logo fourni par le propriétaire (téléphone, orbite, tuiles, « R » rouge) :
+//   - cobalt #0031a0 (téléphone) pour les bandeaux, azur #006bf7 pour les boutons et les liens, cyan #02bfee et menthe #06c7a6 (orbite) ;
+//   - violet #4926d7, émeraude #0ba957 (tuiles) et rouge #f21313 (le « R ») en touches rares ;
+//   - fond blanc légèrement bleuté, textes en Open Sans, titres en Sora ; le nom « auRor » est toujours l'image du logo.
 export default {
   content: ["./index.html", "./src/**/*.{js,jsx}"],
   theme: {
     extend: {
       colors: {
         gray: colors.slate,
-        primary: "#622e44", // boutons et liens (prune)
-        "primary-dark": "#4a2234", // survol des boutons
-        "primary-clair": "#e3b6c9", // textes vifs sur fond sombre
-        accent: "#2b4447", // sur-titres, mots mis en valeur (vert-bleu profond)
-        ink: "#1c2d30", // texte principal (vert-bleu très sombre)
-        creme: "#f7f5f3", // fond de page
-        nuit: { 950: "#1b2c2e", 900: "#2b4447", 800: "#355459", 700: "#3f646a", 600: "#4a7379" },
+        primary: "#006bf7", // boutons et liens (azur de l'orbite)
+        "primary-dark": "#0050c4", // survol des boutons
+        "primary-clair": "#9cc7ff", // textes vifs sur fond sombre
+        accent: "#0a3d9e", // sur-titres, mots mis en valeur (bleu profond)
+        ink: "#0f1d3d", // texte principal (bleu nuit très sombre)
+        creme: "#f3f7fd", // fond de page (blanc bleuté)
+        nuit: { 950: "#051a52", 900: "#0a2c85", 800: "#0f3ca3", 700: "#1550c4", 600: "#1f64e0" },
+        // Couleurs du logo en touches rares
+        auror: { cyan: "#02bfee", menthe: "#06c7a6", violet: "#4926d7", emeraude: "#0ba957", rouge: "#f21313" },
         // Couleurs des opérateurs (pastilles)
         orange: { operateur: "#ff7900" },
       },
       fontFamily: {
         sans: ["Open Sans", "-apple-system", "BlinkMacSystemFont", "sans-serif"],
-        display: ["Open Sans", "sans-serif"],
+        display: ["Sora", "Open Sans", "sans-serif"],
         script: ['"Mrs Saint Delafield"', "cursive"], // nom de l'application, en écriture manuscrite
         mono: ["Geist Mono", "ui-monospace", "monospace"],
       },

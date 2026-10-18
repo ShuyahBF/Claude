@@ -251,7 +251,7 @@ export default function Archives() {
         )}
         {etat && !enLigneConfigure && abonne && (
           <form onSubmit={activerEnLigne} className="space-y-2">
-            <p className="text-sm text-gray-600">Choisissez la <b>phrase secrète</b> de vos archives (8 caractères au moins). Elle chiffre vos documents ici, sur votre téléphone. <b>Personne ne peut la retrouver, ni Paiement Mobile ni SAWALI : si vous
+            <p className="text-sm text-gray-600">Choisissez la <b>phrase secrète</b> de vos archives (8 caractères au moins). Elle chiffre vos documents ici, sur votre téléphone. <b>Personne ne peut la retrouver, ni auRor ni SAWALI : si vous
               l'oubliez, vos documents en ligne sont perdus.</b> Notez-la en lieu sûr.</p>
             <input className="input" type="password" autoComplete="new-password" placeholder="Phrase secrète" value={phrase.a} onChange={(e) => setPhrase({ ...phrase, a: e.target.value })} />
             <input className="input" type="password" autoComplete="new-password" placeholder="Répétez la phrase secrète" value={phrase.b} onChange={(e) => setPhrase({ ...phrase, b: e.target.value })} />

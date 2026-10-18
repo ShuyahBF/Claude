@@ -133,7 +133,7 @@ export async function activerNotifications() {
 export async function notifier({ titre, texte, lien = "/", cle }) {
   try {
     if (!lirePreferences().notifications || etatNotifications() !== "granted") return;
-    const options = { body: texte, icon: "/icone.svg", badge: "/icone.svg", tag: cle, data: { lien }, renotify: true };
+    const options = { body: texte, icon: "/icone-192.png", badge: "/favicon.png", tag: cle, data: { lien }, renotify: true };
     const reg = await enregistrement();
     if (reg?.showNotification) await reg.showNotification(titre, options);
     else new Notification(titre, options);

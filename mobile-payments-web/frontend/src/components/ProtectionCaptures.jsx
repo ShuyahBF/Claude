@@ -47,7 +47,7 @@ const TOLERANCE_DIALOGUE_MS = 1500;
 // Durée maximale de tolérance pendant un sélecteur de fichier.
 const TOLERANCE_FICHIER_MS = 120000;
 
-const MESSAGE = "Les captures d'écran sont interdites sur Paiement Mobile.";
+const MESSAGE = "Les captures d'écran sont interdites sur auRor.";
 
 export default function ProtectionCaptures() {
   const [message, setMessage] = useState("");
