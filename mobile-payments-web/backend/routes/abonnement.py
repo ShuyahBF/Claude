@@ -11,15 +11,16 @@ la vitrine, les prix, la page de paiement PawaPay, l'activation, les jours de pa
 Routes (utilisateur connecté) :
     GET  /api/abonnement                        → formules, mes abonnements, mon code de parrainage
     POST /api/abonnement/acheter  {formule_id}  → {redirect_url} : page de paiement PawaPay
+    POST /api/abonnement/devis  {formule_ids}   → {lignes, total} : récapitulatif avant paiement (lot 81)
     GET  /api/abonnement/achat?deposit_id=…     → {statut: attente | paye | echec} (au retour du paiement)
     POST /api/abonnement/parrainage {code?}     → mon parrainage ; avec un code : l'enregistre (avant le premier abonnement)
     GET  /api/abonnement/acces?fonction=…       → {actif, expire_le, jours_restants} (ex. ocr_ordonnances)
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 import signal_connexion
@@ -46,7 +47,19 @@ async def relayer(chemin: str, user: dict, **plus) -> Dict[str, Any]:
 
 
 class Achat(BaseModel):
-    formule_id: str = Field(..., min_length=1, max_length=80)
+    """Une formule (ancien mode) ou plusieurs (lot 81 : achat groupé, un seul paiement). SAWALI recalcule toujours le total."""
+    formule_id: Optional[str] = Field(None, min_length=1, max_length=80)
+    formule_ids: List[str] = Field(default_factory=list, max_length=8)
+
+    def liste(self) -> List[str]:
+        ids = list(dict.fromkeys([*self.formule_ids, *([self.formule_id] if self.formule_id else [])]))
+        if not ids:
+            raise HTTPException(422, "Choisissez au moins une formule")
+        return ids
+
+
+class Devis(BaseModel):
+    formule_ids: List[str] = Field(..., min_length=1, max_length=8)
 
 
 class PispiDeclaration(BaseModel):
@@ -63,18 +76,26 @@ async def vitrine(user: dict = Depends(get_current_user)):
     return await relayer("catalogue", user)
 
 
+@router.post("/devis", dependencies=[Depends(limiter_appels_publics)])
+async def devis(data: Devis, user: dict = Depends(get_current_user)):
+    """Récapitulatif d'un achat groupé (lignes et TOTAL calculé par SAWALI) affiché avant le paiement : rien n'est enregistré."""
+    return await relayer("devis", user, formule_ids=list(dict.fromkeys(data.formule_ids)))
+
+
 @router.post("/acheter", dependencies=[Depends(limiter_appels_publics)])
 async def acheter(data: Achat, user: dict = Depends(get_current_user)):
     # Après le paiement, PawaPay renvoie l'utilisateur sur cette page du site (SAWALI y ajoute le numéro du paiement)
     retour = f"{signal_connexion.url_site().rstrip('/')}/abonnement"
-    return await relayer("acheter", user, formule_id=data.formule_id, retour=retour)
+    ids = data.liste()
+    return await relayer("acheter", user, formule_ids=ids, retour=retour, **({"formule_id": ids[0]} if len(ids) == 1 else {}))
 
 
 @router.post("/pispi", dependencies=[Depends(limiter_appels_publics)])
 async def payer_par_pispi(data: Achat, user: dict = Depends(get_current_user)):
     """Paiement par virement instantané PI-SPI (version manuelle, lot 48) : SAWALI renvoie la référence de la demande et le bloc
     de paiement (banque, titulaire, QR de la banque, montant, consigne). L'utilisateur paie dans l'application de sa banque."""
-    return await relayer("pispi/demander", user, formule_id=data.formule_id)
+    ids = data.liste()
+    return await relayer("pispi/demander", user, formule_ids=ids, **({"formule_id": ids[0]} if len(ids) == 1 else {}))
 
 
 @router.post("/pispi/declarer", dependencies=[Depends(limiter_appels_publics)])

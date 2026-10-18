@@ -52,3 +52,13 @@ def admin(client):
     assert r.status_code == 200, r.text
     client.cookies.clear()
     return _entetes(r)
+
+
+@pytest.fixture(autouse=True)
+def _limiteurs_vides_avant_chaque_test():
+    """La limite d'appels par minute et par adresse est partagée par toute la série : on la vide avant chaque test
+    (sinon, plus la série grandit, plus des tests sans rapport reçoivent un 429)."""
+    import limiteur
+    limiteur.limiteur_public.vider()
+    limiteur.limiteur_lecture.vider()
+    yield

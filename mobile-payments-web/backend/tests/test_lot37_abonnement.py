@@ -88,3 +88,26 @@ def test_sawali_injoignable_ou_non_configure(client, utilisateur):
     finally:
         r.liluvine_wa_hmac = ""
         support_sawali._transport = None
+
+
+# ----------------------------------------------------------------------------------------------- lot 81 : achat groupé
+def test_devis_relaye_avec_les_formules_choisies(client, utilisateur, sawali):
+    _, h, _ = utilisateur
+    sawali.reponses["devis"] = (200, {"lignes": [{"id": "f1", "nom": "OCR", "prix": 1000, "duree_jours": 30},
+                                                 {"id": "f2", "nom": "Cartes", "prix": 1500, "duree_jours": 30}], "nombre": 2, "total": 2500, "devise": "XOF"})
+    r = client.post("/api/abonnement/devis", headers=h, json={"formule_ids": ["f1", "f2", "f1"]})
+    assert r.status_code == 200 and r.json()["total"] == 2500
+    q = sawali[-1]
+    assert q.url.path == "/api/formules-plateformes/devis" and q.headers["X-Signature"]
+    assert json.loads(q.content)["formule_ids"] == ["f1", "f2"]               # doublon retiré avant l'envoi
+    assert client.post("/api/abonnement/devis", headers=h, json={"formule_ids": []}).status_code == 422
+
+
+def test_achat_groupe_envoie_toutes_les_formules(client, utilisateur, sawali):
+    _, h, _ = utilisateur
+    sawali.reponses["acheter"] = (200, {"ok": True, "deposit_id": "d" * 36, "redirect_url": "https://pay.test/x", "total": 2500})
+    r = client.post("/api/abonnement/acheter", headers=h, json={"formule_ids": ["f1", "f2"]})
+    assert r.status_code == 200 and r.json()["redirect_url"] == "https://pay.test/x"
+    corps = json.loads(sawali[-1].content)
+    assert corps["formule_ids"] == ["f1", "f2"] and "formule_id" not in corps and corps["retour"].endswith("/abonnement")
+    assert client.post("/api/abonnement/acheter", headers=h, json={}).status_code == 422

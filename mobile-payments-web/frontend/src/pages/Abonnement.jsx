@@ -6,6 +6,8 @@ import Modal from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { apiClient, fcfa, messageErreur } from "@/lib/api";
 
+// Lot 81 (demande du propriétaire du 18/10/2026) : on peut choisir PLUSIEURS formules ; le total se calcule en direct ; un résumé
+// (formules choisies et montant total) s'affiche AVANT le paiement ; c'est ce total, recalculé par SAWALI, qui est payé en un seul paiement.
 // Abonnement (lot 37) : les formules sont créées et vendues par SAWALI. Un paiement (page PawaPay) active la formule pour
 // sa durée (30 jours par défaut) ; payer avant l'échéance AJOUTE la durée au temps restant. Parrainage : jours offerts
 // au parrain et au filleul quand le filleul paie sa première formule.
@@ -17,10 +19,13 @@ export default function Abonnement() {
   const [d, setD] = useState(null);                  // { formules, abonnements, code_parrainage, a_un_parrain, parrainage_jours }
   const [parrain, setParrain] = useState(null);      // { filleuls, filleuls_payants, jours_gagnes }
   const [achat, setAchat] = useState(null);          // au retour du paiement : "verification" | "paye" | "echec" | "attente"
-  const [enCours, setEnCours] = useState("");        // formule en cours d'achat
+  const [enCours, setEnCours] = useState("");        // paiement en cours de lancement
+  const [choix, setChoix] = useState([]);            // identifiants des formules cochées
+  const [resume, setResume] = useState(null);        // résumé avant paiement : { lignes, total } calculé par SAWALI (null = fenêtre fermée)
+  const [calcul, setCalcul] = useState(false);       // résumé en cours de calcul
   const [code, setCode] = useState("");
   const [envoiCode, setEnvoiCode] = useState(false);
-  const [pispi, setPispi] = useState(null);          // paiement PI-SPI en cours : { formule, reference, bloc, statut } (null = fenêtre fermée)
+  const [pispi, setPispi] = useState(null);          // paiement PI-SPI en cours : { libelle, total, reference, bloc, statut } (null = fenêtre fermée)
   const [refBanque, setRefBanque] = useState("");    // référence bancaire saisie par l'utilisateur
   const [envoiPispi, setEnvoiPispi] = useState(false);
 
@@ -54,21 +59,32 @@ export default function Abonnement() {
     return () => { fini = true; };
   }, [depositId, charger]);
 
-  const acheter = async (f) => {
-    setEnCours(f.id);
+  // Sélection : total calculé en direct à partir des prix du catalogue (le paiement, lui, utilise le total recalculé par SAWALI)
+  const basculer = (id) => setChoix((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id]));
+  const choisies = (d?.formules || []).filter((f) => choix.includes(f.id));
+  const totalChoix = choisies.reduce((t, f) => t + Number(f.prix || 0), 0);
+  // Résumé avant paiement : lignes et total fournis par SAWALI (ce qui sera réellement payé)
+  const voirResume = async () => {
+    setCalcul(true);
+    try { setResume((await apiClient.post("/abonnement/devis", { formule_ids: choisies.map((f) => f.id) })).data); }
+    catch (err) { toast.erreur(messageErreur(err, "Résumé indisponible")); } finally { setCalcul(false); }
+  };
+  const acheter = async () => {
+    setEnCours("pawapay");
     try {
-      const { data } = await apiClient.post("/abonnement/acheter", { formule_id: f.id });
-      window.location.href = data.redirect_url;     // page de paiement PawaPay (Orange / Moov / Telecel)
+      const { data } = await apiClient.post("/abonnement/acheter", { formule_ids: choix });
+      window.location.href = data.redirect_url;     // page de paiement PawaPay (Orange / Moov / Telecel) pour le TOTAL
     } catch (err) { toast.erreur(messageErreur(err, "Paiement indisponible")); setEnCours(""); }
   };
   // Paiement PI-SPI (version manuelle) : 1. on affiche le QR de la banque et la référence ; 2. l'utilisateur paie puis déclare la référence bancaire ;
   // 3. l'administrateur confirme chez SAWALI, la formule s'active (la fenêtre le vérifie toutes les 15 s).
-  const payerParPispi = async (f) => {
-    setEnCours(f.id);
+  const payerParPispi = async () => {
+    setEnCours("pispi");
     try {
-      const { data } = await apiClient.post("/abonnement/pispi", { formule_id: f.id });
+      const { data } = await apiClient.post("/abonnement/pispi", { formule_ids: choix });
       setRefBanque("");
-      setPispi({ formule: f, reference: data.reference, bloc: data.bloc, statut: data.statut });
+      setResume(null);
+      setPispi({ libelle: (data.lignes || []).map((l) => l.nom).join(" + "), total: data.total, reference: data.reference, bloc: data.bloc, statut: data.statut });
     } catch (err) { toast.erreur(messageErreur(err, "Paiement PI-SPI indisponible")); } finally { setEnCours(""); }
   };
   const declarerPispi = async (e) => {
@@ -87,7 +103,7 @@ export default function Abonnement() {
     const t = setInterval(async () => {
       try {
         const { data } = await apiClient.get("/abonnement/achat", { params: { deposit_id: referencePispi } });
-        if (data.statut === "paye" || data.statut === "echec") { setPispi(null); setAchat(data.statut); charger(); }
+        if (data.statut === "paye" || data.statut === "echec") { setPispi(null); setChoix([]); setAchat(data.statut); charger(); }
       } catch { /* nouvel essai dans 15 s */ }
     }, 15000);
     return () => clearInterval(t);
@@ -155,27 +171,34 @@ export default function Abonnement() {
         <ul className="space-y-2">
           {d.formules.map((f) => {
             const deja = actifs.some((a) => a.formule_id === f.id);
+            const coche = choix.includes(f.id);
             return (
-              <li key={f.id} className="card space-y-2 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0"><p className="font-semibold">{f.nom}</p>{f.description && <p className="text-sm text-gray-600">{f.description}</p>}</div>
-                  <div className="shrink-0 text-right"><p className="text-lg font-bold text-primary">{fcfa(f.prix)}</p><p className="text-xs text-gray-500">pour {f.duree_jours} jours</p></div>
-                </div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Payer avec</p>
-                <button type="button" className="btn-primary w-full justify-start gap-3" disabled={!!enCours} onClick={() => acheter(f)}>
-                  <LogoMode mode="pawapay" />
-                  <span className="flex-1 text-left">{enCours === f.id ? "Patientez…" : <>{deja ? `Prolonger de ${f.duree_jours} jours` : "S'abonner"} · PawaPay<span className="block text-xs font-normal opacity-90">Orange, Moov, Telecel (Mobile Money)</span></>}</span>
-                </button>
-                <button type="button" className="btn-outline w-full justify-start gap-3" disabled={!!enCours} onClick={() => payerParPispi(f)}>
-                  <LogoMode mode="pispi" />
-                  <span className="flex-1 text-left">Virement PI-SPI<span className="block text-xs font-normal text-gray-500">Avec l'application de votre banque</span></span>
-                </button>
-                {deja && <p className="text-xs text-gray-500">La durée s'ajoute au temps qu'il vous reste.</p>}
+              <li key={f.id}>
+                <label className={`card flex cursor-pointer items-start gap-3 p-4 transition ${coche ? "border-primary ring-2 ring-primary/30" : ""}`}>
+                  <input type="checkbox" className="mt-1 h-5 w-5 shrink-0" checked={coche} onChange={() => basculer(f.id)} data-testid={`formule-${f.id}`} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-semibold">{f.nom}</span>
+                    {f.description && <span className="block text-sm text-gray-600">{f.description}</span>}
+                    {deja && <span className="mt-1 block text-xs text-gray-500">Déjà active : la durée s'ajoute au temps qu'il vous reste.</span>}
+                  </span>
+                  <span className="shrink-0 text-right"><span className="block text-lg font-bold text-primary">{fcfa(f.prix)}</span><span className="block text-xs text-gray-500">pour {f.duree_jours} jours</span></span>
+                </label>
               </li>
             );
           })}
         </ul>
-        <p className="text-xs text-gray-500">Paiement sécurisé par PawaPay (Orange, Moov, Telecel) : la formule s'active dès la confirmation du paiement. Par virement PI-SPI, elle s'active après vérification de votre paiement.</p>
+        {/* Total en direct : visible dès qu'une formule est cochée */}
+        {choisies.length > 0 && (
+          <div className="card sticky bottom-24 space-y-2 border-primary p-4 shadow-lg" data-testid="total-selection">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-gray-600">{choisies.length} formule{choisies.length > 1 ? "s" : ""} choisie{choisies.length > 1 ? "s" : ""}</p>
+              <p className="text-xl font-bold text-primary" data-testid="total-montant">{fcfa(totalChoix)}</p>
+            </div>
+            <button type="button" className="btn-primary w-full py-3" disabled={calcul} onClick={voirResume}>{calcul ? "Patientez…" : "Voir le résumé et payer"}</button>
+            <button type="button" className="btn-outline w-full" onClick={() => setChoix([])}>Tout décocher</button>
+          </div>
+        )}
+        <p className="text-xs text-gray-500">Paiement sécurisé par PawaPay (Orange, Moov, Telecel) : les formules s'activent dès la confirmation du paiement. Par virement PI-SPI, elles s'activent après vérification de votre paiement.</p>
       </section>
 
       {/* Parrainage */}
@@ -202,11 +225,40 @@ export default function Abonnement() {
         </section>
       )}
 
+      {/* Résumé avant paiement : formules choisies, total (calculé par SAWALI), puis choix du moyen de paiement */}
+      <Modal ouvert={!!resume} titre="Résumé de votre commande" onFermer={() => setResume(null)}>
+        {resume && (
+          <div className="space-y-3 text-sm" data-testid="resume-commande">
+            <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+              {resume.lignes.map((l) => (
+                <li key={l.id} className="flex items-center justify-between gap-3 p-3">
+                  <span className="min-w-0"><span className="block font-semibold">{l.nom}</span><span className="block text-xs text-gray-500">{l.duree_jours} jours</span></span>
+                  <span className="shrink-0 font-semibold">{fcfa(l.prix)}</span>
+                </li>
+              ))}
+              <li className="flex items-center justify-between gap-3 bg-creme p-3">
+                <span className="font-bold">Total à payer</span><span className="text-xl font-bold text-primary" data-testid="resume-total">{fcfa(resume.total)}</span>
+              </li>
+            </ul>
+            <p className="text-xs text-gray-500">Un seul paiement pour toutes ces formules. Si l'une d'elles est déjà active, sa durée s'ajoute au temps restant.</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Payer {fcfa(resume.total)} avec</p>
+            <button type="button" className="btn-primary w-full justify-start gap-3" disabled={!!enCours} onClick={acheter}>
+              <LogoMode mode="pawapay" />
+              <span className="flex-1 text-left">{enCours === "pawapay" ? "Patientez…" : <>PawaPay<span className="block text-xs font-normal opacity-90">Orange, Moov, Telecel (Mobile Money)</span></>}</span>
+            </button>
+            <button type="button" className="btn-outline w-full justify-start gap-3" disabled={!!enCours} onClick={payerParPispi}>
+              <LogoMode mode="pispi" />
+              <span className="flex-1 text-left">{enCours === "pispi" ? "Patientez…" : <>Virement PI-SPI<span className="block text-xs font-normal text-gray-500">Avec l'application de votre banque</span></>}</span>
+            </button>
+          </div>
+        )}
+      </Modal>
+
       {/* Paiement PI-SPI (version manuelle) */}
       <Modal ouvert={!!pispi} titre="Payer par PI-SPI" onFermer={() => setPispi(null)}>
         {pispi && (
           <div className="space-y-3 text-sm">
-            <p><b>{pispi.formule.nom}</b> · <span className="text-lg font-bold text-primary">{pispi.bloc.montant_texte}</span></p>
+            <p><b>{pispi.libelle}</b> · <span className="text-lg font-bold text-primary">{pispi.bloc.montant_texte}</span></p>
             <div className="flex justify-center"><img src={pispi.bloc.qr_data_url} alt="QR code PI-SPI de la banque" className="h-48 w-48 rounded-lg border border-gray-200 bg-white p-2" /></div>
             <dl className="space-y-1 rounded-lg bg-creme p-3">
               <div><dt className="inline text-gray-500">Banque : </dt><dd className="inline font-semibold">{pispi.bloc.banque}</dd></div>

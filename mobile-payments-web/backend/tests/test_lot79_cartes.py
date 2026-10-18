@@ -19,11 +19,15 @@ class Recues(list):
         self.envoi = (200, {"ok": True, "mode": "modele"})
 
 
-@pytest.fixture
-def sawali():
-    # Limite d'appels par minute et par adresse : partagée par toute la série de tests, on la vide pour ne pas la dépasser
+@pytest.fixture(autouse=True)
+def _limiteurs_vides():
+    # Limite d'appels par minute et par adresse : partagée par toute la série de tests, on la vide avant chaque test pour ne pas la dépasser
     limiteur.limiteur_public.vider()
     limiteur.limiteur_lecture.vider()
+
+
+@pytest.fixture
+def sawali():
     recues = Recues()
 
     def repondre(q: httpx.Request) -> httpx.Response:
@@ -124,3 +128,19 @@ def test_cartes_cloisonnees_et_suppression(client, utilisateur, sawali):
     assert client.get(f"/api/cartes/{c['id']}", headers=h).status_code == 200
     assert client.delete(f"/api/cartes/{c['id']}", headers=h).json() == {"ok": True}
     assert client.get(f"/api/cartes/{c['id']}", headers=h).status_code == 404
+
+
+def test_contenu_refuse_par_la_moderation_message_transmis_rien_enregistre(client, utilisateur, sawali):
+    _, h, _ = utilisateur
+    message = "Cette carte ne peut pas être créée : le texte ou le décor contient des termes contraires aux règles. L'administrateur a été informé."
+    sawali.generer = (422, {"detail": message})
+    r = client.post("/api/cartes", headers=h, json=CARTE)
+    assert r.status_code == 422 and r.json()["detail"] == message          # le message de SAWALI arrive tel quel à l'utilisateur
+    assert client.get("/api/cartes", headers=h).json()["cartes"] == []     # aucune carte enregistrée
+
+
+def test_verification_indisponible_message_transmis(client, utilisateur, sawali):
+    _, h, _ = utilisateur
+    sawali.generer = (503, {"detail": "La vérification du contenu est momentanément indisponible : réessayez dans un instant."})
+    r = client.post("/api/cartes", headers=h, json=CARTE)
+    assert r.status_code == 503 and "réessayez" in r.json()["detail"]
