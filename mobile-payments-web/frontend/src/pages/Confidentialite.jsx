@@ -87,7 +87,7 @@ const SECTIONS = [
     paragraphes: [
       "Conformément à la loi n°001-2021/AN du 30 mars 2021 portant protection des personnes à l'égard du traitement des données à caractère personnel au Burkina Faso, vous disposez d'un droit d'accès, de rectification, d'opposition et de suppression de vos données. Pour l'exercer, écrivez-nous (adresse ci-dessous) : nous répondons dans un délai d'un mois.",
       "Vous pouvez également saisir la Commission de l'Informatique et des Libertés (CIL) du Burkina Faso.",
-      "La désinstallation de l'application efface les données conservées sur votre téléphone ; la suppression de votre compte côté serveur se fait sur simple demande.",
+      "La désinstallation de l'application efface les données conservées sur votre téléphone ; vous pouvez supprimer votre compte et toutes vos données à tout moment depuis l'application (Profil → « Supprimer mon compte »). La procédure est détaillée sur la page https://paiement-mobile-site.onrender.com/suppression-compte.",
     ],
   },
   {
