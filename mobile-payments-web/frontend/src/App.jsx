@@ -31,6 +31,7 @@ import Payer from "@/pages/Payer";
 import Profil from "@/pages/Profil";
 import Voix from "@/pages/Voix";
 import Cartes from "@/pages/Cartes";
+import SuppressionCompte from "@/pages/SuppressionCompte";
 
 // Routes du site. Tout est réservé aux utilisateurs connectés, sauf la
 // connexion, l'inscription et la politique de confidentialité (publique, lot 16) ;
@@ -50,6 +51,7 @@ export default function App() {
             <Route path="/inscription" element={<Connexion mode="inscription" />} />
             {/* Page publique déclarée dans la Play Console (lot 16) */}
             <Route path="/confidentialite" element={<Confidentialite />} />
+            <Route path="/suppression-compte" element={<SuppressionCompte />} />
             <Route element={<RouteProtegee><Layout /></RouteProtegee>}>
               <Route path="/" element={<Payer />} />
               <Route path="/historique" element={<Historique />} />

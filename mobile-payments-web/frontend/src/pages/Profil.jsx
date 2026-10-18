@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
 import { apiClient, messageErreur } from "@/lib/api";
@@ -6,6 +7,48 @@ import ChampMotDePasse from "@/components/ChampMotDePasse";
 import ChampTelephone from "@/components/ChampTelephone";
 import { etatAutorisation, geolocalisationDisponible, positionActuelle } from "@/lib/geoloc";
 import { abonnerPush, activerNotifications, CHOIX_TONALITE, declencherAlerteRenforcee, desabonnerPush, ecrirePreferences, etatNotifications, jouerSon, lirePreferences, pushDisponible, vibrer } from "@/lib/alertes";
+
+// Suppression de son compte (lot 80, exigée par Google Play) : le mot de passe confirme ; le serveur efface le compte, ses archives en ligne
+// et toutes ses données, puis la session est fermée. Le compte administrateur ne s'affiche pas ici.
+function ZoneSuppression() {
+  const toast = useToast();
+  const { deconnexion } = useAuth();
+  const navigate = useNavigate();
+  const [ouvert, setOuvert] = useState(false);
+  const [mdp, setMdp] = useState("");
+  const [envoi, setEnvoi] = useState(false);
+  const supprimer = async (e) => {
+    e.preventDefault();
+    setEnvoi(true);
+    try {
+      await apiClient.post("/compte/supprimer", { mot_de_passe: mdp }, { timeout: 90000 });
+      toast.succes("Votre compte et vos données ont été supprimés.");
+      try { await deconnexion(); } catch { /* la session est déjà fermée par le serveur */ }
+      navigate("/connexion", { replace: true });
+    } catch (err) { toast.erreur(messageErreur(err, "Suppression impossible")); } finally { setEnvoi(false); }
+  };
+  return (
+    <section className="card space-y-3 border-red-200" data-testid="suppression-compte">
+      <h2 className="text-lg font-bold text-red-800">Supprimer mon compte</h2>
+      <p className="text-sm text-gray-600">
+        Votre compte et toutes vos données seront effacés définitivement : paiements préparés, rappels, anniversaires, cartes, archives en ligne, appareils de notification.
+        Un abonnement en cours n'est pas remboursé. <Link to="/suppression-compte" className="font-semibold text-primary underline">Comment ça marche</Link>
+      </p>
+      {!ouvert ? (
+        <button type="button" className="btn-outline" onClick={() => setOuvert(true)}>Supprimer mon compte…</button>
+      ) : (
+        <form onSubmit={supprimer} className="space-y-3">
+          <label className="label" htmlFor="suppr-mdp">Tapez votre mot de passe pour confirmer</label>
+          <ChampMotDePasse id="suppr-mdp" required value={mdp} onChange={(e) => setMdp(e.target.value)} autoComplete="current-password" />
+          <div className="flex flex-wrap gap-2">
+            <button type="submit" className="btn-primary bg-red-700 hover:bg-red-800" disabled={envoi || !mdp}>{envoi ? "Suppression…" : "Supprimer définitivement"}</button>
+            <button type="button" className="btn-clair" disabled={envoi} onClick={() => { setOuvert(false); setMdp(""); }}>Annuler</button>
+          </div>
+        </form>
+      )}
+    </section>
+  );
+}
 
 // Profil : coordonnées (téléphone et e-mail servent à se connecter) et mot de passe.
 export default function Profil() {
@@ -184,6 +227,8 @@ export default function Profil() {
           <ChampMotDePasse id="m-nouveau" required minLength={8} value={mdp.nouveau} onChange={(e) => setMdp({ ...mdp, nouveau: e.target.value })} autoComplete="new-password" /></div>
         <button type="submit" className="btn-outline">Changer le mot de passe</button>
       </form>
+
+      {user.role !== "admin" && <ZoneSuppression />}
     </div>
   );
 }
