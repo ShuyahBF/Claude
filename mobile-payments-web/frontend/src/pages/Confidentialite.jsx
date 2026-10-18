@@ -15,23 +15,23 @@ const MISE_A_JOUR = "11/10/2026";
 
 // Mention de non-affiliation (identique à celle de l'application Android)
 const MENTION_NON_AFFILIATION =
-  "Paiement Mobile n'est affilié ni à Orange, ni à Moov Africa, ni à Telecel Faso ; les marques citées appartiennent à leurs propriétaires.";
+  "auRor n'est affilié ni à Orange, ni à Moov Africa, ni à Telecel Faso ; les marques citées appartiennent à leurs propriétaires.";
 
 // Contenu de la politique : chaque section a un titre et des paragraphes et/ou une liste à puces
 const SECTIONS = [
   {
     titre: "1. Qui sommes-nous ?",
     paragraphes: [
-      "Paiement Mobile (application Android « Raccourcis Paiement Mobile » et site paiement-mobile-site.onrender.com) est un service édité par SAWALI SMART SYSTEMS, Burkina Faso. Il aide à préparer les codes USSD des paiements Mobile Money (paiement marchand, transfert, achat de crédit…).",
+      "auRor (application Android « auRor » et site paiement-mobile-site.onrender.com) est un service édité par SAWALI SMART SYSTEMS, Burkina Faso. Il aide à préparer les codes USSD des paiements Mobile Money (paiement marchand, transfert, achat de crédit…).",
     ],
   },
   {
-    titre: "2. Ce que fait — et ne fait pas — Paiement Mobile",
+    titre: "2. Ce que fait — et ne fait pas — auRor",
     liste: [
       "L'application et le site préparent le code USSD et ouvrent le composeur de votre téléphone (ou affichent un QR code à scanner). C'est vous qui lancez l'appel.",
-      "Paiement Mobile ne réalise AUCUNE transaction : le paiement est traité uniquement par le réseau de votre opérateur.",
+      "auRor ne réalise AUCUNE transaction : le paiement est traité uniquement par le réseau de votre opérateur.",
       "Aucun code secret Mobile Money n'est jamais demandé, enregistré ni transmis. Vous le saisissez uniquement dans le menu de votre opérateur, qui s'affiche après l'appel.",
-      "Paiement Mobile ne détient, ne reçoit et ne transfère aucun fonds.",
+      "auRor ne détient, ne reçoit et ne transfère aucun fonds.",
     ],
   },
   {
@@ -102,14 +102,13 @@ export default function Confidentialite() {
       {/* En-tête bleu nuit avec le logo, comme les autres pages du site */}
       <header className="bg-nuit-900 text-white">
         <div className="mx-auto flex max-w-3xl items-center gap-2 px-4 py-4">
-          <img src="/icone.svg" alt="" className="h-8 w-8" />
-          <span className="logo-ecrit text-4xl">Paiement Mobile</span>
+          <img src="/auror-mot-blanc.webp" alt="auRor" className="h-10 w-auto" />
         </div>
       </header>
 
       <main className="mx-auto max-w-3xl space-y-6 px-4 py-8">
         <div>
-          <p className="surtitre">Paiement Mobile</p>
+          <p className="surtitre">auRor</p>
           <h1 className="mt-1 text-2xl font-bold">Politique de confidentialité</h1>
           <p className="mt-1 text-sm text-gray-500">Dernière mise à jour : {MISE_A_JOUR}</p>
         </div>

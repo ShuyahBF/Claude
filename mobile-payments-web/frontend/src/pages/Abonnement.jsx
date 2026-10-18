@@ -105,7 +105,7 @@ export default function Abonnement() {
     try { await navigator.clipboard.writeText(d.code_parrainage); toast.succes("Code copié"); } catch { toast.info(d.code_parrainage); }
   };
   const partager = () => {
-    const texte = `Rejoins-moi sur Paiement Mobile ! Utilise mon code de parrainage ${d.code_parrainage} avant ton premier abonnement : nous gagnons chacun ${d.parrainage_jours} jours offerts. ${window.location.origin}`;
+    const texte = `Rejoins-moi sur auRor ! Utilise mon code de parrainage ${d.code_parrainage} avant ton premier abonnement : nous gagnons chacun ${d.parrainage_jours} jours offerts. ${window.location.origin}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(texte)}`, "_blank", "noopener,noreferrer");
   };
   const fermerRetour = () => { setAchat(null); setParams({}, { replace: true }); };

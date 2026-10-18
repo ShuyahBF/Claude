@@ -27,10 +27,10 @@
 // ============================================================================
 
 // Compteur de déploiements : +1 à chaque déploiement.
-export const VERSION = 60;
+export const VERSION = 61;
 
 // Numéro de la PR GitHub fusionnée pour ce déploiement.
-export const LOT = 74;
+export const LOT = 75;
 
 // Hash court du commit compilé (RENDER_GIT_COMMIT sur Render, sinon `git`),
 // injecté par vite.config.js. "dev" si introuvable.

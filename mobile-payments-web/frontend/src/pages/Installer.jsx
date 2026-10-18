@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useToast } from "@/components/Toast";
 
-// Installer l'application sur Android (lot 69) : Paiement Mobile s'installe comme une vraie application (icône sur l'écran d'accueil,
+// Installer l'application sur Android (lot 69) : auRor s'installe comme une vraie application (icône sur l'écran d'accueil,
 // ouverture plein écran, sans barre d'adresse). Chrome propose l'installation par un événement « beforeinstallprompt » : on le garde
 // de côté et on l'offre sur un bouton. Si le navigateur ne le propose pas (iPhone, Firefox, déjà installée…), on affiche les gestes à faire.
 export default function Installer() {
@@ -33,10 +33,10 @@ export default function Installer() {
       <h1 className="text-2xl font-bold">📲 Installer sur Android</h1>
       <section className="card space-y-3">
         {installee ? (
-          <p className="font-medium text-green-700">✅ Paiement Mobile est déjà installée sur cet appareil.</p>
+          <p className="font-medium text-green-700">✅ auRor est déjà installée sur cet appareil.</p>
         ) : invite ? (
           <>
-            <p>Ajoutez Paiement Mobile à votre écran d'accueil : elle s'ouvre en plein écran, comme une application.</p>
+            <p>Ajoutez auRor à votre écran d'accueil : elle s'ouvre en plein écran, comme une application.</p>
             <button type="button" className="btn-primary" onClick={installer}>Installer l'application</button>
           </>
         ) : estIphone ? (
@@ -51,7 +51,7 @@ export default function Installer() {
             <ol className="list-decimal space-y-1 pl-5">
               <li>Touchez le menu <b>⋮</b> en haut à droite.</li>
               <li>Choisissez <b>Installer l'application</b> (ou <b>Ajouter à l'écran d'accueil</b>).</li>
-              <li>Confirmez : l'icône Paiement Mobile apparaît sur votre écran d'accueil.</li>
+              <li>Confirmez : l'icône auRor apparaît sur votre écran d'accueil.</li>
             </ol>
             <p className="text-sm text-gray-500">Le bouton d'installation direct n'apparaît que dans Chrome, quand le site est ouvert depuis une adresse sécurisée.</p>
           </>

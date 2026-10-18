@@ -172,7 +172,7 @@ export default function Profil() {
         </div>
         <p className="rounded-lg bg-sky-50 p-3 text-xs text-sky-900">
           Avec les notifications activées, le serveur vous alerte même application fermée (prise de médicament à l'heure, paiement à régler, anniversaire). Le son choisi ici
-          accompagne les alertes affichées dans l'application ouverte. Sur iPhone, ajoutez d'abord Paiement Mobile à l'écran d'accueil. Ces réglages sont propres à cet appareil.
+          accompagne les alertes affichées dans l'application ouverte. Sur iPhone, ajoutez d'abord auRor à l'écran d'accueil. Ces réglages sont propres à cet appareil.
         </p>
       </section>
 

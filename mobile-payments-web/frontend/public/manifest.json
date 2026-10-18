@@ -1,6 +1,6 @@
 {
-  "name": "Paiement Mobile",
-  "short_name": "Paiement Mobile",
+  "name": "auRor",
+  "short_name": "auRor",
   "description": "Préparez vos paiements Mobile Money (Orange, Moov, Telecel) et composez-les d'un scan de QR code.",
   "id": "/",
   "start_url": "/?source=application",
@@ -8,8 +8,8 @@
   "display": "standalone",
   "orientation": "portrait",
   "lang": "fr",
-  "background_color": "#2b4447",
-  "theme_color": "#2b4447",
+  "background_color": "#ffffff",
+  "theme_color": "#0a2c85",
   "categories": ["finance", "utilities"],
   "icons": [
     { "src": "/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },

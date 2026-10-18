@@ -62,17 +62,34 @@ export default function Connexion({ mode = "connexion" }) {
   const lienAutre = `${inscrire ? "/connexion" : "/inscription"}${params.get("suite") ? `?suite=${encodeURIComponent(suite)}` : ""}`;
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-nuit-900 px-4 py-10">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-nuit-950 via-nuit-900 to-nuit-700 px-4 py-10">
       {/* Jauge circulaire + toast « Patientez… » pendant la connexion / l'inscription */}
       <Patientez actif={envoi} />
 
-      <form onSubmit={envoyer} className="w-full max-w-sm space-y-4 rounded-2xl bg-white p-6 shadow-xl">
-        {/* En-tête de la carte : logo et nom de l'application */}
-        <div className="flex flex-col items-center gap-2 pb-2 text-center">
-          <img src="/icone.svg" alt="Paiement Mobile" className="h-14 w-14" />
-          <p className="logo-ecrit text-5xl text-accent">Paiement Mobile</p>
-          <p className="text-xs uppercase tracking-[0.25em] text-accent">Orange · Moov · Telecel</p>
+      {/* Lot 75 — page de garde auRor : logo en grand, promesse, quatre atouts, puis la carte de connexion */}
+      <div className="mb-6 w-full max-w-sm text-center text-white">
+        {/* Le mot « auRor » du logo est sombre : le logo repose sur une pastille blanche pour rester lisible sur le fond bleu */}
+        <div className="mx-auto w-fit rounded-3xl bg-white px-6 py-3 shadow-lg">
+          <img src="/auror-logo.webp" alt="auRor" className="h-28 w-auto" />
         </div>
+        <h2 className="mt-4 font-display text-2xl font-semibold leading-tight">Payer, se soigner, s'informer.</h2>
+        <p className="mt-1 text-sm text-primary-clair">Orange, Moov Africa et Telecel Faso réunis dans une seule application.</p>
+        <ul className="mt-4 grid grid-cols-2 gap-2 text-left text-xs">
+          {[
+            ["💳", "Paiements Mobile Money préparés en un geste"],
+            ["🏥", "Santé et pharmacies de garde"],
+            ["📰", "Actualités classées par catégorie"],
+            ["🔐", "Données protégées, verrouillage d'écran"],
+          ].map(([ico, txt]) => (
+            <li key={txt} className="flex items-start gap-2 rounded-xl bg-white/10 p-2.5 backdrop-blur-sm">
+              <span aria-hidden="true" className="text-base leading-none">{ico}</span><span>{txt}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <form onSubmit={envoyer} className="w-full max-w-sm space-y-4 overflow-hidden rounded-2xl bg-white p-6 shadow-xl">
+        <div className="trait-orbite -mx-6 -mt-6 mb-2" aria-hidden="true" />
         <h1 className="text-xl font-bold">{inscrire ? "Créer mon compte" : "Connexion"}</h1>
         {motif && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="status">🔒 {motif}</p>}
 
@@ -147,7 +164,7 @@ export default function Connexion({ mode = "connexion" }) {
         <Link to="/confidentialite" className="text-gray-300 underline hover:text-white">Politique de confidentialité</Link>
       </p>
       <p className="mt-2 max-w-sm text-center text-[11px] leading-snug text-gray-500">
-        Paiement Mobile n'est affilié ni à Orange, ni à Moov Africa, ni à Telecel Faso ; les marques citées appartiennent à leurs propriétaires.
+        auRor n'est affilié ni à Orange, ni à Moov Africa, ni à Telecel Faso ; les marques citées appartiennent à leurs propriétaires.
       </p>
       <p className="mt-2 text-xs text-gray-500">
         Powered by <a href="https://sawalismartsystems.com" className="font-semibold text-gray-300 hover:text-white">Sawali Smart Systems</a>
