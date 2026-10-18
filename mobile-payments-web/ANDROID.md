@@ -17,7 +17,7 @@ Tout se fait avec des pages web, par clics :
    elle est ajoutée dans `frontend/public/.well-known/assetlinks.json` (sans elle, l'application affiche une barre d'adresse).
 
 ## Contenu technique (pour mémoire)
-- `public/manifest.webmanifest` : nom, icônes (192, 512, 512 « maskable »), couleurs, plein écran.
+- `public/manifest.json` : nom, icônes (192, 512, 512 « maskable »), couleurs, plein écran.
 - `public/sw.js` : notifications + page `public/offline.html` quand Internet manque (rien d'autre n'est mis en cache).
 - `public/.well-known/assetlinks.json` : lien site ↔ application Play Store (vide tant que l'empreinte n'est pas fournie).
 - `src/pages/Installer.jsx` : bouton d'installation et consignes.
