@@ -30,6 +30,7 @@ import Ordonnances from "@/pages/Ordonnances";
 import Payer from "@/pages/Payer";
 import Profil from "@/pages/Profil";
 import Voix from "@/pages/Voix";
+import Cartes from "@/pages/Cartes";
 
 // Routes du site. Tout est réservé aux utilisateurs connectés, sauf la
 // connexion, l'inscription et la politique de confidentialité (publique, lot 16) ;
@@ -66,6 +67,7 @@ export default function App() {
               <Route path="/abonnement" element={<Abonnement />} />
               <Route path="/ordonnances" element={<Ordonnances />} />
               <Route path="/transcription" element={<Voix />} />
+              <Route path="/cartes" element={<Cartes />} />
               <Route path="/pharmacies-de-garde" element={<Garde />} />
               <Route path="/archives" element={<Archives />} />
               <Route path="/annonceur" element={<Annonceur />} />
