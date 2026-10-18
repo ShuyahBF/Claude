@@ -115,11 +115,11 @@ export default function Cartes() {
           </div>
           <div className="flex flex-wrap gap-2">
             {carte.variantes.length < max && (
-              <button type="button" className="btn-clair" disabled={occupe !== ""} onClick={autreVariante}>
+              <button type="button" className="btn-outline" disabled={occupe !== ""} onClick={autreVariante}>
                 Une autre variante ({carte.variantes.length}/{max})
               </button>
             )}
-            <button type="button" className="btn-clair" onClick={() => setCarte(null)}>Fermer (la carte reste dans ma liste)</button>
+            <button type="button" className="btn-outline" onClick={() => setCarte(null)}>Fermer (la carte reste dans ma liste)</button>
           </div>
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" className="mt-1" checked={accord} onChange={(e) => setAccord(e.target.checked)} data-testid="cartes-accord" />
@@ -182,8 +182,8 @@ export default function Cartes() {
                 <p className="text-xs text-gray-500">{c.statut === "envoyee" ? `✔ Envoyée le ${dateHeure(c.envoyee_le)}` : `En cours · ${c.nb_variantes}/${max} variante(s) · ${dateHeure(c.cree_le)}`}</p>
               </div>
               <div className="flex gap-2">
-                {c.statut === "brouillon" && <button type="button" className="btn-clair btn-sm" onClick={() => ouvrirExistante(c)}>Ouvrir</button>}
-                <button type="button" className="btn-clair btn-sm" onClick={() => supprimer(c)}>Supprimer</button>
+                {c.statut === "brouillon" && <button type="button" className="btn-outline btn-sm" onClick={() => ouvrirExistante(c)}>Ouvrir</button>}
+                <button type="button" className="btn-outline btn-sm" onClick={() => supprimer(c)}>Supprimer</button>
               </div>
             </li>
           ))}

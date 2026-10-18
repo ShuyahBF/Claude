@@ -42,7 +42,7 @@ function ZoneSuppression() {
           <ChampMotDePasse id="suppr-mdp" required value={mdp} onChange={(e) => setMdp(e.target.value)} autoComplete="current-password" />
           <div className="flex flex-wrap gap-2">
             <button type="submit" className="btn-primary bg-red-700 hover:bg-red-800" disabled={envoi || !mdp}>{envoi ? "Suppression…" : "Supprimer définitivement"}</button>
-            <button type="button" className="btn-clair" disabled={envoi} onClick={() => { setOuvert(false); setMdp(""); }}>Annuler</button>
+            <button type="button" className="btn-outline" disabled={envoi} onClick={() => { setOuvert(false); setMdp(""); }}>Annuler</button>
           </div>
         </form>
       )}
