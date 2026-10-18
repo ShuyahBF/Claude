@@ -3,7 +3,7 @@ import { apiClient } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
 // Déconnexion après inactivité (modèle adLyn ; durée réglée par l'administrateur
-// de Paiement Mobile, lue sur /auth/inactivite). La dernière activité (souris, clavier, toucher,
+// de auRor, lue sur /auth/inactivite). La dernière activité (souris, clavier, toucher,
 // défilement, retour sur l'onglet) est PARTAGÉE entre les onglets ouverts via
 // le stockage local : une activité dans un onglet garde les autres connectés.
 // Le serveur fait le même contrôle (au plus une minute de marge) : l'activité

@@ -1,5 +1,5 @@
 // ============================================================================
-// Configuration de Vite (outil de compilation du site Paiement Mobile)
+// Configuration de Vite (outil de compilation du site auRor)
 // ============================================================================
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'

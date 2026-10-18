@@ -1,4 +1,4 @@
-"""Routes PUBLIQUES de l'application Android « Raccourcis Paiement Mobile » (lot 13).
+"""Routes PUBLIQUES de l'application Android « auRor » (lot 13).
 
 Une seule API pour le site ET l'app : l'app Android n'a plus son propre serveur
 Node. Elle lit et écrit les MÊMES données que le site :

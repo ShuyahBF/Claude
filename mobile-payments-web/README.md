@@ -1,6 +1,6 @@
-# Paiement Mobile — version web
+# auRor — version web
 
-Version web de l'app Android **Raccourcis Paiement Mobile** (`../mobile-payments-app`), avec la même
+Version web de l'app Android **auRor** (`../mobile-payments-app`), avec la même
 architecture qu'adLyn (`ShuyahBF/telecom-boutique`) :
 
 | Partie | Technologie | Hébergement |
@@ -140,7 +140,7 @@ statique gratuit `paiement-mobile-site`. **Aucun serveur Node à déployer.**
    l'API deux sous-domaines du **même** domaine (ex. `pay.exemple.com` et `api.exemple.com`), puis mettez à
    jour `FRONTEND_ORIGIN`, `PUBLIC_SITE_URL` et `VITE_API_BASE_URL`. L'app Android n'est pas concernée
    (pas de cookie).
-5. **APK Android** : compilé par GitHub Actions (`Build APK - Raccourcis Paiement Mobile`) à chaque
+5. **APK Android** : compilé par GitHub Actions (`Build APK - auRor`) à chaque
    modification de `mobile-payments-app/**` sur la branche par défaut ; il appelle
    `https://paiement-mobile-api-jo11.onrender.com/` par défaut.
 

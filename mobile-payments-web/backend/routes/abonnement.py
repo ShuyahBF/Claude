@@ -1,4 +1,4 @@
-"""Abonnement (formules) et parrainage de Paiement Mobile, gérés côté SAWALI (lot 37).
+"""Abonnement (formules) et parrainage de auRor, gérés côté SAWALI (lot 37).
 
 Demande du propriétaire (17/10/2026) : la rubrique « Abonnement » du menu affiche les formules créées dans SAWALI ; tout
 paiement active la formule (30 jours par défaut, durée cumulée) ; un système de parrainage offre des jours au parrain

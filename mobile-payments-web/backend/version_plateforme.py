@@ -1,4 +1,4 @@
-"""Version et lot de la plateforme Paiement Mobile, exposés par GET /api/version.
+"""Version et lot de la plateforme auRor, exposés par GET /api/version.
 
 SOURCE UNIQUE : le fichier frontend/src/version.js (constantes VERSION et LOT).
 Ce module ne fait que le RELIRE au démarrage du serveur : il n'y a donc qu'un

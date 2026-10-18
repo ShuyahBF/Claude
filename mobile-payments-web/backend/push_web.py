@@ -1,4 +1,4 @@
-"""Notifications « push » web de Paiement Mobile (lot 41) : alertes envoyées par le SERVEUR, application fermée.
+"""Notifications « push » web de auRor (lot 41) : alertes envoyées par le SERVEUR, application fermée.
 
 Pour un développeur WinDev : c'est un petit module d'envoi, écrit ici SANS bibliothèque externe fragile
 (seulement `cryptography` et `PyJWT`), selon les standards du Web Push :

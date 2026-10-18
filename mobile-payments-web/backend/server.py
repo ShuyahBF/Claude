@@ -1,4 +1,4 @@
-"""Point d'entrée FastAPI — Raccourcis Paiement Mobile (version web).
+"""Point d'entrée FastAPI — auRor (version web).
 
 Lancement local : uvicorn server:app --reload
 Documentation interactive de l'API : http://localhost:8000/docs
@@ -27,7 +27,7 @@ from ussd import normaliser_email
 settings = get_settings()
 log = logging.getLogger("paiement_mobile")
 
-app = FastAPI(title="Raccourcis Paiement Mobile API", version=str(version_plateforme.VERSION or "dev"))
+app = FastAPI(title="auRor API", version=str(version_plateforme.VERSION or "dev"))
 
 app.add_middleware(
     CORSMiddleware,

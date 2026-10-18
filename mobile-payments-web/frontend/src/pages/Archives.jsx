@@ -10,7 +10,7 @@ import { anneeDe, aujourdhui, captureEcranDisponible, capturerEcran, reduireImag
 
 // ============================================================================
 // Archives (lot 56) : reçus, factures, pièces d'identité, pages de passeport, TVM, carte grise… et captures d'écran.
-//   - SANS abonnement : tout est gardé SUR L'APPAREIL (mémoire privée du navigateur) ; rien n'est envoyé à Paiement Mobile.
+//   - SANS abonnement : tout est gardé SUR L'APPAREIL (mémoire privée du navigateur) ; rien n'est envoyé à auRor.
 //   - AVEC l'abonnement « Archives en ligne chiffrées » : stockage en ligne PROFESSIONNEL et CHIFFRÉ. Le chiffrement se fait ici, dans le
 //     navigateur, avec une phrase secrète que personne d'autre ne connaît : le serveur ne garde que des octets illisibles.
 //   - Étiquettes (tags) : l'année du document est ajoutée automatiquement ; l'utilisateur ajoute les siennes et ses propres catégories.

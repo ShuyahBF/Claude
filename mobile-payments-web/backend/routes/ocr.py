@@ -1,4 +1,4 @@
-"""Lecture OCR de photos dans Paiement Mobile (lot 39) : plaques de marchands et ordonnances.
+"""Lecture OCR de photos dans auRor (lot 39) : plaques de marchands et ordonnances.
 
 Pour un développeur WinDev : ce fichier ne lit RIEN lui-même. Il relaie la photo, avec la requête SIGNÉE habituelle, vers
 SAWALI qui contrôle l'ABONNEMENT (formule débloquant l'OCR), la limite du jour et appelle l'IA. Sans abonnement actif, SAWALI
