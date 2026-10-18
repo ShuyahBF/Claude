@@ -4,6 +4,7 @@ import json
 import httpx
 import pytest
 
+import limiteur
 import support_sawali
 from config import get_settings
 
@@ -20,6 +21,9 @@ class Recues(list):
 
 @pytest.fixture
 def sawali():
+    # Limite d'appels par minute et par adresse : partagée par toute la série de tests, on la vide pour ne pas la dépasser
+    limiteur.limiteur_public.vider()
+    limiteur.limiteur_lecture.vider()
     recues = Recues()
 
     def repondre(q: httpx.Request) -> httpx.Response:
