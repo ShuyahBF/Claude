@@ -54,6 +54,12 @@ VARIANTES_MAX = 3          # variantes proposées par carte (demande du proprié
 BROUILLONS_MAX = 20        # cartes non envoyées gardées par utilisateur
 ENVOIS_PAR_JOUR = 10       # cartes envoyées par jour et par utilisateur
 
+# Formes artistiques et moteurs IA proposés (clés identiques à celles de SAWALI, voir routes/cartes_plateformes.py) : listes fermées.
+STYLES = {"illustration": "Illustration / dessin", "photo": "Photo réaliste", "huile": "Peinture à l'huile", "aquarelle": "Aquarelle",
+          "pastel": "Pastel", "gouache": "Gouache / art naïf", "3d": "Rendu 3D", "papier": "Papier découpé", "vintage": "Affiche rétro",
+          "fusain": "Fusain / encre"}
+MOTEURS = {"eco": "Économique", "standard": "Standard", "premium": "Premium (haute qualité)", "dalle3": "DALL·E 3", "dalle3hd": "DALL·E 3 haute définition"}
+
 router = APIRouter(prefix="/cartes", tags=["Cartes virtuelles"])
 
 
@@ -62,6 +68,8 @@ class NouvelleCarte(BaseModel):
     message: str = Field(..., min_length=2, max_length=300)
     destinataire: str = Field(..., min_length=1, max_length=60)
     telephone: str = Field(..., min_length=6, max_length=30)
+    style: str = Field("illustration", max_length=20)     # forme artistique (clé de STYLES)
+    moteur: str = Field("standard", max_length=20)        # type d'IA (clé de MOTEURS)
 
 
 class Envoi(BaseModel):
@@ -75,7 +83,7 @@ def maintenant() -> str:
 
 def vue(carte: dict, avec_images: bool) -> dict:
     """Carte renvoyée à l'écran ; les images (lourdes) seulement quand elles sont demandées."""
-    sortie = {k: carte.get(k) for k in ("id", "theme", "message", "destinataire", "telephone", "statut", "cree_le", "envoyee_le")}
+    sortie = {k: carte.get(k) for k in ("id", "theme", "message", "destinataire", "telephone", "statut", "cree_le", "envoyee_le", "style", "moteur")}
     sortie["nb_variantes"] = len(carte.get("variantes") or [])
     sortie["variantes_max"] = VARIANTES_MAX
     if avec_images:
@@ -87,7 +95,7 @@ async def generer_image(user: dict, carte: dict) -> Dict[str, Any]:
     """Demande une image à SAWALI (abonnement et plafond du jour contrôlés là-bas). Renvoie {id, image}."""
     rep = await appeler_sawali("/cartes-plateformes/generer", {
         "utilisateur": utilisateur_sawali(user), "theme": carte["theme"], "message": carte["message"],
-        "destinataire": carte["destinataire"]}, service=SERVICE, delai=120)
+        "destinataire": carte["destinataire"], "style": carte.get("style") or "illustration", "moteur": carte.get("moteur") or "standard"}, service=SERVICE, delai=120)
     image = rep.get("image") or ""
     if not image.startswith("data:image/"):
         raise HTTPException(502, f"{SERVICE} a renvoyé une image illisible")
@@ -136,12 +144,14 @@ async def poster_a_liluvine(corps: Dict[str, Any]) -> Dict[str, Any]:
 @router.get("")
 async def lister(user: dict = Depends(get_current_user)):
     docs = await db.cartes.find({"user_id": user["id"]}, SANS_ID).sort("cree_le", -1).to_list(60)
-    return {"cartes": [vue(c, False) for c in docs], "envoyees_aujourdhui": await envoyees_aujourdhui(user["id"]),
+    return {"styles": STYLES, "moteurs": MOTEURS, "cartes": [vue(c, False) for c in docs], "envoyees_aujourdhui": await envoyees_aujourdhui(user["id"]),
             "envois_par_jour": ENVOIS_PAR_JOUR, "variantes_max": VARIANTES_MAX}
 
 
 @router.post("", status_code=201, dependencies=[Depends(limiter_appels_publics)])
 async def creer(data: NouvelleCarte, user: dict = Depends(get_current_user)):
+    if data.style not in STYLES or data.moteur not in MOTEURS:
+        raise HTTPException(422, "Forme artistique ou type d'IA inconnu")
     try:
         telephone = normaliser_telephone(data.telephone)    # règle du Burkina Faso (8 chiffres → +226)
     except ErreurSaisie:
@@ -150,7 +160,7 @@ async def creer(data: NouvelleCarte, user: dict = Depends(get_current_user)):
         raise HTTPException(409, f"{BROUILLONS_MAX} cartes en cours au maximum : supprimez-en une avant d'en créer une autre")
     carte = {"id": str(uuid.uuid4()), "user_id": user["id"], "theme": data.theme.strip(), "message": data.message.strip(),
              "destinataire": data.destinataire.strip(), "telephone": telephone, "statut": "brouillon", "variantes": [],
-             "cree_le": maintenant(), "envoyee_le": None}
+             "style": data.style, "moteur": data.moteur, "cree_le": maintenant(), "envoyee_le": None}
     # Première image : si SAWALI refuse (abonnement, plafond…), rien n'est enregistré
     carte["variantes"].append(await generer_image(user, carte))
     await db.cartes.insert_one(carte.copy())

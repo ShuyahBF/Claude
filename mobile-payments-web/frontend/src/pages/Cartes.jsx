@@ -11,7 +11,7 @@ import { apiClient, dateHeure, messageErreur } from "@/lib/api";
 // Occasions proposées (liste finie, règle 10) ; « Autre… » ouvre une saisie libre.
 const OCCASIONS = ["Anniversaire", "Mariage", "Naissance", "Réussite à un examen", "Nouveau travail", "Fête religieuse", "Bonne année", "Remerciements", "Prompt rétablissement", "Condoléances", "Retrouvailles"];
 const AUTRE = "Autre…";
-const VIDE = { occasion: OCCASIONS[0], autre: "", decor: "", message: "", destinataire: "", telephone: "" };
+const VIDE = { style: "illustration", moteur: "standard", occasion: OCCASIONS[0], autre: "", decor: "", message: "", destinataire: "", telephone: "" };
 
 export default function Cartes() {
   const toast = useToast();
@@ -46,7 +46,7 @@ export default function Cartes() {
     const base = form.occasion === AUTRE ? form.autre.trim() : form.occasion;
     const theme = form.decor.trim() ? `${base} — ${form.decor.trim()}` : base;
     try {
-      const { data } = await apiClient.post("/cartes", { theme, message: form.message, destinataire: form.destinataire, telephone: form.telephone }, { timeout: 150000 });
+      const { data } = await apiClient.post("/cartes", { theme, style: form.style, moteur: form.moteur, message: form.message, destinataire: form.destinataire, telephone: form.telephone }, { timeout: 150000 });
       ouvrir(data); setForm(VIDE); charger();
     } catch (err) { traiter(err, "La carte n'a pas pu être créée"); } finally { setOccupe(""); }
   };
@@ -149,6 +149,21 @@ export default function Cartes() {
           <div>
             <label className="label" htmlFor="decor">Décor souhaité <span className="font-normal text-gray-400">(facultatif)</span></label>
             <input id="decor" className="input" maxLength={40} value={form.decor} onChange={champ("decor")} placeholder="ex. ballons dorés, fleurs, coucher de soleil" />
+          </div>
+          {/* Forme artistique et type d'IA : listes déroulantes (les valeurs viennent du serveur) */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="label" htmlFor="style">Forme artistique</label>
+              <select id="style" className="input" value={form.style} onChange={champ("style")} data-testid="carte-style">
+                {Object.entries(liste.styles || { illustration: "Illustration / dessin" }).map(([k, n]) => <option key={k} value={k}>{n}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="moteur">Type d'IA</label>
+              <select id="moteur" className="input" value={form.moteur} onChange={champ("moteur")} data-testid="carte-moteur">
+                {Object.entries(liste.moteurs || { standard: "Standard" }).map(([k, n]) => <option key={k} value={k}>{n}</option>)}
+              </select>
+            </div>
           </div>
           <div>
             <label className="label" htmlFor="message">Votre message</label>
