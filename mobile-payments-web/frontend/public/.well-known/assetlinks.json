@@ -1,1 +1,8 @@
-[]
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.sawali.auror",
+    "sha256_cert_fingerprints": ["07:30:35:B9:68:72:C0:E8:4F:23:AF:E3:B6:D6:ED:34:ED:14:DA:63:63:CD:61:0A:F4:1A:78:4D:9F:81:EC:95"]
+  }
+}]
