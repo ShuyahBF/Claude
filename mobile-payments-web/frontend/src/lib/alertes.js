@@ -1,5 +1,5 @@
 // ============================================================================
-// alertes.js — sons, vibration et notifications de Paiement Mobile (lot 40).
+// alertes.js — sons, vibration et notifications de auRor (lot 40).
 //
 // Pour un développeur WinDev : c'est un petit « module de signalisation » commun à toute l'application.
 //   - les RÉGLAGES (son oui/non, volume 0–100, vibration, notifications) sont gardés dans le navigateur de l'appareil ;
@@ -141,7 +141,7 @@ export async function notifier({ titre, texte, lien = "/", cle }) {
 }
 
 // ---- Notifications push (application fermée) ---------------------------------
-// L'appareil s'abonne auprès du service de notification de son navigateur ; le serveur de Paiement Mobile reçoit l'adresse et les clés
+// L'appareil s'abonne auprès du service de notification de son navigateur ; le serveur de auRor reçoit l'adresse et les clés
 // de chiffrement (/api/push/abonner) et envoie lui-même les alertes (prise à l'heure, paiement à régler, anniversaire).
 function cleEnOctets(base64url) {
   const b = (base64url + "=".repeat((4 - (base64url.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/");

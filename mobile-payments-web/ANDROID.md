@@ -1,4 +1,4 @@
-# Paiement Mobile sur Android (lot 69)
+# auRor sur Android (lot 69)
 
 Le site est une **application installable** : icône sur l'écran d'accueil, ouverture plein écran, notifications, page « Pas de connexion ».
 Elle se met à jour toute seule (elle charge toujours la dernière version du site ; bandeau « Mettre à jour » si besoin).

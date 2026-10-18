@@ -1,4 +1,4 @@
-"""Pharmacies de garde dans Paiement Mobile (lot 43) : affiche le contenu de sawalismartsystems.com/garde.
+"""Pharmacies de garde dans auRor (lot 43) : affiche le contenu de sawalismartsystems.com/garde.
 
 Pour un développeur WinDev :
   - le NAVIGATEUR ne parle jamais à SAWALI : il appelle CE serveur ;

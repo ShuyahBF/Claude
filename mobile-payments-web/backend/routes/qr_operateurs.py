@@ -2,7 +2,7 @@
 
 Constat (photos de la plaque Orange Money, 17/10/2026) : le QR imprimé par l'opérateur contient seulement un
 identifiant interne (`OBF_$` + base64 d'un numéro, ex. 000002011167) : PAS le code marchand, qui est écrit à la main sur
-la plaque (ex. 3366444). Paiement Mobile ne peut donc pas composer le paiement à partir de ce QR seul.
+la plaque (ex. 3366444). auRor ne peut donc pas composer le paiement à partir de ce QR seul.
 
 Solution : la PREMIÈRE fois, l'utilisateur saisit le code marchand de la plaque ; le site MÉMORISE le lien
 « identifiant du QR → code marchand ». Aux scans suivants, le code est proposé et il ne reste que le montant.

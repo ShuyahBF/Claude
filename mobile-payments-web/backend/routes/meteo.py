@@ -1,4 +1,4 @@
-"""Météo dans Paiement Mobile (lot 36), lue chez SAWALI (météo déjà disponible : Open-Meteo, cache 10 min).
+"""Météo dans auRor (lot 36), lue chez SAWALI (météo déjà disponible : Open-Meteo, cache 10 min).
 
 Pour un développeur WinDev :
   - le NAVIGATEUR ne parle jamais à SAWALI : il appelle CE serveur ;

@@ -94,7 +94,7 @@ async def envoyer_a_utilisateur(user_id: str, message: Dict[str, Any]) -> int:
 
 @router.post("/test", dependencies=[Depends(limiter_appels_publics)])
 async def tester(user: dict = Depends(get_current_user)):
-    envoyes = await envoyer_a_utilisateur(user["id"], {"titre": "🔔 Paiement Mobile", "texte": "Les notifications fonctionnent sur cet appareil.",
+    envoyes = await envoyer_a_utilisateur(user["id"], {"titre": "🔔 auRor", "texte": "Les notifications fonctionnent sur cet appareil.",
                                                         "lien": "/profil", "cle": f"test:{datetime.now(timezone.utc).timestamp()}"})
     if not envoyes:
         raise HTTPException(409, "Aucun appareil joignable : activez d'abord les notifications sur cet appareil.")

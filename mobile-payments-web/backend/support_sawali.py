@@ -1,4 +1,4 @@
-"""Support SAWALI sur la page de connexion et dans le portail de Paiement Mobile (lot 24).
+"""Support SAWALI sur la page de connexion et dans le portail de auRor (lot 24).
 
 Demande du propriétaire (17/10/2026) : une icône d'assistance en bas à droite de la
 fenêtre de connexion ouvre une discussion avec le support SAWALI. Côté SAWALI, les
@@ -114,11 +114,11 @@ def identite(user: Optional[dict], visiteur: str, nom: str = "", contact: str = 
     Compte connecté : ses coordonnées ; sinon : le visiteur (id aléatoire du navigateur)."""
     if user:
         return {"id": str(user.get("id", "")), "nom": f"{user.get('prenom', '')} {user.get('nom', '')}".strip() or user.get("email") or "",
-                "role": user.get("role") or "", "contexte": "Paiement Mobile",
+                "role": user.get("role") or "", "contexte": "auRor",
                 "email": user.get("email") or "", "telephone": user.get("telephone") or ""}
     # Visiteur : téléphone normalisé au format international « +22670000000 » (règle du Burkina Faso, voir ussd.py)
     return {"id": f"visiteur-{visiteur}", "nom": nom.strip() or "Visiteur", "role": "visiteur",
-            "contexte": "Paiement Mobile (page de connexion)", "email": "", "telephone": contact.strip()}
+            "contexte": "auRor (page de connexion)", "email": "", "telephone": contact.strip()}
 
 
 class Identifiant(BaseModel):

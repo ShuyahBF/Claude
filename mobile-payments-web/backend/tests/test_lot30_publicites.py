@@ -1,4 +1,4 @@
-"""Lot 30 — annonces de la régie SAWALI affichées dans Paiement Mobile.
+"""Lot 30 — annonces de la régie SAWALI affichées dans auRor.
 Aucun accès réseau : SAWALI est remplacé par un faux serveur (httpx.MockTransport)."""
 import asyncio
 import json
@@ -103,7 +103,7 @@ def test_sawali_injoignable_ne_casse_rien(client, utilisateur):
 
 
 def test_adresses_relatives_de_sawali_rendues_completes():
-    """Lot 49 : une annonce dont le fichier est « /api/files/<id> » doit pointer vers SAWALI, jamais vers Paiement Mobile."""
+    """Lot 49 : une annonce dont le fichier est « /api/files/<id> » doit pointer vers SAWALI, jamais vers auRor."""
     from routes.publicites import _absolue, _vue
     a = _vue({"id": "x", "image_url": "/api/files/abc", "target_url": "/api/files/abc", "media_kind": "video"})
     assert a["image"] == "https://api.sawalismartsystems.com/api/files/abc" and a["url"] == a["image"] and a["video"] is True

@@ -1,4 +1,4 @@
-"""Transcription vocale dans Paiement Mobile (lot 42) : on parle, c'est écrit (réservé aux abonnés).
+"""Transcription vocale dans auRor (lot 42) : on parle, c'est écrit (réservé aux abonnés).
 
 Pour un développeur WinDev : ce fichier ne transcrit RIEN lui-même. Il relaie la note vocale (30 secondes au plus), avec la
 requête SIGNÉE habituelle, vers SAWALI qui contrôle l'ABONNEMENT (formule débloquant la transcription), la limite de notes

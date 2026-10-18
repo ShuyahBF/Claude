@@ -3,7 +3,7 @@
 //   - phrase secrète → clé AES-256 par PBKDF2-SHA256 (250 000 tours, sel public gardé chez SAWALI) ; la phrase et la clé ne quittent JAMAIS l'appareil ;
 //   - chaque document et ses informations sont chiffrés en AES-256-GCM (vecteur aléatoire de 12 octets placé devant les données) ;
 //   - « jeton de contrôle » : un petit texte connu, chiffré avec la clé : il permet de vérifier la phrase saisie sur un autre appareil.
-// Phrase perdue = documents en ligne définitivement illisibles : personne (ni Paiement Mobile ni SAWALI) ne peut les récupérer.
+// Phrase perdue = documents en ligne définitivement illisibles : personne (ni auRor ni SAWALI) ne peut les récupérer.
 // ============================================================================
 const TOURS = 250000;
 const TEXTE_CONTROLE = "archives-paiement-mobile-v1";

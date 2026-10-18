@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 // ============================================================================
-// PROTECTION CONTRE LES CAPTURES D'ÉCRAN (lot 46 de Paiement Mobile, règle du propriétaire :
+// PROTECTION CONTRE LES CAPTURES D'ÉCRAN (lot 46 de auRor, règle du propriétaire :
 // « les captures d'écran sont interdites sur tout le site »).
 //
 // LIMITE IMPORTANTE : un site web ne peut PAS bloquer techniquement une

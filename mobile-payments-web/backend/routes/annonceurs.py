@@ -1,4 +1,4 @@
-"""Espace annonceur de Paiement Mobile (lot 60) : un abonné passe une annonce, voit son devis en direct, paie et suit ses statistiques.
+"""Espace annonceur de auRor (lot 60) : un abonné passe une annonce, voit son devis en direct, paie et suit ses statistiques.
 
 Demande du propriétaire (17/10/2026) : « Un abonné peut devenir annonceur. Il choisit sa formule parmi les paramètres de SAWALI,
 envoie ses images ou vidéo (taille raisonnable, médias cryptés) et paie. Un calculateur affiche son devis en temps réel. Seul SAWALI

@@ -1,7 +1,7 @@
-"""Annonces publicitaires de SAWALI affichées dans Paiement Mobile (lot 30).
+"""Annonces publicitaires de SAWALI affichées dans auRor (lot 30).
 
 Demande du propriétaire (17/10/2026) : afficher les bannières et le carrousel envoyés par la régie publicitaire
-de SAWALI, en haut de l'écran Payer. Côté SAWALI : emplacement « Paiement Mobile » (lot 226).
+de SAWALI, en haut de l'écran Payer. Côté SAWALI : emplacement « Paiement Mobile » (lot 226, nom de l'emplacement côté SAWALI, inchangé).
 
 En résumé (pour un développeur WinDev) :
   - le NAVIGATEUR ne parle jamais directement à SAWALI : il appelle CE serveur ;
@@ -59,8 +59,8 @@ def _base() -> str:
 
 def _absolue(adresse: str) -> str:
     """Adresse complète d'un média ou d'un lien d'annonce. SAWALI enregistre ses fichiers téléversés en adresse RELATIVE
-    (« /api/files/<id> ») : lue telle quelle par ce site, elle pointerait vers Paiement Mobile (vidéo introuvable, clic sur une
-    autre page de Paiement Mobile). Les adresses « /api/… » sont donc rattachées au serveur de SAWALI, les autres pages « /… » au
+    (« /api/files/<id> ») : lue telle quelle par ce site, elle pointerait vers auRor (vidéo introuvable, clic sur une
+    autre page de auRor). Les adresses « /api/… » sont donc rattachées au serveur de SAWALI, les autres pages « /… » au
     site de SAWALI (même adresse sans « api. »)."""
     a = (adresse or "").strip()
     if a.startswith("//"):
