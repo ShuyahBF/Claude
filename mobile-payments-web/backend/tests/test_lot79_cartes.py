@@ -144,3 +144,21 @@ def test_verification_indisponible_message_transmis(client, utilisateur, sawali)
     sawali.generer = (503, {"detail": "La vérification du contenu est momentanément indisponible : réessayez dans un instant."})
     r = client.post("/api/cartes", headers=h, json=CARTE)
     assert r.status_code == 503 and "réessayez" in r.json()["detail"]
+
+
+def test_forme_artistique_et_moteur_transmis_a_sawali(client, utilisateur, sawali):
+    """Lot 82 : la forme artistique et le type d'IA choisis sont relayés à SAWALI, pour la 1re image comme pour les variantes."""
+    _, h, _ = utilisateur
+    r = client.post("/api/cartes", headers=h, json={**CARTE, "style": "huile", "moteur": "dalle3"})
+    assert r.status_code == 201, r.text
+    corps = json.loads(sawali[-1].content)
+    assert corps["style"] == "huile" and corps["moteur"] == "dalle3"
+    client.post(f"/api/cartes/{r.json()['id']}/variante", headers=h)
+    corps = json.loads(sawali[-1].content)
+    assert corps["style"] == "huile" and corps["moteur"] == "dalle3"
+
+
+def test_forme_ou_moteur_inconnu_refuse(client, utilisateur, sawali):
+    _, h, _ = utilisateur
+    assert client.post("/api/cartes", headers=h, json={**CARTE, "style": "n'importe quoi"}).status_code == 422
+    assert client.post("/api/cartes", headers=h, json={**CARTE, "moteur": "gpt-9"}).status_code == 422
