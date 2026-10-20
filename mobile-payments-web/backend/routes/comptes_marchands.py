@@ -169,7 +169,7 @@ async def mes_paiements(user: dict = Depends(get_current_user)):
     c = await _mon_compte(user)
     if not c:
         return {"paiements": []}
-    docs = await db.paiements.find({"compte_marchand_id": c["id"], "mode": "pispi", "statut": {"$in": ["declare", "effectue", "refuse"]}}, SANS_ID).sort("cree_le", -1).to_list(100)
+    docs = await db.paiements.find({"compte_marchand_id": c["id"], "mode": "pispi", "statut": {"$in": ["declare", "effectue", "refuse"]}}, {"_id": 0, "pieces": 0, "motif": 0}).sort("cree_le", -1).to_list(100)   # lot 85 : le motif et les pièces du payeur ne sont jamais lus ici
     # Noms des payeurs lus EN BLOC (une seule requête)
     ids = list({d["user_id"] for d in docs})
     noms = {u["id"]: f"{u.get('prenom', '')} {(u.get('nom') or '')[:1]}.".strip() async for u in db.users.find({"id": {"$in": ids}}, {"_id": 0, "id": 1, "prenom": 1, "nom": 1})}
