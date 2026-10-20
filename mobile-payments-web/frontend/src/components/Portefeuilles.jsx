@@ -1,38 +1,43 @@
-// Portefeuilles (lot 86) — auRor, outil de budget : soldes du portefeuille ÉLECTRONIQUE (compte mobile money) et PERSONNEL (liquidités),
+// Portefeuilles (lots 86 et 87) — auRor, outil de budget : soldes des portefeuilles ÉLECTRONIQUES (un par opérateur : Orange, Moov, Telecel…)
+// et PERSONNEL (liquidités),
 // paiements « en cours », courbe d'évolution, et saisie : « mon solde à une date », retrait / dépôt (sortie d'un côté, entrée de l'autre),
 // autre entrée / sortie d'argent. Affiché en tête de l'Historique.
 import { useCallback, useEffect, useState } from "react";
 import GraphePortefeuilles from "@/components/GraphePortefeuilles";
 import Modal from "@/components/Modal";
 import { useToast } from "@/components/Toast";
-import { apiClient, fcfa, messageErreur } from "@/lib/api";
+import { apiClient, couleurOperateur, fcfa, messageErreur } from "@/lib/api";
 
-const NOMS = { electronique: "Électronique", personnel: "Personnel" };
 const PERIODES = [[30, "30 jours"], [90, "3 mois"], [180, "6 mois"], [366, "1 an"]];
 const aujourdhui = () => new Date().toISOString().slice(0, 10);
 const dateFr = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
-const entier = (v) => Number(String(v).replace(/[\s  ]/g, "")) || 0;
+const entier = (v) => Number(String(v).replace(/[\s\u202f\u00a0]/g, "")) || 0;
+const PERSONNEL = "personnel";
+// Nom lisible d'un portefeuille à partir de ses champs (relevé ou mouvement)
+const nomPf = (pf, operateur) => (pf === PERSONNEL ? "Personnel" : operateur ? `Électronique · ${operateur}` : "Électronique (général)");
 // Types de mouvement (liste finie)
 const TYPES = [
   ["retrait", "Retrait : du compte mobile money vers ma poche"],
   ["depot", "Dépôt : de ma poche vers le compte mobile money"],
+  ["transfert", "Transfert : d'un opérateur à un autre"],
   ["entree", "Entrée d'argent (salaire reçu, cadeau…)"],
-  ["sortie", "Sortie d'argent (dépense en espèces…)"],
+  ["sortie", "Sortie d'argent (dépense, frais…)"],
 ];
 
-function Carte({ code, s }) {
+function Carte({ pf, s }) {
+  const couleur = pf.cle === PERSONNEL ? "#0ba957" : pf.operateur ? couleurOperateur(pf.operateur) : "#4926d7";
   return (
-    <div className="card space-y-1 p-4" data-testid={`portefeuille-${code}`}>
-      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{code === "electronique" ? "📱 Portefeuille électronique" : "👛 Portefeuille personnel"}</p>
+    <div className="card space-y-1 p-4" data-testid={`portefeuille-${pf.cle}`} style={{ borderLeft: `4px solid ${couleur}` }}>
+      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{pf.cle === PERSONNEL ? "👛" : "📱"} {pf.nom}</p>
       {s.renseigne ? (
         <>
           <p className="text-2xl font-bold tabular-nums">{fcfa(s.montant)}</p>
           {s.en_cours !== 0 && (
-            <p className="text-sm text-amber-700" data-testid={`en-cours-${code}`}>En cours : {fcfa(s.en_cours)} → <b>{fcfa(s.apres_en_cours)}</b> une fois confirmés</p>
+            <p className="text-sm text-amber-700" data-testid={`en-cours-${pf.cle}`}>En cours : {fcfa(s.en_cours)} → <b>{fcfa(s.apres_en_cours)}</b> une fois confirmés</p>
           )}
           <p className="text-xs text-gray-500">Depuis le relevé du {dateFr(s.depuis)}</p>
         </>
-      ) : <p className="text-sm text-gray-500">Solde non renseigné : indiquez-le pour suivre ce portefeuille.</p>}
+      ) : <p className="text-sm text-gray-500">Solde non renseigné.</p>}
     </div>
   );
 }
@@ -41,15 +46,24 @@ function Carte({ code, s }) {
 export default function Portefeuilles({ rafraichir = "" }) {
   const toast = useToast();
   const [d, setD] = useState(null);
+  const [operateurs, setOperateurs] = useState([]);       // opérateurs du catalogue (liste déroulante)
   const [jours, setJours] = useState(90);
   const [fenetre, setFenetre] = useState(null);           // "releve" | "mouvement" | null
-  const [releve, setReleve] = useState({ portefeuille: "electronique", jour: aujourdhui(), montant: "" });
-  const [mvt, setMvt] = useState({ type: "retrait", portefeuille: "electronique", montant: "", frais: "", jour: aujourdhui(), motif: "" });
+  // Choix du portefeuille d'un relevé : « personnel » ou « electronique:<opérateur> »
+  const [releve, setReleve] = useState({ pf: PERSONNEL, jour: aujourdhui(), montant: "" });
+  const [mvt, setMvt] = useState({ type: "retrait", operateur: "", vers: "", pf: PERSONNEL, montant: "", frais: "", jour: aujourdhui(), motif: "" });
   const [occupe, setOccupe] = useState(false);
 
+  useEffect(() => {
+    apiClient.get("/operateurs").then(({ data }) => {
+      setOperateurs(data);
+      setReleve((r) => ({ ...r, pf: data[0] ? `electronique:${data[0]}` : PERSONNEL }));
+      setMvt((m) => ({ ...m, operateur: data[0] || "", vers: data[1] || data[0] || "", pf: data[0] ? `electronique:${data[0]}` : PERSONNEL }));
+    }).catch(() => setOperateurs([]));
+  }, []);
   const charger = useCallback(async () => {
     try { setD((await apiClient.get("/portefeuille", { params: { jours } })).data); }
-    catch (err) { toast.erreur(messageErreur(err, "Portefeuilles indisponibles")); setD((x) => x || { soldes: {}, serie: [], releves: [], mouvements: [], en_cours: [] }); }
+    catch (err) { toast.erreur(messageErreur(err, "Portefeuilles indisponibles")); setD((x) => x || { portefeuilles: [], soldes: {}, serie: [], releves: [], mouvements: [], en_cours: [] }); }
   }, [jours, toast]);
   useEffect(() => { charger(); }, [charger, rafraichir]);
 
@@ -64,22 +78,38 @@ export default function Portefeuilles({ rafraichir = "" }) {
   };
 
   if (!d) return <p className="text-sm text-gray-500">Chargement des portefeuilles…</p>;
-  const sans = !d.soldes.electronique?.renseigne && !d.soldes.personnel?.renseigne;
-  const libelleMvt = (m) => ({ retrait: `Retrait ${fcfa(m.montant)}${m.frais ? ` (frais ${fcfa(m.frais)})` : ""}`, depot: `Dépôt ${fcfa(m.montant)}`,
-    entree: `Entrée ${fcfa(m.montant)} · ${NOMS[m.portefeuille]}`, sortie: `Sortie ${fcfa(m.montant)} · ${NOMS[m.portefeuille]}` }[m.type]);
+  const sans = d.portefeuilles.length === 0;
+  // « electronique:Orange » → { portefeuille: "electronique", operateur: "Orange" } ; « personnel » → { portefeuille: "personnel" }
+  const separer = (pf) => (pf === PERSONNEL ? { portefeuille: PERSONNEL } : { portefeuille: "electronique", operateur: pf.split(":")[1] });
+  const choixPf = (valeur, surChangement, id) => (
+    <select id={id} className="input" value={valeur} onChange={(e) => surChangement(e.target.value)}>
+      {operateurs.map((o) => <option key={o} value={`electronique:${o}`}>📱 Électronique · {o}</option>)}
+      <option value={PERSONNEL}>👛 Personnel (argent en poche)</option>
+    </select>
+  );
+  const choixOperateur = (valeur, surChangement, id, etiquette) => (
+    <div><label className="label" htmlFor={id}>{etiquette}</label>
+      <select id={id} className="input" value={valeur} onChange={(e) => surChangement(e.target.value)}>{operateurs.map((o) => <option key={o}>{o}</option>)}</select></div>
+  );
+  const libelleMvt = (m) => ({
+    retrait: `Retrait ${m.operateur} ${fcfa(m.montant)}${m.frais ? ` (frais ${fcfa(m.frais)})` : ""}`, depot: `Dépôt ${m.operateur} ${fcfa(m.montant)}`,
+    transfert: `Transfert ${m.operateur} → ${m.vers} ${fcfa(m.montant)}${m.frais ? ` (frais ${fcfa(m.frais)})` : ""}`,
+    entree: `Entrée ${fcfa(m.montant)} · ${nomPf(m.portefeuille, m.operateur)}`, sortie: `Sortie ${fcfa(m.montant)} · ${nomPf(m.portefeuille, m.operateur)}` }[m.type]);
+  const electronique = ["entree", "sortie"].includes(mvt.type);
+  const texteAide = { retrait: "Le montant sort du compte de l'opérateur (frais compris) et entre dans votre poche.", depot: "Le montant sort de votre poche et entre dans le compte de l'opérateur (frais déduits).",
+    transfert: "Le montant (et les frais) sort du compte d'origine et entre dans le compte de destination.", entree: "Le portefeuille choisi est augmenté.", sortie: "Le portefeuille choisi est diminué." }[mvt.type];
   return (
     <section className="space-y-3" data-testid="portefeuilles">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-bold">💼 Mes portefeuilles</h2>
         <div className="flex gap-2">
-          <button type="button" className="btn-primary btn-sm" onClick={() => { setReleve({ portefeuille: "electronique", jour: aujourdhui(), montant: "" }); setFenetre("releve"); }} data-testid="btn-releve">Indiquer mon solde</button>
+          <button type="button" className="btn-primary btn-sm" onClick={() => { setReleve((r) => ({ ...r, jour: aujourdhui(), montant: "" })); setFenetre("releve"); }} data-testid="btn-releve">Indiquer un solde</button>
           <button type="button" className="btn-outline btn-sm" onClick={() => setFenetre("mouvement")} data-testid="btn-mouvement">Retrait / dépôt…</button>
         </div>
       </div>
-      {sans && <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">Indiquez le solde de votre compte mobile money et l'argent que vous avez en poche : chaque paiement effectué met ensuite le solde à jour, et un retrait déplace l'argent d'un portefeuille à l'autre.</p>}
+      {sans && <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">Indiquez le solde de chacun de vos comptes mobile money (Orange, Moov, Telecel…) et l'argent que vous avez en poche : chaque paiement effectué met ensuite le compte de son opérateur à jour, et un retrait déplace l'argent du compte vers votre poche.</p>}
       <div className="grid gap-3 sm:grid-cols-2">
-        <Carte code="electronique" s={d.soldes.electronique || {}} />
-        <Carte code="personnel" s={d.soldes.personnel || {}} />
+        {d.portefeuilles.map((pf) => <Carte key={pf.cle} pf={pf} s={d.soldes[pf.cle] || {}} />)}
       </div>
 
       <div className="card space-y-2 p-4">
@@ -89,7 +119,7 @@ export default function Portefeuilles({ rafraichir = "" }) {
             {PERIODES.map(([v, n]) => <option key={v} value={v}>{n}</option>)}
           </select>
         </div>
-        <GraphePortefeuilles serie={d.serie} />
+        <GraphePortefeuilles serie={d.serie} portefeuilles={d.portefeuilles} />
       </div>
 
       {(d.releves.length > 0 || d.mouvements.length > 0 || d.en_cours.length > 0) && (
@@ -98,13 +128,13 @@ export default function Portefeuilles({ rafraichir = "" }) {
           <div className="mt-3 space-y-3">
             {d.en_cours.length > 0 && (
               <div><p className="label">⏳ Paiements en cours (non confirmés)</p>
-                <ul className="space-y-1">{d.en_cours.map((e, i) => <li key={i} className="flex justify-between gap-2 rounded-lg bg-amber-50 px-3 py-1.5"><span className="truncate">{e.libelle}</span><b className="tabular-nums">{fcfa(e.montant)}</b></li>)}</ul></div>
+                <ul className="space-y-1">{d.en_cours.map((e, i) => <li key={i} className="flex justify-between gap-2 rounded-lg bg-amber-50 px-3 py-1.5"><span className="truncate">{e.libelle} <span className="text-xs text-gray-500">· {e.portefeuille}</span></span><b className="tabular-nums">{fcfa(e.montant)}</b></li>)}</ul></div>
             )}
             {d.releves.length > 0 && (
               <div><p className="label">Soldes indiqués</p>
                 <ul className="space-y-1">{d.releves.map((r) => (
                   <li key={r.id} className="flex items-center justify-between gap-2 rounded-lg bg-gray-50 px-3 py-1.5">
-                    <span>{dateFr(r.jour)} · {NOMS[r.portefeuille]} : <b className="tabular-nums">{fcfa(r.montant)}</b>
+                    <span>{dateFr(r.jour)} · {r.nom} : <b className="tabular-nums">{fcfa(r.montant)}</b>
                       {r.ecart !== null && r.ecart !== undefined && r.ecart !== 0 && <span className={`ml-2 text-xs ${r.ecart < 0 ? "text-red-600" : "text-green-700"}`}>écart {r.ecart > 0 ? "+" : ""}{fcfa(r.ecart)} par rapport au calcul</span>}</span>
                     <button type="button" className="text-red-600" aria-label="Supprimer ce relevé" onClick={() => supprimer(`/portefeuille/releves/${r.id}`)}>🗑</button>
                   </li>))}</ul></div>
@@ -121,11 +151,9 @@ export default function Portefeuilles({ rafraichir = "" }) {
         </details>
       )}
 
-      <Modal ouvert={fenetre === "releve"} titre="Indiquer mon solde" onFermer={() => setFenetre(null)}>
-        <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); envoyer("/portefeuille/releves", { portefeuille: releve.portefeuille, jour: releve.jour, montant: entier(releve.montant) }, "Solde enregistré"); }}>
-          <div><label className="label" htmlFor="r-pf">Portefeuille</label>
-            <select id="r-pf" className="input" value={releve.portefeuille} onChange={(e) => setReleve({ ...releve, portefeuille: e.target.value })}>
-              <option value="electronique">Électronique (compte mobile money)</option><option value="personnel">Personnel (argent en poche)</option></select></div>
+      <Modal ouvert={fenetre === "releve"} titre="Indiquer un solde" onFermer={() => setFenetre(null)}>
+        <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); envoyer("/portefeuille/releves", { ...separer(releve.pf), jour: releve.jour, montant: entier(releve.montant) }, "Solde enregistré"); }}>
+          <div><label className="label" htmlFor="r-pf">Portefeuille</label>{choixPf(releve.pf, (v) => setReleve({ ...releve, pf: v }), "r-pf")}</div>
           <div><label className="label" htmlFor="r-jour">À la date du</label>
             <input id="r-jour" type="date" className="input" max={aujourdhui()} value={releve.jour} onChange={(e) => setReleve({ ...releve, jour: e.target.value })} required />
             <p className="mt-1 text-xs text-gray-500">Aujourd'hui = votre solde en ce moment : les paiements faits ensuite le feront baisser.</p></div>
@@ -135,25 +163,26 @@ export default function Portefeuilles({ rafraichir = "" }) {
         </form>
       </Modal>
 
-      <Modal ouvert={fenetre === "mouvement"} titre="Retrait, dépôt, entrée ou sortie" onFermer={() => setFenetre(null)}>
+      <Modal ouvert={fenetre === "mouvement"} titre="Retrait, dépôt, transfert, entrée ou sortie" onFermer={() => setFenetre(null)}>
         <form className="space-y-3" onSubmit={(e) => {
           e.preventDefault();
-          const corps = { type: mvt.type, montant: entier(mvt.montant), jour: mvt.jour, motif: mvt.motif || undefined,
-            ...(["entree", "sortie"].includes(mvt.type) ? { portefeuille: mvt.portefeuille } : { frais: entier(mvt.frais) }) };
+          const base = { type: mvt.type, montant: entier(mvt.montant), jour: mvt.jour, motif: mvt.motif || undefined };
+          const corps = electronique ? { ...base, ...separer(mvt.pf) }
+            : mvt.type === "transfert" ? { ...base, operateur: mvt.operateur, vers: mvt.vers, frais: entier(mvt.frais) }
+            : { ...base, operateur: mvt.operateur, frais: entier(mvt.frais) };
           envoyer("/portefeuille/mouvements", corps, "Mouvement enregistré");
         }}>
           <div><label className="label" htmlFor="m-type">Opération</label>
             <select id="m-type" className="input" value={mvt.type} onChange={(e) => setMvt({ ...mvt, type: e.target.value })} data-testid="mvt-type">
               {TYPES.map(([v, n]) => <option key={v} value={v}>{n}</option>)}</select></div>
-          {["entree", "sortie"].includes(mvt.type) && (
-            <div><label className="label" htmlFor="m-pf">Portefeuille</label>
-              <select id="m-pf" className="input" value={mvt.portefeuille} onChange={(e) => setMvt({ ...mvt, portefeuille: e.target.value })}>
-                <option value="electronique">Électronique</option><option value="personnel">Personnel</option></select></div>
-          )}
+          {electronique
+            ? <div><label className="label" htmlFor="m-pf">Portefeuille</label>{choixPf(mvt.pf, (v) => setMvt({ ...mvt, pf: v }), "m-pf")}</div>
+            : choixOperateur(mvt.operateur, (v) => setMvt({ ...mvt, operateur: v }), "m-op", mvt.type === "transfert" ? "Depuis le compte" : "Compte mobile money")}
+          {mvt.type === "transfert" && choixOperateur(mvt.vers, (v) => setMvt({ ...mvt, vers: v }), "m-vers", "Vers le compte")}
           <div className="grid grid-cols-2 gap-3">
             <div><label className="label" htmlFor="m-montant">Montant (FCFA)</label>
               <input id="m-montant" className="input" inputMode="numeric" required value={mvt.montant} onChange={(e) => setMvt({ ...mvt, montant: e.target.value.replace(/[^\d\s]/g, "") })} /></div>
-            {!["entree", "sortie"].includes(mvt.type) && (
+            {!electronique && (
               <div><label className="label" htmlFor="m-frais">Frais (facultatif)</label>
                 <input id="m-frais" className="input" inputMode="numeric" value={mvt.frais} onChange={(e) => setMvt({ ...mvt, frais: e.target.value.replace(/[^\d\s]/g, "") })} /></div>
             )}
@@ -162,8 +191,8 @@ export default function Portefeuilles({ rafraichir = "" }) {
             <input id="m-jour" type="date" className="input" max={aujourdhui()} value={mvt.jour} onChange={(e) => setMvt({ ...mvt, jour: e.target.value })} required /></div>
           <div><label className="label" htmlFor="m-motif">Motif (facultatif)</label>
             <input id="m-motif" className="input" maxLength={120} value={mvt.motif} onChange={(e) => setMvt({ ...mvt, motif: e.target.value })} /></div>
-          <p className="text-xs text-gray-500">{mvt.type === "retrait" ? "Le montant sort du portefeuille électronique (frais compris) et entre dans le personnel." : mvt.type === "depot" ? "Le montant sort du portefeuille personnel et entre dans l'électronique." : "Le portefeuille choisi est mis à jour."}</p>
-          <button type="submit" className="btn-primary w-full" disabled={occupe || mvt.montant === ""}>Enregistrer</button>
+          <p className="text-xs text-gray-500">{texteAide}</p>
+          <button type="submit" className="btn-primary w-full" disabled={occupe || mvt.montant === "" || (mvt.type === "transfert" && mvt.operateur === mvt.vers)}>Enregistrer</button>
         </form>
       </Modal>
     </section>

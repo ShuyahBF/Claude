@@ -1,22 +1,23 @@
-// Courbe d'évolution des deux portefeuilles (lot 86) : solde de FIN DE JOURNÉE de l'électronique (trait plein bleu) et du personnel
-// (traits tirés vert) — deux styles de trait, pas seulement deux couleurs. Dessinée en SVG (aucune bibliothèque). Toucher ou survoler
-// la courbe affiche les soldes du jour visé. Les jours sans relevé (avant le premier) ne sont pas tracés.
+// Courbe d'évolution des portefeuilles (lots 86 et 87) : solde de FIN DE JOURNÉE de chaque portefeuille électronique (un par opérateur, trait
+// plein à la couleur de l'opérateur) et du personnel (traits tirés verts) — le style du trait distingue le personnel sans dépendre de la
+// couleur. Dessinée en SVG (aucune bibliothèque). Toucher ou survoler la courbe affiche les soldes du jour visé. Les jours sans relevé
+// (avant le premier) ne sont pas tracés.
 import { useMemo, useState } from "react";
-import { fcfa } from "@/lib/api";
+import { couleurOperateur, fcfa } from "@/lib/api";
 
 const L = 640, H = 240, MG = { g: 62, d: 14, h: 14, b: 30 };           // largeur, hauteur, marges (gauche, droite, haut, bas)
-const SERIES = [
-  { cle: "electronique", nom: "Électronique", couleur: "#006bf7", trait: undefined },
-  { cle: "personnel", nom: "Personnel", couleur: "#0ba957", trait: "7 5" },
-];
+// Style de chaque portefeuille : électronique = couleur de l'opérateur, trait plein ; personnel = vert, tirets ; « général » = violet, pointillés
+const style = (pf) => (pf.cle === "personnel" ? { couleur: "#0ba957", trait: "7 5" }
+  : pf.operateur ? { couleur: couleurOperateur(pf.operateur), trait: undefined } : { couleur: "#4926d7", trait: "2 4" });
 const jourCourt = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 // Arrondi lisible des graduations : 12 345 → « 12 k », 1 250 000 → « 1,3 M »
 const court = (n) => (Math.abs(n) >= 1e6 ? `${(n / 1e6).toFixed(1).replace(".", ",")} M` : Math.abs(n) >= 1e3 ? `${Math.round(n / 1e3)} k` : String(Math.round(n)));
 
-export default function GraphePortefeuilles({ serie }) {
+export default function GraphePortefeuilles({ serie, portefeuilles }) {
+  const SERIES = useMemo(() => portefeuilles.map((pf) => ({ cle: pf.cle, nom: pf.nom, ...style(pf) })), [portefeuilles]);
   const [survol, setSurvol] = useState(null);                        // indice du jour visé
   const g = useMemo(() => {
-    const valeurs = serie.flatMap((p) => SERIES.map((s) => p[s.cle]).filter((v) => v !== null && v !== undefined));
+    const valeurs = serie.flatMap((p) => SERIES.map((s) => p.valeurs[s.cle]).filter((v) => v !== null && v !== undefined));
     if (serie.length < 2 || valeurs.length === 0) return null;
     // Échelle à graduations rondes (1, 2, 5 × 10ⁿ) : 0, 20 k, 40 k… plutôt que 23 k, 60 k, 97 k
     let min = Math.min(0, ...valeurs), max = Math.max(...valeurs);
@@ -32,7 +33,7 @@ export default function GraphePortefeuilles({ serie }) {
     const trace = (cle) => {
       let d = "", coupe = true;
       serie.forEach((p, i) => {
-        const v = p[cle];
+        const v = p.valeurs[cle];
         if (v === null || v === undefined) { coupe = true; return; }
         d += `${coupe ? "M" : "L"}${x(i).toFixed(1)},${y(v).toFixed(1)}`;
         coupe = false;
@@ -42,7 +43,7 @@ export default function GraphePortefeuilles({ serie }) {
     const tracés = SERIES.map((s) => ({ ...s, d: trace(s.cle) }));
     const graduations = Array.from({ length: nb + 1 }, (_, k) => min + pas * k);
     return { x, y, tracés, graduations };
-  }, [serie]);
+  }, [serie, SERIES]);
 
   if (!g) return <p className="text-sm text-gray-500">La courbe apparaît dès le deuxième jour de suivi : indiquez vos soldes d'aujourd'hui, puis revenez demain.</p>;
 
@@ -60,12 +61,12 @@ export default function GraphePortefeuilles({ serie }) {
         {SERIES.map((s) => (
           <span key={s.cle} className="flex items-center gap-1">
             <svg width="22" height="8" aria-hidden="true"><line x1="0" y1="4" x2="22" y2="4" stroke={s.couleur} strokeWidth="3" strokeDasharray={s.trait} /></svg>
-            {s.nom} : <b className="tabular-nums">{point[s.cle] === null || point[s.cle] === undefined ? "—" : fcfa(point[s.cle])}</b>
+            {s.nom} : <b className="tabular-nums">{point.valeurs[s.cle] === null || point.valeurs[s.cle] === undefined ? "—" : fcfa(point.valeurs[s.cle])}</b>
           </span>
         ))}
       </figcaption>
       <svg viewBox={`0 0 ${L} ${H}`} className="w-full touch-pan-y select-none" role="img"
-        aria-label={`Évolution des portefeuilles du ${jourCourt(serie[0].jour)} au ${jourCourt(dernier.jour)} : électronique ${dernier.electronique === null ? "non renseigné" : fcfa(dernier.electronique)}, personnel ${dernier.personnel === null ? "non renseigné" : fcfa(dernier.personnel)}`}
+        aria-label={`Évolution des portefeuilles du ${jourCourt(serie[0].jour)} au ${jourCourt(dernier.jour)} : ${SERIES.map((s) => `${s.nom} ${dernier.valeurs[s.cle] === null || dernier.valeurs[s.cle] === undefined ? "non renseigné" : fcfa(dernier.valeurs[s.cle])}`).join(", ")}`}
         onPointerMove={viser} onPointerDown={viser} onPointerLeave={() => setSurvol(null)}>
         {g.graduations.map((v) => (
           <g key={v}>
@@ -80,7 +81,7 @@ export default function GraphePortefeuilles({ serie }) {
         {survol !== null && (
           <g>
             <line x1={g.x(survol)} x2={g.x(survol)} y1={MG.h} y2={H - MG.b} stroke="#94a3b8" strokeWidth="1" />
-            {SERIES.map((s) => serie[survol][s.cle] !== null && serie[survol][s.cle] !== undefined && <circle key={s.cle} cx={g.x(survol)} cy={g.y(serie[survol][s.cle])} r="4.5" fill="#fff" stroke={s.couleur} strokeWidth="2.5" />)}
+            {SERIES.map((s) => serie[survol].valeurs[s.cle] !== null && serie[survol].valeurs[s.cle] !== undefined && <circle key={s.cle} cx={g.x(survol)} cy={g.y(serie[survol].valeurs[s.cle])} r="4.5" fill="#fff" stroke={s.couleur} strokeWidth="2.5" />)}
           </g>
         )}
       </svg>
