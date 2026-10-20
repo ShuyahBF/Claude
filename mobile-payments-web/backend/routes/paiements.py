@@ -6,9 +6,22 @@ téléphone, qui ouvre alors son composeur avec le code pré-rempli.
 ⚠️ Le site ne sait pas si l'opérateur a validé la transaction (c'est le
 téléphone qui dialogue avec l'opérateur) : l'utilisateur indique lui-même
 « payé » ou « abandonné ».
+
+Lot 85 — auRor outil de BUDGET : à un paiement (payé ou non, peu importe son statut) l'utilisateur peut associer
+  - un MOTIF détaillé (500 caractères au plus) : « courses de la semaine, riz + huile + savon » ;
+  - des PIÈCES SCANNÉES (3 au plus) : ticket de caisse, facture, reçu, liste de courses… (photo ou PDF, réduits dans le téléphone).
+Aucune nouvelle collection : les pièces sont rangées DANS le paiement (champ « pieces », avec leur contenu en base64) ; toutes les
+lectures de l'historique excluent le contenu (« pieces.data ») : seules les informations (nom, date, taille) sont envoyées à la liste,
+l'image n'est envoyée que lorsqu'on l'ouvre. Rien de tout cela n'est visible du marchand.
+    PUT    /api/paiements/{id}/details                  {motif} → enregistre (ou efface) le motif
+    POST   /api/paiements/{id}/pieces                   {image: data URL JPEG/PNG/WebP, nom} → ajoute une pièce
+    GET    /api/paiements/{id}/pieces/{piece_id}        → l'image
+    DELETE /api/paiements/{id}/pieces/{piece_id}
 """
 from __future__ import annotations
 
+import base64
+import binascii
 import re
 import secrets
 import uuid
@@ -16,7 +29,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
 import lieux_marchands
@@ -25,6 +38,13 @@ from securite import get_current_user
 from ussd import ErreurSaisie, construire_code, lien_tel
 
 router = APIRouter(prefix="/paiements", tags=["Paiements"])
+
+# Lot 85 : motif et pièces d'un paiement
+SANS_PIECES = {"_id": 0, "pieces.data": 0}        # lecture de l'historique : jamais le contenu des images
+PIECES_MAX = 3                                     # pièces par paiement
+PIECE_OCTETS_MAX = 1_200_000                       # taille de l'image réduite (le téléphone l'envoie à ≈ 150–400 Ko)
+MOTIF_MAX = 500
+MIMES_PIECE = {"image/jpeg", "image/png", "image/webp"}
 
 
 class Position(BaseModel):
@@ -128,7 +148,7 @@ async def declarer_pispi(paiement_id: str, data: DeclarationPispi, user: dict = 
                                       {"$set": {"statut": "declare", "reference_bancaire": data.reference_bancaire.strip(), "declare_le": datetime.now(timezone.utc).isoformat()}})
     if not r.matched_count:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Paiement PI-SPI introuvable ou déjà traité")
-    return _avec_lien(await db.paiements.find_one({"id": paiement_id}, SANS_ID))
+    return _avec_lien(await db.paiements.find_one({"id": paiement_id}, SANS_PIECES))
 
 
 # --------------------------------------------------------------------------------------------------------------------
@@ -155,6 +175,7 @@ def _texte_recherche(p: dict) -> str:
     b = beneficiaire(p)
     morceaux = [b["libelle"], b["code"], p.get("service_nom", ""), p.get("operateur", "")]
     morceaux += [v for k, v in (p.get("valeurs") or {}).items() if k != "amount"]
+    morceaux.append(p.get("motif", ""))                  # lot 85 : on retrouve aussi un paiement par son motif
     return " ".join(str(x) for x in morceaux if x).lower()
 
 
@@ -196,7 +217,7 @@ async def _charger(user: dict, du: Optional[str], au: Optional[str], operateur: 
         filtre["operateur"] = operateur
     if statut:
         filtre["statut"] = statut
-    docs = await db.paiements.find(filtre, SANS_ID).sort("cree_le", -1).to_list(LIMITE_ANALYSE)
+    docs = await db.paiements.find(filtre, SANS_PIECES).sort("cree_le", -1).to_list(LIMITE_ANALYSE)
     await actualiser_marchands(docs)       # nom du marchand à jour AVANT la recherche (on retrouve un paiement par son nom actuel)
     if q and q.strip():
         mots = q.lower().split()
@@ -293,7 +314,7 @@ async def statistiques(du: Optional[str] = None, au: Optional[str] = None, opera
 @router.put("/{paiement_id}/statut")
 async def changer_statut(paiement_id: str, data: Statut, user: dict = Depends(get_current_user)):
     # PI-SPI (lot 58) : seul le MARCHAND confirme la réception ; le client peut seulement abandonner un paiement non encore confirmé
-    courant = await db.paiements.find_one({"id": paiement_id, "user_id": user["id"]}, SANS_ID)
+    courant = await db.paiements.find_one({"id": paiement_id, "user_id": user["id"]}, SANS_PIECES)
     if courant and courant.get("mode") == "pispi" and (data.statut != "abandonne" or courant.get("statut") in ("effectue", "refuse")):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Un paiement PI-SPI est confirmé par le marchand : vous pouvez seulement l'abandonner avant sa confirmation")
     # Le filtre user_id garantit qu'on ne modifie que SES paiements
@@ -302,7 +323,7 @@ async def changer_statut(paiement_id: str, data: Statut, user: dict = Depends(ge
                                                   "statut_le": datetime.now(timezone.utc).isoformat()}})
     if not res.matched_count:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Paiement introuvable")
-    return _avec_lien((await actualiser_marchands([await db.paiements.find_one({"id": paiement_id}, SANS_ID)]))[0])
+    return _avec_lien((await actualiser_marchands([await db.paiements.find_one({"id": paiement_id}, SANS_PIECES)]))[0])
 
 
 @router.delete("/{paiement_id}")
@@ -311,3 +332,76 @@ async def supprimer(paiement_id: str, user: dict = Depends(get_current_user)):
     if not res.deleted_count:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Paiement introuvable")
     return {"ok": True}
+
+
+# ------------------------------------------------------------------------------------------------ lot 85 : motif et pièces
+class Details(BaseModel):
+    motif: Optional[str] = Field(None, max_length=MOTIF_MAX)
+
+
+class NouvellePiece(BaseModel):
+    image: str = Field(min_length=100, max_length=1_700_000)       # data URL (JPEG, PNG ou WebP) déjà réduite par le téléphone
+    nom: Optional[str] = Field(None, max_length=60)                # ex. « Ticket de caisse »
+
+
+def _vue_piece(piece: dict) -> dict:
+    """Informations d'une pièce, jamais son contenu."""
+    return {k: piece.get(k) for k in ("id", "nom", "mime", "taille", "cree_le")}
+
+
+async def _mon_paiement(paiement_id: str, user: dict) -> dict:
+    p = await db.paiements.find_one({"id": paiement_id, "user_id": user["id"]}, SANS_PIECES)
+    if not p:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Paiement introuvable")
+    return (await actualiser_marchands([p]))[0]       # même nom de marchand à jour que dans la liste
+
+
+@router.put("/{paiement_id}/details")
+async def enregistrer_details(paiement_id: str, data: Details, user: dict = Depends(get_current_user)):
+    """Motif détaillé de la dépense (vide = effacé). Possible quel que soit le statut du paiement."""
+    await _mon_paiement(paiement_id, user)
+    motif = (data.motif or "").strip()
+    await db.paiements.update_one({"id": paiement_id, "user_id": user["id"]}, {"$set": {"motif": motif} if motif else {"motif": ""}})
+    return _avec_lien(await _mon_paiement(paiement_id, user))
+
+
+@router.post("/{paiement_id}/pieces", status_code=status.HTTP_201_CREATED)
+async def ajouter_piece(paiement_id: str, data: NouvellePiece, user: dict = Depends(get_current_user)):
+    """Ajoute une pièce scannée (3 au plus par paiement)."""
+    await _mon_paiement(paiement_id, user)
+    entete, _, b64 = data.image.partition(",")
+    mime = entete[5:].split(";")[0] if entete.startswith("data:") else ""
+    if mime not in MIMES_PIECE or ";base64" not in entete:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Image attendue : JPEG, PNG ou WebP")
+    try:
+        octets = base64.b64decode(b64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Image illisible")
+    if not octets or len(octets) > PIECE_OCTETS_MAX:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Image trop lourde : reprenez la photo")
+    piece = {"id": str(uuid.uuid4()), "nom": (data.nom or "").strip() or "Pièce", "mime": mime, "taille": len(octets),
+             "cree_le": datetime.now(timezone.utc).isoformat(), "data": b64}
+    # Ajout conditionnel : deux envois simultanés ne dépassent jamais la limite
+    res = await db.paiements.update_one({"id": paiement_id, "user_id": user["id"], f"pieces.{PIECES_MAX - 1}": {"$exists": False}},
+                                        {"$push": {"pieces": piece}})
+    if not res.modified_count:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"{PIECES_MAX} pièces au maximum par paiement : supprimez-en une avant d'en ajouter")
+    return _avec_lien(await _mon_paiement(paiement_id, user))
+
+
+@router.get("/{paiement_id}/pieces/{piece_id}")
+async def lire_piece(paiement_id: str, piece_id: str, user: dict = Depends(get_current_user)):
+    """Image d'une pièce (réservée à son propriétaire)."""
+    p = await db.paiements.find_one({"id": paiement_id, "user_id": user["id"]}, {"_id": 0, "pieces": 1})
+    piece = next((x for x in (p or {}).get("pieces") or [] if x["id"] == piece_id), None)
+    if not piece:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Pièce introuvable")
+    return Response(content=base64.b64decode(piece["data"]), media_type=piece["mime"], headers={"Cache-Control": "private, max-age=3600"})
+
+
+@router.delete("/{paiement_id}/pieces/{piece_id}")
+async def supprimer_piece(paiement_id: str, piece_id: str, user: dict = Depends(get_current_user)):
+    res = await db.paiements.update_one({"id": paiement_id, "user_id": user["id"], "pieces.id": piece_id}, {"$pull": {"pieces": {"id": piece_id}}})
+    if not res.modified_count:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Pièce introuvable")
+    return _avec_lien(await _mon_paiement(paiement_id, user))

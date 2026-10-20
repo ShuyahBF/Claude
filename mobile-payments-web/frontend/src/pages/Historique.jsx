@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import CarteCodeUssd from "@/components/CarteCodeUssd";
 import Chargement from "@/components/Chargement";
+import DetailsDepense from "@/components/DetailsDepense";   // lot 85 : motif et pièces d'une dépense
 import Modal from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { apiClient, couleurOperateur, dateHeure, fcfa, messageErreur } from "@/lib/api";
@@ -80,10 +81,10 @@ function parametres(f) {
 
 // Export Excel (CSV, séparateur « ; », accents conservés) des paiements affichés
 function exporterCsv(lignes) {
-  const colonnes = ["Date", "Opérateur", "Service", "Bénéficiaire", "Code", "Montant (FCFA)", "Statut", "Code USSD"];
+  const colonnes = ["Date", "Opérateur", "Service", "Bénéficiaire", "Code", "Montant (FCFA)", "Statut", "Code USSD", "Motif", "Pièces"];
   const echapper = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const corps = lignes.map((p) => [dateHeure(p.cree_le), p.operateur, p.service_nom, p.marchand?.libelle || "", p.marchand?.code || "",
-    p.montant ?? "", (STATUTS[p.statut] || STATUTS.prepare)[0], p.code_ussd].map(echapper).join(";"));
+    p.montant ?? "", (STATUTS[p.statut] || STATUTS.prepare)[0], p.code_ussd, p.motif || "", (p.pieces || []).length || ""].map(echapper).join(";"));
   const blob = new Blob(["﻿" + [colonnes.map(echapper).join(";"), ...corps].join("\n")], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -344,7 +345,8 @@ export default function Historique() {
                   <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: couleurOperateur(p.operateur) }} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-semibold">{p.service_nom}{p.marchand?.libelle ? ` · ${p.marchand.libelle}` : ""}</p>
-                    <p className="text-xs text-gray-500">{p.operateur} · {dateHeure(p.cree_le)}</p>
+                    <p className="text-xs text-gray-500">{p.operateur} · {dateHeure(p.cree_le)}{p.pieces?.length ? ` · 📎 ${p.pieces.length}` : ""}</p>
+                    {p.motif && <p className="truncate text-xs text-gray-600" data-testid="ligne-motif">{p.motif}</p>}
                   </div>
                   <div className="text-right">
                     <p className="font-semibold">{fcfa(p.montant)}</p>
@@ -366,6 +368,8 @@ export default function Historique() {
         {ouvert && (
           <>
             {ouvert.mode === "pispi" ? <DetailPispi paiement={ouvert} onChange={() => { setOuvert(null); charger(); }} /> : <CarteCodeUssd paiement={ouvert} onStatut={changerStatut} />}
+            {/* Lot 85 : motif détaillé et pièces scannées, quel que soit le statut du paiement */}
+            <DetailsDepense key={ouvert.id} paiement={ouvert} onChange={(maj) => { setOuvert(maj); setPaiements((l) => (l || []).map((x) => (x.id === maj.id ? { ...x, ...maj } : x))); }} />
             <button type="button" className="mt-4 w-full text-sm text-red-600 hover:underline" onClick={() => supprimer(ouvert)}>
               Supprimer de l'historique
             </button>
