@@ -100,6 +100,8 @@ async def au_demarrage():
     if not get_settings().mongo_url.startswith("mongomock://"):
         await presse.semer()
         _taches_fond.add(asyncio.get_running_loop().create_task(presse.boucle_presse()))
+        # Cartes virtuelles programmées (lot 83) : envoyées le jour choisi (ex. anniversaire), à partir de 8 h
+        _taches_fond.add(asyncio.get_running_loop().create_task(cartes.boucle_cartes()))
 
 
 # Référence des tâches de fond (sinon Python pourrait les effacer en cours de route)

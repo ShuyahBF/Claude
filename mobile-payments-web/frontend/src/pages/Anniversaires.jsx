@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import ChampTelephone from "@/components/ChampTelephone";
 import Chargement from "@/components/Chargement";
 import Modal from "@/components/Modal";
@@ -15,6 +16,7 @@ const echeance = (n) => (n === 0 ? "Aujourd'hui 🎉" : n === 1 ? "Demain" : `da
 
 export default function Anniversaires() {
   const toast = useToast();
+  const navigate = useNavigate();
   const [donnees, setDonnees] = useState(null);   // { fiches, total, maximum, aujourdhui }
   const [edition, setEdition] = useState(null);   // fiche en cours de saisie (id absent = nouvelle)
   const [envoi, setEnvoi] = useState(false);
@@ -57,6 +59,12 @@ export default function Anniversaires() {
     return `https://wa.me/${f.telephone.replace(/\D/g, "")}?text=${encodeURIComponent(texte)}`;
   };
 
+  // Lot 83 — lien avec les cartes virtuelles : ouvre « Cartes virtuelles » déjà remplie (occasion, prénom, WhatsApp, message) ;
+  // la date d'envoi proposée est le jour de l'anniversaire (la carte peut y être programmée).
+  const faireUneCarte = (f) => navigate("/cartes", { state: { prefill: {
+    occasion: "Anniversaire", destinataire: f.nom, telephone: f.telephone || "", dateEnvoi: f.prochain,
+    message: `Joyeux anniversaire ${f.nom} ! Je te souhaite une journée merveilleuse et une excellente année.`.slice(0, 300) } } });
+
   if (!donnees) return <Chargement />;
   const complet = donnees.total >= donnees.maximum;
   const champ = (cle) => (e) => setEdition({ ...edition, [cle]: e.target.value });
@@ -98,6 +106,7 @@ export default function Anniversaires() {
               {f.telephone && (
                 <a href={lienWhatsApp(f)} target="_blank" rel="noopener noreferrer" className="btn-outline btn-sm" title="Souhaiter par WhatsApp">🎉</a>
               )}
+              <button type="button" className="btn-outline btn-sm" title="Créer une carte d'anniversaire" aria-label={`Carte pour ${f.nom}`} onClick={() => faireUneCarte(f)} data-testid="anniv-carte">💌</button>
               <button type="button" className="btn-outline btn-sm" aria-label={`Modifier ${f.nom}`}
                 onClick={() => setEdition({ id: f.id, nom: f.nom, jour: String(f.jour), mois: String(f.mois), annee: f.annee ? String(f.annee) : "",
                   telephone: f.telephone || "", note: f.note || "" })}>✏️</button>

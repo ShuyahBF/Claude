@@ -162,3 +162,56 @@ def test_forme_ou_moteur_inconnu_refuse(client, utilisateur, sawali):
     _, h, _ = utilisateur
     assert client.post("/api/cartes", headers=h, json={**CARTE, "style": "n'importe quoi"}).status_code == 422
     assert client.post("/api/cartes", headers=h, json={**CARTE, "moteur": "gpt-9"}).status_code == 422
+
+
+# ---------------------------------------------------------------- lot 83 : envoi programmé (ex. jour de l'anniversaire)
+import asyncio
+from datetime import datetime, timedelta, timezone
+
+from routes import cartes as cartes_module
+
+
+def _demain():
+    return (datetime.now(timezone.utc).date() + timedelta(days=1)).isoformat()
+
+
+def test_envoi_programme_ne_part_pas_tout_de_suite(client, utilisateur, sawali):
+    _, h, _ = utilisateur
+    c = creer(client, h)
+    r = client.post(f"/api/cartes/{c['id']}/envoyer", headers=h, json={"variante_id": c["variantes"][0]["id"], "accord": True, "date_envoi": _demain()})
+    assert r.status_code == 200 and r.json()["programmee"] and r.json()["carte"]["statut"] == "programmee"
+    assert not any(q.url.path == "/api/webhook/liluvine-send" for q in sawali)            # rien n'est parti
+    # Date passée ou trop lointaine : refusée ; accord toujours obligatoire
+    c2 = creer(client, h)
+    v = c2["variantes"][0]["id"]
+    assert client.post(f"/api/cartes/{c2['id']}/envoyer", headers=h, json={"variante_id": v, "accord": True, "date_envoi": "2020-01-01"}).status_code == 422
+    assert client.post(f"/api/cartes/{c2['id']}/envoyer", headers=h, json={"variante_id": v, "accord": False, "date_envoi": _demain()}).status_code == 422
+    # Annulation : la carte redevient un brouillon
+    assert client.post(f"/api/cartes/{c['id']}/deprogrammer", headers=h).json()["carte"]["statut"] == "brouillon"
+
+
+def test_la_boucle_envoie_la_carte_le_jour_dit(client, utilisateur, sawali):
+    _, h, _ = utilisateur
+    c = creer(client, h)
+    client.post(f"/api/cartes/{c['id']}/envoyer", headers=h, json={"variante_id": c["variantes"][0]["id"], "accord": True, "date_envoi": _demain()})
+    avant = datetime.now(timezone.utc).replace(hour=10, minute=0)
+    assert asyncio.run(cartes_module.envoyer_programmees(avant)) == {"envoyees": 0, "echecs": 0, "reportees": 0}      # pas encore le jour
+    jour_j = (avant + timedelta(days=1))
+    assert asyncio.run(cartes_module.envoyer_programmees(jour_j.replace(hour=5))) == {"envoyees": 0, "echecs": 0, "reportees": 0}   # trop tôt (avant 8 h)
+    assert asyncio.run(cartes_module.envoyer_programmees(jour_j)) == {"envoyees": 1, "echecs": 0, "reportees": 0}
+    assert sum(1 for q in sawali if q.url.path == "/api/webhook/liluvine-send") == 1
+    assert [x["statut"] for x in client.get("/api/cartes", headers=h).json()["cartes"]] == ["envoyee"]
+    assert asyncio.run(cartes_module.envoyer_programmees(jour_j)) == {"envoyees": 0, "echecs": 0, "reportees": 0}      # jamais deux fois
+
+
+def test_echec_reessaye_puis_abandonne(client, utilisateur, sawali):
+    _, h, _ = utilisateur
+    c = creer(client, h)
+    client.post(f"/api/cartes/{c['id']}/envoyer", headers=h, json={"variante_id": c["variantes"][0]["id"], "accord": True, "date_envoi": _demain()})
+    sawali.envoi = (409, {})                                                        # le destinataire a dit STOP
+    jour_j = (datetime.now(timezone.utc) + timedelta(days=1)).replace(hour=10)
+    for essai in range(3):
+        assert asyncio.run(cartes_module.envoyer_programmees(jour_j))["echecs"] == 1
+    carte = client.get("/api/cartes", headers=h).json()["cartes"][0]
+    assert carte["statut"] == "echec" and "ne plus recevoir" in carte["erreur_envoi"]
+    assert asyncio.run(cartes_module.envoyer_programmees(jour_j))["echecs"] == 0     # abandonnée : plus d'essai

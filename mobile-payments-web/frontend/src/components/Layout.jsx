@@ -40,6 +40,26 @@ export default function Layout() {
     const t = setInterval(lire, 30000);
     return () => { actif = false; clearInterval(t); };
   }, [pathname, toast]);
+  // Lot 83 — pastille du menu « Actualités » : nombre d'articles apparus depuis la dernière visite de la page (mémorisée sur l'appareil).
+  // Première visite de l'appareil : aucune pastille, la date du serveur sert de point de départ.
+  const [nouveautesPresse, setNouveautesPresse] = useState(0);
+  useEffect(() => {
+    let actif = true;
+    const lire = () => {
+      let depuis = null;
+      try { depuis = localStorage.getItem("mpw_presse_vu"); } catch { /* sans importance */ }
+      apiClient.get("/presse/nouveaux", { params: depuis ? { depuis } : {} }).then(({ data }) => {
+        if (!actif) return;
+        if (!depuis) { try { localStorage.setItem("mpw_presse_vu", data.serveur_le); } catch { /* sans importance */ } }
+        setNouveautesPresse(data.nombre || 0);
+      }).catch(() => {});
+    };
+    lire();
+    const t = setInterval(lire, 300000);                                  // toutes les 5 minutes
+    const vue = () => setNouveautesPresse(0);                             // la page Actualités vient d'être ouverte
+    window.addEventListener("presse-vue", vue);
+    return () => { actif = false; clearInterval(t); window.removeEventListener("presse-vue", vue); };
+  }, [pathname]);
   // Notifications push activées sur cet appareil : on confirme l'abonnement au serveur à chaque ouverture (l'adresse peut changer)
   useEffect(() => { if (lirePreferences().notifications) abonnerPush(apiClient); }, []);
   // Le navigateur n'autorise le son qu'après un premier toucher : on débloque l'audio dès le premier clic
@@ -71,7 +91,7 @@ export default function Layout() {
           {/* Bouton ☰ : ouvre le menu latéral (à gauche) */}
           <button type="button" onClick={() => setMenuOuvert(true)} aria-label="Ouvrir le menu" aria-expanded={menuOuvert}
             className="relative grid h-10 w-10 shrink-0 place-items-center rounded-lg text-2xl leading-none text-white hover:bg-white/10 sm:col-start-1 sm:justify-self-start">
-            ☰{rappels.total > 0 && <span className="absolute right-1 top-1 h-3 w-3 rounded-full bg-red-500 ring-2 ring-nuit-900" aria-label={`${rappels.total} rappel(s) à traiter`} />}
+            ☰{(rappels.total > 0 || nouveautesPresse > 0) && <span className="absolute right-1 top-1 h-3 w-3 rounded-full bg-red-500 ring-2 ring-nuit-900" aria-label={`${rappels.total || 0} rappel(s) à traiter, ${nouveautesPresse} actualité(s) nouvelle(s)`} />}
           </button>
           <NavLink to="/" className="flex items-center gap-2 sm:col-start-2">
             {/* Lot 75 : identité auRor — pictogramme sur téléphone, mot blanc sur grand écran */}
@@ -100,7 +120,7 @@ export default function Layout() {
         <NavLink to="/confidentialite" className="underline hover:text-gray-600">Confidentialité</NavLink>
       </footer>
 
-      <MenuLateral ouvert={menuOuvert} fermer={() => setMenuOuvert(false)} compteurs={rappels} />
+      <MenuLateral ouvert={menuOuvert} fermer={() => setMenuOuvert(false)} compteurs={{ ...rappels, presse: nouveautesPresse }} />
 
       {/* Menu FLOTTANT, toujours aligné sur le bas de l'écran (tous appareils) ; la marge basse respecte la zone de geste des téléphones */}
       <div className="no-print pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
