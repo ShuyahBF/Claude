@@ -21,7 +21,15 @@ def _payer(client, h, code, montant, statut=None, operateur="Orange"):
 ORANGE, MOOV = "Orange", "Moov Africa"
 
 
+def _cocher(client, h, *operateurs):
+    """Coche des opérateurs dans le profil (en gardant ceux déjà cochés)."""
+    deja = client.get("/api/portefeuille/operateurs", headers=h).json()["choisis"]
+    return client.put("/api/portefeuille/operateurs", headers=h, json={"operateurs": sorted(set(deja) | set(operateurs))})
+
+
 def _releve(client, h, portefeuille, montant, operateur=None, jour=None):
+    if operateur:
+        _cocher(client, h, operateur)                  # un portefeuille se suit seulement si l'opérateur est coché dans le profil
     corps = {"portefeuille": portefeuille, "montant": montant, **({"operateur": operateur} if operateur else {}), **({"jour": jour} if jour else {})}
     return client.post("/api/portefeuille/releves", headers=h, json=corps)
 
@@ -32,7 +40,7 @@ def _soldes(client, h, **params):
 
 def test_un_portefeuille_par_operateur_paiements_effectues_et_en_cours(client, utilisateur):
     _, h, _ = utilisateur
-    assert _soldes(client, h)["portefeuilles"] == []                               # rien de suivi tant qu'aucun solde n'est indiqué
+    assert [p["cle"] for p in _soldes(client, h)["portefeuilles"]] == ["personnel"]   # seule la poche existe tant qu'aucun opérateur n'est coché
     assert _releve(client, h, "electronique", 100000).status_code == 422             # l'opérateur est obligatoire
     assert _releve(client, h, "electronique", 100000, "Inconnu").status_code == 422   # et il doit exister dans le catalogue
     assert _releve(client, h, "electronique", 100000, ORANGE).status_code == 201
@@ -45,6 +53,7 @@ def test_un_portefeuille_par_operateur_paiements_effectues_et_en_cours(client, u
     _payer(client, h, "90000004", 2000, "effectue", MOOV)                            # Moov, payé : ne touche PAS le compte Orange
     s = _soldes(client, h)
     assert [p["nom"] for p in s["portefeuilles"]] == ["Électronique · Moov Africa", "Électronique · Orange", "Personnel"]
+    assert s["operateurs_choisis"] == [MOOV, ORANGE]
     o, m = s["soldes"][f"electronique:{ORANGE}"], s["soldes"][f"electronique:{MOOV}"]
     assert (o["montant"], o["en_cours"], o["apres_en_cours"]) == (95000, -3000, 92000)
     assert (m["montant"], m["en_cours"]) == (38000, 0)
@@ -143,5 +152,55 @@ def test_suppression_et_confidentialite(client, utilisateur):
     assert client.delete(f"/api/portefeuille/mouvements/{s['mouvements'][0]['id']}", headers=h).status_code == 200
     assert client.delete(f"/api/portefeuille/releves/{s['releves'][0]['id']}", headers=h).status_code == 200
     assert client.delete("/api/portefeuille/mouvements/inconnu", headers=h).status_code == 404
-    assert _soldes(client, h)["portefeuilles"] == []
+    assert [p["cle"] for p in _soldes(client, h)["portefeuilles"]] == [f"electronique:{ORANGE}", "personnel"]   # l'opérateur coché reste, sans solde
+    assert _soldes(client, h)["soldes"][f"electronique:{ORANGE}"]["renseigne"] is False
     assert client.get("/api/portefeuille").status_code == 401
+
+
+# ---------------------------------------------------------------- lot 88 : opérateurs cochés dans le profil
+def test_profil_coche_les_operateurs_et_les_listes_suivent(client, utilisateur):
+    _, h, _ = utilisateur
+    o = client.get("/api/portefeuille/operateurs", headers=h).json()
+    assert ORANGE in o["catalogue"] and o["choisis"] == [] and o["verrouilles"] == []
+    # Un opérateur non coché ne peut pas servir à un relevé ni à un mouvement
+    assert client.post("/api/portefeuille/releves", headers=h, json={"portefeuille": "electronique", "operateur": ORANGE, "montant": 1000}).status_code == 422
+    assert client.post("/api/portefeuille/mouvements", headers=h, json={"type": "retrait", "operateur": ORANGE, "montant": 100}).status_code == 422
+    # Cocher Orange : un portefeuille apparaît (sans solde), avec la poche
+    assert client.put("/api/portefeuille/operateurs", headers=h, json={"operateurs": [ORANGE]}).json()["choisis"] == [ORANGE]
+    s = _soldes(client, h)
+    assert [p["cle"] for p in s["portefeuilles"]] == [f"electronique:{ORANGE}", "personnel"] and s["operateurs_choisis"] == [ORANGE]
+    assert s["soldes"][f"electronique:{ORANGE}"]["renseigne"] is False and s["serie"] == []
+    # Opérateur inconnu refusé
+    assert client.put("/api/portefeuille/operateurs", headers=h, json={"operateurs": [ORANGE, "Inconnu"]}).status_code == 422
+    # Moov n'est pas coché : absent des listes ; coché puis décoché sans usage : disparaît
+    assert MOOV not in _soldes(client, h)["operateurs_choisis"]
+    client.put("/api/portefeuille/operateurs", headers=h, json={"operateurs": [ORANGE, MOOV]})
+    assert client.put("/api/portefeuille/operateurs", headers=h, json={"operateurs": [ORANGE]}).json()["choisis"] == [ORANGE]
+
+
+def test_un_portefeuille_utilise_ne_peut_plus_etre_decoche(client, utilisateur):
+    _, h, _ = utilisateur
+    _releve(client, h, "electronique", 5000, ORANGE)                                   # Orange utilisé (relevé)
+    _cocher(client, h, MOOV)
+    r = client.put("/api/portefeuille/operateurs", headers=h, json={"operateurs": [MOOV]})
+    assert r.status_code == 409 and ORANGE in r.json()["detail"]
+    assert client.get("/api/portefeuille/operateurs", headers=h).json()["verrouilles"] == [ORANGE]
+    # Moov n'est utilisé que par un transfert : verrouillé à son tour
+    client.post("/api/portefeuille/mouvements", headers=h, json={"type": "transfert", "operateur": ORANGE, "vers": MOOV, "montant": 100})
+    r = client.put("/api/portefeuille/operateurs", headers=h, json={"operateurs": [ORANGE]})
+    assert r.status_code == 409 and MOOV in r.json()["detail"]
+    assert set(client.get("/api/portefeuille/operateurs", headers=h).json()["verrouilles"]) == {ORANGE, MOOV}
+    # Même en envoyant une liste vide, un portefeuille utilisé reste affiché
+    assert client.put("/api/portefeuille/operateurs", headers=h, json={"operateurs": [ORANGE, MOOV]}).status_code == 200
+    assert _soldes(client, h)["operateurs_choisis"] == [MOOV, ORANGE]
+
+
+def test_donnees_anterieures_a_la_case_a_cocher_restent_visibles(client, utilisateur):
+    """Relevés du lot 87 (sans case cochée) : leurs opérateurs sont considérés comme cochés et verrouillés."""
+    u, h, _ = utilisateur
+    asyncio.run(db.reglages_plateforme.update_one({"_id": f"portefeuille:{u['id']}"}, {"$set": {"user_id": u["id"], "mouvements": [], "releves": [
+        {"id": "r1", "portefeuille": "electronique", "operateur": ORANGE, "jour": datetime.now(timezone.utc).date().isoformat(),
+         "at": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(), "montant": 7000}]}}, upsert=True))
+    o = client.get("/api/portefeuille/operateurs", headers=h).json()
+    assert o["choisis"] == [ORANGE] and o["verrouilles"] == [ORANGE]
+    assert _soldes(client, h)["soldes"][f"electronique:{ORANGE}"]["montant"] == 7000

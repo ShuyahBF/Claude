@@ -1,8 +1,9 @@
 // Portefeuilles (lots 86 et 87) — auRor, outil de budget : soldes des portefeuilles ÉLECTRONIQUES (un par opérateur : Orange, Moov, Telecel…)
-// et PERSONNEL (liquidités),
+// et PERSONNEL (liquidités) — seuls les opérateurs cochés dans le Profil (lot 88) sont proposés —,
 // paiements « en cours », courbe d'évolution, et saisie : « mon solde à une date », retrait / dépôt (sortie d'un côté, entrée de l'autre),
 // autre entrée / sortie d'argent. Affiché en tête de l'Historique.
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import GraphePortefeuilles from "@/components/GraphePortefeuilles";
 import Modal from "@/components/Modal";
 import { useToast } from "@/components/Toast";
@@ -24,7 +25,7 @@ const TYPES = [
   ["sortie", "Sortie d'argent (dépense, frais…)"],
 ];
 
-function Carte({ pf, s }) {
+function Carte({ pf, s, onIndiquer }) {
   const couleur = pf.cle === PERSONNEL ? "#0ba957" : pf.operateur ? couleurOperateur(pf.operateur) : "#4926d7";
   return (
     <div className="card space-y-1 p-4" data-testid={`portefeuille-${pf.cle}`} style={{ borderLeft: `4px solid ${couleur}` }}>
@@ -37,7 +38,12 @@ function Carte({ pf, s }) {
           )}
           <p className="text-xs text-gray-500">Depuis le relevé du {dateFr(s.depuis)}</p>
         </>
-      ) : <p className="text-sm text-gray-500">Solde non renseigné.</p>}
+      ) : (
+        <div className="space-y-1">
+          <p className="text-sm text-gray-500">Solde non renseigné.</p>
+          <button type="button" className="btn-outline btn-sm" onClick={onIndiquer} data-testid={`indiquer-${pf.cle}`}>Indiquer le solde</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -46,24 +52,16 @@ function Carte({ pf, s }) {
 export default function Portefeuilles({ rafraichir = "" }) {
   const toast = useToast();
   const [d, setD] = useState(null);
-  const [operateurs, setOperateurs] = useState([]);       // opérateurs du catalogue (liste déroulante)
   const [jours, setJours] = useState(90);
   const [fenetre, setFenetre] = useState(null);           // "releve" | "mouvement" | null
-  // Choix du portefeuille d'un relevé : « personnel » ou « electronique:<opérateur> »
-  const [releve, setReleve] = useState({ pf: PERSONNEL, jour: aujourdhui(), montant: "" });
-  const [mvt, setMvt] = useState({ type: "retrait", operateur: "", vers: "", pf: PERSONNEL, montant: "", frais: "", jour: aujourdhui(), motif: "" });
+  // Choix du portefeuille d'un relevé : « personnel » ou « electronique:<opérateur> » (valeur corrigée à l'affichage si l'opérateur n'est plus proposé)
+  const [releve, setReleve] = useState({ pf: "", jour: aujourdhui(), montant: "" });
+  const [mvt, setMvt] = useState({ type: "retrait", operateur: "", vers: "", pf: "", montant: "", frais: "", jour: aujourdhui(), motif: "" });
   const [occupe, setOccupe] = useState(false);
 
-  useEffect(() => {
-    apiClient.get("/operateurs").then(({ data }) => {
-      setOperateurs(data);
-      setReleve((r) => ({ ...r, pf: data[0] ? `electronique:${data[0]}` : PERSONNEL }));
-      setMvt((m) => ({ ...m, operateur: data[0] || "", vers: data[1] || data[0] || "", pf: data[0] ? `electronique:${data[0]}` : PERSONNEL }));
-    }).catch(() => setOperateurs([]));
-  }, []);
   const charger = useCallback(async () => {
     try { setD((await apiClient.get("/portefeuille", { params: { jours } })).data); }
-    catch (err) { toast.erreur(messageErreur(err, "Portefeuilles indisponibles")); setD((x) => x || { portefeuilles: [], soldes: {}, serie: [], releves: [], mouvements: [], en_cours: [] }); }
+    catch (err) { toast.erreur(messageErreur(err, "Portefeuilles indisponibles")); setD((x) => x || { portefeuilles: [], soldes: {}, serie: [], releves: [], mouvements: [], en_cours: [], operateurs_choisis: [] }); }
   }, [jours, toast]);
   useEffect(() => { charger(); }, [charger, rafraichir]);
 
@@ -78,18 +76,27 @@ export default function Portefeuilles({ rafraichir = "" }) {
   };
 
   if (!d) return <p className="text-sm text-gray-500">Chargement des portefeuilles…</p>;
-  const sans = d.portefeuilles.length === 0;
+  // Opérateurs cochés dans le Profil (lot 88) : les seuls proposés dans les listes de saisie
+  const operateurs = d.operateurs_choisis || [];
+  const optionsPf = [...operateurs.map((o) => `electronique:${o}`), PERSONNEL];
+  const pfEff = (v) => (optionsPf.includes(v) ? v : optionsPf[0]);
+  const opEff = (v) => (operateurs.includes(v) ? v : operateurs[0] || "");
+  const versEff = (v, origine) => (operateurs.includes(v) && v !== origine ? v : operateurs.find((o) => o !== origine) || "");
+  const sansOperateur = operateurs.length === 0;
+  const suivis = d.portefeuilles.filter((pf) => d.soldes[pf.cle]?.renseigne);       // la courbe ne trace que les portefeuilles qui ont un solde
+  const sans = suivis.length === 0;
+  const indiquer = (pf) => { setReleve({ pf, jour: aujourdhui(), montant: "" }); setFenetre("releve"); };
   // « electronique:Orange » → { portefeuille: "electronique", operateur: "Orange" } ; « personnel » → { portefeuille: "personnel" }
   const separer = (pf) => (pf === PERSONNEL ? { portefeuille: PERSONNEL } : { portefeuille: "electronique", operateur: pf.split(":")[1] });
   const choixPf = (valeur, surChangement, id) => (
-    <select id={id} className="input" value={valeur} onChange={(e) => surChangement(e.target.value)}>
+    <select id={id} className="input" value={pfEff(valeur)} onChange={(e) => surChangement(e.target.value)}>
       {operateurs.map((o) => <option key={o} value={`electronique:${o}`}>📱 Électronique · {o}</option>)}
       <option value={PERSONNEL}>👛 Personnel (argent en poche)</option>
     </select>
   );
-  const choixOperateur = (valeur, surChangement, id, etiquette) => (
+  const choixOperateur = (valeur, surChangement, id, etiquette, sauf) => (
     <div><label className="label" htmlFor={id}>{etiquette}</label>
-      <select id={id} className="input" value={valeur} onChange={(e) => surChangement(e.target.value)}>{operateurs.map((o) => <option key={o}>{o}</option>)}</select></div>
+      <select id={id} className="input" value={valeur} onChange={(e) => surChangement(e.target.value)}>{operateurs.filter((o) => o !== sauf).map((o) => <option key={o}>{o}</option>)}</select></div>
   );
   const libelleMvt = (m) => ({
     retrait: `Retrait ${m.operateur} ${fcfa(m.montant)}${m.frais ? ` (frais ${fcfa(m.frais)})` : ""}`, depot: `Dépôt ${m.operateur} ${fcfa(m.montant)}`,
@@ -103,13 +110,14 @@ export default function Portefeuilles({ rafraichir = "" }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-bold">💼 Mes portefeuilles</h2>
         <div className="flex gap-2">
-          <button type="button" className="btn-primary btn-sm" onClick={() => { setReleve((r) => ({ ...r, jour: aujourdhui(), montant: "" })); setFenetre("releve"); }} data-testid="btn-releve">Indiquer un solde</button>
+          <button type="button" className="btn-primary btn-sm" onClick={() => indiquer(pfEff(releve.pf))} data-testid="btn-releve">Indiquer un solde</button>
           <button type="button" className="btn-outline btn-sm" onClick={() => setFenetre("mouvement")} data-testid="btn-mouvement">Retrait / dépôt…</button>
         </div>
       </div>
-      {sans && <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">Indiquez le solde de chacun de vos comptes mobile money (Orange, Moov, Telecel…) et l'argent que vous avez en poche : chaque paiement effectué met ensuite le compte de son opérateur à jour, et un retrait déplace l'argent du compte vers votre poche.</p>}
+      {sansOperateur && <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900" data-testid="choisir-operateurs">Pour suivre vos comptes mobile money, cochez les opérateurs chez qui vous en avez dans <Link to="/profil" className="font-semibold underline">votre Profil</Link> (« Mes portefeuilles »). Vous pouvez déjà suivre l'argent que vous avez en poche.</p>}
+      {!sansOperateur && sans && <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">Indiquez le solde de chacun de vos comptes et de votre poche : chaque paiement effectué met ensuite le compte de son opérateur à jour, et un retrait déplace l'argent du compte vers votre poche.</p>}
       <div className="grid gap-3 sm:grid-cols-2">
-        {d.portefeuilles.map((pf) => <Carte key={pf.cle} pf={pf} s={d.soldes[pf.cle] || {}} />)}
+        {d.portefeuilles.map((pf) => <Carte key={pf.cle} pf={pf} s={d.soldes[pf.cle] || {}} onIndiquer={() => indiquer(pf.cle)} />)}
       </div>
 
       <div className="card space-y-2 p-4">
@@ -119,7 +127,7 @@ export default function Portefeuilles({ rafraichir = "" }) {
             {PERIODES.map(([v, n]) => <option key={v} value={v}>{n}</option>)}
           </select>
         </div>
-        <GraphePortefeuilles serie={d.serie} portefeuilles={d.portefeuilles} />
+        <GraphePortefeuilles serie={d.serie} portefeuilles={suivis} />
       </div>
 
       {(d.releves.length > 0 || d.mouvements.length > 0 || d.en_cours.length > 0) && (
@@ -152,7 +160,7 @@ export default function Portefeuilles({ rafraichir = "" }) {
       )}
 
       <Modal ouvert={fenetre === "releve"} titre="Indiquer un solde" onFermer={() => setFenetre(null)}>
-        <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); envoyer("/portefeuille/releves", { ...separer(releve.pf), jour: releve.jour, montant: entier(releve.montant) }, "Solde enregistré"); }}>
+        <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); envoyer("/portefeuille/releves", { ...separer(pfEff(releve.pf)), jour: releve.jour, montant: entier(releve.montant) }, "Solde enregistré"); }}>
           <div><label className="label" htmlFor="r-pf">Portefeuille</label>{choixPf(releve.pf, (v) => setReleve({ ...releve, pf: v }), "r-pf")}</div>
           <div><label className="label" htmlFor="r-jour">À la date du</label>
             <input id="r-jour" type="date" className="input" max={aujourdhui()} value={releve.jour} onChange={(e) => setReleve({ ...releve, jour: e.target.value })} required />
@@ -167,9 +175,10 @@ export default function Portefeuilles({ rafraichir = "" }) {
         <form className="space-y-3" onSubmit={(e) => {
           e.preventDefault();
           const base = { type: mvt.type, montant: entier(mvt.montant), jour: mvt.jour, motif: mvt.motif || undefined };
-          const corps = electronique ? { ...base, ...separer(mvt.pf) }
-            : mvt.type === "transfert" ? { ...base, operateur: mvt.operateur, vers: mvt.vers, frais: entier(mvt.frais) }
-            : { ...base, operateur: mvt.operateur, frais: entier(mvt.frais) };
+          const origine = opEff(mvt.operateur);
+          const corps = electronique ? { ...base, ...separer(pfEff(mvt.pf)) }
+            : mvt.type === "transfert" ? { ...base, operateur: origine, vers: versEff(mvt.vers, origine), frais: entier(mvt.frais) }
+            : { ...base, operateur: origine, frais: entier(mvt.frais) };
           envoyer("/portefeuille/mouvements", corps, "Mouvement enregistré");
         }}>
           <div><label className="label" htmlFor="m-type">Opération</label>
@@ -177,8 +186,8 @@ export default function Portefeuilles({ rafraichir = "" }) {
               {TYPES.map(([v, n]) => <option key={v} value={v}>{n}</option>)}</select></div>
           {electronique
             ? <div><label className="label" htmlFor="m-pf">Portefeuille</label>{choixPf(mvt.pf, (v) => setMvt({ ...mvt, pf: v }), "m-pf")}</div>
-            : choixOperateur(mvt.operateur, (v) => setMvt({ ...mvt, operateur: v }), "m-op", mvt.type === "transfert" ? "Depuis le compte" : "Compte mobile money")}
-          {mvt.type === "transfert" && choixOperateur(mvt.vers, (v) => setMvt({ ...mvt, vers: v }), "m-vers", "Vers le compte")}
+            : choixOperateur(opEff(mvt.operateur), (v) => setMvt({ ...mvt, operateur: v }), "m-op", mvt.type === "transfert" ? "Depuis le compte" : "Compte mobile money")}
+          {mvt.type === "transfert" && choixOperateur(versEff(mvt.vers, opEff(mvt.operateur)), (v) => setMvt({ ...mvt, vers: v }), "m-vers", "Vers le compte", opEff(mvt.operateur))}
           <div className="grid grid-cols-2 gap-3">
             <div><label className="label" htmlFor="m-montant">Montant (FCFA)</label>
               <input id="m-montant" className="input" inputMode="numeric" required value={mvt.montant} onChange={(e) => setMvt({ ...mvt, montant: e.target.value.replace(/[^\d\s]/g, "") })} /></div>
@@ -192,7 +201,8 @@ export default function Portefeuilles({ rafraichir = "" }) {
           <div><label className="label" htmlFor="m-motif">Motif (facultatif)</label>
             <input id="m-motif" className="input" maxLength={120} value={mvt.motif} onChange={(e) => setMvt({ ...mvt, motif: e.target.value })} /></div>
           <p className="text-xs text-gray-500">{texteAide}</p>
-          <button type="submit" className="btn-primary w-full" disabled={occupe || mvt.montant === "" || (mvt.type === "transfert" && mvt.operateur === mvt.vers)}>Enregistrer</button>
+          {mvt.type === "transfert" && operateurs.length < 2 && <p className="text-xs text-amber-700">Un transfert demande au moins deux opérateurs cochés dans votre Profil.</p>}
+          <button type="submit" className="btn-primary w-full" disabled={occupe || mvt.montant === "" || (!electronique && sansOperateur) || (mvt.type === "transfert" && (operateurs.length < 2))}>Enregistrer</button>
         </form>
       </Modal>
     </section>
