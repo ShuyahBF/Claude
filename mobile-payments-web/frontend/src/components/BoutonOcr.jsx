@@ -9,9 +9,11 @@ import { reduireImage } from "@/lib/image";
 //   - réduit la photo puis l'envoie à /api/ocr (SAWALI contrôle l'abonnement et lit l'image) ;
 //   - SANS abonnement actif : la lecture est refusée et le message donne le nom et le PRIX de la formule, avec un lien vers l'Abonnement ;
 //   - onResultat(données, fichierOriginal) reçoit la lecture nettoyée.
-// Props : type = "plaque_marchand" | "ordonnance" ; libelle ; className du bouton.
-export default function BoutonOcr({ type, libelle, className = "btn-outline", onResultat }) {
+// Props : type = "plaque_marchand" | "ordonnance" ; libelle ; className du bouton ;
+// importer (lot 83) : ajoute « Importer un fichier » (image déjà enregistrée : galerie, téléchargements…) à côté de la prise de photo.
+export default function BoutonOcr({ type, libelle, className = "btn-outline", onResultat, importer = false }) {
   const champ = useRef(null);
+  const champFichier = useRef(null);   // import d'un fichier existant (sans appareil photo)
   const [envoi, setEnvoi] = useState(false);
   const [refus, setRefus] = useState(null);   // { message, formule } si abonnement requis
   const [erreur, setErreur] = useState("");
@@ -36,9 +38,13 @@ export default function BoutonOcr({ type, libelle, className = "btn-outline", on
     <div className="space-y-2">
       <Patientez actif={envoi} />
       <input ref={champ} type="file" accept="image/*" capture="environment" className="hidden" onChange={choisi} />
+      <input ref={champFichier} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={choisi} data-testid="ocr-import" />
       <button type="button" className={className} disabled={envoi} onClick={() => champ.current?.click()}>
         {envoi ? "Patientez… lecture en cours" : libelle}
       </button>
+      {importer && !envoi && (
+        <button type="button" className="btn-outline w-full" onClick={() => champFichier.current?.click()}>📁 Importer un fichier (image)</button>
+      )}
       {refus && (
         <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="alert" data-testid="ocr-refus">
           <p>{refus.message}</p>

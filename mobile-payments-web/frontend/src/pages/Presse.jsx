@@ -12,8 +12,15 @@ export default function Presse() {
   const toast = useToast();
   const [params, setParams] = useSearchParams();
   const [d, setD] = useState(null);
+  // Lot 83 : date de la visite précédente (avant de la remplacer) → les articles apparus depuis portent une pastille « Nouveau »
+  const [vuAvant] = useState(() => { try { return localStorage.getItem("mpw_presse_vu") || ""; } catch { return ""; } });
   useEffect(() => {
-    apiClient.get("/presse").then((r) => setD(r.data)).catch((err) => { toast.erreur(messageErreur(err, "Actualités indisponibles")); setD({ categories: [] }); });
+    apiClient.get("/presse").then((r) => {
+      setD(r.data);
+      // Visite enregistrée : la pastille du menu repart à zéro
+      try { if (r.data.serveur_le) localStorage.setItem("mpw_presse_vu", r.data.serveur_le); } catch { /* sans importance */ }
+      window.dispatchEvent(new Event("presse-vue"));
+    }).catch((err) => { toast.erreur(messageErreur(err, "Actualités indisponibles")); setD({ categories: [] }); });
   }, [toast]);
   if (!d) return <Chargement />;
   const active = d.categories.find((c) => c.id === params.get("categorie")) || d.categories[0];
@@ -47,7 +54,7 @@ export default function Presse() {
                     className="h-20 w-28 shrink-0 rounded-lg bg-gray-100 object-cover sm:h-24 sm:w-36" />
                 )}
                 <div className="min-w-0 space-y-1">
-                  <p className="font-medium">{a.titre}</p>
+                  <p className="font-medium">{a.titre}{vuAvant && (a.premier_vu || "") > vuAvant && <span className="ml-2 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white" data-testid="article-nouveau">Nouveau</span>}</p>
                   {a.traduit && <span className="mb-1 inline-block rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800">🌐 Traduit vers FR</span>}
                   {a.resume && <p className="text-sm text-gray-700">{a.resume}{!a.ia && <span className="ml-1 text-xs text-gray-400">(début de l'article)</span>}</p>}
                   <a href={a.lien} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-primary underline">Lire l'article complet chez {m.nom} →</a>

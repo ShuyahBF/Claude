@@ -415,6 +415,10 @@ async def passage_media(source: Dict[str, Any]) -> None:
     """Collecte + résumé d'UN média, enregistré à la place du passage précédent."""
     maintenant = datetime.now(timezone.utc).isoformat()
     erreur, articles = None, []
+    # Lot 83 : date de première apparition de chaque article (conservée d'un passage à l'autre) → pastille « nouveautés » du menu.
+    # Les articles déjà présents avant ce lot n'ont pas de date : ils comptent comme anciens.
+    precedent = await db.presse_resumes.find_one({"source_id": source["id"]}, SANS_ID)
+    deja_vus = {a["lien"]: a.get("premier_vu") or "" for a in (precedent or {}).get("articles", [])}
     try:
         brut = await collecter(source)
         ia = await resumer(source["nom"], brut) if brut else {}
@@ -422,6 +426,7 @@ async def passage_media(source: Dict[str, Any]) -> None:
             r = ia.get(a["lien"])
             texte = r or resume_de_repli(a.get("texte", "")) or ""
             articles.append({"titre": a["titre"], "lien": a["lien"], "resume": texte, "ia": bool(r), "image": a.get("image") or "",
+                             "premier_vu": deja_vus[a["lien"]] if a["lien"] in deja_vus else maintenant,
                              # Pastille « Traduit vers FR » : résumé fait par l'IA à partir d'un article écrit en anglais
                              "traduit": bool(r) and langue_probable(f"{a['titre']} {a.get('texte', '')}") == "en"})
         if not brut:
@@ -564,7 +569,22 @@ async def lire(_: dict = Depends(get_current_user)):
                 dernier = max(dernier or "", m["maj_le"])
         if medias:
             categories.append({"id": c["id"], "nom": c["nom"], "icone": c["icone"], "medias": medias})
-    return {"categories": categories, "maj_le": dernier}
+    return {"categories": categories, "maj_le": dernier, "serveur_le": datetime.now(timezone.utc).isoformat()}
+
+
+@router.get("/presse/nouveaux")
+async def nouveaux(depuis: Optional[str] = None, _: dict = Depends(get_current_user)):
+    """Lot 83 — nombre d'articles APPARUS depuis la dernière visite de l'utilisateur (pastille du menu « Actualités »).
+    Sans `depuis` (première visite de l'appareil) : 0, et `serveur_le` sert de point de départ. Seuls les médias actifs comptent."""
+    maintenant = datetime.now(timezone.utc).isoformat()
+    if not depuis:
+        return {"nombre": 0, "serveur_le": maintenant}
+    actifs = {s["id"] for s in await db.presse_sources.find({"actif": True}, SANS_ID).to_list(MAX_SOURCES)}
+    nombre = 0
+    for m in await db.presse_resumes.find({"articles.0": {"$exists": True}}, SANS_ID).to_list(MAX_SOURCES):
+        if m["source_id"] in actifs:
+            nombre += sum(1 for a in m["articles"] if (a.get("premier_vu") or "") > depuis)
+    return {"nombre": nombre, "serveur_le": maintenant}
 
 
 async def categorie_pour(d: SourceIn) -> str:

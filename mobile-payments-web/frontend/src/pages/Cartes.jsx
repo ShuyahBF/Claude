@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import ChampTelephone from "@/components/ChampTelephone";
 import Chargement from "@/components/Chargement";
 import Patientez from "@/components/Patientez";
@@ -13,10 +13,17 @@ const OCCASIONS = ["Anniversaire", "Mariage", "Naissance", "Réussite à un exam
 const AUTRE = "Autre…";
 const VIDE = { style: "illustration", moteur: "standard", occasion: OCCASIONS[0], autre: "", decor: "", message: "", destinataire: "", telephone: "" };
 
+const aujourdhui = () => new Date().toISOString().slice(0, 10);
+const dateFr = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+
 export default function Cartes() {
   const toast = useToast();
+  // Lot 83 : arrivée depuis « Anniversaires » (bouton 💌) : occasion, prénom, WhatsApp, message et date d'envoi proposés
+  const prefill = useLocation().state?.prefill;
   const [liste, setListe] = useState(null);          // { cartes, envoyees_aujourdhui, envois_par_jour, variantes_max }
-  const [form, setForm] = useState(VIDE);
+  const [form, setForm] = useState(() => (prefill ? { ...VIDE, occasion: prefill.occasion || VIDE.occasion, destinataire: prefill.destinataire || "", telephone: prefill.telephone || "", message: prefill.message || "" } : VIDE));
+  const [quand, setQuand] = useState(prefill?.dateEnvoi ? "plus_tard" : "maintenant");   // envoi immédiat ou programmé
+  const [dateEnvoi, setDateEnvoi] = useState(prefill?.dateEnvoi || "");
   const [carte, setCarte] = useState(null);          // carte ouverte (avec ses variantes)
   const [choix, setChoix] = useState("");            // identifiant de la variante retenue
   const [accord, setAccord] = useState(false);
@@ -36,7 +43,7 @@ export default function Cartes() {
     if (err?.response?.status === 402 && detail && typeof detail === "object") setRefus(detail);
     else setErreur(messageErreur(err, repli));
   };
-  const ouvrir = (c) => { setCarte(c); setChoix(c.variantes?.[c.variantes.length - 1]?.id || ""); setAccord(false); };
+  const ouvrir = (c) => { setCarte(c); setChoix(c.variantes?.[c.variantes.length - 1]?.id || ""); setAccord(false); if (!dateEnvoi) setDateEnvoi(aujourdhui()); };
   const champ = (cle) => (e) => setForm({ ...form, [cle]: e.target.value });
 
   // Création : le thème envoyé = occasion (ou saisie libre) + décor souhaité
@@ -59,13 +66,20 @@ export default function Cartes() {
     } catch (err) { traiter(err, "Variante impossible"); } finally { setOccupe(""); }
   };
 
+  // Envoi immédiat, ou PROGRAMMÉ à la date choisie (ex. le jour de l'anniversaire : la carte part toute seule, dès 8 h)
   const envoyer = async () => {
+    const programme = quand === "plus_tard";
+    if (programme && (!dateEnvoi || dateEnvoi < aujourdhui())) { setErreur("Choisissez une date d'envoi à partir d'aujourd'hui"); return; }
     setRefus(null); setErreur(""); setOccupe("envoi");
     try {
-      await apiClient.post(`/cartes/${carte.id}/envoyer`, { variante_id: choix, accord }, { timeout: 90000 });
-      toast.succes(`Carte envoyée à ${carte.destinataire}`);
+      await apiClient.post(`/cartes/${carte.id}/envoyer`, { variante_id: choix, accord, ...(programme ? { date_envoi: dateEnvoi } : {}) }, { timeout: 90000 });
+      toast.succes(programme ? `Carte programmée : elle partira le ${dateFr(dateEnvoi)}` : `Carte envoyée à ${carte.destinataire}`);
       setCarte(null); charger();
     } catch (err) { traiter(err, "Envoi impossible"); } finally { setOccupe(""); }
+  };
+  const deprogrammer = async (c) => {
+    try { await apiClient.post(`/cartes/${c.id}/deprogrammer`); toast.succes("Programmation annulée : la carte est dans votre liste"); charger(); }
+    catch (err) { toast.erreur(messageErreur(err, "Annulation impossible")); }
   };
 
   const ouvrirExistante = async (c) => {
@@ -125,8 +139,17 @@ export default function Cartes() {
             <input type="checkbox" className="mt-1" checked={accord} onChange={(e) => setAccord(e.target.checked)} data-testid="cartes-accord" />
             <span>{carte.destinataire} est d'accord pour recevoir un message de ma part sur WhatsApp ({carte.telephone}).</span>
           </label>
-          <button type="button" className="btn-primary w-full py-3" disabled={!accord || !choix || occupe !== ""} onClick={envoyer}>
-            Envoyer à {carte.destinataire} sur WhatsApp
+          {/* Quand envoyer : tout de suite ou à une date (anniversaire, fête…) */}
+          <div className="space-y-2 rounded-lg bg-gray-50 p-3 text-sm" data-testid="cartes-quand">
+            <label className="flex items-center gap-2"><input type="radio" name="quand" checked={quand === "maintenant"} onChange={() => setQuand("maintenant")} /> Envoyer maintenant</label>
+            <label className="flex flex-wrap items-center gap-2">
+              <input type="radio" name="quand" checked={quand === "plus_tard"} onChange={() => setQuand("plus_tard")} /> Programmer l'envoi le
+              <input type="date" className="input !w-auto" min={aujourdhui()} value={dateEnvoi} onChange={(e) => { setDateEnvoi(e.target.value); setQuand("plus_tard"); }} aria-label="Date d'envoi" data-testid="cartes-date" />
+            </label>
+            {quand === "plus_tard" && <p className="text-xs text-gray-500">La carte partira toute seule ce jour-là, à partir de 8 h. Vous pouvez annuler la programmation depuis « Mes cartes ».</p>}
+          </div>
+          <button type="button" className="btn-primary w-full py-3" disabled={!accord || !choix || occupe !== ""} onClick={envoyer} data-testid="cartes-envoyer">
+            {quand === "plus_tard" && dateEnvoi ? `Programmer l'envoi pour le ${dateFr(dateEnvoi)}` : `Envoyer à ${carte.destinataire} sur WhatsApp`}
           </button>
           <p className="text-xs text-gray-500">{liste.envoyees_aujourdhui} carte(s) envoyée(s) sur les dernières 24 h (maximum {liste.envois_par_jour}).</p>
         </section>
@@ -194,10 +217,15 @@ export default function Cartes() {
             <li key={c.id} className="card flex flex-wrap items-center justify-between gap-2 p-3">
               <div className="min-w-0">
                 <p className="truncate font-medium">{c.destinataire} · {c.theme}</p>
-                <p className="text-xs text-gray-500">{c.statut === "envoyee" ? `✔ Envoyée le ${dateHeure(c.envoyee_le)}` : `En cours · ${c.nb_variantes}/${max} variante(s) · ${dateHeure(c.cree_le)}`}</p>
+                <p className="text-xs text-gray-500">{
+                  c.statut === "envoyee" ? `✔ Envoyée le ${dateHeure(c.envoyee_le)}`
+                  : c.statut === "programmee" || c.statut === "envoi" ? `⏰ Programmée : part le ${dateFr(c.date_envoi)}`
+                  : c.statut === "echec" ? `⚠ Envoi impossible : ${c.erreur_envoi || "réessayez"}`
+                  : `En cours · ${c.nb_variantes}/${max} variante(s) · ${dateHeure(c.cree_le)}`}</p>
               </div>
               <div className="flex gap-2">
                 {c.statut === "brouillon" && <button type="button" className="btn-outline btn-sm" onClick={() => ouvrirExistante(c)}>Ouvrir</button>}
+                {(c.statut === "programmee" || c.statut === "echec") && <button type="button" className="btn-outline btn-sm" onClick={() => deprogrammer(c)}>Annuler la programmation</button>}
                 <button type="button" className="btn-outline btn-sm" onClick={() => supprimer(c)}>Supprimer</button>
               </div>
             </li>

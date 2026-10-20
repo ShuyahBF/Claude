@@ -20,18 +20,25 @@ Routes (utilisateur connecté) :
     POST   /api/cartes                         {theme, message, destinataire, telephone} → carte + 1re variante
     GET    /api/cartes/{id}                    → la carte avec ses variantes (images)
     POST   /api/cartes/{id}/variante           → une variante de plus (3 au maximum)
-    POST   /api/cartes/{id}/envoyer            {variante_id, accord: true} → envoi WhatsApp
+    POST   /api/cartes/{id}/envoyer            {variante_id, accord: true, date_envoi?} → envoi WhatsApp tout de suite, ou PROGRAMMÉ
+                                               à la date choisie (lot 83 : ex. le jour de l'anniversaire)
+    POST   /api/cartes/{id}/deprogrammer       → annule la programmation (la carte redevient un brouillon)
     DELETE /api/cartes/{id}
+
+Lot 83 — envoi programmé : une carte « programmee » garde sa variante choisie, l'accord déclaré et la date ; une boucle d'arrière-plan
+(toutes les 10 minutes, à partir de 8 h) envoie les cartes dont la date est arrivée, en respectant le plafond de 10 envois par jour
+(le reste part le lendemain). Après 3 échecs, la carte passe en « echec » avec le motif.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -53,6 +60,9 @@ SERVICE = "Le service de cartes virtuelles"
 VARIANTES_MAX = 3          # variantes proposées par carte (demande du propriétaire)
 BROUILLONS_MAX = 20        # cartes non envoyées gardées par utilisateur
 ENVOIS_PAR_JOUR = 10       # cartes envoyées par jour et par utilisateur
+ENVOI_PROGRAMME_JOURS_MAX = 370        # lot 83 : un envoi peut être programmé jusqu'à un an à l'avance
+HEURE_ENVOI_PROGRAMME_UTC = 8          # lot 83 : les cartes programmées partent à partir de 8 h
+PAS_BOUCLE_SECONDES = 600              # lot 83 : la boucle d'envoi se réveille toutes les 10 minutes
 
 # Formes artistiques et moteurs IA proposés (clés identiques à celles de SAWALI, voir routes/cartes_plateformes.py) : listes fermées.
 STYLES = {"illustration": "Illustration / dessin", "photo": "Photo réaliste", "huile": "Peinture à l'huile", "aquarelle": "Aquarelle",
@@ -75,6 +85,7 @@ class NouvelleCarte(BaseModel):
 class Envoi(BaseModel):
     variante_id: str = Field(..., min_length=8, max_length=64)
     accord: bool = False       # « j'ai l'accord du destinataire pour lui écrire sur WhatsApp »
+    date_envoi: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")   # lot 83 : envoi programmé ce jour-là (AAAA-MM-JJ)
 
 
 def maintenant() -> str:
@@ -83,7 +94,7 @@ def maintenant() -> str:
 
 def vue(carte: dict, avec_images: bool) -> dict:
     """Carte renvoyée à l'écran ; les images (lourdes) seulement quand elles sont demandées."""
-    sortie = {k: carte.get(k) for k in ("id", "theme", "message", "destinataire", "telephone", "statut", "cree_le", "envoyee_le", "style", "moteur")}
+    sortie = {k: carte.get(k) for k in ("id", "theme", "message", "destinataire", "telephone", "statut", "cree_le", "envoyee_le", "style", "moteur", "date_envoi", "erreur_envoi")}
     sortie["nb_variantes"] = len(carte.get("variantes") or [])
     sortie["variantes_max"] = VARIANTES_MAX
     if avec_images:
@@ -156,7 +167,7 @@ async def creer(data: NouvelleCarte, user: dict = Depends(get_current_user)):
         telephone = normaliser_telephone(data.telephone)    # règle du Burkina Faso (8 chiffres → +226)
     except ErreurSaisie:
         raise HTTPException(422, "Numéro invalide : 8 chiffres au Burkina Faso (ex. 70 00 00 00) ou numéro international")
-    if await db.cartes.count_documents({"user_id": user["id"], "statut": "brouillon"}) >= BROUILLONS_MAX:
+    if await db.cartes.count_documents({"user_id": user["id"], "statut": {"$in": ["brouillon", "programmee"]}}) >= BROUILLONS_MAX:
         raise HTTPException(409, f"{BROUILLONS_MAX} cartes en cours au maximum : supprimez-en une avant d'en créer une autre")
     carte = {"id": str(uuid.uuid4()), "user_id": user["id"], "theme": data.theme.strip(), "message": data.message.strip(),
              "destinataire": data.destinataire.strip(), "telephone": telephone, "statut": "brouillon", "variantes": [],
@@ -188,18 +199,8 @@ async def variante(carte_id: str, user: dict = Depends(get_current_user)):
     return vue(await mienne(carte_id, user), True)
 
 
-@router.post("/{carte_id}/envoyer", dependencies=[Depends(limiter_appels_publics)])
-async def envoyer(carte_id: str, data: Envoi, user: dict = Depends(get_current_user)):
-    carte = await mienne(carte_id, user)
-    if carte["statut"] != "brouillon":
-        raise HTTPException(409, "Cette carte est déjà envoyée")
-    if not data.accord:
-        raise HTTPException(422, "Confirmez que le destinataire est d'accord pour recevoir un message sur WhatsApp")
-    choisie = next((v for v in carte.get("variantes") or [] if v["id"] == data.variante_id), None)
-    if not choisie:
-        raise HTTPException(404, "Variante introuvable")
-    if await envoyees_aujourdhui(user["id"]) >= ENVOIS_PAR_JOUR:
-        raise HTTPException(429, f"Limite atteinte : {ENVOIS_PAR_JOUR} cartes envoyées par jour. Réessayez demain.")
+async def expedier(carte: dict, choisie: dict, user: dict) -> None:
+    """Envoie la variante choisie par Liluvine puis marque la carte « envoyee » (seul le texte est gardé, les images sont libérées)."""
     expediteur = f"{user.get('prenom') or ''} {user.get('nom') or ''}".strip() or "un proche"
     entete, _, b64 = choisie["image"].partition(",")
     mime = entete[5:].split(";")[0] if entete.startswith("data:") else "image/jpeg"
@@ -209,10 +210,94 @@ async def envoyer(carte_id: str, data: Envoi, user: dict = Depends(get_current_u
         "message": f"💌 {expediteur} vous envoie une carte via auRor.",
         "media": {"type": "image", "contenu_base64": b64, "mime": mime, "nom_fichier": "carte.jpg",
                   "legende": f"💌 Une carte de la part de {expediteur}"}})
-    # Envoyée : on garde le texte, on libère les images
-    await db.cartes.update_one({"id": carte_id, "user_id": user["id"]},
-                               {"$set": {"statut": "envoyee", "envoyee_le": maintenant(), "accord_declare": True, "variantes": []}})
+    await db.cartes.update_one({"id": carte["id"], "user_id": carte["user_id"]},
+                               {"$set": {"statut": "envoyee", "envoyee_le": maintenant(), "accord_declare": True, "variantes": [], "erreur_envoi": None}})
+
+
+@router.post("/{carte_id}/envoyer", dependencies=[Depends(limiter_appels_publics)])
+async def envoyer(carte_id: str, data: Envoi, user: dict = Depends(get_current_user)):
+    carte = await mienne(carte_id, user)
+    if carte["statut"] != "brouillon":
+        raise HTTPException(409, "Cette carte est déjà envoyée ou programmée")
+    if not data.accord:
+        raise HTTPException(422, "Confirmez que le destinataire est d'accord pour recevoir un message sur WhatsApp")
+    choisie = next((v for v in carte.get("variantes") or [] if v["id"] == data.variante_id), None)
+    if not choisie:
+        raise HTTPException(404, "Variante introuvable")
+    # Lot 83 : envoi PROGRAMMÉ (ex. le jour de l'anniversaire) — la carte part toute seule à la date choisie
+    if data.date_envoi:
+        try:
+            jour = datetime.strptime(data.date_envoi, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(422, "Date d'envoi invalide")
+        aujourdhui = datetime.now(timezone.utc).date()
+        if jour < aujourdhui or jour > aujourdhui + timedelta(days=ENVOI_PROGRAMME_JOURS_MAX):
+            raise HTTPException(422, f"Choisissez une date entre aujourd'hui et {ENVOI_PROGRAMME_JOURS_MAX} jours")
+        await db.cartes.update_one({"id": carte_id, "user_id": user["id"]}, {"$set": {
+            "statut": "programmee", "date_envoi": data.date_envoi, "variante_choisie": data.variante_id,
+            "accord_declare": True, "tentatives": 0, "erreur_envoi": None}})
+        return {"ok": True, "programmee": True, "carte": vue(await mienne(carte_id, user), False)}
+    if await envoyees_aujourdhui(user["id"]) >= ENVOIS_PAR_JOUR:
+        raise HTTPException(429, f"Limite atteinte : {ENVOIS_PAR_JOUR} cartes envoyées par jour. Réessayez demain.")
+    await expedier(carte, choisie, user)
     return {"ok": True, "carte": vue(await mienne(carte_id, user), False)}
+
+
+@router.post("/{carte_id}/deprogrammer")
+async def deprogrammer(carte_id: str, user: dict = Depends(get_current_user)):
+    """Annule l'envoi programmé : la carte redevient un brouillon (on peut changer de variante ou de date)."""
+    r = await db.cartes.update_one({"id": carte_id, "user_id": user["id"], "statut": {"$in": ["programmee", "echec"]}},
+                                   {"$set": {"statut": "brouillon", "date_envoi": None, "erreur_envoi": None, "tentatives": 0}})
+    if not r.modified_count:
+        raise HTTPException(409, "Cette carte n'est pas programmée")
+    return {"ok": True, "carte": vue(await mienne(carte_id, user), False)}
+
+
+async def envoyer_programmees(maintenant_dt: Optional[datetime] = None) -> Dict[str, int]:
+    """Envoie les cartes programmées dont la date est arrivée (à partir de 8 h, heure de Ouagadougou = UTC).
+    Une carte est « réservée » (statut « envoi ») avant l'envoi : jamais deux envois. Plafond quotidien respecté (le reste part
+    le lendemain) ; après 3 échecs la carte passe en « echec » avec le motif."""
+    maintenant_dt = maintenant_dt or datetime.now(timezone.utc)
+    bilan = {"envoyees": 0, "echecs": 0, "reportees": 0}
+    if maintenant_dt.hour < HEURE_ENVOI_PROGRAMME_UTC:
+        return bilan
+    dues = await db.cartes.find({"statut": "programmee", "date_envoi": {"$lte": maintenant_dt.date().isoformat()}}, SANS_ID).to_list(200)
+    for carte in dues:
+        user = await db.users.find_one({"id": carte["user_id"]}, SANS_ID)
+        if not user:
+            continue
+        if await envoyees_aujourdhui(user["id"]) >= ENVOIS_PAR_JOUR:
+            bilan["reportees"] += 1
+            continue
+        r = await db.cartes.update_one({"id": carte["id"], "statut": "programmee"}, {"$set": {"statut": "envoi"}})
+        if not r.modified_count:
+            continue
+        choisie = next((v for v in carte.get("variantes") or [] if v["id"] == carte.get("variante_choisie")), None)
+        try:
+            if not choisie:
+                raise HTTPException(404, "Variante introuvable")
+            await expedier(carte, choisie, user)
+            bilan["envoyees"] += 1
+        except Exception as exc:  # noqa: BLE001 — une carte en échec n'arrête pas les autres
+            tentatives = int(carte.get("tentatives") or 0) + 1
+            motif = exc.detail if isinstance(exc, HTTPException) else "Envoi impossible"
+            await db.cartes.update_one({"id": carte["id"]}, {"$set": {
+                "statut": "echec" if tentatives >= 3 else "programmee", "tentatives": tentatives, "erreur_envoi": str(motif)[:200]}})
+            bilan["echecs"] += 1
+            logger.warning("Carte programmée %s : échec %s/3 (%s)", carte["id"], tentatives, motif)
+    return bilan
+
+
+async def boucle_cartes() -> None:
+    """Tâche de fond : toutes les 10 minutes, envoie les cartes programmées arrivées à échéance."""
+    while True:
+        try:
+            bilan = await envoyer_programmees()
+            if any(bilan.values()):
+                logger.info("Cartes programmées : %s", bilan)
+        except Exception:  # noqa: BLE001
+            logger.exception("Boucle des cartes programmées en erreur")
+        await asyncio.sleep(PAS_BOUCLE_SECONDES)
 
 
 @router.delete("/{carte_id}")
