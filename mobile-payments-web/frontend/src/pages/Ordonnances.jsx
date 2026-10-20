@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import BoutonOcr from "@/components/BoutonOcr";
 
-// OCR sur ordonnances (lot 39) : photo (ou fichier image importé, lot 83) → médicaments, doses et posologies lus par l'IA (réservé aux abonnés de la formule OCR).
+// OCR sur ordonnances (lot 39) : photo (ou fichier importé : image, lot 83, ou PDF, lot 84) → médicaments, doses et posologies lus par l'IA (réservé aux abonnés de la formule OCR).
 // Transcription seulement : aucun conseil médical ; l'utilisateur DOIT relire avec l'ordonnance. Chaque médicament peut
 // devenir un rappel de prise (le formulaire des rappels s'ouvre pré-rempli).
 export default function Ordonnances() {
@@ -15,8 +15,8 @@ export default function Ordonnances() {
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       <h1 className="text-2xl font-bold">📄 OCR sur ordonnances</h1>
-      <p className="text-sm text-gray-600">Photographiez votre ordonnance, bien à plat et de face, ou importez une image déjà enregistrée (JPG, PNG ou WebP) : les médicaments, doses et posologies sont lus automatiquement.</p>
-      <BoutonOcr type="ordonnance" libelle="📷 Photographier une ordonnance" className="btn-primary w-full" importer onResultat={(d) => setLecture(d)} />
+      <p className="text-sm text-gray-600">Photographiez votre ordonnance, bien à plat et de face, ou importez un fichier déjà enregistré (image JPG, PNG, WebP, ou PDF — première page lue) : les médicaments, doses et posologies sont lus automatiquement.</p>
+      <BoutonOcr type="ordonnance" libelle="📷 Photographier une ordonnance" className="btn-primary w-full" importer accepterPdf onResultat={(d) => setLecture(d)} />
       <p className="text-xs text-gray-500">Service réservé aux abonnés (<Link to="/abonnement" className="underline">voir l'abonnement</Link>). Transcription seulement : relisez toujours avec l'ordonnance et suivez l'avis de votre médecin ou pharmacien.</p>
 
       {lecture && (
