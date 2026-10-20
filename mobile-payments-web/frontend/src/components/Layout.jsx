@@ -7,7 +7,7 @@ import SupportSawali from "@/components/SupportSawali";
 import VerrouEcran from "@/components/VerrouEcran";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/components/Toast";
-import { apiClient } from "@/lib/api";
+import { apiClient, definirCouleursOperateurs } from "@/lib/api";
 import { abonnerPush, debloquerAudio, lirePreferences, traiterEvenements } from "@/lib/alertes";
 
 // Menus de l'application (« Payer » est la bulle flottante « + » ; « Support » ouvre le chat SAWALI) (l'entrée « Administration » n'apparaît qu'à l'administrateur)
@@ -60,6 +60,8 @@ export default function Layout() {
     window.addEventListener("presse-vue", vue);
     return () => { actif = false; clearInterval(t); window.removeEventListener("presse-vue", vue); };
   }, [pathname]);
+  // Lot 89 : couleurs d'opérateurs choisies dans le Profil, relues à chaque ouverture (graphiques, cartes, pastilles)
+  useEffect(() => { apiClient.get("/portefeuille/operateurs").then(({ data }) => definirCouleursOperateurs(data.couleurs)).catch(() => {}); }, []);
   // Notifications push activées sur cet appareil : on confirme l'abonnement au serveur à chaque ouverture (l'adresse peut changer)
   useEffect(() => { if (lirePreferences().notifications) abonnerPush(apiClient); }, []);
   // Le navigateur n'autorise le son qu'après un premier toucher : on débloque l'audio dès le premier clic

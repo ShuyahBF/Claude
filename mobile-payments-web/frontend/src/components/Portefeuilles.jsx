@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import GraphePortefeuilles from "@/components/GraphePortefeuilles";
 import Modal from "@/components/Modal";
+import SelecteurOperateur from "@/components/SelecteurOperateur";   // lot 89 : listes d'opérateurs avec logos
 import { useToast } from "@/components/Toast";
 import { apiClient, couleurOperateur, fcfa, messageErreur } from "@/lib/api";
 
@@ -89,14 +90,12 @@ export default function Portefeuilles({ rafraichir = "" }) {
   // « electronique:Orange » → { portefeuille: "electronique", operateur: "Orange" } ; « personnel » → { portefeuille: "personnel" }
   const separer = (pf) => (pf === PERSONNEL ? { portefeuille: PERSONNEL } : { portefeuille: "electronique", operateur: pf.split(":")[1] });
   const choixPf = (valeur, surChangement, id) => (
-    <select id={id} className="input" value={pfEff(valeur)} onChange={(e) => surChangement(e.target.value)}>
-      {operateurs.map((o) => <option key={o} value={`electronique:${o}`}>📱 Électronique · {o}</option>)}
-      <option value={PERSONNEL}>👛 Personnel (argent en poche)</option>
-    </select>
+    <SelecteurOperateur id={id} valeur={pfEff(valeur)} onChange={surChangement}
+      options={[...operateurs.map((o) => ({ valeur: `electronique:${o}`, libelle: `Électronique · ${o}`, operateur: o })), { valeur: PERSONNEL, libelle: "Personnel (argent en poche)", emoji: "👛" }]} />
   );
   const choixOperateur = (valeur, surChangement, id, etiquette, sauf) => (
     <div><label className="label" htmlFor={id}>{etiquette}</label>
-      <select id={id} className="input" value={valeur} onChange={(e) => surChangement(e.target.value)}>{operateurs.filter((o) => o !== sauf).map((o) => <option key={o}>{o}</option>)}</select></div>
+      <SelecteurOperateur id={id} valeur={valeur} onChange={surChangement} options={operateurs.filter((o) => o !== sauf)} /></div>
   );
   const libelleMvt = (m) => ({
     retrait: `Retrait ${m.operateur} ${fcfa(m.montant)}${m.frais ? ` (frais ${fcfa(m.frais)})` : ""}`, depot: `Dépôt ${m.operateur} ${fcfa(m.montant)}`,

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import CarteCodeUssd from "@/components/CarteCodeUssd";
 import Chargement from "@/components/Chargement";
 import DetailsDepense from "@/components/DetailsDepense";
-import Portefeuilles from "@/components/Portefeuilles";   // lot 86 : portefeuilles électronique / personnel et courbe   // lot 85 : motif et pièces d'une dépense
+import Portefeuilles from "@/components/Portefeuilles";
+import SelecteurOperateur from "@/components/SelecteurOperateur";   // lot 89 : listes d'opérateurs avec logos   // lot 86 : portefeuilles électronique / personnel et courbe   // lot 85 : motif et pièces d'une dépense
 import Modal from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { apiClient, couleurOperateur, dateHeure, fcfa, messageErreur } from "@/lib/api";
@@ -189,10 +190,7 @@ export default function Historique() {
           </div>
           <div>
             <label className="label" htmlFor="f-operateur">Opérateur</label>
-            <select id="f-operateur" className="input" value={filtres.operateur} onChange={(e) => modifier("operateur", e.target.value)}>
-              <option value="">Tous les opérateurs</option>
-              {operateurs.map((o) => <option key={o} value={o}>{o}</option>)}
-            </select>
+            <SelecteurOperateur id="f-operateur" valeur={filtres.operateur} onChange={(v) => modifier("operateur", v)} options={operateurs} vide="Tous les opérateurs" />
           </div>
           {filtres.periode === "perso" && (
             <>
