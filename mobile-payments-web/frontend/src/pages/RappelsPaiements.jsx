@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import Chargement from "@/components/Chargement";
 import Modal from "@/components/Modal";
 import { useToast } from "@/components/Toast";
+import SelecteurOperateur from "@/components/SelecteurOperateur";   // lot 89 : listes d'opérateurs avec logos
 import { apiClient, fcfa, messageErreur } from "@/lib/api";
 
 // Rappels de paiements récurrents (lot 36) : loyer, électricité, abonnement… 30 rappels au plus.
@@ -103,10 +104,8 @@ export default function RappelsPaiements() {
               <div><label className="label" htmlFor="rp-mt">Montant <span className="font-normal text-gray-400">(FCFA, facultatif)</span></label>
                 <input id="rp-mt" className="input" type="number" inputMode="numeric" min={1} value={edition.montant} onChange={champ("montant")} /></div>
               <div><label className="label" htmlFor="rp-op">Opérateur <span className="font-normal text-gray-400">(facultatif)</span></label>
-                <select id="rp-op" className="input" value={edition.operateur} onChange={champ("operateur")}>
-                  <option value="">—</option>
-                  {[...new Set([...OPERATEURS, ...(edition.operateur ? [edition.operateur] : [])])].map((o) => <option key={o} value={o}>{o}</option>)}
-                </select></div>
+                <SelecteurOperateur id="rp-op" valeur={edition.operateur} onChange={(v) => champ("operateur")({ target: { value: v } })} vide="—"
+                  options={[...new Set([...OPERATEURS, ...(edition.operateur ? [edition.operateur] : [])])]} /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><label className="label" htmlFor="rp-fq">Fréquence</label>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Chargement from "@/components/Chargement";
+import SelecteurOperateur from "@/components/SelecteurOperateur";   // lot 89 : listes d'opérateurs avec logos
 import { apiClient, messageErreur } from "@/lib/api";
 import { useToast } from "@/components/Toast";
 
@@ -38,9 +39,7 @@ export default function Ussd() {
       {d.operateurs.length > 0 && (
         <div className="grid gap-2 sm:grid-cols-[1fr_2fr]">
           <div><label className="label" htmlFor="u-op">Mon opérateur</label>
-            <select id="u-op" className="input" value={operateur} onChange={(e) => setOperateur(e.target.value)}>
-              {d.operateurs.map((o) => <option key={o.nom} value={o.nom}>{o.nom}</option>)}
-            </select></div>
+            <SelecteurOperateur id="u-op" valeur={operateur} onChange={setOperateur} options={d.operateurs.map((o) => o.nom)} /></div>
           <div><label className="label" htmlFor="u-q">Chercher</label>
             <input id="u-q" className="input" type="search" placeholder="ex. numéro, internet, solde…" value={recherche} onChange={(e) => setRecherche(e.target.value)} /></div>
         </div>

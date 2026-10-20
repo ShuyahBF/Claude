@@ -72,11 +72,23 @@ export const CATEGORIES = {
   other: "Autre",
 };
 
-/** Couleur de pastille de chaque opérateur (repère visuel). */
-export function couleurOperateur(nom) {
+// Couleurs choisies par l'utilisateur dans son Profil (lot 89) : { « Orange »: "#aa00ff", … }. Gardées aussi dans le navigateur pour être
+// connues dès le premier affichage ; remises à jour à chaque ouverture de l'application (voir Layout.jsx).
+const CLE_COULEURS = "mpw_couleurs_operateurs";
+let couleursPerso = (() => { try { return JSON.parse(localStorage.getItem(CLE_COULEURS) || "{}") || {}; } catch { return {}; } })();
+export function definirCouleursOperateurs(couleurs) {
+  couleursPerso = couleurs || {};
+  try { localStorage.setItem(CLE_COULEURS, JSON.stringify(couleursPerso)); } catch { /* sans importance */ }
+}
+/** Couleur d'origine (marque) de chaque opérateur. */
+export function couleurDefautOperateur(nom) {
   const n = (nom || "").toLowerCase();
   if (n.includes("orange")) return "#ff7900";
   if (n.includes("moov")) return "#0066b3";
   if (n.includes("telecel")) return "#e30613";
   return "#4f46e5";
+}
+/** Couleur de pastille / de courbe d'un opérateur : celle choisie par l'utilisateur, sinon celle de la marque. */
+export function couleurOperateur(nom) {
+  return couleursPerso[nom] || couleurDefautOperateur(nom);
 }

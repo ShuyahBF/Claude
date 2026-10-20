@@ -15,12 +15,15 @@ Pour un développeur WinDev (équivalent d'un petit livre de caisse à plusieurs
   - la COURBE donne le solde de fin de journée de chaque portefeuille suivi, depuis son premier relevé (366 jours au plus) ;
   - lot 88 : l'utilisateur COCHE dans son profil les opérateurs chez qui il a un compte (« operateurs » du document) : seuls ces portefeuilles
     apparaissent dans les listes, cartes et courbes. Un portefeuille DÉJÀ UTILISÉ (relevé ou mouvement) ne peut plus être décoché ;
+  - lot 89 : l'utilisateur choisit aussi la COULEUR de chaque opérateur (champ « couleurs » du même document) ; elle sert partout (cartes,
+    courbe, pastilles). Sans choix : couleur de marque de l'opérateur ;
   - rangement : un seul document par utilisateur dans « reglages_plateforme » (identifiant « portefeuille:<utilisateur> ») : AUCUNE nouvelle
     collection. 400 relevés et 2 000 mouvements au plus. Effacé avec le compte.
 
 Routes (utilisateur connecté) :
     GET    /api/portefeuille/operateurs        → {catalogue, choisis, verrouilles}
     PUT    /api/portefeuille/operateurs        {operateurs: [...]} → opérateurs cochés (409 si on décoche un portefeuille déjà utilisé)
+    PUT    /api/portefeuille/couleurs          {operateur, couleur: "#rrggbb" | null} → couleur choisie (null = couleur d'origine)
     GET    /api/portefeuille?jours=90          → portefeuilles, soldes, en cours, courbe, relevés et mouvements récents
     POST   /api/portefeuille/releves           {portefeuille, operateur?, jour?, montant}
     DELETE /api/portefeuille/releves/{id}
@@ -283,6 +286,7 @@ async def lire(jours: int = Query(90, ge=7, le=JOURS_MAX), user: dict = Depends(
                      for c, evs in ev.items() for e in evs if e["en_cours"] and e["at"] > _dt(debut_par_cle[c])][-20:],
         "jours": jours,
         "operateurs_choisis": choisis,                       # opérateurs proposés dans les listes de saisie
+        "couleurs": doc.get("couleurs") or {},               # couleurs choisies par l'utilisateur (opérateur → #rrggbb)
     }
 
 
@@ -294,7 +298,8 @@ class ChoixOperateurs(BaseModel):
 async def lire_operateurs(user: dict = Depends(get_current_user)):
     """Opérateurs du catalogue, ceux que l'utilisateur a cochés, et ceux qu'il ne peut plus décocher (portefeuille déjà utilisé)."""
     doc = await _doc(user)
-    return {"catalogue": sorted(await db.services.distinct("operateur", {"actif": True})), "choisis": choisis_de(doc), "verrouilles": sorted(utilises(doc))}
+    return {"catalogue": sorted(await db.services.distinct("operateur", {"actif": True})), "choisis": choisis_de(doc), "verrouilles": sorted(utilises(doc)),
+            "couleurs": doc.get("couleurs") or {}}
 
 
 @router.put("/operateurs")
@@ -311,7 +316,25 @@ async def choisir_operateurs(data: ChoixOperateurs, user: dict = Depends(get_cur
         raise HTTPException(status.HTTP_409_CONFLICT, f"Portefeuille déjà utilisé, impossible de le désactiver : {', '.join(retires)}")
     await db.reglages_plateforme.update_one({"_id": _cle(user)}, {"$set": {"user_id": user["id"], "operateurs": sorted(voulus)}}, upsert=True)
     doc["operateurs"] = sorted(voulus)
-    return {"catalogue": sorted(catalogue), "choisis": choisis_de(doc), "verrouilles": sorted(utilises(doc))}
+    return {"catalogue": sorted(catalogue), "choisis": choisis_de(doc), "verrouilles": sorted(utilises(doc)), "couleurs": doc.get("couleurs") or {}}
+
+
+class CouleurOperateur(BaseModel):
+    operateur: str = Field(min_length=1, max_length=40)
+    couleur: Optional[str] = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")     # absent / null : retour à la couleur d'origine
+
+
+@router.put("/couleurs")
+async def choisir_couleur(data: CouleurOperateur, user: dict = Depends(get_current_user)):
+    """Couleur d'un opérateur (graphiques, cartes, pastilles). Une liste fermée d'opérateurs : celui du catalogue."""
+    if data.operateur not in await db.services.distinct("operateur", {"actif": True}) or "." in data.operateur or data.operateur.startswith("$"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Opérateur inconnu : {data.operateur}")
+    champ = f"couleurs.{data.operateur}"
+    if data.couleur:
+        await db.reglages_plateforme.update_one({"_id": _cle(user)}, {"$set": {"user_id": user["id"], champ: data.couleur.lower()}}, upsert=True)
+    else:
+        await db.reglages_plateforme.update_one({"_id": _cle(user)}, {"$unset": {champ: ""}})
+    return {"couleurs": (await _doc(user)).get("couleurs") or {}}
 
 
 @router.post("/releves", status_code=status.HTTP_201_CREATED)

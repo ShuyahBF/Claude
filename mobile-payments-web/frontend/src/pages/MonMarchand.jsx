@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import Chargement from "@/components/Chargement";
 import LogoMode from "@/components/LogoMode";
 import { useToast } from "@/components/Toast";
+import SelecteurOperateur from "@/components/SelecteurOperateur";   // lot 89 : listes d'opérateurs avec logos
 import { apiClient, dateHeure, fcfa, messageErreur } from "@/lib/api";
 import { reduireImage } from "@/lib/archiveMedia";
 
@@ -89,9 +90,7 @@ export default function MonMarchand() {
           <p className="label">Mes codes marchands</p>
           {form.codes.map((c, i) => (
             <div key={i} className="flex gap-2">
-              <select className="input w-auto shrink-0" value={c.operateur} onChange={(e) => majCode(i, "operateur", e.target.value)} aria-label="Opérateur">
-                <option value="">Opérateur…</option>{operateurs.map((o) => <option key={o} value={o}>{o}</option>)}
-              </select>
+              <SelecteurOperateur className="w-44 shrink-0" ariaLabel="Opérateur" valeur={c.operateur} onChange={(v) => majCode(i, "operateur", v)} options={operateurs} placeholder="Opérateur…" />
               <input className="input min-w-0 flex-1 font-mono" inputMode="numeric" pattern="[0-9]*" maxLength={20} placeholder="Code marchand" value={c.code} onChange={(e) => majCode(i, "code", e.target.value)} aria-label="Code marchand" />
               {form.codes.length > 1 && <button type="button" className="btn-outline btn-sm" aria-label="Retirer ce code" onClick={() => maj("codes", form.codes.filter((_, j) => j !== i))}>✕</button>}
             </div>

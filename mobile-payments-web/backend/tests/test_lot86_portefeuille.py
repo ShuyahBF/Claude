@@ -204,3 +204,21 @@ def test_donnees_anterieures_a_la_case_a_cocher_restent_visibles(client, utilisa
     o = client.get("/api/portefeuille/operateurs", headers=h).json()
     assert o["choisis"] == [ORANGE] and o["verrouilles"] == [ORANGE]
     assert _soldes(client, h)["soldes"][f"electronique:{ORANGE}"]["montant"] == 7000
+
+
+# ---------------------------------------------------------------- lot 89 : couleur choisie pour chaque opérateur
+def test_couleur_des_operateurs_choisie_dans_le_profil(client, utilisateur):
+    _, h, _ = utilisateur
+    assert client.get("/api/portefeuille/operateurs", headers=h).json()["couleurs"] == {}
+    r = client.put("/api/portefeuille/couleurs", headers=h, json={"operateur": ORANGE, "couleur": "#AA00FF"})
+    assert r.status_code == 200 and r.json()["couleurs"] == {ORANGE: "#aa00ff"}
+    assert client.put("/api/portefeuille/couleurs", headers=h, json={"operateur": MOOV, "couleur": "#112233"}).json()["couleurs"] == {ORANGE: "#aa00ff", MOOV: "#112233"}
+    assert _soldes(client, h)["couleurs"] == {ORANGE: "#aa00ff", MOOV: "#112233"}
+    assert client.get("/api/portefeuille/operateurs", headers=h).json()["couleurs"][ORANGE] == "#aa00ff"
+    # Retour à la couleur d'origine
+    assert client.put("/api/portefeuille/couleurs", headers=h, json={"operateur": ORANGE, "couleur": None}).json()["couleurs"] == {MOOV: "#112233"}
+    # Validations : opérateur du catalogue, format #rrggbb
+    assert client.put("/api/portefeuille/couleurs", headers=h, json={"operateur": "Inconnu", "couleur": "#112233"}).status_code == 422
+    assert client.put("/api/portefeuille/couleurs", headers=h, json={"operateur": ORANGE, "couleur": "rouge"}).status_code == 422
+    assert client.put("/api/portefeuille/couleurs", headers=h, json={"operateur": ORANGE, "couleur": "#12345"}).status_code == 422
+    assert client.put("/api/portefeuille/couleurs", json={"operateur": ORANGE, "couleur": "#112233"}).status_code == 401

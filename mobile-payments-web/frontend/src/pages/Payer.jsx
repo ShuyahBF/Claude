@@ -10,6 +10,7 @@ import PaiementPispi from "@/components/PaiementPispi";
 import ScannerQr from "@/components/ScannerQr";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
+import SelecteurOperateur from "@/components/SelecteurOperateur";   // lot 89 : listes d'opérateurs avec logos
 import { positionActuelle } from "@/lib/geoloc";
 import { apiClient, CATEGORIES, couleurOperateur, messageErreur } from "@/lib/api";
 import { analyserQr } from "@/lib/qrOperateurs";
@@ -230,11 +231,7 @@ export default function Payer() {
           {operateurs.length === 0 && <p className="text-gray-500">Aucun opérateur disponible pour le moment.</p>}
           <div>
             <label className="label" htmlFor="choix-operateur">Opérateur</label>
-            <select id="choix-operateur" className="input text-lg" defaultValue="" disabled={operateurs.length === 0}
-              onChange={(e) => e.target.value && choisirOperateur(e.target.value)}>
-              <option value="" disabled>Choisir un opérateur…</option>
-              {operateurs.map((op) => <option key={op} value={op}>{op}</option>)}
-            </select>
+            <SelecteurOperateur id="choix-operateur" className="text-lg" valeur="" onChange={(v) => v && choisirOperateur(v)} options={operateurs} disabled={operateurs.length === 0} />
           </div>
         </section>
       )}

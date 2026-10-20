@@ -4,6 +4,7 @@ import Chargement from "@/components/Chargement";
 import Modal from "@/components/Modal";
 import QrCode from "@/components/QrCode";
 import { useToast } from "@/components/Toast";
+import SelecteurOperateur from "@/components/SelecteurOperateur";   // lot 89 : listes d'opérateurs avec logos
 import { apiClient, couleurOperateur, messageErreur } from "@/lib/api";
 import { analyserQr } from "@/lib/qrOperateurs";
 
@@ -99,9 +100,7 @@ export default function Marchands() {
       <form onSubmit={ajouter} className="no-print card grid gap-3 sm:grid-cols-[1fr_1fr_1.4fr_auto] sm:items-end">
         <div>
           <label className="label" htmlFor="op">Opérateur</label>
-          <select id="op" className="input" value={form.operateur} onChange={(e) => setForm({ ...form, operateur: e.target.value })}>
-            {operateurs.map((o) => <option key={o}>{o}</option>)}
-          </select>
+          <SelecteurOperateur id="op" valeur={form.operateur} onChange={(v) => setForm({ ...form, operateur: v })} options={operateurs} />
         </div>
         <div>
           <label className="label" htmlFor="code">Code marchand</label>
@@ -129,10 +128,7 @@ export default function Marchands() {
 
       {/* Recherche */}
       <div className="no-print flex gap-2">
-        <select className="input max-w-[11rem]" value={filtre.operateur} onChange={(e) => setFiltre({ ...filtre, operateur: e.target.value })}>
-          <option value="">Tous les opérateurs</option>
-          {operateurs.map((o) => <option key={o}>{o}</option>)}
-        </select>
+        <SelecteurOperateur className="w-56 shrink-0" ariaLabel="Opérateur" valeur={filtre.operateur} onChange={(v) => setFiltre({ ...filtre, operateur: v })} options={operateurs} vide="Tous les opérateurs" />
         <input className="input" placeholder="Rechercher un nom ou un code" value={filtre.q}
           onChange={(e) => setFiltre({ ...filtre, q: e.target.value })} />
       </div>
