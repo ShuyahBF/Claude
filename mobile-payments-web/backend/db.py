@@ -61,6 +61,10 @@ async def ensure_indexes() -> None:
     # Cartes virtuelles (lot 79) : cartes d'un utilisateur
     await db.cartes.create_index("id", unique=True)
     await db.cartes.create_index([("user_id", 1), ("cree_le", -1)])
+    # Prévention MongoDB (lot 90) : le passage planifié des cartes d'anniversaire cherche « statut = programmee et
+    # date_envoi <= aujourd'hui » à chaque tour ; sans index il parcourait toutes les cartes de tous les utilisateurs
+    # (type d'alerte « Query Targeting » vue sur SAWALI). Aucune nouvelle collection.
+    await db.cartes.create_index([("statut", 1), ("date_envoi", 1)])
     # Liens « identifiant du QR d'un opérateur → code marchand », une ligne par utilisateur (lot 38)
     await db.qr_operateurs.create_index([("operateur", 1), ("identifiant", 1), ("user_id", 1)], unique=True)
     # Rappels de paiements récurrents et de médicaments (lot 36)
