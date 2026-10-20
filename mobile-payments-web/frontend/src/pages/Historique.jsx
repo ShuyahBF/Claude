@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import CarteCodeUssd from "@/components/CarteCodeUssd";
 import Chargement from "@/components/Chargement";
-import DetailsDepense from "@/components/DetailsDepense";   // lot 85 : motif et pièces d'une dépense
+import DetailsDepense from "@/components/DetailsDepense";
+import Portefeuilles from "@/components/Portefeuilles";   // lot 86 : portefeuilles électronique / personnel et courbe   // lot 85 : motif et pièces d'une dépense
 import Modal from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { apiClient, couleurOperateur, dateHeure, fcfa, messageErreur } from "@/lib/api";
@@ -175,6 +176,9 @@ export default function Historique() {
       <h1 className="text-2xl font-bold">Historique</h1>
 
       {/* Filtres : période, opérateur, statut, recherche de bénéficiaire */}
+      {/* Lot 86 : soldes des deux portefeuilles, courbe d'évolution, retraits et dépôts (se recalcule quand un paiement change de statut) */}
+      <Portefeuilles rafraichir={paiements ? paiements.map((p) => `${p.id}${p.statut}`).join("|") : ""} />
+
       <section className="card space-y-3" data-testid="filtres">
         <div className="grid gap-3 sm:grid-cols-2">
           <div>

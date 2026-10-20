@@ -34,7 +34,7 @@ SERVICE = "Le service d'archives"
 # Collections dont chaque ligne porte « user_id » : tout est effacé avec le compte
 COLLECTIONS_UTILISATEUR = ("paiements", "anniversaires", "rappels_paiements", "rappels_medicaments", "prises_medicaments",
                            "push_abonnements", "push_envoyes", "qr_operateurs", "cartes", "comptes_marchands",
-                           "journal_connexions", "garde_recherches")
+                           "journal_connexions", "garde_recherches", "reglages_plateforme")   # reglages_plateforme : portefeuilles (lot 86)
 
 router = APIRouter(prefix="/compte", tags=["Compte"])
 
