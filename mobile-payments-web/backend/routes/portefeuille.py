@@ -13,10 +13,14 @@ Pour un développeur WinDev (équivalent d'un petit livre de caisse à plusieurs
   - les MOUVEMENTS : retrait (compte mobile money d'un opérateur → poche, frais pris sur le compte), dépôt (poche → compte), TRANSFERT
     d'un opérateur à un autre (frais pris sur le compte d'origine), entrée d'argent et sortie d'argent sur le portefeuille choisi ;
   - la COURBE donne le solde de fin de journée de chaque portefeuille suivi, depuis son premier relevé (366 jours au plus) ;
+  - lot 88 : l'utilisateur COCHE dans son profil les opérateurs chez qui il a un compte (« operateurs » du document) : seuls ces portefeuilles
+    apparaissent dans les listes, cartes et courbes. Un portefeuille DÉJÀ UTILISÉ (relevé ou mouvement) ne peut plus être décoché ;
   - rangement : un seul document par utilisateur dans « reglages_plateforme » (identifiant « portefeuille:<utilisateur> ») : AUCUNE nouvelle
     collection. 400 relevés et 2 000 mouvements au plus. Effacé avec le compte.
 
 Routes (utilisateur connecté) :
+    GET    /api/portefeuille/operateurs        → {catalogue, choisis, verrouilles}
+    PUT    /api/portefeuille/operateurs        {operateurs: [...]} → opérateurs cochés (409 si on décoche un portefeuille déjà utilisé)
     GET    /api/portefeuille?jours=90          → portefeuilles, soldes, en cours, courbe, relevés et mouvements récents
     POST   /api/portefeuille/releves           {portefeuille, operateur?, jour?, montant}
     DELETE /api/portefeuille/releves/{id}
@@ -174,7 +178,8 @@ def solde_a(t: datetime, releves: List[dict], evts: List[dict]) -> Optional[int]
     return int(base["montant"]) + sum(e["delta"] for e in evts if depart < e["at"] <= t and not e["en_cours"])
 
 
-def calculer(releves: List[dict], paiements: List[dict], mouvements: List[dict], jours: int, maintenant_dt: Optional[datetime] = None) -> dict:
+def calculer(releves: List[dict], paiements: List[dict], mouvements: List[dict], jours: int, maintenant_dt: Optional[datetime] = None,
+             choisis: Optional[List[str]] = None) -> dict:
     """Pour chaque portefeuille suivi : solde actuel, montant en cours, écarts des relevés, et courbe quotidienne commune."""
     maintenant_dt = maintenant_dt or maintenant()
     debuts: Dict[str, datetime] = {}
@@ -182,7 +187,8 @@ def calculer(releves: List[dict], paiements: List[dict], mouvements: List[dict],
         c = _cle_releve(r)
         debuts[c] = min(debuts.get(c, _dt(r["at"])), _dt(r["at"]))
     ev = evenements(paiements, mouvements, debuts)
-    ordre = sorted(debuts, key=_ordre)
+    # Portefeuilles AFFICHÉS : ceux qui ont des données + un par opérateur coché dans le profil + le personnel (la poche existe toujours)
+    ordre = sorted(set(debuts) | {cle(GENERAL, o) for o in choisis or []} | {PERSONNEL}, key=_ordre)
     sortie: dict = {"portefeuilles": [{"cle": c, "nom": nom_de(c), "genre": "personnel" if c == PERSONNEL else "electronique",
                                        "operateur": c.split(":", 1)[1] if ":" in c else None} for c in ordre],
                     "soldes": {}, "ecarts": {}, "serie": []}
@@ -190,6 +196,7 @@ def calculer(releves: List[dict], paiements: List[dict], mouvements: List[dict],
     courbes: Dict[str, Dict[str, Optional[int]]] = {}
     for c in ordre:
         rel = _releves_tries(releves, c)
+        ev.setdefault(c, [])
         courant = solde_a(maintenant_dt, rel, ev[c])
         base = next((r for r in reversed(rel) if _dt(r["at"]) <= maintenant_dt), None)
         en_cours = sum(e["delta"] for e in ev[c] if e["en_cours"] and base and e["at"] > _dt(base["at"]))
@@ -201,9 +208,9 @@ def calculer(releves: List[dict], paiements: List[dict], mouvements: List[dict],
             avant = solde_a(_dt(r["at"]) - timedelta(microseconds=1), rel[:i], ev[c]) if i > 0 else None
             if avant is not None:
                 sortie["ecarts"][r["id"]] = int(r["montant"]) - avant
-        # Courbe : solde de fin de journée, depuis le premier relevé
+        # Courbe : solde de fin de journée, depuis le premier relevé (rien pour un portefeuille sans relevé)
         courbes[c] = {}
-        j = max(debut_serie, _dt(rel[0]["at"]).date())
+        j = max(debut_serie, _dt(rel[0]["at"]).date()) if rel else maintenant_dt.date() + timedelta(days=1)
         while j <= maintenant_dt.date():
             t = maintenant_dt if j == maintenant_dt.date() else datetime.combine(j, time(23, 59, 59), tzinfo=timezone.utc)
             courbes[c][j.isoformat()] = solde_a(t, rel, ev[c])
@@ -222,14 +229,29 @@ async def _doc(user: dict) -> dict:
     return await db.reglages_plateforme.find_one({"_id": _cle(user)}) or {"releves": [], "mouvements": []}
 
 
-async def _operateur_connu(operateur: Optional[str], obligatoire: bool, champ: str = "operateur") -> Optional[str]:
-    """Opérateur choisi dans la liste des opérateurs du catalogue (liste finie, jamais une saisie libre)."""
+def utilises(doc: dict) -> set:
+    """Opérateurs dont le portefeuille est DÉJÀ UTILISÉ : relevé ou mouvement (origine, destination d'un transfert, entrée / sortie)."""
+    ops = {r["operateur"] for r in doc.get("releves") or [] if r.get("portefeuille") == "electronique" and r.get("operateur")}
+    for m in doc.get("mouvements") or []:
+        ops |= {x for x in (m.get("operateur"), m.get("vers")) if x}
+    return ops
+
+
+def choisis_de(doc: dict) -> List[str]:
+    """Opérateurs cochés + opérateurs déjà utilisés (jamais masqués, même si les données viennent d'avant la case à cocher)."""
+    return sorted(set(doc.get("operateurs") or []) | utilises(doc))
+
+
+async def _operateur_connu(operateur: Optional[str], obligatoire: bool, doc: dict, champ: str = "operateur") -> Optional[str]:
+    """Opérateur du catalogue (liste finie, jamais une saisie libre) ET coché dans le profil."""
     if not operateur:
         if obligatoire:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choisissez l'opérateur du compte mobile money")
         return None
     if operateur not in await db.services.distinct("operateur", {"actif": True}):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Opérateur inconnu : {operateur}")
+    if operateur not in choisis_de(doc):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Cochez d'abord {operateur} dans votre profil (mes opérateurs)")
     return operateur
 
 
@@ -244,7 +266,8 @@ async def lire(jours: int = Query(90, ge=7, le=JOURS_MAX), user: dict = Depends(
         paiements = await db.paiements.find(
             {"user_id": user["id"], "cree_le": {"$gte": premier}, "statut": {"$in": list(STATUTS_CONFIRMES + STATUTS_EN_COURS)}},
             {"_id": 0, "id": 1, "cree_le": 1, "statut": 1, "montant": 1, "service_nom": 1, "marchand": 1, "operateur": 1}).to_list(5000)
-    calcul = calculer(releves, paiements, mouvements, jours)
+    choisis = choisis_de(doc)
+    calcul = calculer(releves, paiements, mouvements, jours, choisis=choisis)
     ev = calcul.pop("_evenements")
     debut_par_cle = {}
     for r in releves:
@@ -259,16 +282,45 @@ async def lire(jours: int = Query(90, ge=7, le=JOURS_MAX), user: dict = Depends(
         "en_cours": [{"libelle": e["libelle"], "montant": -e["delta"], "le": e["at"].isoformat(), "portefeuille": nom_de(c)}
                      for c, evs in ev.items() for e in evs if e["en_cours"] and e["at"] > _dt(debut_par_cle[c])][-20:],
         "jours": jours,
+        "operateurs_choisis": choisis,                       # opérateurs proposés dans les listes de saisie
     }
+
+
+class ChoixOperateurs(BaseModel):
+    operateurs: List[str] = Field(default_factory=list, max_length=20)
+
+
+@router.get("/operateurs")
+async def lire_operateurs(user: dict = Depends(get_current_user)):
+    """Opérateurs du catalogue, ceux que l'utilisateur a cochés, et ceux qu'il ne peut plus décocher (portefeuille déjà utilisé)."""
+    doc = await _doc(user)
+    return {"catalogue": sorted(await db.services.distinct("operateur", {"actif": True})), "choisis": choisis_de(doc), "verrouilles": sorted(utilises(doc))}
+
+
+@router.put("/operateurs")
+async def choisir_operateurs(data: ChoixOperateurs, user: dict = Depends(get_current_user)):
+    """Coche / décoche les opérateurs chez qui l'utilisateur a un compte mobile money. Un portefeuille déjà utilisé reste coché (409 sinon)."""
+    doc = await _doc(user)
+    catalogue = set(await db.services.distinct("operateur", {"actif": True}))
+    voulus = set(data.operateurs)
+    inconnus = sorted(voulus - catalogue)
+    if inconnus:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Opérateur inconnu : {', '.join(inconnus)}")
+    retires = sorted(utilises(doc) - voulus)
+    if retires:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Portefeuille déjà utilisé, impossible de le désactiver : {', '.join(retires)}")
+    await db.reglages_plateforme.update_one({"_id": _cle(user)}, {"$set": {"user_id": user["id"], "operateurs": sorted(voulus)}}, upsert=True)
+    doc["operateurs"] = sorted(voulus)
+    return {"catalogue": sorted(catalogue), "choisis": choisis_de(doc), "verrouilles": sorted(utilises(doc))}
 
 
 @router.post("/releves", status_code=status.HTTP_201_CREATED)
 async def ajouter_releve(data: Releve, user: dict = Depends(get_current_user)):
     """« Mon solde est de X à cette date ». Les relevés s'ajoutent (on garde l'historique des recalages) ; le plus récent sert de départ.
     Un portefeuille électronique se rattache à un opérateur."""
-    operateur = await _operateur_connu(data.operateur, data.portefeuille == "electronique") if data.portefeuille == "electronique" else None
-    j = _jour(data.jour)
     doc = await _doc(user)
+    operateur = await _operateur_connu(data.operateur, True, doc) if data.portefeuille == "electronique" else None
+    j = _jour(data.jour)
     if len(doc.get("releves") or []) >= RELEVES_MAX:
         raise HTTPException(status.HTTP_409_CONFLICT, f"{RELEVES_MAX} relevés au maximum : supprimez les plus anciens")
     releve = {"id": str(uuid.uuid4()), "portefeuille": data.portefeuille, "operateur": operateur, "jour": j.isoformat(),
@@ -289,17 +341,18 @@ async def supprimer_releve(releve_id: str, user: dict = Depends(get_current_user
 async def ajouter_mouvement(data: Mouvement, user: dict = Depends(get_current_user)):
     """Retrait / dépôt (compte d'un opérateur ↔ poche), transfert entre deux opérateurs, entrée / sortie d'argent sur un portefeuille."""
     erreur = HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY)
+    doc = await _doc(user)
     if data.type in ("retrait", "depot"):
         if data.portefeuille or data.vers:
             erreur.detail = "Un retrait ou un dépôt concerne le compte d'un opérateur et la poche"
             raise erreur
-        await _operateur_connu(data.operateur, True)
+        await _operateur_connu(data.operateur, True, doc)
     elif data.type == "transfert":
         if data.portefeuille:
             erreur.detail = "Un transfert va d'un compte mobile money à un autre"
             raise erreur
-        await _operateur_connu(data.operateur, True)
-        await _operateur_connu(data.vers, True, "vers")
+        await _operateur_connu(data.operateur, True, doc)
+        await _operateur_connu(data.vers, True, doc, "vers")
         if data.vers == data.operateur:
             erreur.detail = "Choisissez deux opérateurs différents"
             raise erreur
@@ -311,12 +364,11 @@ async def ajouter_mouvement(data: Mouvement, user: dict = Depends(get_current_us
             erreur.detail = "Les frais et la destination ne concernent que les retraits, dépôts et transferts"
             raise erreur
         if data.portefeuille == "electronique":
-            await _operateur_connu(data.operateur, True)
+            await _operateur_connu(data.operateur, True, doc)
         elif data.operateur:
             erreur.detail = "Le portefeuille personnel n'a pas d'opérateur"
             raise erreur
     j = _jour(data.jour)
-    doc = await _doc(user)
     if len(doc.get("mouvements") or []) >= MOUVEMENTS_MAX:
         raise HTTPException(status.HTTP_409_CONFLICT, f"{MOUVEMENTS_MAX} mouvements au maximum")
     mouvement = {"id": str(uuid.uuid4()), "type": data.type, "portefeuille": data.portefeuille, "operateur": data.operateur, "vers": data.vers,
