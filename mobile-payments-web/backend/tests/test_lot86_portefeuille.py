@@ -1,4 +1,5 @@
-"""Lot 86 — portefeuilles électronique et personnel : relevés de solde, paiements (effectués / en cours), retraits, courbe."""
+"""Lots 86 et 87 — portefeuilles : un électronique PAR OPÉRATEUR + un personnel ; relevés de solde, paiements (effectués / en cours),
+retraits, dépôts, transferts entre opérateurs, courbe."""
 import asyncio
 from datetime import datetime, timedelta, timezone
 
@@ -6,99 +7,141 @@ from db import db
 from routes import portefeuille as pf
 
 
-def _service(client, h):
-    return next(s for s in client.get("/api/services", params={"operateur": "Orange"}, headers=h).json() if s["nom"] == "Paiement marchand")
+def _service(client, h, operateur="Orange"):
+    return next(s for s in client.get("/api/services", params={"operateur": operateur}, headers=h).json() if s["nom"] == "Paiement marchand")
 
 
-def _payer(client, h, code, montant, statut=None):
-    p = client.post("/api/paiements", headers=h, json={"service_id": _service(client, h)["id"], "valeurs": {"code": code, "amount": str(montant)}}).json()
+def _payer(client, h, code, montant, statut=None, operateur="Orange"):
+    p = client.post("/api/paiements", headers=h, json={"service_id": _service(client, h, operateur)["id"], "valeurs": {"code": code, "amount": str(montant)}}).json()
     if statut:
         client.put(f"/api/paiements/{p['id']}/statut", headers=h, json={"statut": statut})
     return p
 
 
-def test_solde_paiements_effectues_en_cours_et_retrait(client, utilisateur):
+ORANGE, MOOV = "Orange", "Moov Africa"
+
+
+def _releve(client, h, portefeuille, montant, operateur=None, jour=None):
+    corps = {"portefeuille": portefeuille, "montant": montant, **({"operateur": operateur} if operateur else {}), **({"jour": jour} if jour else {})}
+    return client.post("/api/portefeuille/releves", headers=h, json=corps)
+
+
+def _soldes(client, h, **params):
+    return client.get("/api/portefeuille", params=params, headers=h).json()
+
+
+def test_un_portefeuille_par_operateur_paiements_effectues_et_en_cours(client, utilisateur):
     _, h, _ = utilisateur
-    # Aucun relevé : rien n'est calculé
-    assert client.get("/api/portefeuille", headers=h).json()["soldes"]["electronique"]["renseigne"] is False
-    assert client.post("/api/portefeuille/releves", headers=h, json={"portefeuille": "electronique", "montant": 100000}).status_code == 201
-    assert client.post("/api/portefeuille/releves", headers=h, json={"portefeuille": "personnel", "montant": 10000}).status_code == 201
+    assert _soldes(client, h)["portefeuilles"] == []                               # rien de suivi tant qu'aucun solde n'est indiqué
+    assert _releve(client, h, "electronique", 100000).status_code == 422             # l'opérateur est obligatoire
+    assert _releve(client, h, "electronique", 100000, "Inconnu").status_code == 422   # et il doit exister dans le catalogue
+    assert _releve(client, h, "electronique", 100000, ORANGE).status_code == 201
+    assert _releve(client, h, "electronique", 40000, MOOV).status_code == 201
+    assert _releve(client, h, "personnel", 10000).status_code == 201
 
-    _payer(client, h, "90000001", 5000, "effectue")               # payé : baisse le solde
-    _payer(client, h, "90000002", 3000)                           # préparé : « en cours »
-    _payer(client, h, "90000003", 700, "abandonne")               # abandonné : ignoré
-    s = client.get("/api/portefeuille", headers=h).json()
-    e = s["soldes"]["electronique"]
-    assert (e["montant"], e["en_cours"], e["apres_en_cours"]) == (95000, -3000, 92000)
-    assert [x["montant"] for x in s["en_cours"]] == [3000]
-
-    # Retrait : sortie du compte (avec frais), entrée dans la poche
-    assert client.post("/api/portefeuille/mouvements", headers=h, json={"type": "retrait", "montant": 20000, "frais": 500}).status_code == 201
-    s = client.get("/api/portefeuille", headers=h).json()
-    assert s["soldes"]["electronique"]["montant"] == 74500 and s["soldes"]["personnel"]["montant"] == 30000
-    # Dépôt inverse
-    client.post("/api/portefeuille/mouvements", headers=h, json={"type": "depot", "montant": 5000})
-    s = client.get("/api/portefeuille", headers=h).json()
-    assert s["soldes"]["electronique"]["montant"] == 79500 and s["soldes"]["personnel"]["montant"] == 25000
-    # Entrée / sortie sur un portefeuille choisi
-    client.post("/api/portefeuille/mouvements", headers=h, json={"type": "sortie", "portefeuille": "personnel", "montant": 1500, "motif": "Marché"})
-    assert client.get("/api/portefeuille", headers=h).json()["soldes"]["personnel"]["montant"] == 23500
-    # Dernier point de la courbe = solde actuel
-    assert client.get("/api/portefeuille", headers=h).json()["serie"][-1] == {"jour": datetime.now(timezone.utc).date().isoformat(), "electronique": 79500, "personnel": 23500}
+    _payer(client, h, "90000001", 5000, "effectue")                                  # Orange, payé
+    _payer(client, h, "90000002", 3000)                                              # Orange, préparé : « en cours »
+    _payer(client, h, "90000003", 700, "abandonne")                                  # abandonné : ignoré
+    _payer(client, h, "90000004", 2000, "effectue", MOOV)                            # Moov, payé : ne touche PAS le compte Orange
+    s = _soldes(client, h)
+    assert [p["nom"] for p in s["portefeuilles"]] == ["Électronique · Moov Africa", "Électronique · Orange", "Personnel"]
+    o, m = s["soldes"][f"electronique:{ORANGE}"], s["soldes"][f"electronique:{MOOV}"]
+    assert (o["montant"], o["en_cours"], o["apres_en_cours"]) == (95000, -3000, 92000)
+    assert (m["montant"], m["en_cours"]) == (38000, 0)
+    assert [x["montant"] for x in s["en_cours"]] == [3000] and s["en_cours"][0]["portefeuille"] == "Électronique · Orange"
 
 
-def test_nouveau_releve_remplace_le_calcul_et_donne_l_ecart(client, utilisateur):
+def test_retrait_depot_transfert_entree_sortie(client, utilisateur):
     _, h, _ = utilisateur
-    client.post("/api/portefeuille/releves", headers=h, json={"portefeuille": "electronique", "montant": 50000})
-    _payer(client, h, "90000011", 10000, "effectue")
-    # Le calcul prévoit 40 000 ; l'utilisateur déclare 38 000 (des frais oubliés) → écart de −2 000
-    client.post("/api/portefeuille/releves", headers=h, json={"portefeuille": "electronique", "montant": 38000})
-    s = client.get("/api/portefeuille", headers=h).json()
-    assert s["soldes"]["electronique"]["montant"] == 38000
-    assert sorted(r["ecart"] for r in s["releves"] if r["ecart"] is not None) == [-2000]
-    # Un autre relevé plus tard : le plus récent sert de départ, l'historique des recalages est gardé (écart +1 000 par rapport au calcul)
-    client.post("/api/portefeuille/releves", headers=h, json={"portefeuille": "electronique", "montant": 39000})
-    s = client.get("/api/portefeuille", headers=h).json()
-    assert s["soldes"]["electronique"]["montant"] == 39000
-    assert sorted(r["ecart"] for r in s["releves"] if r["portefeuille"] == "electronique" and r["ecart"] is not None) == [-2000, 1000]
+    _releve(client, h, "electronique", 100000, ORANGE)
+    _releve(client, h, "electronique", 20000, MOOV)
+    _releve(client, h, "personnel", 10000)
+    post = lambda **kw: client.post("/api/portefeuille/mouvements", headers=h, json=kw)   # noqa: E731
+    # Retrait Orange : sortie du compte (frais compris), entrée dans la poche
+    assert post(type="retrait", operateur=ORANGE, montant=20000, frais=500).status_code == 201
+    s = _soldes(client, h)["soldes"]
+    assert s[f"electronique:{ORANGE}"]["montant"] == 79500 and s["personnel"]["montant"] == 30000 and s[f"electronique:{MOOV}"]["montant"] == 20000
+    # Dépôt sur Moov
+    post(type="depot", operateur=MOOV, montant=5000)
+    s = _soldes(client, h)["soldes"]
+    assert s[f"electronique:{MOOV}"]["montant"] == 25000 and s["personnel"]["montant"] == 25000
+    # Transfert Orange → Moov avec frais pris sur Orange
+    assert post(type="transfert", operateur=ORANGE, vers=MOOV, montant=10000, frais=200).status_code == 201
+    s = _soldes(client, h)["soldes"]
+    assert s[f"electronique:{ORANGE}"]["montant"] == 69300 and s[f"electronique:{MOOV}"]["montant"] == 35000
+    # Entrée sur un compte, sortie en espèces
+    post(type="entree", portefeuille="electronique", operateur=MOOV, montant=1000, motif="Salaire")
+    post(type="sortie", portefeuille="personnel", montant=1500, motif="Marché")
+    s = _soldes(client, h)
+    assert s["soldes"][f"electronique:{MOOV}"]["montant"] == 36000 and s["soldes"]["personnel"]["montant"] == 23500
+    # Dernier point de la courbe = soldes actuels, un trait par portefeuille
+    dernier = s["serie"][-1]
+    assert dernier["jour"] == datetime.now(timezone.utc).date().isoformat()
+    assert dernier["valeurs"] == {f"electronique:{MOOV}": 36000, f"electronique:{ORANGE}": 69300, "personnel": 23500}
+    # Validations
+    assert post(type="retrait", montant=10).status_code == 422                                            # opérateur manquant
+    assert post(type="retrait", operateur=ORANGE, portefeuille="personnel", montant=10).status_code == 422
+    assert post(type="transfert", operateur=ORANGE, vers=ORANGE, montant=10).status_code == 422          # même opérateur
+    assert post(type="entree", montant=10).status_code == 422                                             # portefeuille manquant
+    assert post(type="entree", portefeuille="electronique", montant=10).status_code == 422               # opérateur manquant
+    assert post(type="sortie", portefeuille="personnel", operateur=ORANGE, montant=10).status_code == 422
+    assert post(type="retrait", operateur=ORANGE, montant=0).status_code == 422
 
 
-def test_un_paiement_deja_compris_dans_le_releve_n_est_pas_compte_deux_fois(client, utilisateur):
+def test_ancien_portefeuille_general_reste_suivi(client, utilisateur):
+    """Relevé du lot 86 (sans opérateur) : il reçoit les paiements des opérateurs qui n'ont pas leur propre portefeuille."""
+    u, h, _ = utilisateur
+    asyncio.run(db.reglages_plateforme.update_one({"_id": f"portefeuille:{u['id']}"}, {"$set": {"user_id": u["id"], "releves": [
+        {"id": "ancien", "portefeuille": "electronique", "jour": datetime.now(timezone.utc).date().isoformat(),
+         "at": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(), "montant": 50000}], "mouvements": []}}, upsert=True))
+    _payer(client, h, "90000011", 4000, "effectue")
+    s = _soldes(client, h)
+    assert s["portefeuilles"][0]["nom"] == "Électronique (général)" and s["soldes"]["electronique"]["montant"] == 46000
+    # Dès que l'opérateur a son propre portefeuille, ses paiements s'y rangent
+    _releve(client, h, "electronique", 30000, ORANGE)
+    _payer(client, h, "90000012", 1000, "effectue")
+    s = _soldes(client, h)["soldes"]
+    assert s[f"electronique:{ORANGE}"]["montant"] == 29000 and s["electronique"]["montant"] == 46000
+
+
+def test_nouveau_releve_donne_l_ecart_et_paiement_deja_compris(client, utilisateur):
     _, h, _ = utilisateur
-    p = _payer(client, h, "90000021", 4000)                       # préparé AVANT le relevé
-    client.post("/api/portefeuille/releves", headers=h, json={"portefeuille": "electronique", "montant": 60000})
-    client.put(f"/api/paiements/{p['id']}/statut", headers=h, json={"statut": "effectue"})       # confirmé APRÈS : déjà dans les 60 000
-    assert client.get("/api/portefeuille", headers=h).json()["soldes"]["electronique"]["montant"] == 60000
+    p = _payer(client, h, "90000021", 4000)                                                              # préparé AVANT le relevé
+    _releve(client, h, "electronique", 50000, ORANGE)
+    client.put(f"/api/paiements/{p['id']}/statut", headers=h, json={"statut": "effectue"})              # confirmé APRÈS : déjà compris
+    assert _soldes(client, h)["soldes"][f"electronique:{ORANGE}"]["montant"] == 50000
+    _payer(client, h, "90000022", 10000, "effectue")
+    _releve(client, h, "electronique", 38000, ORANGE)                                                    # le calcul prévoyait 40 000
+    _releve(client, h, "electronique", 39000, ORANGE)                                                    # ... puis +1 000 par rapport à 38 000
+    s = _soldes(client, h)
+    assert s["soldes"][f"electronique:{ORANGE}"]["montant"] == 39000
+    assert sorted(r["ecart"] for r in s["releves"] if r["ecart"] is not None) == [-2000, 1000]
 
 
-def test_courbe_sur_plusieurs_jours_et_validations(client, utilisateur):
+def test_courbe_sur_plusieurs_jours(client, utilisateur):
     _, h, _ = utilisateur
     hier3 = (datetime.now(timezone.utc).date() - timedelta(days=3)).isoformat()
     hier1 = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
-    client.post("/api/portefeuille/releves", headers=h, json={"portefeuille": "electronique", "jour": hier3, "montant": 100000})
-    client.post("/api/portefeuille/releves", headers=h, json={"portefeuille": "personnel", "jour": hier3, "montant": 0})
-    client.post("/api/portefeuille/mouvements", headers=h, json={"type": "retrait", "montant": 30000, "jour": hier1})
-    s = client.get("/api/portefeuille", params={"jours": 30}, headers=h).json()
-    pts = {x["jour"]: x for x in s["serie"]}
-    assert len(s["serie"]) == 4                                           # de il y a 3 jours à aujourd'hui
-    assert pts[hier3]["electronique"] == 100000 and pts[hier3]["personnel"] == 0
-    assert pts[hier1]["electronique"] == 70000 and pts[hier1]["personnel"] == 30000
-    # Validations
+    _releve(client, h, "electronique", 100000, ORANGE, hier3)
+    _releve(client, h, "personnel", 0, None, hier3)
+    client.post("/api/portefeuille/mouvements", headers=h, json={"type": "retrait", "operateur": ORANGE, "montant": 30000, "jour": hier1})
+    s = _soldes(client, h, jours=30)
+    pts = {x["jour"]: x["valeurs"] for x in s["serie"]}
+    assert len(s["serie"]) == 4                                                                           # de il y a 3 jours à aujourd'hui
+    assert pts[hier3] == {f"electronique:{ORANGE}": 100000, "personnel": 0}
+    assert pts[hier1] == {f"electronique:{ORANGE}": 70000, "personnel": 30000}
     futur = (datetime.now(timezone.utc).date() + timedelta(days=2)).isoformat()
-    assert client.post("/api/portefeuille/releves", headers=h, json={"portefeuille": "personnel", "jour": futur, "montant": 1}).status_code == 422
-    assert client.post("/api/portefeuille/mouvements", headers=h, json={"type": "entree", "montant": 10}).status_code == 422          # portefeuille manquant
-    assert client.post("/api/portefeuille/mouvements", headers=h, json={"type": "retrait", "portefeuille": "personnel", "montant": 10}).status_code == 422
-    assert client.post("/api/portefeuille/mouvements", headers=h, json={"type": "retrait", "montant": 0}).status_code == 422
+    assert _releve(client, h, "personnel", 1, None, futur).status_code == 422
 
 
 def test_suppression_et_confidentialite(client, utilisateur):
     _, h, _ = utilisateur
-    client.post("/api/portefeuille/releves", headers=h, json={"portefeuille": "electronique", "montant": 1000})
-    client.post("/api/portefeuille/mouvements", headers=h, json={"type": "entree", "portefeuille": "electronique", "montant": 500, "motif": "Salaire"})
-    s = client.get("/api/portefeuille", headers=h).json()
-    assert s["soldes"]["electronique"]["montant"] == 1500
+    _releve(client, h, "electronique", 1000, ORANGE)
+    client.post("/api/portefeuille/mouvements", headers=h, json={"type": "entree", "portefeuille": "electronique", "operateur": ORANGE, "montant": 500})
+    s = _soldes(client, h)
+    assert s["soldes"][f"electronique:{ORANGE}"]["montant"] == 1500
     assert client.delete(f"/api/portefeuille/mouvements/{s['mouvements'][0]['id']}", headers=h).status_code == 200
     assert client.delete(f"/api/portefeuille/releves/{s['releves'][0]['id']}", headers=h).status_code == 200
     assert client.delete("/api/portefeuille/mouvements/inconnu", headers=h).status_code == 404
-    assert client.get("/api/portefeuille", headers=h).json()["soldes"]["electronique"]["renseigne"] is False
+    assert _soldes(client, h)["portefeuilles"] == []
     assert client.get("/api/portefeuille").status_code == 401
