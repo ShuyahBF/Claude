@@ -27,7 +27,7 @@ const MIN_SECRET = 4;
 const secretValide = (type, s) => (type === "pin" ? /^\d{4,12}$/.test(s) : s.length >= MIN_SECRET);
 const MESSAGE_SECRET = (type) => (type === "pin" ? "Le code PIN compte de 4 à 12 chiffres" : `La phrase secrète doit compter au moins ${MIN_SECRET} caractères`);
 const norm = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-const VIDE = { titre: "", categorie: CATEGORIES_BASE[0], nouvelleCategorie: "", date: aujourdhui(), tags: [], saisieTag: "", stockage: "cloud" };
+const VIDE = { titre: "", categorie: CATEGORIES_BASE[0], nouvelleCategorie: "", date: aujourdhui(), tags: [], saisieTag: "", stockage: "cloud", secret: "" };
 
 export default function Archives() {
   const toast = useToast();
@@ -231,10 +231,25 @@ export default function Archives() {
       const tags = ajout.saisieTag.trim() ? [...new Set([...ajout.tags, ajout.saisieTag.trim()])].slice(0, 12) : ajout.tags;
       const base = { titre: ajout.titre.trim() || "Sans titre", categorie, tags, date: ajout.date || aujourdhui(), annee: anneeDe(ajout.date) };
       if (edition) {
+        // Lot 95 : l'image du document peut être REMPLACÉE (nouvelle photo, nouveau scan) ; la fiche suit la nouvelle image
+        const apres = fichier
+          ? { mime: fichier.type || "application/octet-stream", taille: fichier.size, nom_fichier: fichier.name }
+          : { mime: ajout.mime, taille: ajout.tailleFichier, nom_fichier: ajout.nom_fichier };
         if (ajout.source === "cloud") {
-          const meta = { ...base, id: ajout.id, mime: ajout.mime, taille: ajout.tailleFichier, nom_fichier: ajout.nom_fichier, cree_le: ajout.cree_le_doc };
-          await apiClient.put(`/archives/${ajout.id}`, { meta: await chiffrerJson(meta) });
-          await chargerCloud();
+          // Lot 95 : TOUTE modification exige le code PIN / la phrase, même archives ouvertes ; le serveur contrôle la preuve (essais limités)
+          let preuve;
+          if (etat?.pin) {
+            if (!secretValide(etat.pin, ajout.secret)) { toast.erreur(`Saisissez votre ${etat.pin === "pin" ? "code PIN" : "phrase secrète"} pour modifier ce document`); return; }
+            preuve = (await etapeSecret(ajout.secret, etat.sel)).preuve;
+          }
+          const meta = { ...base, id: ajout.id, ...apres, cree_le: ajout.cree_le_doc };
+          const corps = { meta: await chiffrerJson(meta), ...(preuve ? { preuve } : {}) };
+          if (fichier) corps.contenu = versBase64(await chiffrer(new Uint8Array(await fichier.arrayBuffer())));
+          await apiClient.put(`/archives/${ajout.id}`, corps);
+          await Promise.all([chargerCloud(), chargerEtat()]);
+        } else if (fichier) {
+          await ajouterLocal({ ...ajout.original, ...base, ...apres }, fichier);     // même identifiant : la nouvelle image remplace l'ancienne
+          await chargerLocal();
         } else {
           await modifierLocal({ ...ajout.original, ...base });
           await chargerLocal();
@@ -553,9 +568,10 @@ export default function Archives() {
       <Modal ouvert={!!ajout} titre={ajout?.id ? "Modifier le document" : "Archiver un document"} onFermer={fermerAjout} large>
         {ajout && (
           <form onSubmit={enregistrer} className="space-y-3"
-            onPaste={(e) => { const f = !ajout.id && e.clipboardData?.files?.[0]; if (f) { e.preventDefault(); prendreFichier(f); } }}>
-            {!ajout.id && (
+            onPaste={(e) => { const f = e.clipboardData?.files?.[0]; if (f) { e.preventDefault(); prendreFichier(f); } }}>
+            {(
               <div className="space-y-2">
+                {ajout.id && <p className="text-sm font-semibold text-gray-700">Remplacer l'image du document <span className="font-normal text-gray-500">(facultatif : laissez vide pour ne modifier que les informations)</span></p>}
                 <div className="grid grid-cols-2 gap-2">
                   <button type="button" className="btn-outline" onClick={() => photo.current?.click()}>📷 Photographier</button>
                   <button type="button" className="btn-outline" onClick={() => choisir.current?.click()}>📁 Choisir un fichier</button>
@@ -609,6 +625,13 @@ export default function Archives() {
                 <label className="flex items-center gap-2 text-sm"><input type="radio" name="stockage" checked={ajout.stockage === "local"} onChange={() => setAjout({ ...ajout, stockage: "local" })} /> 📱 Sur cet appareil seulement
                   <span className="text-xs text-amber-800">(non sauvegardé)</span></label>
               </fieldset>
+            )}
+            {ajout.id && ajout.source === "cloud" && etat?.pin && (
+              <div>
+                <label className="label" htmlFor="ar-secret">{etat.pin === "pin" ? "Code PIN" : "Phrase secrète"} <span className="font-normal text-gray-500">(obligatoire pour modifier un document)</span></label>
+                <input id="ar-secret" className="input" type="password" inputMode={etat.pin === "pin" ? "numeric" : "text"} autoComplete="current-password" placeholder={etat.pin === "pin" ? "Code PIN" : "Phrase secrète"} value={ajout.secret}
+                  onChange={(e) => setAjout({ ...ajout, secret: etat.pin === "pin" ? e.target.value.replace(/\D/g, "").slice(0, 12) : e.target.value })} />
+              </div>
             )}
             <button type="submit" className="btn-primary w-full" disabled={occupe}>{occupe ? "Patientez…" : ajout.id ? "Enregistrer" : "Archiver"}</button>
           </form>

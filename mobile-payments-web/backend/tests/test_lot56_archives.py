@@ -165,3 +165,23 @@ def test_application_d_authentification_relayee(client, utilisateur, sawali):
     n = len(sawali)
     assert client.post("/api/archives/totp/activer", headers=h, json={"code": "12"}).status_code == 422
     assert len(sawali) == n
+
+
+def test_modification_avec_preuve_et_nouvelle_image(client, utilisateur, sawali):
+    """Lot 95 : la preuve du code et la nouvelle image (chiffrée) sont relayées telles quelles ; les refus de SAWALI sont rendus."""
+    _, h, _ = utilisateur
+    PREUVE = "P" * 43 + "="
+    sawali.reponse = (200, {"ok": True, "taille": 250, "utilise_octets": 250})
+    r = client.put("/api/archives/a1b2c3d4e5", headers=h, json={"meta": "N" * 48, "preuve": PREUVE, "contenu": CONTENU})
+    assert r.status_code == 200 and r.json()["taille"] == 250
+    corps = json.loads(sawali[-1].content)
+    assert corps["preuve"] == PREUVE and corps["contenu"] == CONTENU and corps["id"] == "a1b2c3d4e5" and sawali[-1].url.path.endswith("/archives/modifier")
+    # sans image ni preuve : comme avant (anciennes archives)
+    client.put("/api/archives/a1b2c3d4e5", headers=h, json={"meta": "N" * 48})
+    assert "preuve" not in json.loads(sawali[-1].content) and "contenu" not in json.loads(sawali[-1].content)
+    sawali.reponse = (409, {"detail": "Code ou phrase incorrect (4 essais avant une pause)"})
+    r = client.put("/api/archives/a1b2c3d4e5", headers=h, json={"meta": "N" * 48, "preuve": PREUVE})
+    assert r.status_code == 409 and "4 essais" in r.json()["detail"]
+    n = len(sawali)
+    assert client.put("/api/archives/a1b2c3d4e5", headers=h, json={"meta": "N" * 48, "preuve": "court"}).status_code == 422
+    assert len(sawali) == n
