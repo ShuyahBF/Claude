@@ -4,7 +4,7 @@ import Chargement from "@/components/Chargement";
 import Modal from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { apiClient, messageErreur } from "@/lib/api";
-import { chiffrer, chiffrerJson, cleDeverrouillee, creerPhrase, dechiffrer, dechiffrerJson, depuisBase64, deverrouiller, deverrouillerAvecCode, nouvelleEnveloppe, preparerSecours, verrouiller, versBase64 } from "@/lib/archiveCrypto";
+import { chiffrer, chiffrerJson, cleDeverrouillee, creerAvecSecret, dechiffrer, dechiffrerJson, depuisBase64, deverrouiller, deverrouillerAvecCode, deverrouillerAvecPoivre, nouveauSecours, nouveauSel, nouvelleEnveloppePin, preuveEtPartie, verrouiller, versBase64 } from "@/lib/archiveCrypto";
 import { ajouterCategorie, ajouterLocal, categoriesPerso, demanderStockageDurable, listerLocal, lireContenuLocal, modifierLocal, nouvelId, supprimerLocal } from "@/lib/archiveLocal";
 import { anneeDe, aujourdhui, captureEcranDisponible, capturerEcran, reduireImage, taille, telecharger } from "@/lib/archiveMedia";
 
@@ -12,7 +12,8 @@ import { anneeDe, aujourdhui, captureEcranDisponible, capturerEcran, reduireImag
 // Archives (lot 56) : reçus, factures, pièces d'identité, pages de passeport, TVM, carte grise… et captures d'écran.
 //   - Lot 92 : les documents sont gardés EN LIGNE, CHIFFRÉS, pour TOUT utilisateur (espace gratuit ; l'abonnement donne plus d'espace) : ils ne dépendent
 //     plus de la mémoire du navigateur (changement d'adresse, données effacées, nouveau téléphone). Le chiffrement se fait ici, dans le navigateur,
-//     avec une phrase secrète ET un code de secours que personne d'autre ne connaît : le serveur ne garde que des octets illisibles.
+//     avec un code PIN (ou une phrase) ET un code de secours que personne d'autre ne connaît : le serveur ne garde que des octets illisibles.
+//   - Lot 93 : le code PIN ou la phrase (4 caractères au moins) est contrôlé par le serveur avec une limite d'essais (5, puis 15 min de pause ; 10 échecs : code de secours).
 //   - Les documents qui ne sont encore que sur l'appareil (anciennes archives) montent automatiquement dès que les archives sont ouvertes.
 //   - Étiquettes (tags) : l'année du document est ajoutée automatiquement ; l'utilisateur ajoute les siennes et ses propres catégories.
 //   - Recherche : texte libre (titre, catégorie, étiquettes, année) + filtres catégorie, année et étiquette.
@@ -20,6 +21,10 @@ import { anneeDe, aujourdhui, captureEcranDisponible, capturerEcran, reduireImag
 const CATEGORIES_BASE = ["Reçu", "Facture", "Carte d'identité", "Passeport (pages)", "TVM (taxe véhicule à moteur)", "Carte grise", "Permis de conduire",
   "Assurance", "Acte (naissance, mariage…)", "Diplôme / attestation", "Ordonnance", "Contrat", "Capture d'écran", "Autre"];
 const NOUVELLE = "__nouvelle";
+// Lot 93 : le secret des archives est un CODE PIN (chiffres) ou une PHRASE, d'au moins 4 caractères ; les essais sont limités par le serveur
+const MIN_SECRET = 4;
+const secretValide = (type, s) => (type === "pin" ? /^\d{4,12}$/.test(s) : s.length >= MIN_SECRET);
+const MESSAGE_SECRET = (type) => (type === "pin" ? "Le code PIN compte de 4 à 12 chiffres" : `La phrase secrète doit compter au moins ${MIN_SECRET} caractères`);
 const norm = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 const VIDE = { titre: "", categorie: CATEGORIES_BASE[0], nouvelleCategorie: "", date: aujourdhui(), tags: [], saisieTag: "", stockage: "cloud" };
 
@@ -40,6 +45,7 @@ export default function Archives() {
   const [apercu, setApercu] = useState("");
   const [vue, setVue] = useState(null);                     // document ouvert {titre, mime, url}
   const [codeSecours, setCodeSecours] = useState(null);     // lot 92 : code de secours à montrer UNE fois {code, confirme}
+  const [typeSecret, setTypeSecret] = useState("pin");      // lot 93 : « pin » | « phrase » (choix à l'activation et au changement de code)
   const [modeCode, setModeCode] = useState(false);           // lot 92 : formulaire « phrase oubliée → code de secours »
   const [codeSaisi, setCodeSaisi] = useState("");
   const [synchro, setSynchro] = useState(null);              // lot 92 : mise en sécurité des documents locaux {fait, total}
@@ -88,50 +94,72 @@ export default function Archives() {
   }, [tous, recherche, filtres]);
 
   // ---- Phrase secrète (stockage en ligne) -------------------------------------------------------
+  // Saisie du code : un PIN n'accepte que des chiffres
+  const saisirSecret = (champ, valeur) => setPhrase((p) => ({ ...p, [champ]: typeSecret === "pin" ? valeur.replace(/\D/g, "").slice(0, 12) : valeur }));
+  // Lot 93 : « code ou phrase » → { preuve (envoyée au serveur, qui limite les essais), partie (reste ici) }
+  const etapeSecret = (secret, sel) => preuveEtPartie(secret, sel);
+
   const activerEnLigne = async (e) => {
     e.preventDefault();
-    if (phrase.a.length < 8) { toast.erreur("La phrase secrète doit compter au moins 8 caractères"); return; }
+    if (!secretValide(typeSecret, phrase.a)) { toast.erreur(MESSAGE_SECRET(typeSecret)); return; }
     if (phrase.a !== phrase.b) { toast.erreur("Les deux saisies ne sont pas identiques"); return; }
     setOccupe(true);
     try {
-      const { sel, verif, enveloppe, secours, code } = await creerPhrase(phrase.a);
+      const sel = nouveauSel();
+      const { preuve, partie } = await etapeSecret(phrase.a, sel);
+      const { data } = await apiClient.post("/archives/pin/enregistrer", { preuve, type_secret: typeSecret });
+      const { verif, enveloppe, secours, code } = await creerAvecSecret(partie, data.poivre, sel);
       await apiClient.post("/archives/cle", { sel, verif, enveloppe, secours });
       setPhrase({ a: "", b: "" });
       await chargerEtat();
       setCloud([]); setDeverrouille(true);
-      setCodeSecours({ code, confirme: false });                // le code est montré une seule fois, avec obligation de confirmer
+      setCodeSecours({ code, confirme: false });                // le code de secours est montré une seule fois, avec obligation de confirmer
     } catch (err) { verrouiller(); toast.erreur(messageErreur(err, "Activation impossible")); } finally { setOccupe(false); }
   };
   const ouvrirCoffre = async (e) => {
     e.preventDefault();
     setOccupe(true);
     try {
-      const r = await deverrouiller(phrase.a, etat.sel, etat.verif, etat.enveloppe);
-      if (!r.ok) { toast.erreur("Phrase secrète incorrecte"); return; }
-      if (r.ancienne) {
-        // Archives d'avant le lot 92 : on ajoute l'enveloppe et le code de secours (la clé et les documents ne changent pas)
-        const maj = await preparerSecours(phrase.a, etat.sel);
-        await apiClient.post("/archives/cle/enveloppes", { verif_actuelle: etat.verif, enveloppe: maj.enveloppe, secours: maj.secours });
-        setCodeSecours({ code: maj.code, confirme: false });
+      if (etat.pin) {
+        // Archives protégées par code + poivre du serveur : le serveur contrôle la preuve et limite les essais
+        const { preuve, partie } = await etapeSecret(phrase.a, etat.sel);
+        const { data } = await apiClient.post("/archives/pin/ouvrir", { preuve });
+        if (!(await deverrouillerAvecPoivre(partie, data.poivre, etat.verif, etat.enveloppe))) { toast.erreur("Ouverture impossible : réessayez"); return; }
+      } else {
+        // Archives créées avant le lot 93 (protégées par la phrase seule) : ouverture, puis mise à niveau vers code + poivre
+        const r = await deverrouiller(phrase.a, etat.sel, etat.verif, etat.enveloppe);
+        if (!r.ok) { toast.erreur("Phrase secrète incorrecte"); return; }
+        const { preuve, partie } = await etapeSecret(phrase.a, etat.sel);
+        const { data } = await apiClient.post("/archives/pin/enregistrer", { preuve, type_secret: "phrase", verif_actuelle: etat.verif });
+        const enveloppe = await nouvelleEnveloppePin(partie, data.poivre);
+        let maj = { verif_actuelle: etat.verif, enveloppe };
+        if (!etat.secours) {                                    // très anciennes archives : on ajoute aussi un code de secours
+          const s = await nouveauSecours(etat.sel);
+          maj = { ...maj, secours: s.secours };
+          setCodeSecours({ code: s.code, confirme: false });
+        }
+        await apiClient.post("/archives/cle/enveloppes", maj);
         await chargerEtat();
       }
       setPhrase({ a: "", b: "" }); setDeverrouille(true);
-    } catch (err) { toast.erreur(messageErreur(err, "Ouverture impossible")); } finally { setOccupe(false); }
+    } catch (err) { verrouiller(); toast.erreur(messageErreur(err, "Ouverture impossible")); } finally { setOccupe(false); }
   };
-  // Phrase oubliée : le code de secours rouvre la clé, puis on choisit une nouvelle phrase (les documents ne changent pas)
+  // Code oublié : le code de secours rouvre la clé, puis on choisit un nouveau code ou une nouvelle phrase (les documents ne changent pas)
   const recupererAvecCode = async (e) => {
     e.preventDefault();
-    if (phrase.a.length < 8) { toast.erreur("La nouvelle phrase secrète doit compter au moins 8 caractères"); return; }
+    if (!secretValide(typeSecret, phrase.a)) { toast.erreur(MESSAGE_SECRET(typeSecret)); return; }
     if (phrase.a !== phrase.b) { toast.erreur("Les deux saisies ne sont pas identiques"); return; }
     setOccupe(true);
     try {
       if (!etat.secours) { toast.erreur("Aucun code de secours n'a été enregistré pour ces archives"); return; }
       if (!(await deverrouillerAvecCode(codeSaisi, etat.sel, etat.verif, etat.secours))) { toast.erreur("Code de secours incorrect"); return; }
-      const enveloppe = await nouvelleEnveloppe(phrase.a, etat.sel);
+      const { preuve, partie } = await etapeSecret(phrase.a, etat.sel);
+      const { data } = await apiClient.post("/archives/pin/enregistrer", { preuve, type_secret: typeSecret, verif_actuelle: etat.verif });
+      const enveloppe = await nouvelleEnveloppePin(partie, data.poivre);
       await apiClient.post("/archives/cle/enveloppes", { verif_actuelle: etat.verif, enveloppe });
       setPhrase({ a: "", b: "" }); setCodeSaisi(""); setModeCode(false);
       await chargerEtat(); setDeverrouille(true);
-      toast.succes("Archives rouvertes : votre nouvelle phrase secrète est enregistrée");
+      toast.succes("Archives rouvertes : votre nouveau code est enregistré");
     } catch (err) { verrouiller(); toast.erreur(messageErreur(err, "Récupération impossible")); } finally { setOccupe(false); }
   };
   const fermerCoffre = () => { verrouiller(); setDeverrouille(false); setCloud(null); synchroRefusee.current = false; };
@@ -306,29 +334,39 @@ export default function Archives() {
         {etat === false && <p className="text-sm text-amber-800">Le service en ligne est momentanément indisponible. Les documents de l'appareil restent accessibles.</p>}
         {etat && !enLigneConfigure && (
           <form onSubmit={activerEnLigne} className="space-y-2">
-            <p className="text-sm text-gray-600">Choisissez la <b>phrase secrète</b> de vos archives (8 caractères au moins). Elle chiffre vos documents ici, sur votre téléphone.
-              Un <b>code de secours</b> vous sera remis ensuite : il permet de retrouver l'accès si vous oubliez la phrase. <b>Sans la phrase ni le code, personne ne peut récupérer vos documents.</b></p>
-            <input className="input" type="password" autoComplete="new-password" placeholder="Phrase secrète" value={phrase.a} onChange={(e) => setPhrase({ ...phrase, a: e.target.value })} />
-            <input className="input" type="password" autoComplete="new-password" placeholder="Répétez la phrase secrète" value={phrase.b} onChange={(e) => setPhrase({ ...phrase, b: e.target.value })} />
+            <p className="text-sm text-gray-600">Choisissez comment protéger vos archives : un <b>code PIN</b> (comme celui d'une carte) ou une <b>phrase secrète</b>. Quatre caractères suffisent :
+              le serveur limite les essais (5 essais, puis 15 minutes d'attente). Un <b>code de secours</b> vous sera remis ensuite pour retrouver l'accès si vous oubliez votre code.
+              <b> Sans votre code ni le code de secours, personne ne peut récupérer vos documents.</b></p>
+            <fieldset className="flex gap-4 text-sm">
+              <label className="flex items-center gap-1.5"><input type="radio" name="type-secret" checked={typeSecret === "pin"} onChange={() => { setTypeSecret("pin"); setPhrase({ a: "", b: "" }); }} /> 🔢 Code PIN</label>
+              <label className="flex items-center gap-1.5"><input type="radio" name="type-secret" checked={typeSecret === "phrase"} onChange={() => { setTypeSecret("phrase"); setPhrase({ a: "", b: "" }); }} /> 🔤 Phrase secrète</label>
+            </fieldset>
+            <input className="input" type="password" inputMode={typeSecret === "pin" ? "numeric" : "text"} autoComplete="new-password" placeholder={typeSecret === "pin" ? "Code PIN (4 à 12 chiffres)" : "Phrase secrète (4 caractères au moins)"} value={phrase.a} onChange={(e) => saisirSecret("a", e.target.value)} />
+            <input className="input" type="password" inputMode={typeSecret === "pin" ? "numeric" : "text"} autoComplete="new-password" placeholder={typeSecret === "pin" ? "Répétez le code PIN" : "Répétez la phrase secrète"} value={phrase.b} onChange={(e) => saisirSecret("b", e.target.value)} />
             <button type="submit" className="btn-primary w-full" disabled={occupe}>{occupe ? "Patientez…" : "Activer la sauvegarde en ligne chiffrée"}</button>
           </form>
         )}
         {etat && enLigneConfigure && !deverrouille && !modeCode && (
           <form onSubmit={ouvrirCoffre} className="space-y-2">
-            <p className="text-sm text-gray-600">{nbEnLigne} document{nbEnLigne > 1 ? "s" : ""} en ligne, verrouillé{nbEnLigne > 1 ? "s" : ""}. Saisissez votre phrase secrète pour les voir.{!abonne && etat.nombre_max != null && ` Espace gratuit : ${etat.nombre_max} documents, ${taille(etat.quota_octets)}.`}</p>
+            <p className="text-sm text-gray-600">{nbEnLigne} document{nbEnLigne > 1 ? "s" : ""} en ligne, verrouillé{nbEnLigne > 1 ? "s" : ""}. Saisissez votre {etat.pin === "pin" ? "code PIN" : "phrase secrète"} pour les voir.{!abonne && etat.nombre_max != null && ` Espace gratuit : ${etat.nombre_max} documents, ${taille(etat.quota_octets)}.`}</p>
             <div className="flex gap-2">
-              <input className="input min-w-0 flex-1" type="password" autoComplete="current-password" placeholder="Phrase secrète" value={phrase.a} onChange={(e) => setPhrase({ ...phrase, a: e.target.value })} />
+              <input className="input min-w-0 flex-1" type="password" inputMode={etat.pin === "pin" ? "numeric" : "text"} autoComplete="current-password" placeholder={etat.pin === "pin" ? "Code PIN" : "Phrase secrète"} value={phrase.a}
+                onChange={(e) => setPhrase({ ...phrase, a: etat.pin === "pin" ? e.target.value.replace(/\D/g, "").slice(0, 12) : e.target.value })} />
               <button type="submit" className="btn-primary" disabled={occupe || !phrase.a}>{occupe ? "…" : "🔓 Ouvrir"}</button>
             </div>
-            {etat.secours && <button type="button" className="text-sm font-semibold text-primary underline" onClick={() => { setModeCode(true); setPhrase({ a: "", b: "" }); }}>Phrase oubliée ? Utiliser mon code de secours</button>}
+            {etat.secours && <button type="button" className="text-sm font-semibold text-primary underline" onClick={() => { setModeCode(true); setTypeSecret(etat.pin === "phrase" ? "phrase" : "pin"); setPhrase({ a: "", b: "" }); }}>{etat.pin === "pin" ? "Code PIN oublié" : "Phrase oubliée"} ? Utiliser mon code de secours</button>}
           </form>
         )}
         {etat && enLigneConfigure && !deverrouille && modeCode && (
           <form onSubmit={recupererAvecCode} className="space-y-2">
-            <p className="text-sm text-gray-600">Saisissez votre <b>code de secours</b> (8 groupes de 4 caractères) puis choisissez une <b>nouvelle phrase secrète</b>. Vos documents ne changent pas.</p>
+            <p className="text-sm text-gray-600">Saisissez votre <b>code de secours</b> (8 groupes de 4 caractères) puis choisissez un <b>nouveau code PIN ou une nouvelle phrase</b>. Vos documents ne changent pas.</p>
             <input className="input font-mono" autoComplete="off" autoCapitalize="characters" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" value={codeSaisi} onChange={(e) => setCodeSaisi(e.target.value)} />
-            <input className="input" type="password" autoComplete="new-password" placeholder="Nouvelle phrase secrète" value={phrase.a} onChange={(e) => setPhrase({ ...phrase, a: e.target.value })} />
-            <input className="input" type="password" autoComplete="new-password" placeholder="Répétez la nouvelle phrase" value={phrase.b} onChange={(e) => setPhrase({ ...phrase, b: e.target.value })} />
+            <fieldset className="flex gap-4 text-sm">
+              <label className="flex items-center gap-1.5"><input type="radio" name="type-secret2" checked={typeSecret === "pin"} onChange={() => { setTypeSecret("pin"); setPhrase({ a: "", b: "" }); }} /> 🔢 Code PIN</label>
+              <label className="flex items-center gap-1.5"><input type="radio" name="type-secret2" checked={typeSecret === "phrase"} onChange={() => { setTypeSecret("phrase"); setPhrase({ a: "", b: "" }); }} /> 🔤 Phrase secrète</label>
+            </fieldset>
+            <input className="input" type="password" inputMode={typeSecret === "pin" ? "numeric" : "text"} autoComplete="new-password" placeholder={typeSecret === "pin" ? "Nouveau code PIN" : "Nouvelle phrase secrète"} value={phrase.a} onChange={(e) => saisirSecret("a", e.target.value)} />
+            <input className="input" type="password" inputMode={typeSecret === "pin" ? "numeric" : "text"} autoComplete="new-password" placeholder="Répétez" value={phrase.b} onChange={(e) => saisirSecret("b", e.target.value)} />
             <div className="flex gap-2">
               <button type="submit" className="btn-primary flex-1" disabled={occupe || !codeSaisi}>{occupe ? "Patientez…" : "Rouvrir mes archives"}</button>
               <button type="button" className="btn-outline" onClick={() => { setModeCode(false); setCodeSaisi(""); }}>Annuler</button>
@@ -410,7 +448,7 @@ export default function Archives() {
       <Modal ouvert={!!codeSecours} titre="Votre code de secours" onFermer={() => { if (codeSecours?.confirme) setCodeSecours(null); }}>
         {codeSecours && (
           <div className="space-y-3">
-            <p className="text-sm text-gray-700">Si vous oubliez votre phrase secrète, ce code est <b>le seul moyen</b> de retrouver vos documents. Il ne sera <b>plus jamais affiché</b>.
+            <p className="text-sm text-gray-700">Si vous oubliez votre code PIN ou votre phrase, ce code est <b>le seul moyen</b> de retrouver vos documents. Il ne sera <b>plus jamais affiché</b>.
               Notez-le sur papier ou enregistrez-le dans un endroit sûr, <b>pas sur ce téléphone seulement</b>.</p>
             <p className="select-all rounded-lg bg-creme p-3 text-center font-mono text-lg font-bold tracking-wide" data-testid="code-secours">{codeSecours.code}</p>
             <div className="grid grid-cols-2 gap-2">

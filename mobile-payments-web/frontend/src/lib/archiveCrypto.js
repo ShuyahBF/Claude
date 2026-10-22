@@ -104,6 +104,59 @@ export async function deverrouiller(phrase, sel, verif, enveloppe = null) {
   } catch { return { ok: false, ancienne: false }; }
 }
 
+// ---- Lot 93 : code PIN ou phrase COURTE, protégés par une limite d'essais côté serveur ------------------------------------------
+// Un code de 4 chiffres n'a que 10 000 possibilités : seul, il serait deviné en quelques minutes par qui détiendrait les données.
+// Le code est donc transformé (PBKDF2) en deux parties : une PREUVE (empreinte envoyée au serveur pour contrôler les essais : 5 essais, puis 15 min
+// de pause ; 10 échecs : code de secours) et une PARTIE secrète qui ne quitte jamais l'appareil. À la bonne preuve, le serveur rend un « poivre »
+// (secret à lui, hors base). La clé qui protège la clé des documents est SHA-256(partie + poivre) : ni le code, ni la clé, ni les documents
+// ne sont connus du serveur, et le poivre seul (sans le code) n'ouvre rien.
+const sha256 = async (octets) => new Uint8Array(await crypto.subtle.digest("SHA-256", octets));
+const concat = (...p) => { const o = new Uint8Array(p.reduce((n, x) => n + x.length, 0)); let i = 0; p.forEach((x) => { o.set(x, i); i += x.length; }); return o; };
+
+/** Du code (PIN ou phrase) → { preuve (base64, à envoyer au serveur), partie (octets, à garder ici) }. */
+export async function preuveEtPartie(secret, sel) {
+  const bits = await deriverOctets(secret, sel);
+  return { preuve: versBase64(await sha256(concat(enc.encode("preuve|"), bits))), partie: await sha256(concat(enc.encode("kek|"), bits)) };
+}
+const cleDepuisPartie = async (partie, poivreBase64) => importerCle(await sha256(concat(partie, depuisBase64(poivreBase64))));
+const envelopperPin = async (octets, partie, poivre) => versBase64(await chiffrer(octets, await cleDepuisPartie(partie, poivre)));
+
+/** Première activation avec un code PIN / une phrase courte : clé aléatoire, enveloppe (code + poivre) et secours (code de secours). */
+export async function creerAvecSecret(partie, poivre, sel) {
+  const octets = crypto.getRandomValues(new Uint8Array(32));
+  const cle = await importerCle(octets);
+  const code = nouveauCodeSecours();
+  const verif = versBase64(await chiffrer(enc.encode(TEXTE_CONTROLE), cle));
+  const enveloppe = await envelopperPin(octets, partie, poivre);
+  const secours = await envelopper(octets, normaliserCode(code), sel);
+  cleActive = cle; octetsActifs = octets;
+  return { sel, verif, enveloppe, secours, code };
+}
+
+/** Ouverture avec le poivre rendu par le serveur à la bonne preuve. */
+export async function deverrouillerAvecPoivre(partie, poivre, verif, enveloppe) {
+  try {
+    const octets = await dechiffrer(depuisBase64(enveloppe), await cleDepuisPartie(partie, poivre));
+    const cle = await importerCle(octets);
+    if (dec.decode(await dechiffrer(depuisBase64(verif), cle)) !== TEXTE_CONTROLE) return false;
+    cleActive = cle; octetsActifs = octets;
+    return true;
+  } catch { return false; }
+}
+
+/** Clé ouverte : nouvelle enveloppe pour un nouveau code (après code de secours) ou mise à niveau d'une ancienne protection par phrase. */
+export async function nouvelleEnveloppePin(partie, poivre) {
+  if (!octetsActifs) throw new Error("Archives verrouillées");
+  return envelopperPin(octetsActifs, partie, poivre);
+}
+
+/** Ancienne clé (avant le lot 92, sans secours) : fabrique AUSSI un code de secours (la clé ne change pas, donc les documents non plus). */
+export async function nouveauSecours(sel) {
+  if (!octetsActifs) throw new Error("Archives verrouillées");
+  const code = nouveauCodeSecours();
+  return { secours: await envelopper(octetsActifs, normaliserCode(code), sel), code };
+}
+
 /** Ancienne clé déverrouillée avec la phrase : fabrique l'enveloppe et un secours (la clé ne change pas, donc les documents non plus). */
 export async function preparerSecours(phrase, sel) {
   if (!octetsActifs) throw new Error("Archives verrouillées");

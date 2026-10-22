@@ -115,3 +115,27 @@ def test_cle_avec_enveloppe_et_secours_puis_nouvelles_enveloppes(client, utilisa
     n = len(sawali)
     assert client.post("/api/archives/cle/enveloppes", headers=h, json={"verif_actuelle": "court", "enveloppe": "N" * 40}).status_code == 422
     assert len(sawali) == n
+
+
+def test_pin_relais_enregistrer_et_ouvrir(client, utilisateur, sawali):
+    """Lot 93 : la preuve du code est relayée telle quelle ; les refus de SAWALI (essais, pause) sont rendus avec leur message."""
+    _, h, _ = utilisateur
+    PREUVE = "P" * 43 + "="
+    sawali.reponse = (200, {"ok": True, "poivre": "Z" * 44})
+    r = client.post("/api/archives/pin/enregistrer", headers=h, json={"preuve": PREUVE, "type_secret": "pin"})
+    assert r.status_code == 200 and r.json()["poivre"] == "Z" * 44
+    q = sawali[-1]
+    assert q.url.path.endswith("/archives/pin/enregistrer") and json.loads(q.content)["preuve"] == PREUVE and "verif_actuelle" not in json.loads(q.content)
+    client.post("/api/archives/pin/enregistrer", headers=h, json={"preuve": PREUVE, "type_secret": "phrase", "verif_actuelle": "V" * 40})
+    assert json.loads(sawali[-1].content)["verif_actuelle"] == "V" * 40 and json.loads(sawali[-1].content)["type_secret"] == "phrase"
+    assert client.post("/api/archives/pin/ouvrir", headers=h, json={"preuve": PREUVE}).json()["poivre"] == "Z" * 44
+    sawali.reponse = (409, {"detail": "Code ou phrase incorrect (4 essais avant une pause)"})
+    r = client.post("/api/archives/pin/ouvrir", headers=h, json={"preuve": PREUVE})
+    assert r.status_code == 409 and "4 essais" in r.json()["detail"]
+    sawali.reponse = (429, {"detail": "Trop d'essais : réessayez dans 15 min (ou utilisez votre code de secours)"})
+    r = client.post("/api/archives/pin/ouvrir", headers=h, json={"preuve": PREUVE})
+    assert r.status_code == 429 and "15 min" in r.json()["detail"]
+    n = len(sawali)
+    assert client.post("/api/archives/pin/ouvrir", headers=h, json={"preuve": "court"}).status_code == 422
+    assert client.post("/api/archives/pin/enregistrer", headers=h, json={"preuve": PREUVE, "type_secret": "autre"}).status_code == 422
+    assert len(sawali) == n

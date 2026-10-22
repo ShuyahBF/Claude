@@ -47,6 +47,17 @@ class Cle(BaseModel):
     secours: str | None = Field(None, min_length=16, max_length=800)
 
 
+class PinEnregistrer(BaseModel):
+    """Lot 93 : preuve (empreinte dérivée) du code PIN ou de la phrase, jamais le code lui-même ; SAWALI limite les essais."""
+    preuve: str = Field(..., min_length=40, max_length=64)
+    type_secret: str = Field("pin", pattern="^(pin|phrase)$")
+    verif_actuelle: str | None = Field(None, min_length=16, max_length=600)
+
+
+class PinOuvrir(BaseModel):
+    preuve: str = Field(..., min_length=40, max_length=64)
+
+
 class Enveloppes(BaseModel):
     """Lot 92 : nouvelle enveloppe (nouvelle phrase choisie avec le code de secours, ou mise à niveau d'une ancienne clé)."""
     verif_actuelle: str = Field(..., min_length=16, max_length=600)
@@ -68,6 +79,19 @@ async def etat(user: dict = Depends(get_current_user)):
 async def enregistrer_cle(data: Cle, user: dict = Depends(get_current_user)):
     plus = {k: v for k, v in (("enveloppe", data.enveloppe), ("secours", data.secours)) if v}
     return await _relayer("cle", user, sel=data.sel, verif=data.verif, **plus)
+
+
+@router.post("/pin/enregistrer")
+async def pin_enregistrer(data: PinEnregistrer, user: dict = Depends(get_current_user)):
+    """Lot 93 : enregistre la preuve du code ; SAWALI renvoie le « poivre » qui protège la clé des documents avec le code."""
+    plus = {"verif_actuelle": data.verif_actuelle} if data.verif_actuelle else {}
+    return await _relayer("pin/enregistrer", user, preuve=data.preuve, type_secret=data.type_secret, **plus)
+
+
+@router.post("/pin/ouvrir")
+async def pin_ouvrir(data: PinOuvrir, user: dict = Depends(get_current_user)):
+    """Lot 93 : contrôle la preuve du code (5 essais puis 15 min de pause, 10 échecs : code de secours) et renvoie le poivre."""
+    return await _relayer("pin/ouvrir", user, preuve=data.preuve)
 
 
 @router.post("/cle/enveloppes")
