@@ -139,3 +139,29 @@ def test_pin_relais_enregistrer_et_ouvrir(client, utilisateur, sawali):
     assert client.post("/api/archives/pin/ouvrir", headers=h, json={"preuve": "court"}).status_code == 422
     assert client.post("/api/archives/pin/enregistrer", headers=h, json={"preuve": PREUVE, "type_secret": "autre"}).status_code == 422
     assert len(sawali) == n
+
+
+def test_application_d_authentification_relayee(client, utilisateur, sawali):
+    """Lot 94 : le secret et les codes de l'application d'authentification sont relayés tels quels ; les refus de SAWALI sont rendus."""
+    _, h, _ = utilisateur
+    PREUVE = "P" * 43 + "="
+    sawali.reponse = (200, {"secret": "ABCDEFGHIJKLMNOP", "uri": "otpauth://totp/auRor%3Ax?secret=ABCDEFGHIJKLMNOP"})
+    r = client.post("/api/archives/totp/preparer", headers=h, json={"verif_actuelle": "V" * 40})
+    assert r.status_code == 200 and r.json()["uri"].startswith("otpauth://") and sawali[-1].url.path.endswith("/archives/totp/preparer")
+    sawali.reponse = (200, {"ok": True})
+    assert client.post("/api/archives/totp/activer", headers=h, json={"code": "123456"}).status_code == 200
+    assert json.loads(sawali[-1].content)["code"] == "123456"
+    assert client.post("/api/archives/totp/desactiver", headers=h, json={"preuve": PREUVE, "code": "123456"}).status_code == 200
+    assert json.loads(sawali[-1].content)["preuve"] == PREUVE
+    # ouverture : le code de l'application est transmis seulement s'il est fourni
+    sawali.reponse = (200, {"ok": True, "poivre": "Z" * 44})
+    client.post("/api/archives/pin/ouvrir", headers=h, json={"preuve": PREUVE})
+    assert "code_totp" not in json.loads(sawali[-1].content)
+    client.post("/api/archives/pin/ouvrir", headers=h, json={"preuve": PREUVE, "code_totp": "654321"})
+    assert json.loads(sawali[-1].content)["code_totp"] == "654321"
+    sawali.reponse = (409, {"detail": "Code incorrect : vérifiez l'heure de votre téléphone"})
+    r = client.post("/api/archives/totp/activer", headers=h, json={"code": "000000"})
+    assert r.status_code == 409 and "heure" in r.json()["detail"]
+    n = len(sawali)
+    assert client.post("/api/archives/totp/activer", headers=h, json={"code": "12"}).status_code == 422
+    assert len(sawali) == n
