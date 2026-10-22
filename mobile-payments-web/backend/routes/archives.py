@@ -149,12 +149,17 @@ async def telecharger(archive_id: str = Path(..., min_length=8, max_length=64), 
 
 class Modification(BaseModel):
     meta: str = Field(..., min_length=16, max_length=6000)
+    # Lot 95 : toute modification exige la preuve du code PIN / de la phrase ; `contenu` = NOUVELLE image du document, déjà chiffrée par le site
+    preuve: str | None = Field(None, min_length=40, max_length=64)
+    contenu: str | None = Field(None, min_length=40, max_length=12_000_000)
 
 
 @router.put("/{archive_id}")
 async def modifier(data: Modification, archive_id: str = Path(..., min_length=8, max_length=64), user: dict = Depends(get_current_user)):
-    """Remplace les informations CHIFFRÉES du document (titre, catégorie, étiquettes) ; le document lui-même n'est pas renvoyé."""
-    return await _relayer("modifier", user, id=archive_id, meta=data.meta)
+    """Remplace les informations CHIFFRÉES du document (titre, catégorie, étiquettes) et, si `contenu` est fourni, son image (lot 95).
+    SAWALI exige la preuve du code PIN / de la phrase."""
+    plus = {k: v for k, v in (("preuve", data.preuve), ("contenu", data.contenu)) if v}
+    return await _relayer("modifier", user, delai=90 if data.contenu else 30, id=archive_id, meta=data.meta, **plus)
 
 
 @router.delete("/{archive_id}")
