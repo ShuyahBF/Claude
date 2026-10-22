@@ -3,9 +3,9 @@
 Textes et réponses à copier dans la **Play Console** pour l'application auRor (package `com.sawali.auror`, paquet `.aab` généré par PWABuilder).
 Les points marqués **À confirmer** dépendent de choix du propriétaire ou de la version réelle de la Play Console.
 
-- Site : https://paiement-mobile-site.onrender.com
-- Politique de confidentialité : https://paiement-mobile-site.onrender.com/confidentialite
-- Suppression de compte (URL demandée par la console) : https://paiement-mobile-site.onrender.com/suppression-compte
+- Site : https://auror.space
+- Politique de confidentialité : https://auror.space/confidentialite
+- Suppression de compte (URL demandée par la console) : https://auror.space/suppression-compte
 - Contact développeur : contact@sawalismartsystems.com · +226 25 65 81 65
 - Éditeur : SAWALI SMART SYSTEMS (Burkina Faso)
 
@@ -81,7 +81,7 @@ Une question ? contact@sawalismartsystems.com
 
 - **Collecte ou partage de données ?** Oui.
 - **Données chiffrées en transit ?** Oui (HTTPS uniquement).
-- **Moyen de demander la suppression des données ?** Oui : dans l'application (Profil → « Supprimer mon compte ») et page web https://paiement-mobile-site.onrender.com/suppression-compte.
+- **Moyen de demander la suppression des données ?** Oui : dans l'application (Profil → « Supprimer mon compte ») et page web https://auror.space/suppression-compte.
 
 | Type de données (libellé console) | Collectée | Facultative | Finalité |
 |---|---|---|---|

@@ -9,7 +9,7 @@ Sur le téléphone, avec Chrome : ouvrir le site → menu **Installer sur Androi
 
 ## 2. Publier sur le Play Store (sans Android Studio, sans ligne de commande)
 Tout se fait avec des pages web, par clics :
-1. Ouvrir **https://www.pwabuilder.com**, saisir l'adresse du site (https://paiement-mobile-site.onrender.com), cliquer **Start**.
+1. Ouvrir **https://www.pwabuilder.com**, saisir l'adresse du site (https://auror.space), cliquer **Start**.
 2. Vérifier que « Manifest » et « Service Worker » sont verts, puis **Package for stores → Android**.
 3. Identifiant du paquet suggéré : `com.sawali.paiementmobile` (à ne plus jamais changer). Télécharger le paquet (fichier .aab).
 4. Dans la **Play Console**, créer l'application et déposer le .aab (fiche, politique de confidentialité : voir `mobile-payments-app/PLAYSTORE.md`).

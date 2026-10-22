@@ -34,16 +34,20 @@ services:
       # --- Valeurs non secrètes ---
       - key: MONGO_DB_NAME
         value: paiement_mobile
-      # Adresse du site (CORS, cookie Secure, lien des QR marchands, « url_site » des alertes)
+      # Adresse du site (CORS, cookie Secure, lien des QR marchands, « url_site » des alertes).
+      # Lot 91 : domaine auror.space. FRONTEND_ORIGIN accepte plusieurs adresses séparées par des virgules
+      # (domaine, www, ancienne adresse Render gardée pour les liens et QR déjà diffusés).
       - key: FRONTEND_ORIGIN
-        value: https://paiement-mobile-site.onrender.com
+        value: https://auror.space,https://www.auror.space,https://paiement-mobile-site.onrender.com
       - key: PUBLIC_SITE_URL
-        value: https://paiement-mobile-site.onrender.com
+        value: https://auror.space
       # Nom de l'émetteur déclaré dans SAWALI (en-tête X-Emetteur des alertes de connexion)
       - key: LILUVINE_WA_EMETTEUR
         value: paiementmobile
-    # domains:
-    #   - api.votre-domaine.com
+    # Domaine personnalisé (lot 91) : à ajouter dans Render → paiement-mobile-api → Settings → Custom Domains
+    # (enregistrement CNAME « api » vers paiement-mobile-api-jo11.onrender.com chez le registrar)
+    domains:
+      - api.auror.space
 
   # --------------------------------------------------------------------------
   # Site statique React (gratuit)
@@ -57,12 +61,15 @@ services:
     staticPublishPath: dist
     envVars:
       # Adresse de l'API + /api (lue à la compilation du site)
+      # Lot 91 : serveur sur api.auror.space (même domaine que le site : les cookies de session passent sur Safari)
       - key: VITE_API_BASE_URL
-        value: https://paiement-mobile-api-jo11.onrender.com/api
+        value: https://api.auror.space/api
     routes:
       # Application React (React Router) : toute adresse retombe sur index.html
       - type: rewrite
         source: /*
         destination: /index.html
-    # domains:
-    #   - votre-domaine.com
+    # Domaines personnalisés (lot 91) : auror.space (enregistrement A) et www.auror.space (CNAME, redirige vers auror.space)
+    domains:
+      - auror.space
+      - www.auror.space
