@@ -39,3 +39,40 @@ ok("après mise à niveau : ancien document lisible", new TextDecoder().decode(a
 c.verrouiller();
 ok("après mise à niveau : code de secours", await c.deverrouillerAvecCode(up.code, sel, verifV, up.secours));
 ok("après mise à niveau : ancien document lisible via code", new TextDecoder().decode(await c.dechiffrer(docV))==="ancien doc");
+
+// ---- Lot 93 : code PIN court + poivre du serveur ----
+{
+  const sel = c.nouveauSel();
+  const { preuve, partie } = await c.preuveEtPartie("1234", sel);
+  const poivre = c.versBase64(crypto.getRandomValues(new Uint8Array(32)));
+  const pin = await c.creerAvecSecret(partie, poivre, sel);
+  const docPin = await c.chiffrer(new TextEncoder().encode("carte grise"));
+  c.verrouiller();
+  const p2 = await c.preuveEtPartie("1234", sel);
+  ok("PIN : preuve identique à chaque saisie", p2.preuve === preuve && preuve.length === 44);
+  ok("PIN : la preuve ne contient pas le PIN", !preuve.includes("1234"));
+  ok("PIN + bon poivre ouvre", await c.deverrouillerAvecPoivre(p2.partie, poivre, pin.verif, pin.enveloppe));
+  ok("document lisible", new TextDecoder().decode(await c.dechiffrer(docPin)) === "carte grise");
+  c.verrouiller();
+  const mauvais = await c.preuveEtPartie("1235", sel);
+  ok("mauvais PIN refusé", !(await c.deverrouillerAvecPoivre(mauvais.partie, poivre, pin.verif, pin.enveloppe)));
+  const autrePoivre = c.versBase64(crypto.getRandomValues(new Uint8Array(32)));
+  ok("bon PIN mais mauvais poivre refusé (la base seule n'ouvre rien)", !(await c.deverrouillerAvecPoivre(p2.partie, autrePoivre, pin.verif, pin.enveloppe)));
+  ok("code de secours ouvre aussi la clé", await c.deverrouillerAvecCode(pin.code, sel, pin.verif, pin.secours));
+  // nouveau code après récupération : nouvelle preuve, nouveau poivre, mêmes documents
+  const n = await c.preuveEtPartie("98765", sel); const poivre2 = c.versBase64(crypto.getRandomValues(new Uint8Array(32)));
+  const env2 = await c.nouvelleEnveloppePin(n.partie, poivre2);
+  c.verrouiller();
+  ok("nouveau PIN ouvre avec le nouveau poivre", await c.deverrouillerAvecPoivre(n.partie, poivre2, pin.verif, env2));
+  ok("documents inchangés après changement de PIN", new TextDecoder().decode(await c.dechiffrer(docPin)) === "carte grise");
+  c.verrouiller();
+  ok("ancien PIN + ancien poivre n'ouvrent plus la nouvelle enveloppe", !(await c.deverrouillerAvecPoivre(p2.partie, poivre, pin.verif, env2)));
+  // mise à niveau d'une ancienne protection par phrase vers le code + poivre (sans toucher aux documents)
+  const a = await c.creerPhrase("ancienne phrase v2");
+  const docV2 = await c.chiffrer(new TextEncoder().encode("doc v2"));
+  const up = await c.preuveEtPartie("ancienne phrase v2", a.sel);
+  const envUp = await c.nouvelleEnveloppePin(up.partie, poivre);
+  c.verrouiller();
+  ok("mise à niveau phrase → code + poivre", await c.deverrouillerAvecPoivre(up.partie, poivre, a.verif, envUp));
+  ok("document d'avant la mise à niveau lisible", new TextDecoder().decode(await c.dechiffrer(docV2)) === "doc v2");
+}
