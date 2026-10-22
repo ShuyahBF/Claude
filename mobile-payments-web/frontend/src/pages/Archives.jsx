@@ -4,15 +4,16 @@ import Chargement from "@/components/Chargement";
 import Modal from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { apiClient, messageErreur } from "@/lib/api";
-import { chiffrer, chiffrerJson, cleDeverrouillee, creerPhrase, dechiffrer, dechiffrerJson, depuisBase64, deverrouiller, verrouiller, versBase64 } from "@/lib/archiveCrypto";
+import { chiffrer, chiffrerJson, cleDeverrouillee, creerPhrase, dechiffrer, dechiffrerJson, depuisBase64, deverrouiller, deverrouillerAvecCode, nouvelleEnveloppe, preparerSecours, verrouiller, versBase64 } from "@/lib/archiveCrypto";
 import { ajouterCategorie, ajouterLocal, categoriesPerso, demanderStockageDurable, listerLocal, lireContenuLocal, modifierLocal, nouvelId, supprimerLocal } from "@/lib/archiveLocal";
 import { anneeDe, aujourdhui, captureEcranDisponible, capturerEcran, reduireImage, taille, telecharger } from "@/lib/archiveMedia";
 
 // ============================================================================
 // Archives (lot 56) : reçus, factures, pièces d'identité, pages de passeport, TVM, carte grise… et captures d'écran.
-//   - SANS abonnement : tout est gardé SUR L'APPAREIL (mémoire privée du navigateur) ; rien n'est envoyé à auRor.
-//   - AVEC l'abonnement « Archives en ligne chiffrées » : stockage en ligne PROFESSIONNEL et CHIFFRÉ. Le chiffrement se fait ici, dans le
-//     navigateur, avec une phrase secrète que personne d'autre ne connaît : le serveur ne garde que des octets illisibles.
+//   - Lot 92 : les documents sont gardés EN LIGNE, CHIFFRÉS, pour TOUT utilisateur (espace gratuit ; l'abonnement donne plus d'espace) : ils ne dépendent
+//     plus de la mémoire du navigateur (changement d'adresse, données effacées, nouveau téléphone). Le chiffrement se fait ici, dans le navigateur,
+//     avec une phrase secrète ET un code de secours que personne d'autre ne connaît : le serveur ne garde que des octets illisibles.
+//   - Les documents qui ne sont encore que sur l'appareil (anciennes archives) montent automatiquement dès que les archives sont ouvertes.
 //   - Étiquettes (tags) : l'année du document est ajoutée automatiquement ; l'utilisateur ajoute les siennes et ses propres catégories.
 //   - Recherche : texte libre (titre, catégorie, étiquettes, année) + filtres catégorie, année et étiquette.
 // ============================================================================
@@ -20,7 +21,7 @@ const CATEGORIES_BASE = ["Reçu", "Facture", "Carte d'identité", "Passeport (pa
   "Assurance", "Acte (naissance, mariage…)", "Diplôme / attestation", "Ordonnance", "Contrat", "Capture d'écran", "Autre"];
 const NOUVELLE = "__nouvelle";
 const norm = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-const VIDE = { titre: "", categorie: CATEGORIES_BASE[0], nouvelleCategorie: "", date: aujourdhui(), tags: [], saisieTag: "", stockage: "local" };
+const VIDE = { titre: "", categorie: CATEGORIES_BASE[0], nouvelleCategorie: "", date: aujourdhui(), tags: [], saisieTag: "", stockage: "cloud" };
 
 export default function Archives() {
   const toast = useToast();
@@ -38,6 +39,12 @@ export default function Archives() {
   const [fichier, setFichier] = useState(null);             // fichier à archiver (photo, PDF, capture)
   const [apercu, setApercu] = useState("");
   const [vue, setVue] = useState(null);                     // document ouvert {titre, mime, url}
+  const [codeSecours, setCodeSecours] = useState(null);     // lot 92 : code de secours à montrer UNE fois {code, confirme}
+  const [modeCode, setModeCode] = useState(false);           // lot 92 : formulaire « phrase oubliée → code de secours »
+  const [codeSaisi, setCodeSaisi] = useState("");
+  const [synchro, setSynchro] = useState(null);              // lot 92 : mise en sécurité des documents locaux {fait, total}
+  const synchroEnCours = useRef(false);
+  const synchroRefusee = useRef(false);                  // refus du serveur (espace plein…) : pas de ré-essai automatique
   const photo = useRef(null);
   const choisir = useRef(null);
 
@@ -87,23 +94,47 @@ export default function Archives() {
     if (phrase.a !== phrase.b) { toast.erreur("Les deux saisies ne sont pas identiques"); return; }
     setOccupe(true);
     try {
-      const { sel, verif } = await creerPhrase(phrase.a);
-      await apiClient.post("/archives/cle", { sel, verif });
+      const { sel, verif, enveloppe, secours, code } = await creerPhrase(phrase.a);
+      await apiClient.post("/archives/cle", { sel, verif, enveloppe, secours });
       setPhrase({ a: "", b: "" });
       await chargerEtat();
       setCloud([]); setDeverrouille(true);
-      toast.succes("Stockage en ligne chiffré activé");
+      setCodeSecours({ code, confirme: false });                // le code est montré une seule fois, avec obligation de confirmer
     } catch (err) { verrouiller(); toast.erreur(messageErreur(err, "Activation impossible")); } finally { setOccupe(false); }
   };
   const ouvrirCoffre = async (e) => {
     e.preventDefault();
     setOccupe(true);
     try {
-      if (await deverrouiller(phrase.a, etat.sel, etat.verif)) { setPhrase({ a: "", b: "" }); setDeverrouille(true); }
-      else toast.erreur("Phrase secrète incorrecte");
-    } finally { setOccupe(false); }
+      const r = await deverrouiller(phrase.a, etat.sel, etat.verif, etat.enveloppe);
+      if (!r.ok) { toast.erreur("Phrase secrète incorrecte"); return; }
+      if (r.ancienne) {
+        // Archives d'avant le lot 92 : on ajoute l'enveloppe et le code de secours (la clé et les documents ne changent pas)
+        const maj = await preparerSecours(phrase.a, etat.sel);
+        await apiClient.post("/archives/cle/enveloppes", { verif_actuelle: etat.verif, enveloppe: maj.enveloppe, secours: maj.secours });
+        setCodeSecours({ code: maj.code, confirme: false });
+        await chargerEtat();
+      }
+      setPhrase({ a: "", b: "" }); setDeverrouille(true);
+    } catch (err) { toast.erreur(messageErreur(err, "Ouverture impossible")); } finally { setOccupe(false); }
   };
-  const fermerCoffre = () => { verrouiller(); setDeverrouille(false); setCloud(null); };
+  // Phrase oubliée : le code de secours rouvre la clé, puis on choisit une nouvelle phrase (les documents ne changent pas)
+  const recupererAvecCode = async (e) => {
+    e.preventDefault();
+    if (phrase.a.length < 8) { toast.erreur("La nouvelle phrase secrète doit compter au moins 8 caractères"); return; }
+    if (phrase.a !== phrase.b) { toast.erreur("Les deux saisies ne sont pas identiques"); return; }
+    setOccupe(true);
+    try {
+      if (!etat.secours) { toast.erreur("Aucun code de secours n'a été enregistré pour ces archives"); return; }
+      if (!(await deverrouillerAvecCode(codeSaisi, etat.sel, etat.verif, etat.secours))) { toast.erreur("Code de secours incorrect"); return; }
+      const enveloppe = await nouvelleEnveloppe(phrase.a, etat.sel);
+      await apiClient.post("/archives/cle/enveloppes", { verif_actuelle: etat.verif, enveloppe });
+      setPhrase({ a: "", b: "" }); setCodeSaisi(""); setModeCode(false);
+      await chargerEtat(); setDeverrouille(true);
+      toast.succes("Archives rouvertes : votre nouvelle phrase secrète est enregistrée");
+    } catch (err) { verrouiller(); toast.erreur(messageErreur(err, "Récupération impossible")); } finally { setOccupe(false); }
+  };
+  const fermerCoffre = () => { verrouiller(); setDeverrouille(false); setCloud(null); synchroRefusee.current = false; };
 
   // ---- Ajout / modification ----------------------------------------------------------------------
   const prendreFichier = async (f) => {
@@ -114,7 +145,7 @@ export default function Archives() {
     setApercu(prepare.type.startsWith("image/") ? URL.createObjectURL(prepare) : "");
     setAjout((a) => (a && !a.titre ? { ...a, titre: f.name.replace(/\.\w+$/, ""), categorie: f.name.startsWith("capture-") ? "Capture d'écran" : a.categorie } : a));
   };
-  const ouvrirAjout = () => { setFichier(null); setApercu(""); setAjout({ ...VIDE, date: aujourdhui(), tags: [] }); };
+  const ouvrirAjout = () => { setFichier(null); setApercu(""); setAjout({ ...VIDE, date: aujourdhui(), tags: [], stockage: deverrouille ? "cloud" : "local" }); };
   const fermerAjout = () => { if (apercu) URL.revokeObjectURL(apercu); setApercu(""); setFichier(null); setAjout(null); };
   const capturer = async () => {
     const f = await capturerEcran();
@@ -194,22 +225,51 @@ export default function Archives() {
   };
   const modifier = (d) => setAjout({ ...VIDE, id: d.id, source: d.source, titre: d.titre, categorie: d.categorie, date: d.date, tags: d.tags || [], original: d,
     mime: d.mime, tailleFichier: d.taille, nom_fichier: d.nom_fichier, cree_le_doc: d.cree_le });
-  // Déplacer un document de l'appareil vers le stockage en ligne chiffré
+  // Envoie UN document de l'appareil en ligne (chiffré) puis retire la copie locale, seulement après confirmation du serveur
+  const televerserLocal = async (d) => {
+    const blob = await lireContenuLocal(d.id);
+    if (!blob) { await supprimerLocal(d.id); return; }            // contenu absent : ligne orpheline sans objet
+    const { source, ...meta } = d;                                  // eslint-disable-line no-unused-vars
+    const contenu = versBase64(await chiffrer(new Uint8Array(await blob.arrayBuffer())));
+    const rep = await apiClient.post("/archives", { meta: await chiffrerJson(meta), contenu });
+    if (!rep?.data?.id) throw new Error("Réponse du serveur incomplète");
+    await supprimerLocal(d.id);
+  };
+  const messageRefus = (err, defaut) => {
+    const det = err?.response?.data?.detail;
+    return typeof det === "object" && det?.message ? det.message : messageErreur(err, defaut);
+  };
   const envoyerEnLigne = async (d) => {
     setOccupe(true);
     try {
-      const blob = await lireContenuLocal(d.id);
-      const { source, ...meta } = d;                                                // eslint-disable-line no-unused-vars
-      const contenu = versBase64(await chiffrer(new Uint8Array(await blob.arrayBuffer())));
-      await apiClient.post("/archives", { meta: await chiffrerJson(meta), contenu });
-      await supprimerLocal(d.id);
+      await televerserLocal(d);
       await Promise.all([chargerLocal(), chargerCloud(), chargerEtat()]);
       toast.succes("Envoyé en ligne (chiffré) ; la copie de l'appareil est retirée");
-    } catch (err) {
-      const det = err?.response?.data?.detail;
-      toast.erreur(typeof det === "object" && det?.message ? det.message : messageErreur(err, "Envoi impossible"));
-    } finally { setOccupe(false); }
+    } catch (err) { toast.erreur(messageRefus(err, "Envoi impossible")); } finally { setOccupe(false); }
   };
+  // Lot 92 : met en sécurité (en ligne, chiffrés) tous les documents qui ne sont que sur l'appareil. S'arrête si l'espace offert est plein :
+  // les documents restants restent sur l'appareil et l'utilisateur en est averti.
+  const mettreEnSecurite = useCallback(async () => {
+    if (synchroEnCours.current) return;
+    synchroEnCours.current = true;
+    try {
+      const liste = await listerLocal();
+      if (!liste.length) return;
+      let fait = 0;
+      setSynchro({ fait, total: liste.length });
+      for (const d of liste) {
+        try { await televerserLocal({ ...d, source: "local" }); fait += 1; setSynchro({ fait, total: liste.length }); }
+        catch (err) { synchroRefusee.current = true; toast.erreur(`${fait} document(s) sur ${liste.length} mis en sécurité. ${messageRefus(err, "Envoi interrompu")}`); break; }
+      }
+      if (fait === liste.length) toast.succes(`${fait} document${fait > 1 ? "s" : ""} de cet appareil ${fait > 1 ? "sont" : "est"} maintenant en sécurité en ligne (chiffré${fait > 1 ? "s" : ""})`);
+      await Promise.all([chargerLocal(), chargerCloud(), chargerEtat()]);
+    } finally { synchroEnCours.current = false; setSynchro(null); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chargerLocal, chargerCloud, chargerEtat, toast]);
+  // Dès que les archives sont ouvertes (et le code de secours confirmé), les documents locaux montent tout seuls
+  useEffect(() => {
+    if (deverrouille && etat?.sel && (!codeSecours || codeSecours.confirme) && locaux.length > 0 && !synchroRefusee.current) mettreEnSecurite();
+  }, [deverrouille, etat?.sel, codeSecours, locaux.length, mettreEnSecurite]);
   // Copier un document en ligne sur l'appareil (il reste aussi en ligne)
   const copierSurAppareil = async (d) => {
     setOccupe(true);
@@ -226,7 +286,8 @@ export default function Archives() {
   const abonne = !!etat?.abonne;
   const enLigneConfigure = !!etat?.sel;
   const nbEnLigne = etat?.nombre || 0;
-  const peutEnLigne = abonne && deverrouille;
+  const peutEnLigne = deverrouille;                                  // lot 92 : plus besoin d'abonnement (espace gratuit offert)
+  const resteLocal = locaux.length;                                   // documents qui ne sont QUE sur cet appareil
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -237,40 +298,57 @@ export default function Archives() {
       <p className="text-sm text-gray-600">Reçus, factures, carte d'identité, pages de passeport, TVM, carte grise… Ajoutez une photo, un fichier ou une capture d'écran,
         classez-les par catégorie et étiquettes, retrouvez-les par la recherche.</p>
 
-      {/* Où sont gardés les documents */}
+      {/* Où sont gardés les documents (lot 92 : en ligne, chiffrés, pour tous) */}
       <section className="card space-y-2 p-4" data-testid="stockage">
-        <p className="font-semibold">📱 Sur cet appareil <span className="badge ml-1 bg-green-100 text-green-800">gratuit</span></p>
-        <p className="text-sm text-gray-600">Vos documents restent dans la mémoire privée de ce navigateur : rien n'est envoyé. Si vous effacez les données du navigateur ou changez de téléphone, ils sont perdus :
-          téléchargez-en une copie (bouton ⬇) pour les documents essentiels.</p>
-        <hr className="border-gray-100" />
-        <p className="font-semibold">☁️ En ligne, chiffré <span className={`badge ml-1 ${abonne ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-900"}`}>{abonne ? "abonnement actif" : "abonnement"}</span></p>
-        {etat === false && <p className="text-sm text-amber-800">Le service en ligne est momentanément indisponible. Vos archives de l'appareil restent accessibles.</p>}
-        {etat && !enLigneConfigure && !abonne && (
-          <p className="text-sm text-gray-600">Stockage professionnel dans le cloud : vos documents sont chiffrés sur votre téléphone avant l'envoi, avec une phrase secrète que vous seul connaissez.
-            Réservé aux abonnés. <Link to="/abonnement" className="font-semibold text-primary underline">Voir les formules</Link></p>
-        )}
-        {etat && !enLigneConfigure && abonne && (
+        <p className="font-semibold">☁️ Vos documents sont gardés en ligne, chiffrés <span className="badge ml-1 bg-green-100 text-green-800">{abonne ? "abonnement actif" : "espace gratuit"}</span></p>
+        <p className="text-sm text-gray-600">Ils sont chiffrés sur votre téléphone avant l'envoi : ni auRor ni SAWALI ne peuvent les lire. Ils ne dépendent plus de la mémoire de votre navigateur :
+          changement d'adresse, données effacées ou nouveau téléphone ne les font pas disparaître.</p>
+        {etat === false && <p className="text-sm text-amber-800">Le service en ligne est momentanément indisponible. Les documents de l'appareil restent accessibles.</p>}
+        {etat && !enLigneConfigure && (
           <form onSubmit={activerEnLigne} className="space-y-2">
-            <p className="text-sm text-gray-600">Choisissez la <b>phrase secrète</b> de vos archives (8 caractères au moins). Elle chiffre vos documents ici, sur votre téléphone. <b>Personne ne peut la retrouver, ni auRor ni SAWALI : si vous
-              l'oubliez, vos documents en ligne sont perdus.</b> Notez-la en lieu sûr.</p>
+            <p className="text-sm text-gray-600">Choisissez la <b>phrase secrète</b> de vos archives (8 caractères au moins). Elle chiffre vos documents ici, sur votre téléphone.
+              Un <b>code de secours</b> vous sera remis ensuite : il permet de retrouver l'accès si vous oubliez la phrase. <b>Sans la phrase ni le code, personne ne peut récupérer vos documents.</b></p>
             <input className="input" type="password" autoComplete="new-password" placeholder="Phrase secrète" value={phrase.a} onChange={(e) => setPhrase({ ...phrase, a: e.target.value })} />
             <input className="input" type="password" autoComplete="new-password" placeholder="Répétez la phrase secrète" value={phrase.b} onChange={(e) => setPhrase({ ...phrase, b: e.target.value })} />
-            <button type="submit" className="btn-primary w-full" disabled={occupe}>{occupe ? "Patientez…" : "Activer le stockage en ligne chiffré"}</button>
+            <button type="submit" className="btn-primary w-full" disabled={occupe}>{occupe ? "Patientez…" : "Activer la sauvegarde en ligne chiffrée"}</button>
           </form>
         )}
-        {etat && enLigneConfigure && !deverrouille && (
+        {etat && enLigneConfigure && !deverrouille && !modeCode && (
           <form onSubmit={ouvrirCoffre} className="space-y-2">
-            <p className="text-sm text-gray-600">{nbEnLigne} document{nbEnLigne > 1 ? "s" : ""} en ligne, verrouillé{nbEnLigne > 1 ? "s" : ""}. Saisissez votre phrase secrète pour les voir.{!abonne && " (Abonnement terminé : vous pouvez lire et supprimer, plus ajouter.)"}</p>
+            <p className="text-sm text-gray-600">{nbEnLigne} document{nbEnLigne > 1 ? "s" : ""} en ligne, verrouillé{nbEnLigne > 1 ? "s" : ""}. Saisissez votre phrase secrète pour les voir.{!abonne && etat.nombre_max != null && ` Espace gratuit : ${etat.nombre_max} documents, ${taille(etat.quota_octets)}.`}</p>
             <div className="flex gap-2">
               <input className="input min-w-0 flex-1" type="password" autoComplete="current-password" placeholder="Phrase secrète" value={phrase.a} onChange={(e) => setPhrase({ ...phrase, a: e.target.value })} />
               <button type="submit" className="btn-primary" disabled={occupe || !phrase.a}>{occupe ? "…" : "🔓 Ouvrir"}</button>
+            </div>
+            {etat.secours && <button type="button" className="text-sm font-semibold text-primary underline" onClick={() => { setModeCode(true); setPhrase({ a: "", b: "" }); }}>Phrase oubliée ? Utiliser mon code de secours</button>}
+          </form>
+        )}
+        {etat && enLigneConfigure && !deverrouille && modeCode && (
+          <form onSubmit={recupererAvecCode} className="space-y-2">
+            <p className="text-sm text-gray-600">Saisissez votre <b>code de secours</b> (8 groupes de 4 caractères) puis choisissez une <b>nouvelle phrase secrète</b>. Vos documents ne changent pas.</p>
+            <input className="input font-mono" autoComplete="off" autoCapitalize="characters" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" value={codeSaisi} onChange={(e) => setCodeSaisi(e.target.value)} />
+            <input className="input" type="password" autoComplete="new-password" placeholder="Nouvelle phrase secrète" value={phrase.a} onChange={(e) => setPhrase({ ...phrase, a: e.target.value })} />
+            <input className="input" type="password" autoComplete="new-password" placeholder="Répétez la nouvelle phrase" value={phrase.b} onChange={(e) => setPhrase({ ...phrase, b: e.target.value })} />
+            <div className="flex gap-2">
+              <button type="submit" className="btn-primary flex-1" disabled={occupe || !codeSaisi}>{occupe ? "Patientez…" : "Rouvrir mes archives"}</button>
+              <button type="button" className="btn-outline" onClick={() => { setModeCode(false); setCodeSaisi(""); }}>Annuler</button>
             </div>
           </form>
         )}
         {etat && enLigneConfigure && deverrouille && (
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600">
-            <span>🔓 Ouvert · {taille(etat.utilise_octets)} utilisés sur {taille(etat.quota_octets)}{!abonne && " · abonnement terminé : lecture et suppression seulement"}</span>
+            <span>🔓 Ouvert · {taille(etat.utilise_octets)} utilisés sur {taille(etat.quota_octets)}{etat.nombre_max != null && ` · ${etat.nombre}/${etat.nombre_max} documents`}
+              {!abonne && <> · <Link to="/abonnement" className="font-semibold text-primary underline">plus d'espace</Link></>}</span>
             <button type="button" className="btn-outline btn-sm" onClick={fermerCoffre}>🔒 Verrouiller</button>
+          </div>
+        )}
+        {synchro && <p className="rounded-lg bg-sky-50 p-2 text-sm text-sky-900" role="status">Mise en sécurité de vos documents : {synchro.fait} sur {synchro.total}… Ne fermez pas la page.</p>}
+        {resteLocal > 0 && !synchro && (
+          <div className="rounded-lg bg-amber-50 p-2 text-sm text-amber-900" role="alert">
+            ⚠️ {resteLocal} document{resteLocal > 1 ? "s ne sont" : " n'est"} que sur cet appareil : {resteLocal > 1 ? "ils seraient perdus" : "il serait perdu"} si les données du navigateur sont effacées ou si l'adresse change.
+            {deverrouille
+              ? <> <button type="button" className="font-semibold underline" onClick={() => { synchroRefusee.current = false; mettreEnSecurite(); }}>Les mettre en sécurité maintenant</button></>
+              : " Activez ou ouvrez la sauvegarde en ligne ci-dessus : ils seront envoyés automatiquement."}
           </div>
         )}
       </section>
@@ -328,6 +406,23 @@ export default function Archives() {
         </ul>
       )}
 
+      {/* Lot 92 — code de secours : montré UNE seule fois, à noter avant de continuer */}
+      <Modal ouvert={!!codeSecours} titre="Votre code de secours" onFermer={() => { if (codeSecours?.confirme) setCodeSecours(null); }}>
+        {codeSecours && (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-700">Si vous oubliez votre phrase secrète, ce code est <b>le seul moyen</b> de retrouver vos documents. Il ne sera <b>plus jamais affiché</b>.
+              Notez-le sur papier ou enregistrez-le dans un endroit sûr, <b>pas sur ce téléphone seulement</b>.</p>
+            <p className="select-all rounded-lg bg-creme p-3 text-center font-mono text-lg font-bold tracking-wide" data-testid="code-secours">{codeSecours.code}</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" className="btn-outline" onClick={() => { try { navigator.clipboard?.writeText(codeSecours.code); toast.succes("Code copié"); } catch { toast.info("Sélectionnez le code pour le copier"); } }}>📋 Copier</button>
+              <button type="button" className="btn-outline" onClick={() => telecharger(new Blob([`auRor — code de secours des archives\n\n${codeSecours.code}\n\nGardez ce fichier en lieu sûr (pas seulement sur ce téléphone).\n`], { type: "text/plain" }), "auror-code-de-secours.txt")}>⬇ Télécharger</button>
+            </div>
+            <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={codeSecours.confirme} onChange={(e) => setCodeSecours({ ...codeSecours, confirme: e.target.checked })} /> J'ai noté mon code de secours en lieu sûr.</label>
+            <button type="button" className="btn-primary w-full" disabled={!codeSecours.confirme} onClick={() => setCodeSecours(null)}>Continuer</button>
+          </div>
+        )}
+      </Modal>
+
       {/* Ajout / modification */}
       <Modal ouvert={!!ajout} titre={ajout?.id ? "Modifier le document" : "Archiver un document"} onFermer={fermerAjout} large>
         {ajout && (
@@ -383,9 +478,10 @@ export default function Archives() {
             {!ajout.id && (
               <fieldset className="space-y-1">
                 <legend className="label">Où garder ce document ?</legend>
-                <label className="flex items-center gap-2 text-sm"><input type="radio" name="stockage" checked={ajout.stockage === "local"} onChange={() => setAjout({ ...ajout, stockage: "local" })} /> 📱 Sur cet appareil (gratuit)</label>
-                <label className={`flex items-center gap-2 text-sm ${peutEnLigne ? "" : "opacity-50"}`}><input type="radio" name="stockage" disabled={!peutEnLigne} checked={ajout.stockage === "cloud"} onChange={() => setAjout({ ...ajout, stockage: "cloud" })} /> ☁️ En ligne, chiffré
-                  {!peutEnLigne && <span className="text-xs text-gray-500">{!abonne ? "(abonnement requis)" : "(ouvrez d'abord vos archives en ligne)"}</span>}</label>
+                <label className={`flex items-center gap-2 text-sm ${peutEnLigne ? "" : "opacity-50"}`}><input type="radio" name="stockage" disabled={!peutEnLigne} checked={ajout.stockage === "cloud"} onChange={() => setAjout({ ...ajout, stockage: "cloud" })} /> ☁️ En ligne, chiffré (recommandé)
+                  {!peutEnLigne && <span className="text-xs text-gray-500">(activez ou ouvrez d'abord vos archives en ligne)</span>}</label>
+                <label className="flex items-center gap-2 text-sm"><input type="radio" name="stockage" checked={ajout.stockage === "local"} onChange={() => setAjout({ ...ajout, stockage: "local" })} /> 📱 Sur cet appareil seulement
+                  <span className="text-xs text-amber-800">(non sauvegardé)</span></label>
               </fieldset>
             )}
             <button type="submit" className="btn-primary w-full" disabled={occupe}>{occupe ? "Patientez…" : ajout.id ? "Enregistrer" : "Archiver"}</button>

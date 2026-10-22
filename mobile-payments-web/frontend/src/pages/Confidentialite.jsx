@@ -41,6 +41,7 @@ const SECTIONS = [
       "Annuaire des marchands : codes marchands et intitulés (noms) que vous ou d'autres utilisateurs enregistrez pour les reconnaître.",
       "Historique des paiements préparés sur le site : service, opérateur, code USSD généré, montant et statut que vous indiquez (« payé », « abandonné »). L'application Android ne transmet pas d'historique des paiements.",
       "Compte du site : mot de passe, conservé uniquement sous forme chiffrée (empreinte), jamais en clair.",
+      "Archives de documents (reçus, factures, pièces d'identité…) : chaque document et ses informations sont chiffrés sur votre appareil avant l'envoi, avec une phrase secrète que vous seul connaissez ; seuls des octets illisibles sont conservés en ligne (chez SAWALI). L'éditeur ne peut pas les lire. Un code de secours, que vous seul détenez, permet de retrouver l'accès si vous oubliez la phrase ; sans la phrase ni le code, les documents ne peuvent pas être récupérés. Un espace gratuit est offert ; les documents peuvent être supprimés à tout moment depuis l'application.",
       "Données techniques : adresse IP et type de navigateur lors des connexions au site ; pour l'application, version installée et modèle de l'appareil (sans nom ni numéro de téléphone).",
     ],
   },
