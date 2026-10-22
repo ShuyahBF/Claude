@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Chargement from "@/components/Chargement";
 import Modal from "@/components/Modal";
+import QrCode from "@/components/QrCode";
 import { useToast } from "@/components/Toast";
 import { apiClient, messageErreur } from "@/lib/api";
 import { chiffrer, chiffrerJson, cleDeverrouillee, creerAvecSecret, dechiffrer, dechiffrerJson, depuisBase64, deverrouiller, deverrouillerAvecCode, deverrouillerAvecPoivre, nouveauSecours, nouveauSel, nouvelleEnveloppePin, preuveEtPartie, verrouiller, versBase64 } from "@/lib/archiveCrypto";
@@ -49,6 +50,8 @@ export default function Archives() {
   const [modeCode, setModeCode] = useState(false);           // lot 92 : formulaire « phrase oubliée → code de secours »
   const [codeSaisi, setCodeSaisi] = useState("");
   const [synchro, setSynchro] = useState(null);              // lot 92 : mise en sécurité des documents locaux {fait, total}
+  const [codeApp, setCodeApp] = useState("");               // lot 94 : code à 6 chiffres de l'application d'authentification (ouverture)
+  const [a2f, setA2f] = useState(null);                      // lot 94 : activation/retrait de l'application {etape, uri, secret, code, pin}
   const synchroEnCours = useRef(false);
   const synchroRefusee = useRef(false);                  // refus du serveur (espace plein…) : pas de ré-essai automatique
   const photo = useRef(null);
@@ -123,7 +126,7 @@ export default function Archives() {
       if (etat.pin) {
         // Archives protégées par code + poivre du serveur : le serveur contrôle la preuve et limite les essais
         const { preuve, partie } = await etapeSecret(phrase.a, etat.sel);
-        const { data } = await apiClient.post("/archives/pin/ouvrir", { preuve });
+        const { data } = await apiClient.post("/archives/pin/ouvrir", { preuve, ...(etat.a2f ? { code_totp: codeApp } : {}) });
         if (!(await deverrouillerAvecPoivre(partie, data.poivre, etat.verif, etat.enveloppe))) { toast.erreur("Ouverture impossible : réessayez"); return; }
       } else {
         // Archives créées avant le lot 93 (protégées par la phrase seule) : ouverture, puis mise à niveau vers code + poivre
@@ -141,8 +144,36 @@ export default function Archives() {
         await apiClient.post("/archives/cle/enveloppes", maj);
         await chargerEtat();
       }
-      setPhrase({ a: "", b: "" }); setDeverrouille(true);
+      setPhrase({ a: "", b: "" }); setCodeApp(""); setDeverrouille(true);
     } catch (err) { verrouiller(); toast.erreur(messageErreur(err, "Ouverture impossible")); } finally { setOccupe(false); }
+  };
+
+  // ---- Lot 94 : application d'authentification (Authenticator…) en plus du code PIN / de la phrase -----------------------------
+  const preparerA2f = async () => {
+    setOccupe(true);
+    try {
+      const { data } = await apiClient.post("/archives/totp/preparer", { verif_actuelle: etat.verif });
+      setA2f({ etape: "activer", uri: data.uri, secret: data.secret, code: "" });
+    } catch (err) { toast.erreur(messageErreur(err, "Activation impossible")); } finally { setOccupe(false); }
+  };
+  const activerA2f = async (e) => {
+    e.preventDefault();
+    setOccupe(true);
+    try {
+      await apiClient.post("/archives/totp/activer", { code: a2f.code });
+      setA2f(null); await chargerEtat();
+      toast.succes("Application d'authentification activée : le code à 6 chiffres sera demandé à l'ouverture");
+    } catch (err) { toast.erreur(messageErreur(err, "Code incorrect")); } finally { setOccupe(false); }
+  };
+  const retirerA2f = async (e) => {
+    e.preventDefault();
+    setOccupe(true);
+    try {
+      const { preuve } = await etapeSecret(a2f.pin, etat.sel);
+      await apiClient.post("/archives/totp/desactiver", { preuve, code: a2f.code });
+      setA2f(null); await chargerEtat();
+      toast.succes("Application d'authentification retirée");
+    } catch (err) { toast.erreur(messageErreur(err, "Retrait impossible")); } finally { setOccupe(false); }
   };
   // Code oublié : le code de secours rouvre la clé, puis on choisit un nouveau code ou une nouvelle phrase (les documents ne changent pas)
   const recupererAvecCode = async (e) => {
@@ -352,8 +383,12 @@ export default function Archives() {
             <div className="flex gap-2">
               <input className="input min-w-0 flex-1" type="password" inputMode={etat.pin === "pin" ? "numeric" : "text"} autoComplete="current-password" placeholder={etat.pin === "pin" ? "Code PIN" : "Phrase secrète"} value={phrase.a}
                 onChange={(e) => setPhrase({ ...phrase, a: etat.pin === "pin" ? e.target.value.replace(/\D/g, "").slice(0, 12) : e.target.value })} />
-              <button type="submit" className="btn-primary" disabled={occupe || !phrase.a}>{occupe ? "…" : "🔓 Ouvrir"}</button>
+              <button type="submit" className="btn-primary" disabled={occupe || !phrase.a || (etat.a2f && codeApp.replace(/\D/g, "").length !== 6)}>{occupe ? "…" : "🔓 Ouvrir"}</button>
             </div>
+            {etat.a2f && (
+              <input className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={7} placeholder="Code à 6 chiffres de votre application d'authentification" value={codeApp}
+                onChange={(e) => setCodeApp(e.target.value.replace(/[^\d ]/g, ""))} aria-label="Code de l'application d'authentification" />
+            )}
             {etat.secours && <button type="button" className="text-sm font-semibold text-primary underline" onClick={() => { setModeCode(true); setTypeSecret(etat.pin === "phrase" ? "phrase" : "pin"); setPhrase({ a: "", b: "" }); }}>{etat.pin === "pin" ? "Code PIN oublié" : "Phrase oubliée"} ? Utiliser mon code de secours</button>}
           </form>
         )}
@@ -373,11 +408,38 @@ export default function Archives() {
             </div>
           </form>
         )}
+        {/* Lot 94 : jauge d'occupation de l'espace utilisé sur l'espace alloué (visible aussi quand les archives sont verrouillées) */}
+        {etat && enLigneConfigure && (() => {
+          const utilise = etat.utilise_octets || 0, quota = etat.quota_octets || 0;
+          const pct = quota > 0 ? Math.min(100, (utilise / quota) * 100) : 0;
+          const couleur = pct >= 90 ? "bg-red-600" : pct >= 70 ? "bg-amber-500" : "bg-emerald-600";
+          return (
+            <div className="space-y-1" data-testid="jauge-espace">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-sm text-gray-600">
+                <span><b>{taille(utilise)}</b> utilisés sur {taille(quota)} ({pct.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %)</span>
+                {etat.nombre_max != null && <span>{etat.nombre} / {etat.nombre_max} documents</span>}
+              </div>
+              <div className="h-2.5 w-full overflow-hidden rounded-full bg-gray-200" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)} aria-label="Espace d'archives utilisé">
+                <div className={`h-full rounded-full ${couleur}`} style={{ width: `${Math.max(pct, utilise > 0 ? 1.5 : 0)}%` }} />
+              </div>
+              {pct >= 90 && <p className="text-xs text-red-700">Espace presque plein.{!abonne && <> <Link to="/abonnement" className="font-semibold underline">Voir les formules</Link></>}</p>}
+            </div>
+          );
+        })()}
         {etat && enLigneConfigure && deverrouille && (
-          <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600">
-            <span>🔓 Ouvert · {taille(etat.utilise_octets)} utilisés sur {taille(etat.quota_octets)}{etat.nombre_max != null && ` · ${etat.nombre}/${etat.nombre_max} documents`}
-              {!abonne && <> · <Link to="/abonnement" className="font-semibold text-primary underline">plus d'espace</Link></>}</span>
-            <button type="button" className="btn-outline btn-sm" onClick={fermerCoffre}>🔒 Verrouiller</button>
+          <div className="space-y-2 text-sm text-gray-600">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span>🔓 Archives ouvertes{!abonne && <> · <Link to="/abonnement" className="font-semibold text-primary underline">plus d'espace</Link></>}</span>
+              <button type="button" className="btn-outline btn-sm" onClick={fermerCoffre}>🔒 Verrouiller</button>
+            </div>
+            {etat.pin && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-gray-50 p-2" data-testid="bloc-a2f">
+                <span>🔐 Application d'authentification (Google Authenticator, Microsoft Authenticator, Aegis…) : <b>{etat.a2f ? "activée" : "non activée"}</b></span>
+                {etat.a2f
+                  ? <button type="button" className="btn-outline btn-sm" onClick={() => setA2f({ etape: "retirer", code: "", pin: "" })}>Retirer</button>
+                  : <button type="button" className="btn-outline btn-sm" disabled={occupe} onClick={preparerA2f}>Activer</button>}
+              </div>
+            )}
           </div>
         )}
         {synchro && <p className="rounded-lg bg-sky-50 p-2 text-sm text-sky-900" role="status">Mise en sécurité de vos documents : {synchro.fait} sur {synchro.total}… Ne fermez pas la page.</p>}
@@ -443,6 +505,32 @@ export default function Archives() {
           ))}
         </ul>
       )}
+
+      {/* Lot 94 — application d'authentification : QR code à scanner, puis un code de contrôle ; ou retrait */}
+      <Modal ouvert={!!a2f} titre={a2f?.etape === "retirer" ? "Retirer l'application d'authentification" : "Activer l'application d'authentification"} onFermer={() => setA2f(null)}>
+        {a2f?.etape === "activer" && (
+          <form onSubmit={activerA2f} className="space-y-3">
+            <p className="text-sm text-gray-700">1. Dans votre application d'authentification (Google Authenticator, Microsoft Authenticator, Aegis, FreeOTP…), choisissez « Ajouter un compte » puis <b>scannez ce QR code</b>.</p>
+            <div className="flex justify-center"><QrCode valeur={a2f.uri} taille={200} alt="QR code à scanner avec votre application d'authentification" /></div>
+            <p className="text-xs text-gray-500">Pas de scan possible ? Saisissez ce secret dans l'application (type « basé sur l'heure ») : <span className="select-all break-all font-mono text-gray-800" data-testid="secret-a2f">{a2f.secret}</span></p>
+            <p className="text-sm text-gray-700">2. Saisissez le code à 6 chiffres affiché par l'application pour confirmer.</p>
+            <input className="input text-center font-mono text-lg tracking-widest" inputMode="numeric" autoComplete="one-time-code" maxLength={7} placeholder="000 000" value={a2f.code}
+              onChange={(e) => setA2f({ ...a2f, code: e.target.value.replace(/[^\d ]/g, "") })} aria-label="Code à 6 chiffres" />
+            <button type="submit" className="btn-primary w-full" disabled={occupe || a2f.code.replace(/\D/g, "").length !== 6}>{occupe ? "Patientez…" : "Confirmer et activer"}</button>
+            <p className="text-xs text-gray-500">L'activation n'a lieu qu'après ce code : une erreur de scan ne vous verrouille jamais dehors. En cas de téléphone perdu, votre code de secours rouvre les archives et retire l'application.</p>
+          </form>
+        )}
+        {a2f?.etape === "retirer" && (
+          <form onSubmit={retirerA2f} className="space-y-3">
+            <p className="text-sm text-gray-700">Pour retirer l'application, saisissez votre {etat?.pin === "pin" ? "code PIN" : "phrase secrète"} et le code actuel de l'application.</p>
+            <input className="input" type="password" inputMode={etat?.pin === "pin" ? "numeric" : "text"} autoComplete="current-password" placeholder={etat?.pin === "pin" ? "Code PIN" : "Phrase secrète"} value={a2f.pin}
+              onChange={(e) => setA2f({ ...a2f, pin: etat?.pin === "pin" ? e.target.value.replace(/\D/g, "").slice(0, 12) : e.target.value })} />
+            <input className="input text-center font-mono text-lg tracking-widest" inputMode="numeric" autoComplete="one-time-code" maxLength={7} placeholder="000 000" value={a2f.code}
+              onChange={(e) => setA2f({ ...a2f, code: e.target.value.replace(/[^\d ]/g, "") })} aria-label="Code à 6 chiffres" />
+            <button type="submit" className="btn-primary w-full" disabled={occupe || !a2f.pin || a2f.code.replace(/\D/g, "").length !== 6}>{occupe ? "Patientez…" : "Retirer l'application"}</button>
+          </form>
+        )}
+      </Modal>
 
       {/* Lot 92 — code de secours : montré UNE seule fois, à noter avant de continuer */}
       <Modal ouvert={!!codeSecours} titre="Votre code de secours" onFermer={() => { if (codeSecours?.confirme) setCodeSecours(null); }}>

@@ -56,6 +56,20 @@ class PinEnregistrer(BaseModel):
 
 class PinOuvrir(BaseModel):
     preuve: str = Field(..., min_length=40, max_length=64)
+    code_totp: str | None = Field(None, max_length=12)     # lot 94 : code de l'application d'authentification (si activée)
+
+
+class TotpPreparer(BaseModel):
+    verif_actuelle: str = Field(..., min_length=16, max_length=600)
+
+
+class TotpActiver(BaseModel):
+    code: str = Field(..., min_length=6, max_length=12)
+
+
+class TotpDesactiver(BaseModel):
+    preuve: str = Field(..., min_length=40, max_length=64)
+    code: str = Field(..., min_length=6, max_length=12)
 
 
 class Enveloppes(BaseModel):
@@ -91,7 +105,24 @@ async def pin_enregistrer(data: PinEnregistrer, user: dict = Depends(get_current
 @router.post("/pin/ouvrir")
 async def pin_ouvrir(data: PinOuvrir, user: dict = Depends(get_current_user)):
     """Lot 93 : contrôle la preuve du code (5 essais puis 15 min de pause, 10 échecs : code de secours) et renvoie le poivre."""
-    return await _relayer("pin/ouvrir", user, preuve=data.preuve)
+    plus = {"code_totp": data.code_totp} if data.code_totp else {}
+    return await _relayer("pin/ouvrir", user, preuve=data.preuve, **plus)
+
+
+@router.post("/totp/preparer")
+async def totp_preparer(data: TotpPreparer, user: dict = Depends(get_current_user)):
+    """Lot 94 : début de l'activation de l'application d'authentification (renvoie le secret et l'adresse otpauth:// du QR code)."""
+    return await _relayer("totp/preparer", user, verif_actuelle=data.verif_actuelle)
+
+
+@router.post("/totp/activer")
+async def totp_activer(data: TotpActiver, user: dict = Depends(get_current_user)):
+    return await _relayer("totp/activer", user, code=data.code)
+
+
+@router.post("/totp/desactiver")
+async def totp_desactiver(data: TotpDesactiver, user: dict = Depends(get_current_user)):
+    return await _relayer("totp/desactiver", user, preuve=data.preuve, code=data.code)
 
 
 @router.post("/cle/enveloppes")
