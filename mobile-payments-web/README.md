@@ -131,8 +131,8 @@ statique gratuit `paiement-mobile-site`. **Aucun serveur Node à déployer.**
    - `ADMIN_EMAIL` et `ADMIN_PASSWORD` (compte administrateur, créé au démarrage) ;
    - `LILUVINE_WA_HMAC` (clé de l'émetteur `paiementmobile` dans SAWALI, pour les alertes WhatsApp).
    `JWT_SECRET` est généré par Render. Les autres valeurs sont déjà dans `render.yaml` :
-   `FRONTEND_ORIGIN` / `PUBLIC_SITE_URL` = `https://paiement-mobile-site.onrender.com`,
-   `VITE_API_BASE_URL` = `https://paiement-mobile-api-jo11.onrender.com/api`, `LILUVINE_WA_EMETTEUR` = `paiementmobile`.
+   `PUBLIC_SITE_URL` = `https://auror.space`, `FRONTEND_ORIGIN` = `https://auror.space,https://www.auror.space,https://paiement-mobile-site.onrender.com`,
+   `VITE_API_BASE_URL` = `https://api.auror.space/api`, `LILUVINE_WA_EMETTEUR` = `paiementmobile`.
 3. Le **catalogue USSD de départ** est chargé automatiquement au premier démarrage si la base est vide :
    aucune commande à lancer.
 4. **Noms de domaine** : avec les adresses `*.onrender.com`, Safari (iPhone, Mac) refuse en général le
@@ -140,6 +140,10 @@ statique gratuit `paiement-mobile-site`. **Aucun serveur Node à déployer.**
    l'API deux sous-domaines du **même** domaine (ex. `pay.exemple.com` et `api.exemple.com`), puis mettez à
    jour `FRONTEND_ORIGIN`, `PUBLIC_SITE_URL` et `VITE_API_BASE_URL`. L'app Android n'est pas concernée
    (pas de cookie).
+   **Fait (lot 91)** : site `https://auror.space` (+ `www`, qui redirige) et API `https://api.auror.space`.
+   Zone DNS (OVH) : `@` en A vers l'adresse indiquée par Render, `www` en CNAME vers `paiement-mobile-site.onrender.com`,
+   `api` en CNAME vers `paiement-mobile-api-jo11.onrender.com`. Les anciennes adresses `onrender.com` restent actives
+   (liens et QR déjà diffusés, APK Android).
 5. **APK Android** : compilé par GitHub Actions (`Build APK - auRor`) à chaque
    modification de `mobile-payments-app/**` sur la branche par défaut ; il appelle
    `https://paiement-mobile-api-jo11.onrender.com/` par défaut.
