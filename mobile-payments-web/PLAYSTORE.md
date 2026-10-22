@@ -93,7 +93,7 @@ Une question ? contact@sawalismartsystems.com
 | Historique d'achats / infos financières | Oui | Non | Fonctionnalités : historique des paiements préparés (opérateur, montant, code marchand — jamais le code secret) |
 | Photos | Traitées sans être gardées | **Oui** | Fonctionnalités : lecture des plaques et ordonnances (abonnement) |
 | Enregistrements audio | Traités sans être gardés | **Oui** | Fonctionnalités : transcription vocale (abonnement) |
-| Fichiers et documents | Oui (chiffrés par l'utilisateur) | **Oui** | Fonctionnalités : archives en ligne (abonnement) |
+| Fichiers et documents | Oui (chiffrés par l'utilisateur) | **Oui** | Fonctionnalités : archives en ligne chiffrées (espace gratuit, abonnement pour plus d'espace) — lot 92 |
 | Messages / contenu envoyé | Oui | **Oui** | Fonctionnalités : cartes virtuelles envoyées par WhatsApp (abonnement) |
 | Adresse IP et journal de connexions | Oui | Non | Sécurité, prévention de la fraude, supervision |
 | Appareil (abonnement de notification) | Oui | **Oui** | Fonctionnalités : notifications push |

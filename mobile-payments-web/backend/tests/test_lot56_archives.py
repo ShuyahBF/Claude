@@ -95,3 +95,23 @@ def test_modification_des_informations_chiffrees(client, utilisateur, sawali):
     q = sawali[-1]
     assert q.url.path.endswith("/archives/modifier") and json.loads(q.content)["meta"] == "N" * 48 and json.loads(q.content)["id"] == "a1b2c3d4e5"
     assert client.put("/api/archives/a1b2c3d4e5", headers=h, json={"meta": "court"}).status_code == 422
+
+
+def test_cle_avec_enveloppe_et_secours_puis_nouvelles_enveloppes(client, utilisateur, sawali):
+    """Lot 92 : l'enveloppe (clé chiffrée par la phrase) et le secours (clé chiffrée par le code) sont relayés tels quels."""
+    _, h, _ = utilisateur
+    sawali.reponse = (200, {"ok": True})
+    assert client.post("/api/archives/cle", headers=h, json={"sel": "S" * 24, "verif": "V" * 40, "enveloppe": "E" * 40, "secours": "R" * 40}).status_code == 200
+    corps = json.loads(sawali[-1].content)
+    assert corps["enveloppe"] == "E" * 40 and corps["secours"] == "R" * 40 and sawali[-1].url.path.endswith("/archives/cle")
+    # ancien appel sans enveloppe : toujours accepté (compatibilité)
+    assert client.post("/api/archives/cle", headers=h, json={"sel": "S" * 24, "verif": "V" * 40}).status_code == 200
+    assert "enveloppe" not in json.loads(sawali[-1].content)
+    r = client.post("/api/archives/cle/enveloppes", headers=h, json={"verif_actuelle": "V" * 40, "enveloppe": "N" * 40})
+    assert r.status_code == 200 and sawali[-1].url.path.endswith("/archives/enveloppes")
+    assert json.loads(sawali[-1].content)["verif_actuelle"] == "V" * 40 and "secours" not in json.loads(sawali[-1].content)
+    sawali.reponse = (409, {"detail": "Jeton de contrôle incorrect"})
+    assert client.post("/api/archives/cle/enveloppes", headers=h, json={"verif_actuelle": "X" * 40, "enveloppe": "N" * 40}).status_code == 409
+    n = len(sawali)
+    assert client.post("/api/archives/cle/enveloppes", headers=h, json={"verif_actuelle": "court", "enveloppe": "N" * 40}).status_code == 422
+    assert len(sawali) == n
