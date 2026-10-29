@@ -64,3 +64,31 @@ async def definir_secondes_verrou(secondes: int) -> int:
 
 def vider_cache_verrou() -> None:
     _cache_verrou.update(valeur=DEFAUT_VERROU, lu_le=0.0)
+
+
+# ---------------------------------------------------------------------------
+# Rayon de recherche des marchands (lot 102) : avec la géolocalisation des paiements, l'utilisateur voit la liste de TOUS les marchands
+# connus dans ce rayon autour de lui (liste déroulante réservée à l'administrateur, Admin → Comptes). 50 m par défaut.
+# ---------------------------------------------------------------------------
+CHOIX_RAYON_MARCHANDS: Tuple[int, ...] = (20, 30, 50, 75, 100, 150, 200)
+DEFAUT_RAYON_MARCHANDS = 50
+_cache_rayon = {"valeur": DEFAUT_RAYON_MARCHANDS, "lu_le": 0.0}
+
+
+async def metres_rayon_marchands() -> int:
+    """Rayon (en mètres) de la liste des marchands proches ; relu au plus toutes les 30 s."""
+    if time.monotonic() - _cache_rayon["lu_le"] > DUREE_CACHE:
+        doc = await db.reglages_plateforme.find_one({"_id": "rayon_marchands"}) or {}
+        v = doc.get("metres")
+        _cache_rayon.update(valeur=v if v in CHOIX_RAYON_MARCHANDS else DEFAUT_RAYON_MARCHANDS, lu_le=time.monotonic())
+    return _cache_rayon["valeur"]
+
+
+async def definir_metres_rayon_marchands(metres: int) -> int:
+    await db.reglages_plateforme.update_one({"_id": "rayon_marchands"}, {"$set": {"metres": metres}}, upsert=True)
+    _cache_rayon.update(valeur=metres, lu_le=time.monotonic())
+    return metres
+
+
+def vider_cache_rayon() -> None:
+    _cache_rayon.update(valeur=DEFAUT_RAYON_MARCHANDS, lu_le=0.0)

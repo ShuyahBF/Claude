@@ -7,6 +7,7 @@ import WidgetAujourdhui from "@/components/WidgetAujourdhui";
 import QrOperateur from "@/components/QrOperateur";
 import LogoMode from "@/components/LogoMode";
 import PaiementPispi from "@/components/PaiementPispi";
+import MarchandsProches from "@/components/MarchandsProches";   // lot 102 : liste des marchands proches à choisir
 import ScannerQr from "@/components/ScannerQr";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
@@ -224,6 +225,11 @@ export default function Payer() {
         </button>
       </div>
 
+      {/* Lot 102 : marchands près de vous (géolocalisation activée) — un geste ouvre le paiement avec le marchand choisi */}
+      {!operateur && !service && (
+        <MarchandsProches onChoisir={(m) => ouvrirDepuisQr(m.operateur, null, m.code)} />
+      )}
+
       {/* Étape 1 : opérateur — liste déroulante (règle : une liste finie se choisit dans une liste déroulante) */}
       {!operateur && (
         <section className="space-y-3">
@@ -268,6 +274,11 @@ export default function Payer() {
                 required inputMode={c.type === "numeric" ? "numeric" : "text"} pattern={c.type === "numeric" ? "[0-9 ]*" : undefined}
                 list={c.isMerchantCode ? "marchands-connus" : undefined}
                 value={valeurs[c.key] || ""} onChange={(e) => setValeurs({ ...valeurs, [c.key]: e.target.value })} />
+
+              {/* Lot 102 : les marchands de cet opérateur près de vous, à choisir à la place de la saisie du code */}
+              {c.isMerchantCode && !(valeurs[c.key] || "") && (
+                <div className="mt-2"><MarchandsProches operateur={operateur} titre="📍 Près de vous" onChoisir={(m) => setValeurs((v) => ({ ...v, [c.key]: m.code }))} /></div>
+              )}
 
               {/* Résolution du code marchand */}
               {c.isMerchantCode && marchand?.trouve && (

@@ -9,6 +9,7 @@ Pour un développeur WinDev :
   - PUT  /api/admin/comptes/{id}/deconnexion → déconnexion FORCÉE : l'utilisateur voit un compte à rebours de 30 s (« l'administrateur va
         fermer votre session ») puis son écran revient à la page de connexion ; POST /api/admin/comptes/deconnexion-generale : tous les
         utilisateurs (jamais les administrateurs) ; DELETE …/deconnexion annule une annonce en cours ;
+  - PUT  /api/admin/comptes/reglage-rayon-marchands {metres} → rayon de la liste « marchands près de vous » (lot 102, 50 m par défaut) ;
   - PUT  /api/admin/comptes/reglage-inactivite {secondes} → durée d'inactivité avant fermeture de la session (liste déroulante de l'écran) ;
   - PUT  /api/admin/comptes/{id}/blocage {bloque} → bloquer / débloquer. Un compte bloqué est déconnecté aussitôt
         (la session est refusée à la requête suivante) et ne peut plus se connecter. Impossible sur soi-même ou un administrateur.
@@ -68,7 +69,8 @@ async def liste(q: str = Query("", max_length=60), page: int = Query(1, ge=1, le
     curseur = db.users.find(filtre, SANS_ID).sort([("derniere_connexion", -1), ("cree_le", -1)]).skip((page - 1) * PAR_PAGE).limit(PAR_PAGE)
     return {"total": total, "page": page, "par_page": PAR_PAGE, "comptes": [_fiche(u) async for u in curseur],
             "inactivite_secondes": await reglages_securite.secondes_inactivite(), "choix_inactivite": list(reglages_securite.CHOIX_SECONDES),
-            "verrou_secondes": await reglages_securite.secondes_verrou(), "choix_verrou": list(reglages_securite.CHOIX_VERROU)}
+            "verrou_secondes": await reglages_securite.secondes_verrou(), "choix_verrou": list(reglages_securite.CHOIX_VERROU),
+            "rayon_marchands_m": await reglages_securite.metres_rayon_marchands(), "choix_rayon_marchands": list(reglages_securite.CHOIX_RAYON_MARCHANDS)}
 
 
 class Ids(BaseModel):
@@ -145,6 +147,18 @@ async def reglage_inactivite(corps: Reglage, _: dict = Depends(require_admin)):
     if corps.secondes not in reglages_securite.CHOIX_SECONDES:
         raise HTTPException(422, "Durée non proposée")
     return {"inactivite_secondes": await reglages_securite.definir_secondes_inactivite(corps.secondes)}
+
+
+class ReglageRayon(BaseModel):
+    metres: int
+
+
+@router.put("/reglage-rayon-marchands")
+async def reglage_rayon_marchands(corps: ReglageRayon, _: dict = Depends(require_admin)):
+    """Lot 102 : rayon (en mètres) de la liste « marchands près de vous » proposée aux comptes qui ont activé la géolocalisation."""
+    if corps.metres not in reglages_securite.CHOIX_RAYON_MARCHANDS:
+        raise HTTPException(422, "Rayon non proposé")
+    return {"rayon_marchands_m": await reglages_securite.definir_metres_rayon_marchands(corps.metres)}
 
 
 @router.put("/{compte_id}/deconnexion")

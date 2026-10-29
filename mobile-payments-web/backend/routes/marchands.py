@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 import lieux_marchands
+import reglages_securite
 from db import SANS_ID, db
 from securite import get_current_user
 
@@ -38,11 +39,12 @@ async def rechercher(operateur: Optional[str] = None, q: Optional[str] = None, _
 
 @router.get("/proches")
 async def proches(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180), user: dict = Depends(get_current_user)):
-    """Marchands à moins de 80 m (lot 49) : le site propose d'ouvrir le paiement avec le marchand retrouvé.
+    """Marchands proches (lots 49 et 102) : TOUS ceux du rayon réglé par l'administrateur (50 m par défaut), à choisir dans une liste.
     Réservé aux comptes qui ont activé leur géolocalisation ; la position demandée n'est jamais enregistrée."""
     if not user.get("geoloc"):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Géolocalisation désactivée sur ce compte")
-    return {"marchands": await lieux_marchands.proches(lat, lon)}
+    rayon = await reglages_securite.metres_rayon_marchands()          # lot 102 : rayon réglé par l'administrateur
+    return {"marchands": await lieux_marchands.proches(lat, lon, rayon), "rayon_m": rayon}
 
 
 @router.get("/{operateur}/{code}")
