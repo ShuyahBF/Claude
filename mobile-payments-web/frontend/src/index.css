@@ -5,6 +5,10 @@
 /* Base : textes en Open Sans, titres en Sora, fond blanc bleuté (charte auRor du 18/10/2026) */
 @layer base {
   body { @apply bg-creme font-sans text-ink antialiased; }
+  /* Garde-fou d'affichage (lot 100) : aucune page ne déborde jamais de la largeur de l'écran. Sans lui, un seul élément trop large
+     (graphique, tableau, long texte) élargit TOUTE la page : l'en-tête s'arrête avant le bord et le contenu glisse sur le côté.
+     « clip » (et non « hidden ») ne crée pas de zone de défilement : les éléments collants et fixes continuent de fonctionner. */
+  html, body { max-width: 100%; overflow-x: clip; }
   /* Cases à cocher et boutons radio aux couleurs de la plateforme */
   input[type="checkbox"], input[type="radio"] { accent-color: #006bf7; }
   h1, h2, h3, h4 { @apply font-display font-semibold tracking-tight; }
