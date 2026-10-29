@@ -297,3 +297,33 @@ def test_premier_vu_conserve_et_compte_des_nouveaux(client, utilisateur, monkeyp
     asyncio.run(presse.db.presse_sources.update_one({"id": "s1"}, {"$set": {"actif": False}}))
     assert client.get("/api/presse/nouveaux", params={"depuis": vu}, headers=h).json()["nombre"] == 0
     assert client.get("/api/presse/nouveaux").status_code == 401
+
+
+def test_pays_probable_d_apres_l_adresse():
+    """Lot 101 — drapeau du média : médias connus, puis extension nationale ; inconnu = aucun drapeau."""
+    assert presse.pays_probable("https://www.lesahel.org/feed/") == "NE"                  # Le Sahel (Niamey) : adresse en .org
+    assert presse.pays_probable("https://burkina24.com/feed/") == "BF"
+    assert presse.pays_probable("https://www.lemonde.fr/pixels/rss_full.xml") == "FR"
+    assert presse.pays_probable("https://news.bbc.co.uk/rss") == "GB"                      # .uk → GB
+    assert presse.pays_probable("https://exemple.com/feed") is None
+    assert presse.pays_probable("") is None
+
+
+def test_drapeau_dans_la_lecture_et_choix_de_l_administrateur(client, admin, utilisateur, sawali, sans_semis):
+    _, h, _ = utilisateur
+    client.post("/api/admin/presse/categories", headers=admin, json={"nom": "Presse locale", "icone": "📰"})
+    assert "NE" in client.get("/api/admin/presse/categories", headers=admin).json()["pays"]               # liste pour la liste déroulante
+    sid = client.post("/api/admin/presse/sources", headers=admin, json={"nom": "Le Journal", "url": "https://journal.test/"}).json()["id"]
+    assert client.post("/api/admin/presse/sources", headers=admin, json={"nom": "Faux", "url": "https://x.test/", "pays": "ZZ"}).status_code == 422
+    asyncio.run(presse.passage())
+    media = client.get("/api/presse", headers=h).json()["categories"][0]["medias"][0]
+    assert media["pays"] is None                                                                          # adresse en .test : aucun drapeau
+    corps = {"nom": "Le Journal", "url": "https://journal.test/", "actif": True}
+    assert client.put(f"/api/admin/presse/sources/{sid}", headers=admin, json={**corps, "pays": "NE"}).status_code == 200
+    media = client.get("/api/presse", headers=h).json()["categories"][0]["medias"][0]
+    assert media["pays"] == "NE" and media["pays_nom"] == "Niger"
+    # Un ancien écran qui n'envoie pas « pays » ne l'efface jamais ; une valeur vide l'efface
+    client.put(f"/api/admin/presse/sources/{sid}", headers=admin, json=corps)
+    assert client.get("/api/presse", headers=h).json()["categories"][0]["medias"][0]["pays"] == "NE"
+    client.put(f"/api/admin/presse/sources/{sid}", headers=admin, json={**corps, "pays": ""})
+    assert client.get("/api/presse", headers=h).json()["categories"][0]["medias"][0]["pays"] is None

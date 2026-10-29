@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Chargement from "@/components/Chargement";
 import { apiClient, dateHeure, messageErreur } from "@/lib/api";
+import { drapeau } from "@/lib/drapeau";          // lot 101 : drapeau du pays du média
 import { useToast } from "@/components/Toast";
 
 // Actualités (lots 62 et 65) : une catégorie à la fois (Presse locale, Tech, Mode, Coaching personnel… et celles créées par l'administrateur),
@@ -43,7 +44,10 @@ export default function Presse() {
       )}
       {active?.medias.map((m) => (
         <section key={m.id} className="card space-y-3">
-          <h2 className="text-lg font-semibold"><a href={m.url} target="_blank" rel="noopener noreferrer" className="hover:underline">{m.nom}</a></h2>
+          <h2 className="text-lg font-semibold">
+            {m.pays && <span className="mr-2" title={m.pays_nom || m.pays} data-testid="drapeau-media">{drapeau(m.pays)}</span>}
+            <a href={m.url} target="_blank" rel="noopener noreferrer" className="hover:underline">{m.nom}</a>
+          </h2>
           <ul className="space-y-4">
             {m.articles.map((a) => (
               <li key={a.lien} className="flex gap-3">
@@ -54,7 +58,7 @@ export default function Presse() {
                     className="h-20 w-28 shrink-0 rounded-lg bg-gray-100 object-cover sm:h-24 sm:w-36" />
                 )}
                 <div className="min-w-0 space-y-1">
-                  <p className="font-medium">{a.titre}{vuAvant && (a.premier_vu || "") > vuAvant && <span className="ml-2 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white" data-testid="article-nouveau">Nouveau</span>}</p>
+                  <p className="font-medium">{m.pays && <span className="mr-1.5" title={m.pays_nom || m.pays} aria-label={`Média : ${m.pays_nom || m.pays}`} data-testid="drapeau-article">{drapeau(m.pays)}</span>}{a.titre}{vuAvant && (a.premier_vu || "") > vuAvant && <span className="ml-2 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white" data-testid="article-nouveau">Nouveau</span>}</p>
                   {a.traduit && <span className="mb-1 inline-block rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800">🌐 Traduit vers FR</span>}
                   {a.resume && <p className="text-sm text-gray-700">{a.resume}{!a.ia && <span className="ml-1 text-xs text-gray-400">(début de l'article)</span>}</p>}
                   <a href={a.lien} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-primary underline">Lire l'article complet chez {m.nom} →</a>

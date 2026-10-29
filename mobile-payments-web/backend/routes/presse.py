@@ -506,6 +506,34 @@ CATEGORIES_DEFAUT = [
         ("Le Monde M perso", "https://www.lemonde.fr/m-perso/rss_full.xml"), ("Tiny Buddha", "https://tinybuddha.com/feed/"),
         ("Lifehack", "https://www.lifehack.org/feed")]),
 ]
+# Lot 101 — PAYS d'un média (drapeau affiché à côté de son nom et de ses articles). Liste finie : code ISO → nom (liste déroulante de l'administration).
+PAYS = {"BF": "Burkina Faso", "CI": "Côte d'Ivoire", "SN": "Sénégal", "ML": "Mali", "NE": "Niger", "TG": "Togo", "BJ": "Bénin", "GH": "Ghana",
+        "NG": "Nigeria", "CM": "Cameroun", "GA": "Gabon", "CG": "Congo", "CD": "RD Congo", "GN": "Guinée", "MA": "Maroc", "DZ": "Algérie",
+        "TN": "Tunisie", "EG": "Égypte", "ZA": "Afrique du Sud", "FR": "France", "BE": "Belgique", "CH": "Suisse", "CA": "Canada",
+        "GB": "Royaume-Uni", "US": "États-Unis", "DE": "Allemagne", "ES": "Espagne", "IT": "Italie"}
+# Médias connus (domaine → pays), pour les adresses en .com / .org / .info qui ne disent pas le pays
+PAYS_PAR_DOMAINE = {"lesahel.org": "NE", "burkina24.com": "BF", "lefaso.net": "BF", "sidwaya.info": "BF", "wakatsera.com": "BF",
+                    "numerama.com": "FR", "frandroid.com": "FR", "siecledigital.fr": "FR", "clubic.com": "FR", "journaldugeek.com": "FR",
+                    "psychologies.com": "FR", "harpersbazaar.com": "US", "whowhatwear.com": "US", "tinybuddha.com": "US", "lifehack.org": "US"}
+PAYS_PAR_EXTENSION = {"uk": "GB", **{c.lower(): c for c in PAYS}}      # .bf → BF, .uk → GB, .fr → FR…
+
+
+def pays_probable(url: str) -> Optional[str]:
+    """Pays d'un média d'après son adresse (fonction pure) : médias connus, sinon extension nationale (.bf, .ne, .fr…) ; None si inconnu."""
+    hote = re.sub(r"^https?://", "", (url or "").strip().lower()).split("/")[0].split(":")[0]
+    hote = hote[4:] if hote.startswith("www.") else hote
+    for domaine, code in PAYS_PAR_DOMAINE.items():
+        if hote == domaine or hote.endswith("." + domaine):
+            return code
+    return PAYS_PAR_EXTENSION.get(hote.rsplit(".", 1)[-1])
+
+
+def pays_du_media(source: Dict[str, Any]) -> Optional[str]:
+    """Pays choisi par l'administrateur, sinon celui que l'adresse laisse deviner."""
+    code = (source.get("pays") or "").upper()
+    return code if code in PAYS else pays_probable(source.get("url") or "")
+
+
 ICONES = ["📰", "💻", "👗", "🧠", "⚽", "🎬", "🎵", "💼", "🌍", "🍽️", "🏥", "🚗", "📚", "🌱"]     # liste proposée ; « Autre… » = saisie libre
 
 
@@ -544,6 +572,7 @@ class SourceIn(BaseModel):
     url: str = Field(..., min_length=8, max_length=300)
     actif: bool = True
     categorie_id: Optional[str] = Field(None, max_length=60)      # absent : première catégorie
+    pays: Optional[str] = Field(None, max_length=2)               # lot 101 : code ISO du pays (drapeau) ; "" = effacé ; absent = inchangé
 
 
 class ReglagesIn(BaseModel):
@@ -565,7 +594,9 @@ async def lire(_: dict = Depends(get_current_user)):
         for s in sources_actives:
             m = lignes.get(s["id"])
             if s.get("categorie_id") == c["id"] and m:
-                medias.append({"id": s["id"], "nom": m["nom"], "url": m["url"], "maj_le": m["maj_le"], "articles": m["articles"]})
+                code = pays_du_media(s)
+                medias.append({"id": s["id"], "nom": m["nom"], "url": m["url"], "maj_le": m["maj_le"], "articles": m["articles"],
+                               "pays": code, "pays_nom": PAYS.get(code)})
                 dernier = max(dernier or "", m["maj_le"])
         if medias:
             categories.append({"id": c["id"], "nom": c["nom"], "icone": c["icone"], "medias": medias})
@@ -602,13 +633,19 @@ async def categorie_pour(d: SourceIn) -> str:
 async def valider_source(d: SourceIn) -> Dict[str, Any]:
     if not adresse_valide(d.url.strip()):
         raise HTTPException(status_code=422, detail="Adresse invalide : elle doit commencer par http:// ou https://")
-    return {"nom": d.nom.strip(), "url": d.url.strip(), "actif": d.actif, "categorie_id": await categorie_pour(d)}
+    doc = {"nom": d.nom.strip(), "url": d.url.strip(), "actif": d.actif, "categorie_id": await categorie_pour(d)}
+    if "pays" in d.model_fields_set:                       # lot 101 : seulement si le champ est envoyé (un ancien écran ne l'efface jamais)
+        code = (d.pays or "").strip().upper()
+        if code and code not in PAYS:
+            raise HTTPException(status_code=422, detail="Pays inconnu")
+        doc["pays"] = code
+    return doc
 
 
 @router.get("/admin/presse/categories")
 async def categories(_: dict = Depends(require_admin)):
     await semer()
-    return {"categories": await categories_triees(), "icones": ICONES}
+    return {"categories": await categories_triees(), "icones": ICONES, "pays": PAYS}
 
 
 @router.post("/admin/presse/categories", status_code=201)
@@ -649,7 +686,7 @@ async def sources(_: dict = Depends(require_admin)):
     await semer()
     lignes = await db.presse_sources.find({}, SANS_ID).sort("ordre", 1).to_list(MAX_SOURCES)
     etat = {r["source_id"]: r for r in await db.presse_resumes.find({}, SANS_ID).to_list(MAX_SOURCES)}
-    return {"sources": [{**s, "maj_le": (etat.get(s["id"]) or {}).get("maj_le"), "erreur": (etat.get(s["id"]) or {}).get("erreur"),
+    return {"sources": [{**s, "pays_effectif": pays_du_media(s), "maj_le": (etat.get(s["id"]) or {}).get("maj_le"), "erreur": (etat.get(s["id"]) or {}).get("erreur"),
                          "nb_articles": len((etat.get(s["id"]) or {}).get("articles") or []),
                          "nb_images": sum(1 for a in ((etat.get(s["id"]) or {}).get("articles") or []) if a.get("image"))} for s in lignes]}
 
