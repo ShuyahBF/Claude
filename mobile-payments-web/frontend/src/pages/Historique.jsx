@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import CarteCodeUssd from "@/components/CarteCodeUssd";
 import Chargement from "@/components/Chargement";
 import DetailsDepense from "@/components/DetailsDepense";
+import FlechesDefilement from "@/components/FlechesDefilement";         // lot 99 : flèches haut / bas pour parcourir la page
 import Camembert from "@/components/Camembert";                    // lot 98 : répartition des bénéficiaires par opérateur
 import HistogrammePaiements from "@/components/HistogrammePaiements";   // lot 98 : histogramme en montant, par jour ou par mois
 import ImportJournal from "@/components/ImportJournal";           // lot 96 : journal des transactions de l'opérateur
@@ -388,6 +389,9 @@ export default function Historique() {
           </button>
         )}
       </section>
+
+      {/* Lot 99 : flèches haut / bas, utiles quand l'historique est long */}
+      <FlechesDefilement />
 
       <Modal ouvert={importOuvert} titre="Importer un journal de l'opérateur" onFermer={() => setImportOuvert(false)}>
         <ImportJournal operateurs={operateurs} onTermine={() => { setImportOuvert(false); charger(); }} />
