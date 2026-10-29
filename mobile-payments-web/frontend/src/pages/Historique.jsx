@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import CarteCodeUssd from "@/components/CarteCodeUssd";
 import Chargement from "@/components/Chargement";
 import DetailsDepense from "@/components/DetailsDepense";
+import ImportJournal from "@/components/ImportJournal";           // lot 96 : journal des transactions de l'opérateur
+import NomBeneficiaire from "@/components/NomBeneficiaire";       // lot 96 : nom modifiable après coup
 import Portefeuilles from "@/components/Portefeuilles";
 import SelecteurOperateur from "@/components/SelecteurOperateur";   // lot 89 : listes d'opérateurs avec logos   // lot 86 : portefeuilles électronique / personnel et courbe   // lot 85 : motif et pièces d'une dépense
 import Modal from "@/components/Modal";
@@ -85,7 +87,7 @@ function parametres(f) {
 function exporterCsv(lignes) {
   const colonnes = ["Date", "Opérateur", "Service", "Bénéficiaire", "Code", "Montant (FCFA)", "Statut", "Code USSD", "Motif", "Pièces"];
   const echapper = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const corps = lignes.map((p) => [dateHeure(p.cree_le), p.operateur, p.service_nom, p.marchand?.libelle || "", p.marchand?.code || "",
+  const corps = lignes.map((p) => [dateHeure(p.cree_le), p.operateur, p.service_nom, p.nom_beneficiaire || p.marchand?.libelle || "", p.marchand?.code || "",
     p.montant ?? "", (STATUTS[p.statut] || STATUTS.prepare)[0], p.code_ussd, p.motif || "", (p.pieces || []).length || ""].map(echapper).join(";"));
   const blob = new Blob(["﻿" + [colonnes.map(echapper).join(";"), ...corps].join("\n")], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a");
@@ -106,6 +108,19 @@ function Chiffre({ titre, valeur, detail }) {
   );
 }
 
+// Détail d'une transaction importée du journal de l'opérateur (lot 96) : pas de code USSD, les données viennent de l'opérateur.
+function DetailImport({ paiement }) {
+  return (
+    <div className="space-y-1 text-sm" data-testid="detail-import">
+      <p className="font-semibold">{paiement.service_nom} · <span className="text-primary">{fcfa(paiement.montant)}</span></p>
+      <p className="text-gray-600">{paiement.sens === "entree" ? "Reçu le" : "Effectué le"} {dateHeure(paiement.cree_le)} · {paiement.operateur}</p>
+      <p className="break-all text-xs text-gray-500">Référence de l'opérateur : {paiement.reference_operateur}</p>
+      {paiement.frais > 0 && <p className="text-xs text-gray-500">Frais : {fcfa(paiement.frais)}</p>}
+      {paiement.libelle_operateur && <p className="text-xs text-gray-500">{paiement.libelle_operateur}</p>}
+    </div>
+  );
+}
+
 // Historique des paiements préparés par l'utilisateur : statistiques par période et par opérateur, classements (Top 10),
 // recherche par bénéficiaire, export CSV ; on peut réafficher le QR code d'un paiement, changer son statut ou le supprimer.
 export default function Historique() {
@@ -116,6 +131,7 @@ export default function Historique() {
   const [paiements, setPaiements] = useState(null);
   const [nbAffiches, setNbAffiches] = useState(TAILLE_PAGE);
   const [ouvert, setOuvert] = useState(null);
+  const [importOuvert, setImportOuvert] = useState(false);   // lot 96 : fenêtre « Importer un journal »
   const [recherche, setRecherche] = useState("");   // texte tapé ; envoyé au serveur après une courte pause
 
   useEffect(() => { apiClient.get("/operateurs").then(({ data }) => setOperateurs(data)).catch(() => setOperateurs([])); }, []);
@@ -328,7 +344,10 @@ export default function Historique() {
       <section className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-bold">Paiements ({paiements.length})</h2>
-          {paiements.length > 0 && <button type="button" className="btn-outline btn-sm" onClick={() => exporterCsv(paiements)}>⬇ Exporter en CSV</button>}
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn-outline btn-sm" onClick={() => setImportOuvert(true)} data-testid="ouvrir-import">⬆ Importer un journal</button>
+            {paiements.length > 0 && <button type="button" className="btn-outline btn-sm" onClick={() => exporterCsv(paiements)}>⬇ Exporter en CSV</button>}
+          </div>
         </div>
         {paiements.length === 0 && <p className="card text-gray-500">Aucun paiement pour ces critères.</p>}
         {/* Rappel : par défaut les codes non confirmés sont masqués */}
@@ -346,7 +365,7 @@ export default function Historique() {
                 <button type="button" onClick={() => setOuvert(p)} className="choix">
                   <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: couleurOperateur(p.operateur) }} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold">{p.service_nom}{p.marchand?.libelle ? ` · ${p.marchand.libelle}` : ""}</p>
+                    <p className="truncate font-semibold">{p.service_nom}{(p.nom_beneficiaire || p.marchand?.libelle) ? ` · ${p.nom_beneficiaire || p.marchand.libelle}` : ""}</p>
                     <p className="text-xs text-gray-500">{p.operateur} · {dateHeure(p.cree_le)}{p.pieces?.length ? ` · 📎 ${p.pieces.length}` : ""}</p>
                     {p.motif && <p className="truncate text-xs text-gray-600" data-testid="ligne-motif">{p.motif}</p>}
                   </div>
@@ -366,11 +385,19 @@ export default function Historique() {
         )}
       </section>
 
+      <Modal ouvert={importOuvert} titre="Importer un journal de l'opérateur" onFermer={() => setImportOuvert(false)}>
+        <ImportJournal operateurs={operateurs} onTermine={() => { setImportOuvert(false); charger(); }} />
+      </Modal>
+
       <Modal ouvert={!!ouvert} titre="Paiement" onFermer={() => setOuvert(null)}>
         {ouvert && (
           <>
-            {ouvert.mode === "pispi" ? <DetailPispi paiement={ouvert} onChange={() => { setOuvert(null); charger(); }} /> : <CarteCodeUssd paiement={ouvert} onStatut={changerStatut} />}
+            {ouvert.mode === "pispi" ? <DetailPispi paiement={ouvert} onChange={() => { setOuvert(null); charger(); }} />
+              : ouvert.mode === "import" ? <DetailImport paiement={ouvert} />
+              : <CarteCodeUssd paiement={ouvert} onStatut={changerStatut} />}
             {/* Lot 85 : motif détaillé et pièces scannées, quel que soit le statut du paiement */}
+            {/* Lot 96 : nom du bénéficiaire modifiable après la transaction */}
+            <NomBeneficiaire key={`nom-${ouvert.id}`} paiement={ouvert} onChange={(maj) => { setOuvert(maj); setPaiements((l) => (l || []).map((x) => (x.id === maj.id ? { ...x, ...maj, nom_beneficiaire: maj.nom_beneficiaire } : x))); }} />
             <DetailsDepense key={ouvert.id} paiement={ouvert} onChange={(maj) => { setOuvert(maj); setPaiements((l) => (l || []).map((x) => (x.id === maj.id ? { ...x, ...maj } : x))); }} />
             <button type="button" className="mt-4 w-full text-sm text-red-600 hover:underline" onClick={() => supprimer(ouvert)}>
               Supprimer de l'historique

@@ -91,6 +91,8 @@ async def ensure_indexes() -> None:
     await db.comptes_marchands.create_index("user_id", unique=True)
     await db.comptes_marchands.create_index([("codes.operateur", 1), ("codes.code", 1)])
     await db.paiements.create_index([("compte_marchand_id", 1), ("statut", 1)], sparse=True)
+    # Lot 96 : import du journal de l'opérateur — retrouver une transaction par son Transfer ID
+    await db.paiements.create_index([("user_id", 1), ("reference_operateur", 1)], sparse=True)
     # Profils saisis à l'accueil de l'app Android : un profil par téléphone (lot 13)
     await db.profils_android.create_index("telephone", unique=True)
     # Échecs de connexion (anti force brute)
