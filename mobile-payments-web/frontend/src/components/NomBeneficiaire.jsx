@@ -12,15 +12,16 @@ export default function NomBeneficiaire({ paiement, onChange }) {
   const toast = useToast();
   const [nom, setNom] = useState(paiement.nom_beneficiaire || "");
   const [occupe, setOccupe] = useState(false);
+  const [auxAutres, setAuxAutres] = useState(true);       // lot 97 : appliquer aussi aux autres paiements du même numéro
   if (!CATEGORIES_NOMMABLES.includes(paiement.categorie)) return null;
   const recu = paiement.categorie === "money_receipt";
 
   const enregistrer = async () => {
     setOccupe(true);
     try {
-      const { data } = await apiClient.put(`/paiements/${paiement.id}/nom`, { nom });
+      const { data } = await apiClient.put(`/paiements/${paiement.id}/nom`, { nom, aux_autres: auxAutres });
       onChange(data);
-      toast.succes("Nom enregistré");
+      toast.succes(data.autres_modifies > 0 ? `Nom enregistré, appliqué à ${data.autres_modifies} autre(s) paiement(s)` : "Nom enregistré");
     } catch (err) { toast.erreur(messageErreur(err, "Enregistrement impossible")); } finally { setOccupe(false); }
   };
 
@@ -28,6 +29,10 @@ export default function NomBeneficiaire({ paiement, onChange }) {
     <section className="mt-4 space-y-2 border-t border-gray-100 pt-3 text-sm" data-testid="nom-beneficiaire">
       <label className="label" htmlFor="nom-benef">{recu ? "Nom de l'expéditeur" : "Nom du bénéficiaire"}</label>
       <input id="nom-benef" className="input" maxLength={NOM_MAX} value={nom} onChange={(e) => setNom(e.target.value)} placeholder="ex. Maman, Boutique Sawadogo…" />
+      <label className="flex items-center gap-2 text-xs text-gray-700">
+        <input type="checkbox" checked={auxAutres} onChange={(e) => setAuxAutres(e.target.checked)} data-testid="nom-aux-autres" />
+        Appliquer aussi aux autres paiements vers ce numéro
+      </label>
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs text-gray-500">Modifiable à tout moment ; laissez vide pour revenir au numéro.</span>
         <button type="button" className="btn-outline btn-sm" disabled={occupe || nom.trim() === (paiement.nom_beneficiaire || "")} onClick={enregistrer}>Enregistrer le nom</button>

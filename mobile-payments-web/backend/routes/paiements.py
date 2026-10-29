@@ -374,18 +374,41 @@ NOM_MAX = 80
 
 class NomBeneficiaire(BaseModel):
     nom: Optional[str] = Field(None, max_length=NOM_MAX)
+    # Lot 97 : appliquer aussi le nom aux AUTRES paiements du même bénéficiaire (même numéro ou même code marchand)
+    aux_autres: bool = False
+
+
+def _chiffres_cible(p: dict) -> str:
+    """Numéro ou code du bénéficiaire, réduit à ses chiffres et sans l'indicatif 226 (« +226 67 07 28 23 » = « 67072823 »)."""
+    c = re.sub(r"\D", "", beneficiaire(p)["code"] or "")
+    return c[3:] if c.startswith("226") and len(c) == 11 else c
 
 
 @router.put("/{paiement_id}/nom")
 async def nommer_beneficiaire(paiement_id: str, data: NomBeneficiaire, user: dict = Depends(get_current_user)):
     """Nom du bénéficiaire (ou de l'expéditeur), modifiable APRÈS la transaction — transferts d'argent et paiements marchands.
-    Vide = on retrouve le nom d'origine (annuaire des marchands, ou numéro)."""
+    Vide = on retrouve le nom d'origine (annuaire des marchands, ou numéro).
+    aux_autres = true : le même nom est donné aux autres paiements du même bénéficiaire (même opérateur, même numéro ou code) qui n'ont
+    pas de nom OU qui portaient l'ancien nom ; un nom différent saisi à la main n'est jamais écrasé."""
     p = await _mon_paiement(paiement_id, user)
     if p.get("categorie") not in CATEGORIES_NOMMABLES:
         raise HTTPException(status.HTTP_409_CONFLICT, "Le nom ne se modifie que pour un transfert d'argent ou un paiement marchand")
     nom = (data.nom or "").strip()
-    await db.paiements.update_one({"id": paiement_id, "user_id": user["id"]}, {"$set": {"nom_beneficiaire": nom}} if nom else {"$unset": {"nom_beneficiaire": ""}})
-    return _avec_lien(await _mon_paiement(paiement_id, user))
+    ancien = (p.get("nom_beneficiaire") or "").strip()
+    modifs = {"$set": {"nom_beneficiaire": nom}} if nom else {"$unset": {"nom_beneficiaire": ""}}
+    await db.paiements.update_one({"id": paiement_id, "user_id": user["id"]}, modifs)
+    autres = 0
+    cible = _chiffres_cible(p)
+    if data.aux_autres and cible:
+        # UNE lecture des paiements nommables de l'utilisateur pour cet opérateur, comparaison en mémoire (jamais une lecture par ligne)
+        voisins = await db.paiements.find(
+            {"user_id": user["id"], "operateur": p["operateur"], "categorie": {"$in": sorted(CATEGORIES_NOMMABLES)}, "id": {"$ne": paiement_id}},
+            {"_id": 0, "id": 1, "valeurs": 1, "marchand": 1, "nom_beneficiaire": 1}).to_list(LIMITE_ANALYSE)
+        ids = [v["id"] for v in voisins if _chiffres_cible(v) == cible and (v.get("nom_beneficiaire") or "").strip() in ("", ancien)]
+        if ids:
+            res = await db.paiements.update_many({"id": {"$in": ids}, "user_id": user["id"]}, modifs)
+            autres = res.modified_count
+    return {**_avec_lien(await _mon_paiement(paiement_id, user)), "autres_modifies": autres}
 
 
 @router.post("/{paiement_id}/pieces", status_code=status.HTTP_201_CREATED)

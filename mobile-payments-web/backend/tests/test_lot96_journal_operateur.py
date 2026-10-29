@@ -106,3 +106,22 @@ def test_fichiers_refuses_et_historique_prive(client, utilisateur):
     if autre.status_code in (200, 201):
         h2 = {"Authorization": f"Bearer {autre.json()['access_token']}"}
         assert client.get("/api/paiements", headers=h2).json() == []
+
+
+def test_nom_applique_aux_autres_paiements_du_meme_numero(client, utilisateur):
+    """Lot 97 — « Appliquer aussi aux autres paiements vers ce numéro » : sans écraser un nom différent saisi à la main."""
+    _, h, _ = utilisateur
+    s = next(x for x in client.get("/api/services", params={"operateur": "Orange"}, headers=h).json() if x["nom"] == "Transfert d'argent")
+    def faire(tel, montant):
+        return client.post("/api/paiements", headers=h, json={"service_id": s["id"], "valeurs": {"phone": tel, "amount": montant}}).json()
+    a, b, c, autre_numero = faire("67072823", "1000"), faire("67072823", "2000"), faire("67072823", "3000"), faire("70112233", "4000")
+    client.put(f"/api/paiements/{c['id']}/nom", headers=h, json={"nom": "Tonton"})                  # nom différent déjà saisi à la main
+    r = client.put(f"/api/paiements/{a['id']}/nom", headers=h, json={"nom": "Maman", "aux_autres": True}).json()
+    assert r["nom_beneficiaire"] == "Maman" and r["autres_modifies"] == 1                              # seul « b » (sans nom) est complété
+    noms = {x["id"]: x.get("nom_beneficiaire") for x in client.get("/api/paiements", headers=h).json()}
+    assert noms[b["id"]] == "Maman" and noms[c["id"]] == "Tonton" and noms[autre_numero["id"]] is None
+    # Renommer : les paiements qui portaient « Maman » suivent
+    r = client.put(f"/api/paiements/{a['id']}/nom", headers=h, json={"nom": "Maman Awa", "aux_autres": True}).json()
+    assert r["autres_modifies"] == 1
+    # Sans la case cochée, un seul paiement change
+    assert client.put(f"/api/paiements/{a['id']}/nom", headers=h, json={"nom": "Awa"}).json()["autres_modifies"] == 0
