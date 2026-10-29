@@ -134,6 +134,7 @@ export default function Historique() {
   const [paiements, setPaiements] = useState(null);
   const [nbAffiches, setNbAffiches] = useState(TAILLE_PAGE);
   const [ouvert, setOuvert] = useState(null);
+  const [actualisation, setActualisation] = useState(0);   // lot 104 : bouton « Actualiser » (relit paiements, statistiques et courbe avec les filtres)
   const [importOuvert, setImportOuvert] = useState(false);   // lot 96 : fenêtre « Importer un journal »
   const [recherche, setRecherche] = useState("");   // texte tapé ; envoyé au serveur après une courte pause
 
@@ -161,6 +162,13 @@ export default function Historique() {
     }
   }, [params, filtres.classement, toast]);
   useEffect(() => { setNbAffiches(TAILLE_PAGE); charger(); }, [charger]);
+  // Lot 104 — « Actualiser » : applique tout de suite le texte de recherche tapé, puis relit paiements, statistiques et courbe d'évolution
+  const actualiser = () => {
+    setFiltres((f) => (f.q === recherche ? f : { ...f, q: recherche }));
+    charger();
+    setActualisation((n) => n + 1);
+    toast.succes("Historique actualisé");
+  };
 
   const modifier = (champ, valeur) => setFiltres((f) => ({ ...f, [champ]: valeur }));
 
@@ -230,15 +238,19 @@ export default function Historique() {
               onChange={(e) => setRecherche(e.target.value)} />
           </div>
         </div>
-        {filtreActif && (
-          <button type="button" className="btn-outline btn-sm" onClick={() => { setFiltres(PAS_DE_FILTRE); setRecherche(""); }}>
-            Réinitialiser les filtres
-          </button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {/* Lot 104 : relit tout avec les filtres affichés (liste, statistiques, graphiques et courbe d'évolution) */}
+          <button type="button" className="btn-primary btn-sm" onClick={actualiser} data-testid="actualiser">↻ Actualiser</button>
+          {filtreActif && (
+            <button type="button" className="btn-outline btn-sm" onClick={() => { setFiltres(PAS_DE_FILTRE); setRecherche(""); }}>
+              Réinitialiser les filtres
+            </button>
+          )}
+        </div>
       </section>
 
       {/* Lot 86 : soldes des deux portefeuilles, courbe d'évolution (lot 103 : elle suit la période choisie ci-dessus), retraits et dépôts (se recalcule quand un paiement change de statut) */}
-      <Portefeuilles rafraichir={paiements ? paiements.map((p) => `${p.id}${p.statut}`).join("|") : ""} du={bornes(filtres).du} au={bornes(filtres).au} />
+      <Portefeuilles rafraichir={`${paiements ? paiements.map((p) => `${p.id}${p.statut}`).join("|") : ""}#${actualisation}`} onActualiser={actualiser} du={bornes(filtres).du} au={bornes(filtres).au} />
 
 
       {stats.tronque && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Résultats limités aux 5 000 paiements les plus récents : affinez la période.</p>}

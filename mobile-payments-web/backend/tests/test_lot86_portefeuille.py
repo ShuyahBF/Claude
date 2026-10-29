@@ -244,3 +244,21 @@ def test_couleur_des_operateurs_choisie_dans_le_profil(client, utilisateur):
     assert client.put("/api/portefeuille/couleurs", headers=h, json={"operateur": ORANGE, "couleur": "rouge"}).status_code == 422
     assert client.put("/api/portefeuille/couleurs", headers=h, json={"operateur": ORANGE, "couleur": "#12345"}).status_code == 422
     assert client.put("/api/portefeuille/couleurs", json={"operateur": ORANGE, "couleur": "#112233"}).status_code == 401
+
+
+def test_periode_tres_longue_echantillonnee_sans_couper_le_debut(client, utilisateur):
+    """Lot 104 — « depuis 2021 » : la courbe commence au premier relevé (pas 1 an en arrière) avec au plus 400 points régulièrement espacés."""
+    _, h, _ = utilisateur
+    auj = datetime.now(timezone.utc).date()
+    iso = lambda n: (auj - timedelta(days=n)).isoformat()
+    _releve(client, h, "electronique", 100000, ORANGE, iso(900))
+    _releve(client, h, "personnel", 0, None, iso(30))
+    s = _soldes(client, h, du="2021-01-01")
+    pts = s["serie"]
+    assert s["pas_jours"] == 3 and len(pts) <= 400                         # 901 jours → un point tous les 3 jours
+    assert pts[-1]["jour"] == auj.isoformat()                              # la fin de période est toujours tracée
+    assert pts[0]["jour"] <= iso(898) and pts[0]["valeurs"][f"electronique:{ORANGE}"] == 100000      # départ au premier relevé (il y a 900 j), pas un an plus tard
+    ecarts = {(datetime.fromisoformat(b["jour"]) - datetime.fromisoformat(a["jour"])).days for a, b in zip(pts, pts[1:])}
+    assert ecarts == {3}                                                   # espacement régulier
+    assert pts[0]["valeurs"]["personnel"] is None and pts[-1]["valeurs"]["personnel"] == 0       # le portefeuille personnel ne commence qu'à son relevé
+    assert _soldes(client, h, du=iso(10))["pas_jours"] == 1                # période courte : un point par jour

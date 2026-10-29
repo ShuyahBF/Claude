@@ -50,7 +50,7 @@ function Carte({ pf, s, onIndiquer }) {
 
 // rafraichir : texte qui change quand un paiement change de statut → les soldes se recalculent
 // du / au (AAAA-MM-JJ) : période choisie dans l'Historique (lot 103) ; la courbe « Évolution » la suit. Sans date : la dernière année.
-export default function Portefeuilles({ rafraichir = "", du = "", au = "" }) {
+export default function Portefeuilles({ rafraichir = "", du = "", au = "", onActualiser }) {
   const toast = useToast();
   const [d, setD] = useState(null);
   const [fenetre, setFenetre] = useState(null);           // "releve" | "mouvement" | null
@@ -122,8 +122,14 @@ export default function Portefeuilles({ rafraichir = "", du = "", au = "" }) {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="font-semibold">Évolution</p>
           {/* Lot 103 : la période se choisit dans le bloc « Période » au-dessus ; ici, seulement son rappel */}
+          {onActualiser && <button type="button" className="btn-outline btn-sm" onClick={onActualiser} data-testid="actualiser-courbe">↻ Actualiser</button>}
           <p className="text-xs text-gray-500" data-testid="periode-courbe">{du || au ? `Du ${du ? dateFr(du) : "début"} au ${au ? dateFr(au) : "aujourd'hui"}` : "Toute la période (1 an au plus)"}</p>
         </div>
+        {/* Lot 104 : le début de la courbe est le premier solde renseigné, jamais avant ; période très longue = un point tous les N jours */}
+        {d.serie.length > 0 && du && d.serie[0].jour > du && (
+          <p className="text-xs text-gray-500" data-testid="courbe-debut">La courbe commence au premier solde renseigné ({dateFr(d.serie[0].jour)}) : rien n'est tracé avant.</p>
+        )}
+        {d.pas_jours > 1 && <p className="text-xs text-gray-500" data-testid="courbe-pas">Période longue : un point tous les {d.pas_jours} jours.</p>}
         <GraphePortefeuilles serie={d.serie} portefeuilles={suivis} />
       </div>
 
