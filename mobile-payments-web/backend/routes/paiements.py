@@ -162,12 +162,13 @@ def beneficiaire(p: dict) -> dict:
     """Bénéficiaire d'un paiement : le marchand (intitulé et code) s'il y en a un, sinon la première valeur saisie
     qui n'est pas le montant (ex. numéro du destinataire d'un transfert)."""
     m = p.get("marchand") or {}
+    nom = (p.get("nom_beneficiaire") or "").strip()      # lot 96 : nom saisi plus tard, ou contact du journal de l'opérateur
     if m.get("code"):
-        return {"libelle": m.get("libelle") or m["code"], "code": m["code"]}
+        return {"libelle": nom or m.get("libelle") or m["code"], "code": m["code"]}
     for cle, valeur in (p.get("valeurs") or {}).items():
         if cle != "amount" and valeur:
-            return {"libelle": valeur, "code": valeur}
-    return {"libelle": "—", "code": ""}
+            return {"libelle": nom or valeur, "code": valeur}
+    return {"libelle": nom or "—", "code": ""}
 
 
 def _texte_recherche(p: dict) -> str:
@@ -230,6 +231,7 @@ def calculer_statistiques(paiements: list[dict], top_statut: str = "effectue") -
     Seuls les paiements marqués « Payé » (statut « effectue ») entrent dans les chiffres et les graphiques :
     un code seulement préparé ou abandonné n'est jamais un paiement effectué (il est compté à part).
     top_statut : « effectue » = classements sur les paiements payés ; « tous » = tous les statuts."""
+    paiements = [p for p in paiements if p.get("sens") != "entree"]      # lot 96 : l'argent reçu n'est jamais une dépense
     compte = defaultdict(int)
     for p in paiements:
         compte[p.get("statut", "prepare")] += 1
@@ -362,6 +364,27 @@ async def enregistrer_details(paiement_id: str, data: Details, user: dict = Depe
     await _mon_paiement(paiement_id, user)
     motif = (data.motif or "").strip()
     await db.paiements.update_one({"id": paiement_id, "user_id": user["id"]}, {"$set": {"motif": motif} if motif else {"motif": ""}})
+    return _avec_lien(await _mon_paiement(paiement_id, user))
+
+
+# ------------------------------------------------------------------------------------------------ lot 96 : nom du bénéficiaire
+CATEGORIES_NOMMABLES = {"money_transfer", "merchant_payment", "money_receipt"}      # transferts d'argent, paiements marchands, argent reçu
+NOM_MAX = 80
+
+
+class NomBeneficiaire(BaseModel):
+    nom: Optional[str] = Field(None, max_length=NOM_MAX)
+
+
+@router.put("/{paiement_id}/nom")
+async def nommer_beneficiaire(paiement_id: str, data: NomBeneficiaire, user: dict = Depends(get_current_user)):
+    """Nom du bénéficiaire (ou de l'expéditeur), modifiable APRÈS la transaction — transferts d'argent et paiements marchands.
+    Vide = on retrouve le nom d'origine (annuaire des marchands, ou numéro)."""
+    p = await _mon_paiement(paiement_id, user)
+    if p.get("categorie") not in CATEGORIES_NOMMABLES:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Le nom ne se modifie que pour un transfert d'argent ou un paiement marchand")
+    nom = (data.nom or "").strip()
+    await db.paiements.update_one({"id": paiement_id, "user_id": user["id"]}, {"$set": {"nom_beneficiaire": nom}} if nom else {"$unset": {"nom_beneficiaire": ""}})
     return _avec_lien(await _mon_paiement(paiement_id, user))
 
 

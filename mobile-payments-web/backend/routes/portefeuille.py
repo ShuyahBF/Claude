@@ -267,7 +267,8 @@ async def lire(jours: int = Query(90, ge=7, le=JOURS_MAX), user: dict = Depends(
     paiements = []
     if premier:
         paiements = await db.paiements.find(
-            {"user_id": user["id"], "cree_le": {"$gte": premier}, "statut": {"$in": list(STATUTS_CONFIRMES + STATUTS_EN_COURS)}},
+            {"user_id": user["id"], "cree_le": {"$gte": premier}, "statut": {"$in": list(STATUTS_CONFIRMES + STATUTS_EN_COURS)},
+             "sens": {"$ne": "entree"}},         # lot 96 : l'argent reçu (journal de l'opérateur) n'est pas une dépense
             {"_id": 0, "id": 1, "cree_le": 1, "statut": 1, "montant": 1, "service_nom": 1, "marchand": 1, "operateur": 1}).to_list(5000)
     choisis = choisis_de(doc)
     calcul = calculer(releves, paiements, mouvements, jours, choisis=choisis)
