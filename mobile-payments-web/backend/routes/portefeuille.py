@@ -47,6 +47,7 @@ router = APIRouter(prefix="/portefeuille", tags=["Portefeuille"])
 RELEVES_MAX = 400
 MOUVEMENTS_MAX = 2000
 JOURS_MAX = 366
+POINTS_MAX = 400          # lot 104 : points de la courbe au plus (période très longue : un point tous les N jours)
 MONTANT_MAX = 1_000_000_000
 STATUTS_CONFIRMES = ("effectue",)
 STATUTS_EN_COURS = ("prepare", "declare")          # « declare » : PI-SPI, référence déclarée, attente du marchand
@@ -198,6 +199,18 @@ def calculer(releves: List[dict], paiements: List[dict], mouvements: List[dict],
     # Lot 103 : la courbe suit la PÉRIODE choisie dans l'Historique (du … au …) ; sans dates, les `jours` derniers jours jusqu'à aujourd'hui
     debut_serie = debut or (maintenant_dt.date() - timedelta(days=jours - 1))
     fin_serie = min(fin or maintenant_dt.date(), maintenant_dt.date())
+    # Lot 104 : grille de dates COMMUNE à tous les portefeuilles, de la fin de période vers le début. Une période très longue (ex. depuis 2021)
+    # est échantillonnée : au plus POINTS_MAX points, régulièrement espacés (un point tous les `pas` jours), le dernier étant la fin de période.
+    premiers = [_dt(r0["at"]).date() for c in ordre for r0 in [(_releves_tries(releves, c) or [None])[0]] if r0]
+    depart = max(debut_serie, min(premiers)) if premiers else fin_serie + timedelta(days=1)
+    nb_jours = max(0, (fin_serie - depart).days + 1)
+    pas = max(1, -(-nb_jours // POINTS_MAX))
+    grille, j = [], fin_serie
+    while j >= depart:
+        grille.append(j)
+        j -= timedelta(days=pas)
+    grille.reverse()
+    sortie["pas_jours"] = pas
     courbes: Dict[str, Dict[str, Optional[int]]] = {}
     for c in ordre:
         rel = _releves_tries(releves, c)
@@ -215,11 +228,12 @@ def calculer(releves: List[dict], paiements: List[dict], mouvements: List[dict],
                 sortie["ecarts"][r["id"]] = int(r["montant"]) - avant
         # Courbe : solde de fin de journée, depuis le premier relevé (rien pour un portefeuille sans relevé)
         courbes[c] = {}
-        j = max(debut_serie, _dt(rel[0]["at"]).date()) if rel else fin_serie + timedelta(days=1)
-        while j <= fin_serie:
-            t = maintenant_dt if j == maintenant_dt.date() else datetime.combine(j, time(23, 59, 59), tzinfo=timezone.utc)
-            courbes[c][j.isoformat()] = solde_a(t, rel, ev[c])
-            j += timedelta(days=1)
+        premier = _dt(rel[0]["at"]).date() if rel else None
+        for jour in grille:
+            if premier is None or jour < premier:
+                continue                                           # rien avant le premier relevé de CE portefeuille
+            instant = maintenant_dt if jour == maintenant_dt.date() else datetime.combine(jour, time(23, 59, 59), tzinfo=timezone.utc)
+            courbes[c][jour.isoformat()] = solde_a(instant, rel, ev[c])
     sortie["serie"] = [{"jour": j, "valeurs": {c: courbes[c].get(j) for c in ordre}} for j in sorted({j for c in ordre for j in courbes[c]})]
     sortie["_evenements"] = ev
     return sortie
@@ -274,7 +288,7 @@ async def lire(jours: int = Query(90, ge=7, le=JOURS_MAX), du: Optional[str] = Q
              "sens": {"$ne": "entree"}},         # lot 96 : l'argent reçu (journal de l'opérateur) n'est pas une dépense
             {"_id": 0, "id": 1, "cree_le": 1, "statut": 1, "montant": 1, "service_nom": 1, "marchand": 1, "operateur": 1}).to_list(5000)
     choisis = choisis_de(doc)
-    # Lot 103 : période de la courbe = celle de l'Historique (du / au, AAAA-MM-JJ) ; bornée à JOURS_MAX jours avant aujourd'hui
+    # Lot 103 : période de la courbe = celle de l'Historique (du / au, AAAA-MM-JJ) ; lot 104 : aucune borne, la courbe est échantillonnée (POINTS_MAX)
     debut = fin = None
     if du or au:
         try:
@@ -284,8 +298,6 @@ async def lire(jours: int = Query(90, ge=7, le=JOURS_MAX), du: Optional[str] = Q
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Date invalide : utilisez AAAA-MM-JJ")
         if debut and fin and debut > fin:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "La date de début doit précéder la date de fin")
-        plancher = maintenant().date() - timedelta(days=JOURS_MAX - 1)
-        debut = max(debut, plancher) if debut else None
     calcul = calculer(releves, paiements, mouvements, jours, choisis=choisis, debut=debut, fin=fin)
     ev = calcul.pop("_evenements")
     debut_par_cle = {}

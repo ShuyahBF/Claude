@@ -9,13 +9,15 @@ const L = 640, H = 240, MG = { g: 62, d: 14, h: 14, b: 30 };           // largeu
 // Style de chaque portefeuille : électronique = couleur de l'opérateur, trait plein ; personnel = vert, tirets ; « général » = violet, pointillés
 const style = (pf) => (pf.cle === "personnel" ? { couleur: "#0ba957", trait: "7 5" }
   : pf.operateur ? { couleur: couleurOperateur(pf.operateur), trait: undefined } : { couleur: "#4926d7", trait: "2 4" });
-const jourCourt = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+// Date affichée : « jj/mm » ; avec l'année (« jj/mm/aa ») quand la courbe couvre plus de 9 mois (lot 104), sinon deux années se confondraient
+const jourCourt = (iso, annee = false) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}${annee ? `/${iso.slice(2, 4)}` : ""}`;
 // Arrondi lisible des graduations : 12 345 → « 12 k », 1 250 000 → « 1,3 M »
 const court = (n) => (Math.abs(n) >= 1e6 ? `${(n / 1e6).toFixed(1).replace(".", ",")} M` : Math.abs(n) >= 1e3 ? `${Math.round(n / 1e3)} k` : String(Math.round(n)));
 
 export default function GraphePortefeuilles({ serie, portefeuilles }) {
   const SERIES = useMemo(() => portefeuilles.map((pf) => ({ cle: pf.cle, nom: pf.nom, ...style(pf) })), [portefeuilles]);
   const [survol, setSurvol] = useState(null);                        // indice du jour visé
+  const longue = serie.length > 1 && (new Date(serie[serie.length - 1].jour) - new Date(serie[0].jour)) / 86400000 > 270;
   const g = useMemo(() => {
     const valeurs = serie.flatMap((p) => SERIES.map((s) => p.valeurs[s.cle]).filter((v) => v !== null && v !== undefined));
     if (serie.length < 2 || valeurs.length === 0) return null;
@@ -57,7 +59,7 @@ export default function GraphePortefeuilles({ serie, portefeuilles }) {
   return (
     <figure data-testid="graphe-portefeuilles">
       <figcaption className="mb-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-        <span className="font-semibold">{jourCourt(point.jour)}</span>
+        <span className="font-semibold">{jourCourt(point.jour, longue)}</span>
         {SERIES.map((s) => (
           <span key={s.cle} className="flex items-center gap-1">
             <svg width="22" height="8" aria-hidden="true"><line x1="0" y1="4" x2="22" y2="4" stroke={s.couleur} strokeWidth="3" strokeDasharray={s.trait} /></svg>
@@ -66,7 +68,7 @@ export default function GraphePortefeuilles({ serie, portefeuilles }) {
         ))}
       </figcaption>
       <svg viewBox={`0 0 ${L} ${H}`} className="w-full touch-pan-y select-none" role="img"
-        aria-label={`Évolution des portefeuilles du ${jourCourt(serie[0].jour)} au ${jourCourt(dernier.jour)} : ${SERIES.map((s) => `${s.nom} ${dernier.valeurs[s.cle] === null || dernier.valeurs[s.cle] === undefined ? "non renseigné" : fcfa(dernier.valeurs[s.cle])}`).join(", ")}`}
+        aria-label={`Évolution des portefeuilles du ${jourCourt(serie[0].jour, longue)} au ${jourCourt(dernier.jour, longue)} : ${SERIES.map((s) => `${s.nom} ${dernier.valeurs[s.cle] === null || dernier.valeurs[s.cle] === undefined ? "non renseigné" : fcfa(dernier.valeurs[s.cle])}`).join(", ")}`}
         onPointerMove={viser} onPointerDown={viser} onPointerLeave={() => setSurvol(null)}>
         {g.graduations.map((v) => (
           <g key={v}>
@@ -75,7 +77,7 @@ export default function GraphePortefeuilles({ serie, portefeuilles }) {
           </g>
         ))}
         {[0, Math.floor((serie.length - 1) / 2), serie.length - 1].filter((v, i, a) => a.indexOf(v) === i).map((i) => (
-          <text key={i} x={g.x(i)} y={H - 8} textAnchor={i === 0 ? "start" : i === serie.length - 1 ? "end" : "middle"} fontSize="11" fill="#64748b">{jourCourt(serie[i].jour)}</text>
+          <text key={i} x={g.x(i)} y={H - 8} textAnchor={i === 0 ? "start" : i === serie.length - 1 ? "end" : "middle"} fontSize="11" fill="#64748b">{jourCourt(serie[i].jour, longue)}</text>
         ))}
         {g.tracés.map((s) => <path key={s.cle} d={s.d} fill="none" stroke={s.couleur} strokeWidth="2.5" strokeDasharray={s.trait} strokeLinejoin="round" strokeLinecap="round" />)}
         {survol !== null && (
