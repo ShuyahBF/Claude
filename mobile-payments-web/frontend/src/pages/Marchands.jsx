@@ -29,6 +29,8 @@ export default function Marchands() {
   const [filtre, setFiltre] = useState({ operateur: "", q: "" });
   const [form, setForm] = useState({ operateur: "", code: "", libelle: "" });
   const [affiche, setAffiche] = useState(null); // marchand dont on affiche le QR
+  const [edition, setEdition] = useState(null);   // lot 106 : marchand en cours de modification { ...marchand, libelle, service_id }
+  const [enregistrement, setEnregistrement] = useState(false);
   const [lecture, setLecture] = useState(null);  // plaque photographiée : { identifiantQr, incertains, texte } (lot 39)
 
   useEffect(() => {
@@ -85,10 +87,29 @@ export default function Marchands() {
   // Service de paiement marchand de l'opérateur (le premier qui a un champ « code marchand »)
   const serviceDe = (op) => services.find((s) => s.operateur === op && s.categorie === "merchant_payment")
     || services.find((s) => s.operateur === op);
+  // Services qui demandent un code marchand pour cet opérateur (ex. « Paiement marchand » *144*10*… ou « Paiement de facture » *144*4*…)
+  const servicesDe = (op) => services.filter((s) => s.operateur === op);
+  // Lot 106 : le service propre au marchand (s'il en a un et qu'il est toujours actif), sinon le service par défaut de l'opérateur
+  const serviceDuMarchand = (m) => services.find((s) => s.id === m.service_id) || serviceDe(m.operateur);
   const lienQr = (m) => {
-    const s = serviceDe(m.operateur);
+    const s = serviceDuMarchand(m);
     const q = new URLSearchParams({ operateur: m.operateur, code: m.code, ...(s ? { service: s.id } : {}) });
     return `${window.location.origin}/?${q.toString()}`;
+  };
+
+  // Lot 106 : modifier un marchand déjà enregistré — nom et service de paiement ; le code ne change jamais
+  const enregistrerModification = async (e) => {
+    e.preventDefault();
+    setEnregistrement(true);
+    try {
+      const { data } = await apiClient.put(`/marchands/${encodeURIComponent(edition.operateur)}/${encodeURIComponent(edition.code)}`,
+        { libelle: edition.libelle, service_id: edition.service_id || "" });
+      setMarchands((m) => (m || []).map((x) => (x.code === data.code && x.operateur === data.operateur ? data : x)));
+      setEdition(null);
+      toast.succes("Marchand modifié");
+    } catch (err) {
+      toast.erreur(messageErreur(err, "Modification impossible"));
+    } finally { setEnregistrement(false); }
   };
 
   return (
@@ -141,13 +162,39 @@ export default function Marchands() {
               <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: couleurOperateur(m.operateur) }} />
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold">{m.libelle}</p>
-                <p className="text-xs text-gray-500">{m.operateur} · <span className="font-mono">{m.code}</span></p>
+                <p className="text-xs text-gray-500">{m.operateur} · <span className="font-mono">{m.code}</span>{m.service_id && services.find((s) => s.id === m.service_id) ? ` · ${services.find((s) => s.id === m.service_id).nom}` : ""}</p>
               </div>
+              {m.modifiable && <button type="button" className="btn-outline btn-sm" onClick={() => setEdition({ ...m, service_id: m.service_id || "" })} data-testid={`modifier-${m.code}`}>Modifier</button>}
               <button type="button" className="btn-outline btn-sm" onClick={() => setAffiche(m)}>QR marchand</button>
             </li>
           ))}
         </ul>
       )}
+
+      {/* Lot 106 : modification d'un marchand (nom et service de paiement ; le code reste affiché mais non modifiable) */}
+      <Modal ouvert={!!edition} titre="Modifier le marchand" onFermer={() => setEdition(null)}>
+        {edition && (
+          <form onSubmit={enregistrerModification} className="space-y-3 text-sm">
+            <p className="text-gray-600">{edition.operateur} · code <span className="font-mono font-semibold">{edition.code}</span> <span className="text-xs">(le code ne se modifie pas)</span></p>
+            <div>
+              <label className="label" htmlFor="edit-nom">Nom</label>
+              <input id="edit-nom" className="input" required minLength={2} maxLength={60} value={edition.libelle} onChange={(e) => setEdition({ ...edition, libelle: e.target.value })} />
+            </div>
+            <div>
+              <label className="label" htmlFor="edit-service">Service de paiement</label>
+              <select id="edit-service" className="input" value={edition.service_id} onChange={(e) => setEdition({ ...edition, service_id: e.target.value })}>
+                <option value="">Par défaut{serviceDe(edition.operateur) ? ` (${serviceDe(edition.operateur).nom} — ${serviceDe(edition.operateur).gabarit_ussd})` : ""}</option>
+                {servicesDe(edition.operateur).map((s) => <option key={s.id} value={s.id}>{s.nom} — {s.gabarit_ussd}</option>)}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">Le code USSD du paiement suit ce service : changez-le quand le marchand ne s'encaisse plus de la même façon.</p>
+            </div>
+            <div className="flex gap-2">
+              <button type="submit" className="btn-primary flex-1" disabled={enregistrement || edition.libelle.trim().length < 2}>Enregistrer</button>
+              <button type="button" className="btn-outline flex-1" onClick={() => setEdition(null)}>Annuler</button>
+            </div>
+          </form>
+        )}
+      </Modal>
 
       {/* Affiche imprimable du QR marchand (seule page autorisée à l'impression : le reste du site est blanc à l'impression) */}
       <AutoriserImpression actif={!!affiche} />

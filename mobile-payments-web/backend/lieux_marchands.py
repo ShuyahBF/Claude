@@ -66,7 +66,9 @@ async def proches(lat: float, lon: float, rayon_m: float | None = None) -> List[
     # Intitulés lus EN BLOC (une seule requête pour tous les marchands trouvés)
     if trouves:
         docs = await db.marchands.find({"$or": [{"operateur": t["operateur"], "code": t["code"]} for t in trouves]}, SANS_ID).to_list(MARCHANDS_MAX)
-        noms = {(m["operateur"], m["code"]): m.get("libelle") for m in docs}
+        noms = {(m["operateur"], m["code"]): m for m in docs}
         for t in trouves:
-            t["libelle"] = noms.get((t["operateur"], t["code"]))
-    return [{"operateur": t["operateur"], "code": t["code"], "libelle": t.get("libelle"), "distance_m": t["distance_m"]} for t in trouves]
+            m = noms.get((t["operateur"], t["code"])) or {}
+            t["libelle"], t["service_id"] = m.get("libelle"), m.get("service_id")        # lot 106 : service de paiement propre au marchand
+    return [{"operateur": t["operateur"], "code": t["code"], "libelle": t.get("libelle"), "service_id": t.get("service_id"),
+             "distance_m": t["distance_m"]} for t in trouves]
