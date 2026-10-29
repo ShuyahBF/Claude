@@ -11,8 +11,11 @@ const libelleMois = (m) => `${MOIS[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`
 const libelleJour = (j) => `${j.slice(8, 10)}/${j.slice(5, 7)}/${j.slice(0, 4)}`;
 
 export default function HistogrammePaiements({ parJour, parMois }) {
-  // Historique long (plus de 3 mois d'activité) : on commence par le mois, plus lisible que 90 jours dispersés sur plusieurs années
-  const [echelle, setEchelle] = useState(parMois.length > 3 ? "mois" : "jour");
+  // Historique long (plus de 3 mois d'activité) : on commence par le mois, plus lisible que 90 jours dispersés sur plusieurs années.
+  // Le choix de l'utilisateur est gardé dans `choixEchelle` ; tant qu'il n'a rien choisi, l'échelle se déduit des DONNÉES du moment
+  // (au premier affichage la liste est encore vide : un état fixé à ce moment-là restait à tort sur « jour »).
+  const [choixEchelle, setEchelle] = useState(null);
+  const echelle = choixEchelle || (parMois.length > 3 ? "mois" : "jour");
   const [mesure, setMesure] = useState("montant");
   const lignes = useMemo(() => (echelle === "mois"
     ? parMois.map((m) => ({ cle: m.mois, ...m, nom: libelleMois(m.mois) }))
@@ -41,9 +44,9 @@ export default function HistogrammePaiements({ parJour, parMois }) {
         <div className="flex flex-col justify-between text-right text-[10px] tabular-nums text-gray-500" style={{ height: H }}>
           <span>{mesure === "montant" ? court(max) : max}</span><span>0</span>
         </div>
-        <div className="flex min-w-0 flex-1 items-end gap-1 border-b border-l border-gray-200" style={{ height: H }} data-testid="graphique-jours">
+        <div className="flex min-w-0 flex-1 items-end gap-px overflow-hidden border-b border-l border-gray-200" style={{ height: H }} data-testid="graphique-jours">
           {lignes.map((l) => (
-            <div key={l.cle} className="flex h-full min-w-[3px] flex-1 flex-col justify-end" title={`${l.nom} : ${l.nombre} paiement(s), ${fcfa(l.montant)}`}>
+            <div key={l.cle} className="flex h-full min-w-0 flex-1 flex-col justify-end px-px" title={`${l.nom} : ${l.nombre} paiement(s), ${fcfa(l.montant)}`}>
               <div className="rounded-t bg-primary/80" style={{ height: `${Math.max(2, (l[mesure] / max) * 100)}%` }} />
             </div>
           ))}
