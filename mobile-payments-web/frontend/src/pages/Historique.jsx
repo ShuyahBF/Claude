@@ -195,9 +195,6 @@ export default function Historique() {
       <h1 className="text-2xl font-bold">Historique</h1>
 
       {/* Filtres : période, opérateur, statut, recherche de bénéficiaire */}
-      {/* Lot 86 : soldes des deux portefeuilles, courbe d'évolution, retraits et dépôts (se recalcule quand un paiement change de statut) */}
-      <Portefeuilles rafraichir={paiements ? paiements.map((p) => `${p.id}${p.statut}`).join("|") : ""} />
-
       <section className="card space-y-3" data-testid="filtres">
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
@@ -239,6 +236,10 @@ export default function Historique() {
           </button>
         )}
       </section>
+
+      {/* Lot 86 : soldes des deux portefeuilles, courbe d'évolution (lot 103 : elle suit la période choisie ci-dessus), retraits et dépôts (se recalcule quand un paiement change de statut) */}
+      <Portefeuilles rafraichir={paiements ? paiements.map((p) => `${p.id}${p.statut}`).join("|") : ""} du={bornes(filtres).du} au={bornes(filtres).au} />
+
 
       {stats.tronque && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Résultats limités aux 5 000 paiements les plus récents : affinez la période.</p>}
 
