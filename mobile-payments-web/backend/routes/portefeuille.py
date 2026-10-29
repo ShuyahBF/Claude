@@ -182,7 +182,7 @@ def solde_a(t: datetime, releves: List[dict], evts: List[dict]) -> Optional[int]
 
 
 def calculer(releves: List[dict], paiements: List[dict], mouvements: List[dict], jours: int, maintenant_dt: Optional[datetime] = None,
-             choisis: Optional[List[str]] = None) -> dict:
+             choisis: Optional[List[str]] = None, debut: Optional[date] = None, fin: Optional[date] = None) -> dict:
     """Pour chaque portefeuille suivi : solde actuel, montant en cours, écarts des relevés, et courbe quotidienne commune."""
     maintenant_dt = maintenant_dt or maintenant()
     debuts: Dict[str, datetime] = {}
@@ -195,7 +195,9 @@ def calculer(releves: List[dict], paiements: List[dict], mouvements: List[dict],
     sortie: dict = {"portefeuilles": [{"cle": c, "nom": nom_de(c), "genre": "personnel" if c == PERSONNEL else "electronique",
                                        "operateur": c.split(":", 1)[1] if ":" in c else None} for c in ordre],
                     "soldes": {}, "ecarts": {}, "serie": []}
-    debut_serie = maintenant_dt.date() - timedelta(days=jours - 1)
+    # Lot 103 : la courbe suit la PÉRIODE choisie dans l'Historique (du … au …) ; sans dates, les `jours` derniers jours jusqu'à aujourd'hui
+    debut_serie = debut or (maintenant_dt.date() - timedelta(days=jours - 1))
+    fin_serie = min(fin or maintenant_dt.date(), maintenant_dt.date())
     courbes: Dict[str, Dict[str, Optional[int]]] = {}
     for c in ordre:
         rel = _releves_tries(releves, c)
@@ -213,8 +215,8 @@ def calculer(releves: List[dict], paiements: List[dict], mouvements: List[dict],
                 sortie["ecarts"][r["id"]] = int(r["montant"]) - avant
         # Courbe : solde de fin de journée, depuis le premier relevé (rien pour un portefeuille sans relevé)
         courbes[c] = {}
-        j = max(debut_serie, _dt(rel[0]["at"]).date()) if rel else maintenant_dt.date() + timedelta(days=1)
-        while j <= maintenant_dt.date():
+        j = max(debut_serie, _dt(rel[0]["at"]).date()) if rel else fin_serie + timedelta(days=1)
+        while j <= fin_serie:
             t = maintenant_dt if j == maintenant_dt.date() else datetime.combine(j, time(23, 59, 59), tzinfo=timezone.utc)
             courbes[c][j.isoformat()] = solde_a(t, rel, ev[c])
             j += timedelta(days=1)
@@ -259,7 +261,8 @@ async def _operateur_connu(operateur: Optional[str], obligatoire: bool, doc: dic
 
 
 @router.get("")
-async def lire(jours: int = Query(90, ge=7, le=JOURS_MAX), user: dict = Depends(get_current_user)):
+async def lire(jours: int = Query(90, ge=7, le=JOURS_MAX), du: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+               au: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"), user: dict = Depends(get_current_user)):
     doc = await _doc(user)
     releves, mouvements = doc.get("releves") or [], doc.get("mouvements") or []
     # Paiements : UNE lecture, depuis le premier relevé électronique seulement (aucune boucle par paiement)
@@ -271,7 +274,19 @@ async def lire(jours: int = Query(90, ge=7, le=JOURS_MAX), user: dict = Depends(
              "sens": {"$ne": "entree"}},         # lot 96 : l'argent reçu (journal de l'opérateur) n'est pas une dépense
             {"_id": 0, "id": 1, "cree_le": 1, "statut": 1, "montant": 1, "service_nom": 1, "marchand": 1, "operateur": 1}).to_list(5000)
     choisis = choisis_de(doc)
-    calcul = calculer(releves, paiements, mouvements, jours, choisis=choisis)
+    # Lot 103 : période de la courbe = celle de l'Historique (du / au, AAAA-MM-JJ) ; bornée à JOURS_MAX jours avant aujourd'hui
+    debut = fin = None
+    if du or au:
+        try:
+            debut = date.fromisoformat(du) if du else None
+            fin = date.fromisoformat(au) if au else None
+        except ValueError:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Date invalide : utilisez AAAA-MM-JJ")
+        if debut and fin and debut > fin:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "La date de début doit précéder la date de fin")
+        plancher = maintenant().date() - timedelta(days=JOURS_MAX - 1)
+        debut = max(debut, plancher) if debut else None
+    calcul = calculer(releves, paiements, mouvements, jours, choisis=choisis, debut=debut, fin=fin)
     ev = calcul.pop("_evenements")
     debut_par_cle = {}
     for r in releves:

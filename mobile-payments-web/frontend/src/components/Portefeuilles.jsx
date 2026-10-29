@@ -10,7 +10,6 @@ import SelecteurOperateur from "@/components/SelecteurOperateur";   // lot 89 : 
 import { useToast } from "@/components/Toast";
 import { apiClient, couleurOperateur, fcfa, messageErreur } from "@/lib/api";
 
-const PERIODES = [[30, "30 jours"], [90, "3 mois"], [180, "6 mois"], [366, "1 an"]];
 const aujourdhui = () => new Date().toISOString().slice(0, 10);
 const dateFr = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 const entier = (v) => Number(String(v).replace(/[\s\u202f\u00a0]/g, "")) || 0;
@@ -50,10 +49,10 @@ function Carte({ pf, s, onIndiquer }) {
 }
 
 // rafraichir : texte qui change quand un paiement change de statut → les soldes se recalculent
-export default function Portefeuilles({ rafraichir = "" }) {
+// du / au (AAAA-MM-JJ) : période choisie dans l'Historique (lot 103) ; la courbe « Évolution » la suit. Sans date : la dernière année.
+export default function Portefeuilles({ rafraichir = "", du = "", au = "" }) {
   const toast = useToast();
   const [d, setD] = useState(null);
-  const [jours, setJours] = useState(90);
   const [fenetre, setFenetre] = useState(null);           // "releve" | "mouvement" | null
   // Choix du portefeuille d'un relevé : « personnel » ou « electronique:<opérateur> » (valeur corrigée à l'affichage si l'opérateur n'est plus proposé)
   const [releve, setReleve] = useState({ pf: "", jour: aujourdhui(), montant: "" });
@@ -61,9 +60,9 @@ export default function Portefeuilles({ rafraichir = "" }) {
   const [occupe, setOccupe] = useState(false);
 
   const charger = useCallback(async () => {
-    try { setD((await apiClient.get("/portefeuille", { params: { jours } })).data); }
+    try { setD((await apiClient.get("/portefeuille", { params: du || au ? { du: du || undefined, au: au || undefined } : { jours: 366 } })).data); }
     catch (err) { toast.erreur(messageErreur(err, "Portefeuilles indisponibles")); setD((x) => x || { portefeuilles: [], soldes: {}, serie: [], releves: [], mouvements: [], en_cours: [], operateurs_choisis: [] }); }
-  }, [jours, toast]);
+  }, [du, au, toast]);
   useEffect(() => { charger(); }, [charger, rafraichir]);
 
   const envoyer = async (chemin, corps, message) => {
@@ -122,9 +121,8 @@ export default function Portefeuilles({ rafraichir = "" }) {
       <div className="card space-y-2 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="font-semibold">Évolution</p>
-          <select className="input !w-auto" value={jours} onChange={(e) => setJours(Number(e.target.value))} aria-label="Période de la courbe">
-            {PERIODES.map(([v, n]) => <option key={v} value={v}>{n}</option>)}
-          </select>
+          {/* Lot 103 : la période se choisit dans le bloc « Période » au-dessus ; ici, seulement son rappel */}
+          <p className="text-xs text-gray-500" data-testid="periode-courbe">{du || au ? `Du ${du ? dateFr(du) : "début"} au ${au ? dateFr(au) : "aujourd'hui"}` : "Toute la période (1 an au plus)"}</p>
         </div>
         <GraphePortefeuilles serie={d.serie} portefeuilles={suivis} />
       </div>

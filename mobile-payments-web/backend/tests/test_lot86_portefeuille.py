@@ -143,6 +143,28 @@ def test_courbe_sur_plusieurs_jours(client, utilisateur):
     assert _releve(client, h, "personnel", 1, None, futur).status_code == 422
 
 
+def test_courbe_suit_la_periode_choisie_du_au(client, utilisateur):
+    """Lot 103 — l'« Évolution » de l'Historique suit la période choisie (du / au), pas un nombre de jours fixe."""
+    _, h, _ = utilisateur
+    auj = datetime.now(timezone.utc).date()
+    iso = lambda n: (auj - timedelta(days=n)).isoformat()
+    _releve(client, h, "electronique", 100000, ORANGE, iso(10))
+    _releve(client, h, "personnel", 0, None, iso(10))
+    client.post("/api/portefeuille/mouvements", headers=h, json={"type": "retrait", "operateur": ORANGE, "montant": 30000, "jour": iso(5)})
+    jours = lambda **p: [x["jour"] for x in _soldes(client, h, **p)["serie"]]
+    # Période du jour -7 au jour -4 : 4 points, ni avant ni après (le solde du jour -5 y tient compte du retrait)
+    assert jours(du=iso(7), au=iso(4)) == [iso(7), iso(6), iso(5), iso(4)]
+    # Seulement « du » : jusqu'à aujourd'hui ; seulement « au » : depuis le premier relevé (jours par défaut) jusqu'à cette date
+    assert jours(du=iso(2))[0] == iso(2) and jours(du=iso(2))[-1] == auj.isoformat()
+    assert jours(au=iso(8))[-1] == iso(8) and jours(au=iso(8))[0] == iso(10)
+    # Période avant le premier relevé : aucun point ; dates invalides ou à l'envers : refusées
+    assert jours(du=iso(30), au=iso(20)) == []
+    assert client.get("/api/portefeuille", params={"du": "2026-13-45"}, headers=h).status_code == 422
+    assert client.get("/api/portefeuille", params={"du": iso(1), "au": iso(3)}, headers=h).status_code == 422
+    # Les soldes affichés restent ceux d'AUJOURD'HUI, quelle que soit la période de la courbe
+    assert _soldes(client, h, du=iso(7), au=iso(4))["soldes"][f"electronique:{ORANGE}"]["montant"] == 70000
+
+
 def test_suppression_et_confidentialite(client, utilisateur):
     _, h, _ = utilisateur
     _releve(client, h, "electronique", 1000, ORANGE)
