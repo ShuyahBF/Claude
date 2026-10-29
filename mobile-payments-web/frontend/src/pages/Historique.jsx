@@ -397,7 +397,7 @@ export default function Historique() {
               : <CarteCodeUssd paiement={ouvert} onStatut={changerStatut} />}
             {/* Lot 85 : motif détaillé et pièces scannées, quel que soit le statut du paiement */}
             {/* Lot 96 : nom du bénéficiaire modifiable après la transaction */}
-            <NomBeneficiaire key={`nom-${ouvert.id}`} paiement={ouvert} onChange={(maj) => { setOuvert(maj); setPaiements((l) => (l || []).map((x) => (x.id === maj.id ? { ...x, ...maj, nom_beneficiaire: maj.nom_beneficiaire } : x))); }} />
+            <NomBeneficiaire key={`nom-${ouvert.id}`} paiement={ouvert} onChange={(maj) => { setOuvert(maj); setPaiements((l) => (l || []).map((x) => (x.id === maj.id ? { ...x, ...maj, nom_beneficiaire: maj.nom_beneficiaire } : x))); if (maj.autres_modifies > 0) charger(); }} />
             <DetailsDepense key={ouvert.id} paiement={ouvert} onChange={(maj) => { setOuvert(maj); setPaiements((l) => (l || []).map((x) => (x.id === maj.id ? { ...x, ...maj } : x))); }} />
             <button type="button" className="mt-4 w-full text-sm text-red-600 hover:underline" onClick={() => supprimer(ouvert)}>
               Supprimer de l'historique
