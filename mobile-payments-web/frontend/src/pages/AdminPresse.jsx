@@ -3,6 +3,7 @@ import Chargement from "@/components/Chargement";
 import OngletsAdmin from "@/components/OngletsAdmin";
 import { useToast } from "@/components/Toast";
 import { apiClient, dateHeure, messageErreur } from "@/lib/api";
+import { drapeau } from "@/lib/drapeau";          // lot 101 : pays (drapeau) de chaque média
 
 // Administration des actualités (lots 62 et 65) : catégories, médias de chaque catégorie (nom + adresse d'une page ou d'un FLUX RSS),
 // heure du passage quotidien, passage immédiat. Des médias PRÉDÉFINIS sont fournis (Presse locale, Tech, Mode, Coaching personnel) ;
@@ -12,15 +13,16 @@ export default function AdminPresse() {
   const [sources, setSources] = useState(null);
   const [categories, setCategories] = useState([]);
   const [icones, setIcones] = useState(["📰"]);
+  const [pays, setPays] = useState({});                 // lot 101 : code ISO → nom du pays (liste déroulante)
   const [reglages, setReglages] = useState(null);
   const [heure, setHeure] = useState("06:00");
-  const [form, setForm] = useState({ nom: "", url: "https://", categorie_id: "" });
+  const [form, setForm] = useState({ nom: "", url: "https://", categorie_id: "", pays: "" });
   const [cat, setCat] = useState({ nom: "", icone: "📰", autre: "" });
 
   const charger = useCallback(async () => {
     try {
       const [c, s, r] = await Promise.all([apiClient.get("/admin/presse/categories"), apiClient.get("/admin/presse/sources"), apiClient.get("/admin/presse/reglages")]);
-      setCategories(c.data.categories); setIcones(c.data.icones); setSources(s.data.sources); setReglages(r.data); setHeure(r.data.heure);
+      setCategories(c.data.categories); setIcones(c.data.icones); setPays(c.data.pays || {}); setSources(s.data.sources); setReglages(r.data); setHeure(r.data.heure);
       setForm((f) => (f.categorie_id || !c.data.categories.length ? f : { ...f, categorie_id: c.data.categories[0].id }));
     } catch (err) { toast.erreur(messageErreur(err, "Chargement impossible")); setSources([]); }
   }, [toast]);
@@ -86,11 +88,19 @@ export default function AdminPresse() {
         <h2 className="text-lg font-semibold">Médias suivis ({sources.length})</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-gray-500"><th className="p-1">Média</th><th>Catégorie</th><th>Adresse</th><th>Dernier passage</th><th>Actif</th><th /></tr></thead>
+            <thead><tr className="text-left text-gray-500"><th className="p-1">Média</th><th>Pays</th><th>Catégorie</th><th>Adresse</th><th>Dernier passage</th><th>Actif</th><th /></tr></thead>
             <tbody>
               {sources.map((s) => (
                 <tr key={s.id} className="border-t border-gray-100 align-top">
                   <td className="p-1 font-medium">{s.nom}{s.predefini && <span className="block text-xs font-normal text-gray-400">prédéfini</span>}</td>
+                  <td>
+                    {/* Lot 101 : pays du média ; « d'après l'adresse » = on le devine (s.pays_effectif), sinon aucun drapeau */}
+                    <select className="input py-1 text-sm" aria-label={`Pays de ${s.nom}`} value={s.pays || ""}
+                      onChange={(e) => agir(() => apiClient.put(`/admin/presse/sources/${s.id}`, { nom: s.nom, url: s.url, actif: s.actif, categorie_id: s.categorie_id, pays: e.target.value }))}>
+                      <option value="">{s.pays_effectif ? `${drapeau(s.pays_effectif)} ${pays[s.pays_effectif] || s.pays_effectif} (d'après l'adresse)` : "— Aucun —"}</option>
+                      {Object.entries(pays).map(([code, nom]) => <option key={code} value={code}>{drapeau(code)} {nom}</option>)}
+                    </select>
+                  </td>
                   <td>
                     <select className="input py-1 text-sm" aria-label={`Catégorie de ${s.nom}`} value={s.categorie_id || ""}
                       onChange={(e) => agir(() => apiClient.put(`/admin/presse/sources/${s.id}`, { nom: s.nom, url: s.url, actif: s.actif, categorie_id: e.target.value }))}>
@@ -107,11 +117,16 @@ export default function AdminPresse() {
           </table>
           {sources.length === 0 && <p className="p-2 text-gray-500">Aucun média : ajoutez-en un ci-dessous.</p>}
         </div>
-        <form onSubmit={ajouter} className="grid gap-2 border-t border-gray-100 pt-3 sm:grid-cols-[1fr_1fr_2fr_auto] sm:items-end">
+        <form onSubmit={ajouter} className="grid gap-2 border-t border-gray-100 pt-3 sm:grid-cols-[1fr_1fr_1fr_2fr_auto] sm:items-end">
           <div><label className="label" htmlFor="p-nom">Nom du média</label><input id="p-nom" className="input" required minLength={2} maxLength={60} value={form.nom} onChange={(e) => setForm({ ...form, nom: e.target.value })} /></div>
           <div><label className="label" htmlFor="p-cat">Catégorie</label>
             <select id="p-cat" className="input" required value={form.categorie_id} onChange={(e) => setForm({ ...form, categorie_id: e.target.value })}>
               {categories.map((c) => <option key={c.id} value={c.id}>{c.icone} {c.nom}</option>)}
+            </select></div>
+          <div><label className="label" htmlFor="p-pays">Pays</label>
+            <select id="p-pays" className="input" value={form.pays} onChange={(e) => setForm({ ...form, pays: e.target.value })}>
+              <option value="">D'après l'adresse</option>
+              {Object.entries(pays).map(([code, nom]) => <option key={code} value={code}>{drapeau(code)} {nom}</option>)}
             </select></div>
           <div><label className="label" htmlFor="p-url">Adresse d'une page ou d'un flux RSS</label><input id="p-url" className="input" type="url" required value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} /></div>
           <button type="submit" className="btn-primary">Ajouter</button>
