@@ -60,7 +60,7 @@ export default function ArriveeMarchand() {
     trouves.forEach((x) => noter(`${x.operateur}:${x.code}`));
     setTrouves([]);
     // Même adresse que le QR code d'un marchand : l'écran Payer s'ouvre avec le marchand déjà choisi
-    navigate(`/?operateur=${encodeURIComponent(m.operateur)}&service=&code=${encodeURIComponent(m.code)}`);
+    navigate(`/?operateur=${encodeURIComponent(m.operateur)}&service=${encodeURIComponent(m.service_id || "")}&code=${encodeURIComponent(m.code)}`);
   };
 
   return (

@@ -84,7 +84,9 @@ export default function Payer() {
   // (opérateur + service + code marchand pré-rempli ; l'utilisateur saisit le montant)
   const ouvrirDepuisQr = useCallback(async (op, idService, code) => {
     const svc = await choisirOperateur(op);
-    const s = svc.find((x) => x.id === idService) || svc.find((x) => x.champs.some((c) => c.isMerchantCode));
+    // Lot 106 : service demandé (QR, marchand proche) ; à défaut, le « Paiement marchand » de l'opérateur avant tout autre service à code marchand
+    const s = svc.find((x) => x.id === idService) || svc.find((x) => x.categorie === "merchant_payment" && x.champs.some((c) => c.isMerchantCode))
+      || svc.find((x) => x.champs.some((c) => c.isMerchantCode));
     if (s) {
       const cle = s.champs.find((c) => c.isMerchantCode)?.key;
       choisirService(s, cle && code ? { [cle]: code } : {});
@@ -107,7 +109,7 @@ export default function Payer() {
     }
     const minuterie = setTimeout(() => {
       apiClient.get(`/marchands/${encodeURIComponent(operateur)}/${encodeURIComponent(codeMarchand)}`)
-        .then(({ data }) => setMarchand({ trouve: true, libelle: data.libelle }))
+        .then(({ data }) => setMarchand({ trouve: true, libelle: data.libelle, service_id: data.service_id || null }))
         .catch((err) => setMarchand(err?.response?.status === 404 ? { trouve: false } : null));
     }, 400);
     return () => clearTimeout(minuterie);
@@ -227,7 +229,7 @@ export default function Payer() {
 
       {/* Lot 102 : marchands près de vous (géolocalisation activée) — un geste ouvre le paiement avec le marchand choisi */}
       {!operateur && !service && (
-        <MarchandsProches onChoisir={(m) => ouvrirDepuisQr(m.operateur, null, m.code)} />
+        <MarchandsProches onChoisir={(m) => ouvrirDepuisQr(m.operateur, m.service_id || null, m.code)} />
       )}
 
       {/* Étape 1 : opérateur — liste déroulante (règle : une liste finie se choisit dans une liste déroulante) */}
@@ -283,6 +285,13 @@ export default function Payer() {
               {/* Résolution du code marchand */}
               {c.isMerchantCode && marchand?.trouve && (
                 <p className="mt-1 text-sm text-green-700">✓ {marchand.libelle}</p>
+              )}
+              {/* Lot 106 : ce marchand a son propre service de paiement (ex. *144*10* au lieu de *144*4*) : on le propose */}
+              {c.isMerchantCode && marchand?.trouve && marchand.service_id && marchand.service_id !== service.id && services.find((s) => s.id === marchand.service_id) && (
+                <div className="mt-1 rounded-lg bg-sky-50 p-2 text-sm text-sky-900" data-testid="service-conseille">
+                  Ce marchand se paie avec « {services.find((s) => s.id === marchand.service_id).nom} » ({services.find((s) => s.id === marchand.service_id).gabarit_ussd}).{" "}
+                  <button type="button" className="font-semibold underline" onClick={() => choisirService(services.find((s) => s.id === marchand.service_id), { [services.find((s) => s.id === marchand.service_id).champs.find((x) => x.isMerchantCode).key]: codeMarchand })}>Utiliser ce service</button>
+                </div>
               )}
               {c.isMerchantCode && marchand && !marchand.trouve && (
                 <div className="mt-2 rounded-lg bg-amber-50 p-3 text-sm">
