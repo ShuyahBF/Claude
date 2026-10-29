@@ -6,7 +6,8 @@ import { useEffect, useState } from "react";
 
 const SEUIL_PX = 200;                    // distance au bord à partir de laquelle une flèche s'affiche
 
-export default function FlechesDefilement() {
+// cote : "gauche" (par défaut, Historique) ou "droite" (Actualités : au-dessus de la bulle « + » qui occupe le bas de ce côté).
+export default function FlechesDefilement({ cote = "gauche" }) {
   const [haut, setHaut] = useState(false);       // vrai : on n'est plus tout en haut
   const [bas, setBas] = useState(false);         // vrai : il reste du contenu en dessous
 
@@ -34,7 +35,8 @@ export default function FlechesDefilement() {
   if (!haut && !bas) return null;
   const classe = "grid h-11 w-11 place-items-center rounded-full border border-gray-200 bg-white/90 text-xl text-primary shadow-lg backdrop-blur transition active:scale-95";
   return (
-    <div className="no-print fixed left-4 z-50 flex flex-col gap-2" style={{ bottom: "calc(max(0.75rem, env(safe-area-inset-bottom)) + 4.25rem)" }} data-testid="fleches-defilement">
+    <div className={`no-print fixed ${cote === "droite" ? "right-4" : "left-4"} z-50 flex flex-col gap-2`}
+      style={{ bottom: `calc(max(0.75rem, env(safe-area-inset-bottom)) + ${cote === "droite" ? "8.25rem" : "4.25rem"})` }} data-testid="fleches-defilement">
       {haut && <button type="button" className={classe} aria-label="Remonter en haut de la page" title="Remonter en haut" onClick={() => aller(true)} data-testid="fleche-haut">↑</button>}
       {bas && <button type="button" className={classe} aria-label="Descendre en bas de la page" title="Descendre en bas" onClick={() => aller(false)} data-testid="fleche-bas">↓</button>}
     </div>

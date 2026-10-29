@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Chargement from "@/components/Chargement";
+import FlechesDefilement from "@/components/FlechesDefilement";   // lot 105 : flèches haut / bas à droite
 import { apiClient, dateHeure, messageErreur } from "@/lib/api";
 import { drapeau } from "@/lib/drapeau";          // lot 101 : drapeau du pays du média
 import { useToast } from "@/components/Toast";
@@ -13,6 +14,14 @@ export default function Presse() {
   const toast = useToast();
   const [params, setParams] = useSearchParams();
   const [d, setD] = useState(null);
+  // Hauteur de l'en-tête du site (collant en haut) : les titres de médias se fixent juste dessous
+  const [haut, setHaut] = useState(66);
+  useEffect(() => {
+    const mesurer = () => { const e = document.querySelector("header"); if (e) setHaut(Math.round(e.getBoundingClientRect().height)); };
+    mesurer();
+    window.addEventListener("resize", mesurer);
+    return () => window.removeEventListener("resize", mesurer);
+  }, []);
   // Lot 83 : date de la visite précédente (avant de la remplacer) → les articles apparus depuis portent une pastille « Nouveau »
   const [vuAvant] = useState(() => { try { return localStorage.getItem("mpw_presse_vu") || ""; } catch { return ""; } });
   useEffect(() => {
@@ -44,7 +53,8 @@ export default function Presse() {
       )}
       {active?.medias.map((m) => (
         <section key={m.id} className="card space-y-3">
-          <h2 className="text-lg font-semibold">
+          {/* Lot 105 : le titre du média reste FIXE sous l'en-tête pendant que ses articles défilent ; le média suivant le remplace en arrivant à sa place */}
+          <h2 className="sticky z-30 -mx-5 -mt-5 rounded-t-xl border-b border-gray-100 bg-white px-5 py-3 text-lg font-semibold shadow-sm" style={{ top: haut }} data-testid="titre-media">
             {m.pays && <span className="mr-2" title={m.pays_nom || m.pays} data-testid="drapeau-media">{drapeau(m.pays)}</span>}
             <a href={m.url} target="_blank" rel="noopener noreferrer" className="hover:underline">{m.nom}</a>
           </h2>
@@ -58,7 +68,7 @@ export default function Presse() {
                     className="h-20 w-28 shrink-0 rounded-lg bg-gray-100 object-cover sm:h-24 sm:w-36" />
                 )}
                 <div className="min-w-0 space-y-1">
-                  <p className="font-medium">{m.pays && <span className="mr-1.5" title={m.pays_nom || m.pays} aria-label={`Média : ${m.pays_nom || m.pays}`} data-testid="drapeau-article">{drapeau(m.pays)}</span>}{a.titre}{vuAvant && (a.premier_vu || "") > vuAvant && <span className="ml-2 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white" data-testid="article-nouveau">Nouveau</span>}</p>
+                  <p className="font-medium">{a.titre}{vuAvant && (a.premier_vu || "") > vuAvant && <span className="ml-2 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white" data-testid="article-nouveau">Nouveau</span>}</p>
                   {a.traduit && <span className="mb-1 inline-block rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800">🌐 Traduit vers FR</span>}
                   {a.resume && <p className="text-sm text-gray-700">{a.resume}{!a.ia && <span className="ml-1 text-xs text-gray-400">(début de l'article)</span>}</p>}
                   <a href={a.lien} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-primary underline">Lire l'article complet chez {m.nom} →</a>
@@ -68,6 +78,7 @@ export default function Presse() {
           </ul>
         </section>
       ))}
+      <FlechesDefilement cote="droite" />
       {active && <p className="text-xs text-gray-400">Photos et dessins : © leurs auteurs et médias d'origine, affichés depuis leur site ; les vidéos ne sont pas reprises.</p>}
     </div>
   );
