@@ -155,6 +155,7 @@ async def declarer_pispi(paiement_id: str, data: DeclarationPispi, user: dict = 
 # Historique filtré et statistiques (lot 22)
 # --------------------------------------------------------------------------------------------------------------------
 FORMAT_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+REPARTITION_MAX = 6      # lot 98 : parts nommées d'un camembert (le reste = « Autres »)
 LIMITE_ANALYSE = 5000   # nombre maximum de paiements analysés par appel (une seule lecture, regroupement en mémoire)
 
 
@@ -242,6 +243,7 @@ def calculer_statistiques(paiements: list[dict], top_statut: str = "effectue") -
     par_op: dict[str, dict] = {}
     par_service: dict[tuple, dict] = {}
     par_jour: dict[str, dict] = {}
+    par_mois: dict[str, dict] = {}
     for p in paiements:
         o = par_op.setdefault(p["operateur"], {"operateur": p["operateur"], "nombre": 0, "montant": 0, "payes": 0,
                                                "montant_paye": 0, "non_payes": 0})
@@ -261,6 +263,10 @@ def calculer_statistiques(paiements: list[dict], top_statut: str = "effectue") -
         j = par_jour.setdefault(jour, {"jour": jour, "nombre": 0, "montant": 0})
         j["nombre"] += 1
         j["montant"] += m
+        mois = str(p.get("cree_le", ""))[:7]                 # lot 98 : « AAAA-MM » pour l'histogramme mensuel (historique long)
+        mo = par_mois.setdefault(mois, {"mois": mois, "nombre": 0, "montant": 0})
+        mo["nombre"] += 1
+        mo["montant"] += m
     # Un opérateur sans aucun paiement payé n'a pas de carte (ses codes seulement préparés restent dans la liste)
     par_op = {k: v for k, v in par_op.items() if v["nombre"]}
 
@@ -273,6 +279,18 @@ def calculer_statistiques(paiements: list[dict], top_statut: str = "effectue") -
         e = par_benef.setdefault(k, {"libelle": b["libelle"], "code": b["code"], "operateur": p["operateur"], "nombre": 0, "montant": 0})
         e["nombre"] += 1
         e["montant"] += p.get("montant") or 0
+    # Lot 98 : répartition des bénéficiaires PAR OPÉRATEUR (camembert) : les 6 premiers par montant, le reste regroupé en « Autres »
+    par_op_benef: dict[str, list] = defaultdict(list)
+    for e in par_benef.values():
+        par_op_benef[e["operateur"]].append(e)
+    repartition = {}
+    for op, liste in par_op_benef.items():
+        liste = sorted(liste, key=lambda x: (-x["montant"], -x["nombre"]))
+        tete = [{"libelle": x["libelle"], "montant": x["montant"], "nombre": x["nombre"]} for x in liste[:REPARTITION_MAX]]
+        reste = liste[REPARTITION_MAX:]
+        if reste:
+            tete.append({"libelle": f"Autres ({len(reste)})", "montant": sum(x["montant"] for x in reste), "nombre": sum(x["nombre"] for x in reste)})
+        repartition[op] = {"total": sum(x["montant"] for x in liste), "parts": [x for x in tete if x["montant"] > 0]}
     return {
         "totaux": {
             "nombre": len(payes), "operations": len(paiements), "montant_total": sum(montants),
@@ -285,6 +303,8 @@ def calculer_statistiques(paiements: list[dict], top_statut: str = "effectue") -
         "par_operateur": sorted(par_op.values(), key=lambda x: (-x["nombre"], x["operateur"])),
         "par_service": sorted(par_service.values(), key=lambda x: -x["nombre"])[:8],
         "par_jour": sorted(par_jour.values(), key=lambda x: x["jour"])[-90:],
+        "par_mois": sorted(par_mois.values(), key=lambda x: x["mois"])[-36:],
+        "beneficiaires_par_operateur": repartition,
         "top_montants": [{"id": p["id"], "cree_le": p["cree_le"], "operateur": p["operateur"], "service": p["service_nom"],
                           "beneficiaire": beneficiaire(p)["libelle"], "montant": p["montant"], "statut": p["statut"]} for p in top_montants],
         "top_beneficiaires": sorted(par_benef.values(), key=lambda x: (-x["montant"], -x["nombre"]))[:10],

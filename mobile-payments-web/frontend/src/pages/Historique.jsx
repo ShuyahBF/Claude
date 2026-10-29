@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import CarteCodeUssd from "@/components/CarteCodeUssd";
 import Chargement from "@/components/Chargement";
 import DetailsDepense from "@/components/DetailsDepense";
+import Camembert from "@/components/Camembert";                    // lot 98 : répartition des bénéficiaires par opérateur
+import HistogrammePaiements from "@/components/HistogrammePaiements";   // lot 98 : histogramme en montant, par jour ou par mois
 import ImportJournal from "@/components/ImportJournal";           // lot 96 : journal des transactions de l'opérateur
 import NomBeneficiaire from "@/components/NomBeneficiaire";       // lot 96 : nom modifiable après coup
 import Portefeuilles from "@/components/Portefeuilles";
@@ -153,7 +155,7 @@ export default function Historique() {
       setPaiements(l.data);
     } catch (err) {
       toast.erreur(messageErreur(err, "Historique indisponible"));
-      setStats((x) => x || { totaux: {}, par_operateur: [], par_service: [], par_jour: [], top_montants: [], top_beneficiaires: [] });
+      setStats((x) => x || { totaux: {}, par_operateur: [], par_service: [], par_jour: [], par_mois: [], beneficiaires_par_operateur: {}, top_montants: [], top_beneficiaires: [] });
       setPaiements((x) => x || []);
     }
   }, [params, filtres.classement, toast]);
@@ -184,7 +186,6 @@ export default function Historique() {
 
   if (paiements === null || stats === null) return <Chargement />;
   const t = stats.totaux || {};
-  const maxJour = Math.max(1, ...stats.par_jour.map((j) => j.nombre));
   const maxOp = Math.max(1, ...stats.par_operateur.map((o) => o.nombre));
   const filtreActif = JSON.stringify(filtres) !== JSON.stringify(PAS_DE_FILTRE);
 
@@ -271,20 +272,8 @@ export default function Historique() {
         </section>
       )}
 
-      {/* Activité par jour */}
-      {stats.par_jour.length > 1 && (
-        <section className="card space-y-2">
-          <h2 className="text-lg font-bold">Paiements par jour</h2>
-          <div className="flex h-28 items-end gap-1" data-testid="graphique-jours">
-            {stats.par_jour.map((j) => (
-              <div key={j.jour} className="flex h-full flex-1 flex-col justify-end" title={`${j.jour} : ${j.nombre} paiement(s), ${fcfa(j.montant)}`}>
-                <div className="rounded-t bg-primary/80" style={{ height: `${(j.nombre / maxJour) * 100}%` }} />
-              </div>
-            ))}
-          </div>
-          <p className="flex justify-between text-xs text-gray-500"><span>{stats.par_jour[0].jour}</span><span>{stats.par_jour[stats.par_jour.length - 1].jour}</span></p>
-        </section>
-      )}
+      {/* Activité par jour ou par mois, en montant ou en nombre (lot 98) */}
+      <HistogrammePaiements parJour={stats.par_jour} parMois={stats.par_mois || []} />
 
       {/* Classements : Top 10 des montants et des bénéficiaires */}
       <section className="space-y-3">
@@ -332,6 +321,21 @@ export default function Historique() {
             </table>
           </div>
         </div>
+        {/* Lot 98 : un camembert par opérateur — part de chaque bénéficiaire dans les paiements de cet opérateur */}
+        {Object.keys(stats.beneficiaires_par_operateur || {}).length > 0 && (
+          <div className="space-y-2" data-testid="camemberts-operateurs">
+            <h3 className="font-semibold">Bénéficiaires par opérateur (en montant)</h3>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {Object.entries(stats.beneficiaires_par_operateur).map(([op, r]) => (
+                <div key={op} className="card space-y-2 p-4">
+                  <p className="flex items-center gap-2 font-semibold"><span className="h-3 w-3 rounded-full" style={{ background: couleurOperateur(op) }} />{op}
+                    <span className="ml-auto text-xs font-medium tabular-nums text-gray-500">{fcfa(r.total)}</span></p>
+                  <Camembert parts={r.parts} total={r.total} titre={`Bénéficiaires ${op}`} />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {stats.par_service.length > 0 && (
           <p className="text-sm text-gray-600">
             <span className="font-semibold">Services les plus utilisés : </span>
