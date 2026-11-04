@@ -1,3 +1,4 @@
+import { estInstallee } from "@/lib/installation";   // page d'installation
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import ChampMotDePasse from "@/components/ChampMotDePasse";
@@ -135,6 +136,12 @@ export default function Connexion({ mode = "connexion" }) {
           <SupportSawali variante="carte" />
         </div>
       </form>
+      {/* Page d'installation (publique) : proposée tant que l'application n'est pas déjà installée sur cet appareil */}
+      {!estInstallee(window) && (
+        <p className="mt-5 text-center">
+          <Link to="/installer" className="font-semibold text-primary underline" data-testid="lien-installer">📲 Installer l'application sur mon téléphone</Link>
+        </p>
+      )}
       {/* Contact officiel de SAWALI SMART SYSTEMS */}
       <p className="mt-6 text-center text-xs text-gray-500">
         Contact : <a href="mailto:contact@sawalismartsystems.com" className="text-primary hover:underline">contact@sawalismartsystems.com</a>
