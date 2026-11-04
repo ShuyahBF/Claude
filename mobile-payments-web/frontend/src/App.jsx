@@ -52,6 +52,8 @@ export default function App() {
             {/* Page publique déclarée dans la Play Console (lot 16) */}
             <Route path="/confidentialite" element={<Confidentialite />} />
             <Route path="/suppression-compte" element={<SuppressionCompte />} />
+            {/* Page d'installation PUBLIQUE : le lien se partage par WhatsApp à des personnes qui n'ont pas encore de compte */}
+            <Route path="/installer" element={<Installer />} />
             <Route element={<RouteProtegee><Layout /></RouteProtegee>}>
               <Route path="/" element={<Payer />} />
               <Route path="/historique" element={<Historique />} />
@@ -64,7 +66,6 @@ export default function App() {
               <Route path="/medicaments" element={<Vers onglet="medicaments" />} />
               <Route path="/presse" element={<Presse />} />
               <Route path="/ussd" element={<Ussd />} />
-              <Route path="/installer" element={<Installer />} />
               <Route path="/meteo" element={<Meteo />} />
               <Route path="/abonnement" element={<Abonnement />} />
               <Route path="/ordonnances" element={<Ordonnances />} />
