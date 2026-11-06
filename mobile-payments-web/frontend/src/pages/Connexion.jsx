@@ -10,6 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import { messageErreur, MOTIF_DECONNEXION_KEY } from "@/lib/api";
 import { assembler, PAYS_DEFAUT, trouverPays } from "@/lib/pays";
 import { LIBELLE_VERSION } from "@/version";
+import { EXEMPLE_EMAIL } from "@/lib/exemplesIdentite";   // exemples locaux (règle 13)
 
 // Écrans de connexion et d'inscription (mode = "connexion" | "inscription").
 // Identification par numéro de téléphone OU adresse e-mail + mot de passe.
@@ -104,7 +105,7 @@ export default function Connexion({ mode = "connexion" }) {
               {!/[@+]/.test(form.identifiant) && !form.identifiant.startsWith("00") && (
                 <SelecteurPays code={paysConnexion} indicatif={trouverPays(paysConnexion).indicatif} onChange={setPaysConnexion} />
               )}
-              <input id="identifiant" className="input min-w-0 flex-1" required placeholder="70 00 00 00 ou nom@exemple.com"
+              <input id="identifiant" className="input min-w-0 flex-1" required placeholder={`70 00 00 00 ou ${EXEMPLE_EMAIL}`}
                 value={form.identifiant} onChange={champ("identifiant")} autoComplete="username" />
             </div>
           </div>
