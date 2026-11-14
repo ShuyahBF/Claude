@@ -8,7 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { apiClient, couleurOperateur } from "@/lib/api";
 import { positionActuelle } from "@/lib/geoloc";
 
-export default function MarchandsProches({ operateur = "", onChoisir, onAutre, titre = "📍 Marchands près de vous" }) {
+export default function MarchandsProches({ operateur = "", onChoisir, onAutre, titre = "📍 Marchands près de vous", accueil = false }) {
   const { user } = useAuth();
   const actif = !!user?.geoloc;
   const [etat, setEtat] = useState({ chargement: actif, marchands: [], rayon: null, refus: false });
@@ -40,7 +40,7 @@ export default function MarchandsProches({ operateur = "", onChoisir, onAutre, t
       {liste.length === 0 ? (
         <p className="text-sm text-gray-600" data-testid="proches-vide">
           {etat.refus ? "Votre position n'est pas disponible." : `Aucun marchand connu dans ce rayon${operateur ? ` pour ${operateur}` : ""}.`}{" "}
-          Saisissez le code du marchand : vous pourrez lui donner un nom.
+          {accueil ? "Utilisez « Nouveau » ci-dessous pour saisir son code." : "Saisissez le code du marchand : vous pourrez lui donner un nom."}
         </p>
       ) : (
         <ul className="divide-y divide-gray-100" data-testid="proches-liste">
@@ -58,9 +58,10 @@ export default function MarchandsProches({ operateur = "", onChoisir, onAutre, t
           ))}
         </ul>
       )}
-      <button type="button" className="btn-outline btn-sm w-full" onClick={autre} data-testid="proches-autre">
+      {/* Écran d'accueil : « Nouveau » (juste en dessous) fait déjà cela : pas de second bouton */}
+      {!accueil && <button type="button" className="btn-outline btn-sm w-full" onClick={autre} data-testid="proches-autre">
         {liste.length === 0 ? "Saisir le code d'un marchand" : "Mon marchand n'est pas dans la liste"}
-      </button>
+      </button>}
     </section>
   );
 }

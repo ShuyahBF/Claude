@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import AlerteRenforcee from "@/components/AlerteRenforcee";
 import ArriveeMarchand from "@/components/ArriveeMarchand";
+import LectureSmsAuto from "@/components/LectureSmsAuto";            // lecture automatique des SMS de paiement (application direct)
 import MenuLateral from "@/components/MenuLateral";
 import SupportSawali from "@/components/SupportSawali";
 import VerrouEcran from "@/components/VerrouEcran";
@@ -25,6 +26,22 @@ export default function Layout() {
   const appli = capacites();   // null hors de l'application Android
   const navigate = useNavigate();
   const [menuOuvert, setMenuOuvert] = useState(false);   // menu latéral glissant (lot 33)
+  // CLAVIER OUVERT : tant qu'un champ de saisie a le focus, le menu du bas et la bulle « + » sont masqués (ils se posaient SUR le champ, au-dessus du clavier) et le champ est
+  // ramené au milieu de l'écran, bien visible.
+  const [clavier, setClavier] = useState(false);
+  useEffect(() => {
+    const saisie = (el) => el && (el.tagName === "TEXTAREA" || el.tagName === "SELECT" || (el.tagName === "INPUT" && !["checkbox", "radio", "button", "submit", "range", "color", "file"].includes(el.type)));
+    let delai;
+    const entree = (e) => {
+      if (!saisie(e.target)) return;
+      clearTimeout(delai); setClavier(true);
+      const champ = e.target;
+      setTimeout(() => { try { champ.scrollIntoView({ block: "center", behavior: "smooth" }); } catch { /* ancien navigateur */ } }, 300);   // après l'ouverture du clavier
+    };
+    const sortie = () => { clearTimeout(delai); delai = setTimeout(() => setClavier(saisie(document.activeElement)), 150); };
+    document.addEventListener("focusin", entree); document.addEventListener("focusout", sortie);
+    return () => { document.removeEventListener("focusin", entree); document.removeEventListener("focusout", sortie); clearTimeout(delai); };
+  }, []);
   const { pathname } = useLocation();
   const toast = useToast();
   // Rappels du jour (anniversaires, paiements, médicaments) : relus à chaque changement de page et toutes les 30 s.
@@ -119,6 +136,7 @@ export default function Layout() {
         <Outlet />
         <VerrouEcran />
         <ArriveeMarchand />
+        <LectureSmsAuto />
         <AlerteRenforcee />
       </main>
 
@@ -130,7 +148,7 @@ export default function Layout() {
       <MenuLateral ouvert={menuOuvert} fermer={() => setMenuOuvert(false)} compteurs={{ ...rappels, presse: nouveautesPresse }} />
 
       {/* Menu FLOTTANT, toujours aligné sur le bas de l'écran (tous appareils) ; la marge basse respecte la zone de geste des téléphones */}
-      <div className="no-print pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div className={`no-print pointer-events-none fixed inset-x-0 bottom-0 z-40 justify-center px-3 ${clavier ? "hidden" : "flex"} pb-[max(0.75rem,env(safe-area-inset-bottom))]`}>
         <nav aria-label="Menu principal"
           className="pointer-events-auto flex w-full max-w-md gap-0.5 overflow-hidden rounded-2xl border border-gray-200 bg-white/95 p-1.5 shadow-xl backdrop-blur sm:w-auto sm:max-w-none">
           {/* Onglet Support SAWALI : à la place de « Payer » (masqué si SAWALI n'est pas relié) */}
@@ -145,7 +163,7 @@ export default function Layout() {
 
       {/* Bulle flottante « + » = Payer : soulevée au-dessus du menu */}
       <NavLink to="/" end aria-label="Payer" title="Payer"
-        className="no-print fixed right-4 z-50 grid h-14 w-14 place-items-center rounded-full bg-primary text-4xl font-light leading-none text-white shadow-2xl ring-4 ring-white transition hover:bg-primary-dark active:scale-95"
+        className={`no-print fixed right-4 z-50 h-14 w-14 place-items-center rounded-full bg-primary text-4xl font-light leading-none text-white shadow-2xl ring-4 ring-white transition hover:bg-primary-dark active:scale-95 ${clavier ? "hidden" : "grid"}`}
         style={{ bottom: "calc(max(0.75rem, env(safe-area-inset-bottom)) + 4.25rem)" }}>
         +
       </NavLink>

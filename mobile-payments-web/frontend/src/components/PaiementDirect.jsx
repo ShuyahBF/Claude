@@ -137,7 +137,7 @@ export default function PaiementDirect({ paiement, onTermine }) {
 
         {etat === "dialogue" && <p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900">⏳ Fenêtre de sécurité ouverte : retapez le montant et saisissez votre code secret.</p>}
 
-        {user?.debug_chaine && chaine && (etat === "non_envoye" || etat === "envoye") && (
+        {user?.role === "admin" && user?.debug_chaine && chaine && (etat === "non_envoye" || etat === "envoye") && (
           <p className="break-all rounded-lg border border-amber-300 bg-amber-50 p-3 font-mono text-xs text-amber-900" data-testid="chaine-envoyee">
             <span className="float-right ml-2">
               <button type="button" data-testid="copier-debug" title="Copier les informations pour le support (code secret masqué)" aria-label="Copier les informations pour le support"

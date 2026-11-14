@@ -44,11 +44,14 @@ export default function PinProfil() {
           </li>
         ))}
       </ul>
+      {/* Débogage : visible et réglable par le SUPER-ADMINISTRATEUR seulement */}
+      {user.role === "admin" && (
       <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5">
         <input type="checkbox" className="h-5 w-5" checked={!!user.debug_chaine} disabled={occupe} data-testid="debug-chaine"
           onChange={(e) => regler("/auth/debug-chaine", { actif: e.target.checked }, e.target.checked ? "Débogage activé (enregistré)" : "Débogage désactivé (enregistré)")} />
         <span className="flex-1 text-sm"><b>🐞 Débogage :</b> afficher la chaîne envoyée en clair (code secret visible à l'écran)</span>
       </label>
+      )}
     </section>
   );
 }

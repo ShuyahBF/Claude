@@ -229,8 +229,8 @@ class DebugChaine(BaseModel):
 
 
 @router.put("/debug-chaine")
-async def debug_chaine(data: DebugChaine, user: dict = Depends(get_current_user)):
-    """Débogage : afficher, dans la zone des résultats du paiement direct, la chaîne EXACTEMENT envoyée à l'opérateur (code secret en clair).
+async def debug_chaine(data: DebugChaine, user: dict = Depends(require_admin)):
+    """RÉSERVÉ AU SUPER-ADMINISTRATEUR. Débogage : afficher, dans la zone des résultats du paiement direct, la chaîne EXACTEMENT envoyée à l'opérateur (code secret en clair).
     Réglage de ce compte seulement ; la chaîne n'est jamais enregistrée ni envoyée au serveur (elle reste sur le téléphone)."""
     await db.users.update_one({"id": user["id"]}, {"$set": {"debug_chaine": data.actif}})
     return utilisateur_public(await db.users.find_one({"id": user["id"]}, SANS_ID))
