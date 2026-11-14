@@ -18,14 +18,17 @@ android {
         targetSdk = 35
         // versionCode : nombre entier qui DOIT augmenter à chaque envoi sur le Play Store ;
         // versionName : numéro affiché à l'utilisateur (et envoyé à SAWALI dans le signal de présence)
-        versionCode = 4
-        versionName = "1.3.0"
+        versionCode = 5
+        versionName = "1.3.1"
 
         // Lot 17 : PAIEMENT DIRECT (option, désactivée par défaut). La version du Play Store reste celle qui ouvre seulement le composeur
         // (aucune autorisation sensible). La version « directe » (APK installé à la main, -PmodeDirect=true) ajoute les autorisations
         // Appels / Téléphone et envoie le code USSD elle-même après une confirmation explicite.
         val modeDirect = (project.findProperty("modeDirect") as String?) == "true"
         buildConfigField("boolean", "MODE_DIRECT", modeDirect.toString())
+        // La version directe s'installe À CÔTÉ de l'application déjà présente (autre identifiant, autre nom) : sans cela, Android refuse l'installation
+        // (« package en conflit avec un package déjà présent ») quand l'application existante a été signée avec une autre clé.
+        if (modeDirect) { applicationIdSuffix = ".direct"; versionNameSuffix = "-direct" }
         // Les deux autorisations viennent d'un manifeste séparé (src/direct/AndroidManifest.xml), ajouté seulement dans ce cas (voir plus bas)
 
         // URL de base de l'API : par défaut l'API de PRODUCTION (lot 13, API unique FastAPI partagée
@@ -92,6 +95,9 @@ android {
     if ((project.findProperty("modeDirect") as String?) == "true") {
         sourceSets.getByName("debug").manifest.srcFile("src/direct/AndroidManifest.xml")
         sourceSets.getByName("release").manifest.srcFile("src/direct/AndroidManifest.xml")
+        // Nom affiché distinct : « auRor direct »
+        sourceSets.getByName("debug").res.srcDir("src/direct/res")
+        sourceSets.getByName("release").res.srcDir("src/direct/res")
     }
 
     buildFeatures {
