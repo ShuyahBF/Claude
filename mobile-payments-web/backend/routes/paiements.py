@@ -29,13 +29,13 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field
 
 import lieux_marchands
 from db import SANS_ID, db
 from securite import get_current_user
-from ussd import FILTRE_SANS_CODE_SECRET, ErreurSaisie, construire_code, lien_tel
+from ussd import ErreurSaisie, construire_code, est_direct, filtre_services, lien_tel
 
 router = APIRouter(prefix="/paiements", tags=["Paiements"])
 
@@ -61,22 +61,29 @@ class Preparation(BaseModel):
 
 
 class Statut(BaseModel):
-    statut: Literal["prepare", "effectue", "abandonne"]
+    statut: Literal["prepare", "envoye", "effectue", "abandonne"]     # « envoye » (lot 120) : code USSD envoyé par l'application « direct », en attente du SMS de l'opérateur
 
 
 def _avec_lien(p: dict) -> dict:
     """Ajoute le lien « tel: » (calculé, jamais stocké). Un paiement PI-SPI n'a pas de code USSD."""
-    return {**p, "lien_tel": lien_tel(p["code_ussd"]) if p.get("code_ussd") else None}
+    # Un code qui contient le mot PIN (paiement direct) n'a pas de lien « tel: » : il ne se compose jamais tel quel
+    return {**p, "lien_tel": lien_tel(p["code_ussd"]) if p.get("code_ussd") and "PIN" not in p["code_ussd"] else None}
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-async def preparer(data: Preparation, user: dict = Depends(get_current_user)):
-    service = await db.services.find_one({"id": data.service_id, "actif": True, **FILTRE_SANS_CODE_SECRET}, SANS_ID)
+async def preparer(data: Preparation, request: Request, user: dict = Depends(get_current_user)):
+    direct = est_direct(request)                      # application Android « direct » : les services à code secret sont permis (lot 120)
+    service = await db.services.find_one({"id": data.service_id, "actif": True, **filtre_services(direct)}, SANS_ID)
     if not service:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Service introuvable ou désactivé")
     champs = service.get("champs", [])
+    gabarit = service["gabarit_ussd"]
+    if "{pin}" in gabarit:
+        # CODE SECRET : jamais demandé ni reçu par le serveur. Le mot PIN reste dans le code ; l'application le remplace sur le téléphone, dans sa fenêtre sécurisée.
+        gabarit = gabarit.replace("{pin}", "PIN")
+        champs = [c for c in champs if c.get("key") != "pin"]
     try:
-        code = construire_code(service["gabarit_ussd"], champs, data.valeurs)
+        code = construire_code(gabarit, champs, data.valeurs)
     except ErreurSaisie as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     # Seules les valeurs des champs du service sont gardées (rien d'autre n'est stocké)
@@ -315,7 +322,7 @@ def calculer_statistiques(paiements: list[dict], top_statut: str = "effectue") -
 
 @router.get("")
 async def historique(limite: int = Query(50, ge=1, le=500), du: Optional[str] = None, au: Optional[str] = None,
-                     operateur: Optional[str] = None, statut: Optional[Literal["prepare", "effectue", "abandonne"]] = None,
+                     operateur: Optional[str] = None, statut: Optional[Literal["prepare", "envoye", "effectue", "abandonne"]] = None,
                      q: Optional[str] = Query(None, max_length=80), user: dict = Depends(get_current_user)):
     """Paiements préparés par l'utilisateur connecté, du plus récent au plus ancien, filtrables par période
     (du / au, AAAA-MM-JJ), opérateur, statut et recherche libre (bénéficiaire, code, numéro, service)."""
@@ -325,7 +332,7 @@ async def historique(limite: int = Query(50, ge=1, le=500), du: Optional[str] = 
 
 @router.get("/statistiques")
 async def statistiques(du: Optional[str] = None, au: Optional[str] = None, operateur: Optional[str] = None,
-                       statut: Optional[Literal["prepare", "effectue", "abandonne"]] = None,
+                       statut: Optional[Literal["prepare", "envoye", "effectue", "abandonne"]] = None,
                        q: Optional[str] = Query(None, max_length=80),
                        classement: Literal["effectue", "tous"] = "effectue", user: dict = Depends(get_current_user)):
     """Statistiques de l'utilisateur connecté sur la période choisie (une lecture, calcul en mémoire)."""
@@ -339,6 +346,9 @@ async def changer_statut(paiement_id: str, data: Statut, user: dict = Depends(ge
     courant = await db.paiements.find_one({"id": paiement_id, "user_id": user["id"]}, SANS_PIECES)
     if courant and courant.get("mode") == "pispi" and (data.statut != "abandonne" or courant.get("statut") in ("effectue", "refuse")):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Un paiement PI-SPI est confirmé par le marchand : vous pouvez seulement l'abandonner avant sa confirmation")
+    # Lot 120 : un code déjà ENVOYÉ à l'opérateur (ou confirmé) ne peut plus être abandonné : l'argent a peut-être déjà bougé
+    if courant and data.statut in ("abandonne", "prepare") and courant.get("statut") in ("envoye", "effectue"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Ce paiement a été envoyé à l'opérateur : il ne peut plus être abandonné. Si le marchand confirme la réception, indiquez « J'ai payé ».")
     # Le filtre user_id garantit qu'on ne modifie que SES paiements
     res = await db.paiements.update_one({"id": paiement_id, "user_id": user["id"]},
                                         {"$set": {"statut": data.statut,

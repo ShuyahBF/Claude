@@ -41,6 +41,16 @@ export function payerDirect({ operateur, code, resume }) {
   return promesse;
 }
 
+/**
+ * Paiement direct avec FENÊTRE DE SÉCURITÉ (lot 120) : l'application demande à l'utilisateur de RETAPER le montant (il doit correspondre à `montant`) et de saisir son
+ * code secret ; le code (qui contient le mot PIN) n'est envoyé qu'après cette validation. Rend { texte } ou { erreur }.
+ */
+export function payerDirectMontant({ operateur, code, resume, montant }) {
+  const [id, promesse] = attendreRetour();
+  window.AuRorAndroid.payerDirectMontant(id, operateur, code, resume, String(montant));
+  return promesse;
+}
+
 /** Lit les SMS de paiement reçus ces derniers jours (version « direct » seulement) : rend { sms: [{ adresse, recu_le, corps }] } ou { erreur }. */
 export function lireSmsPaiements(jours = 30) {
   const [id, promesse] = attendreRetour();

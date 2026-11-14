@@ -7,6 +7,7 @@ import WidgetAujourdhui from "@/components/WidgetAujourdhui";
 import QrOperateur from "@/components/QrOperateur";
 import LogoMode from "@/components/LogoMode";
 import PaiementPispi from "@/components/PaiementPispi";
+import PaiementDirect from "@/components/PaiementDirect";   // application Android direct : fenêtre de sécurité, SMS de confirmation
 import RaccourcisMarchand from "@/components/RaccourcisMarchand";   // paiement rapide : nouveau code ou liste des marchands
 import MarchandsProches from "@/components/MarchandsProches";   // lot 102 : liste des marchands proches à choisir
 import ScannerQr from "@/components/ScannerQr";
@@ -16,6 +17,7 @@ import SelecteurOperateur from "@/components/SelecteurOperateur";   // lot 89 : 
 import { positionActuelle } from "@/lib/geoloc";
 import { apiClient, CATEGORIES, couleurOperateur, messageErreur } from "@/lib/api";
 import { analyserQr } from "@/lib/qrOperateurs";
+import { capacites } from "@/lib/pontAndroid";
 
 // Parcours de paiement, comme l'app Android :
 // Opérateur -> Service -> Formulaire (avec résolution du code marchand) -> Code USSD + QR.
@@ -31,6 +33,8 @@ export default function Payer() {
   const [service, setService] = useState(null);
   const [valeurs, setValeurs] = useState({});
   const [paiement, setPaiement] = useState(null); // paiement préparé (étape finale)
+  const [paiementDirect, setPaiementDirect] = useState(null);   // application Android direct : paiement envoyé par l'application
+  const appliDirect = !!capacites()?.direct;
   const [envoi, setEnvoi] = useState(false);
   const [scannerOuvert, setScannerOuvert] = useState(false);
   const [qrOperateur, setQrOperateur] = useState(null);   // QR d'une plaque d'opérateur lu par la caméra (lot 38)
@@ -86,13 +90,14 @@ export default function Payer() {
   const ouvrirDepuisQr = useCallback(async (op, idService, code) => {
     const svc = await choisirOperateur(op);
     // Lot 106 : service demandé (QR, marchand proche) ; à défaut, le « Paiement marchand » de l'opérateur avant tout autre service à code marchand
-    const s = svc.find((x) => x.id === idService) || svc.find((x) => x.categorie === "merchant_payment" && x.champs.some((c) => c.isMerchantCode))
+    const direct = appliDirect && svc.find((x) => x.categorie === "merchant_payment" && x.gabarit_ussd.includes("{pin}") && x.champs.some((c) => c.isMerchantCode));   // paiement direct : le service avec code secret d'abord
+    const s = direct || svc.find((x) => x.id === idService) || svc.find((x) => x.categorie === "merchant_payment" && x.champs.some((c) => c.isMerchantCode))
       || svc.find((x) => x.champs.some((c) => c.isMerchantCode));
     if (s) {
       const cle = s.champs.find((c) => c.isMerchantCode)?.key;
       choisirService(s, cle && code ? { [cle]: code } : {});
     }
-  }, [choisirOperateur, choisirService]);
+  }, [choisirOperateur, choisirService, appliDirect]);
 
   // Arrivée par le QR code d'un marchand : ?operateur=Orange&service=<id>&code=1234
   useEffect(() => {
@@ -154,7 +159,8 @@ export default function Payer() {
       // Géolocalisation (si le compte l'a activée) : la position part avec la demande ; 4 s au plus d'attente, jamais bloquant
       const position = user?.geoloc ? await positionActuelle({ delaiMs: 4000 }) : null;
       const { data } = await apiClient.post("/paiements", { service_id: service.id, valeurs, ...(position ? { position } : {}) });
-      setPaiement(data);
+      // Application « direct » + code avec le mot PIN : l'application envoie elle-même la séquence (fenêtre de sécurité), sans QR code ni légende
+      if (appliDirect && data.code_ussd?.includes("PIN")) setPaiementDirect(data); else setPaiement(data);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       toast.erreur(messageErreur(err, "Préparation impossible"));
@@ -175,6 +181,7 @@ export default function Payer() {
 
   const recommencer = () => {
     setPaiement(null);
+    setPaiementDirect(null);
     setService(null);
     setOperateur("");
     setValeurs({});
@@ -192,6 +199,9 @@ export default function Payer() {
   const fermerScanner = useCallback(() => setScannerOuvert(false), []);
 
   if (operateurs === null) return <Chargement />;
+
+  // --- Application Android direct : paiement envoyé par l'application ---
+  if (paiementDirect) return <PaiementDirect paiement={paiementDirect} onTermine={recommencer} />;
 
   // --- Étape finale : code USSD + QR ---
   if (paiement) {
@@ -238,16 +248,20 @@ export default function Payer() {
         <RaccourcisMarchand operateurs={operateurs} onChoisir={(m) => ouvrirDepuisQr(m.operateur, m.service_id || null, m.code)} onNouveau={(op, code) => ouvrirDepuisQr(op, null, code)} />
       )}
 
-      {/* Étape 1 : opérateur — liste déroulante (règle : une liste finie se choisit dans une liste déroulante) */}
-      {!operateur && (
-        <section className="space-y-3">
-          <h1 className="text-2xl font-bold">Avec quel opérateur payez-vous ?</h1>
-          {operateurs.length === 0 && <p className="text-gray-500">Aucun opérateur disponible pour le moment.</p>}
-          <div>
-            <label className="label" htmlFor="choix-operateur">Opérateur</label>
-            <SelecteurOperateur id="choix-operateur" className="text-lg" valeur="" onChange={(v) => v && choisirOperateur(v)} options={operateurs} disabled={operateurs.length === 0} />
-          </div>
-        </section>
+      {/* Étape 1 : opérateur — liste déroulante (règle : une liste finie se choisit dans une liste déroulante).
+          Quand le paiement rapide est proposé, les AUTRES services (transfert, facture, crédit…) sont repliés : plus de « Opérateur » répété. */}
+      {!operateur && !service && (
+        <details className="card">
+          <summary className="cursor-pointer font-semibold">Autres services (transfert, facture, crédit…)</summary>
+          <section className="mt-3 space-y-3">
+            <h1 className="text-xl font-bold">Avec quel opérateur payez-vous ?</h1>
+            {operateurs.length === 0 && <p className="text-gray-500">Aucun opérateur disponible pour le moment.</p>}
+            <div>
+              <label className="label" htmlFor="choix-operateur">Opérateur</label>
+              <SelecteurOperateur id="choix-operateur" className="text-lg" valeur="" onChange={(v) => v && choisirOperateur(v)} options={operateurs} disabled={operateurs.length === 0} />
+            </div>
+          </section>
+        </details>
       )}
 
       {/* Étape 2 : service — liste déroulante du catalogue de l'opérateur */}
@@ -275,7 +289,7 @@ export default function Payer() {
             <h1 className="text-xl font-bold">{service.nom}</h1>
           </div>
 
-          {service.champs.map((c) => (
+          {service.champs.filter((c) => c.key !== "pin").map((c) => (      /* le code secret n'est JAMAIS saisi ici : fenêtre de sécurité de l'application */
             <div key={c.key}>
               <label className="label" htmlFor={`champ-${c.key}`}>{c.label}</label>
               <input id={`champ-${c.key}`} className={`input ${c.key === "amount" ? "text-lg font-semibold" : "font-mono"}`}
@@ -338,7 +352,7 @@ export default function Payer() {
           )}
 
           <button type="submit" className="btn-primary w-full py-3 text-base" disabled={envoi}>
-            {envoi ? "Préparation…" : mode === "pispi" ? "Payer par PI-SPI →" : "Préparer le paiement →"}
+            {envoi ? "Préparation…" : mode === "pispi" ? "Payer par PI-SPI →" : appliDirect && service.gabarit_ussd.includes("{pin}") ? "💳 Payer maintenant →" : "Préparer le paiement →"}
           </button>
         </form>
       )}

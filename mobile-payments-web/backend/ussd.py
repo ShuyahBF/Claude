@@ -28,6 +28,16 @@ class ErreurSaisie(ValueError):
 FILTRE_SANS_CODE_SECRET = {"gabarit_ussd": {"$not": {"$regex": r"\{pin\}"}}}
 
 
+def filtre_services(direct: bool) -> dict:
+    """Filtre des services visibles : l'application Android « direct » (en-tête X-AuRor-Direct: 1) voit aussi les services à code secret ({pin}) ; le site et le Play Store jamais."""
+    return {} if direct else FILTRE_SANS_CODE_SECRET
+
+
+def est_direct(request) -> bool:
+    """Vrai si la demande vient de l'application Android « direct » (en-tête X-AuRor-Direct: 1, posé par le site quand il est ouvert dans cette application)."""
+    return request.headers.get("x-auror-direct", "") == "1"
+
+
 def placeholders(gabarit: str) -> list[str]:
     """Clés attendues par un gabarit, dans l'ordre (ex. ['code', 'amount'])."""
     return PLACEHOLDER.findall(gabarit)

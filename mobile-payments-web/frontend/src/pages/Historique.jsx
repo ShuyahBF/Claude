@@ -46,6 +46,7 @@ const STATUTS = {
   prepare: ["Préparé", "bg-gray-100 text-gray-700"],
   effectue: ["Payé", "bg-green-100 text-green-800"],
   abandonne: ["Abandonné", "bg-red-100 text-red-700"],
+  envoye: ["Envoyé (SMS attendu)", "bg-sky-100 text-sky-800"],      // lot 120 : code envoyé par l'application, en attente du SMS de l'opérateur
   declare: ["À confirmer par le marchand", "bg-amber-100 text-amber-900"],       // PI-SPI : référence déclarée, en attente du marchand
   refuse: ["Refusé par le marchand", "bg-red-100 text-red-700"],
 };
@@ -230,6 +231,7 @@ export default function Historique() {
             <select id="f-statut" className="input" value={filtres.statut} onChange={(e) => modifier("statut", e.target.value)}>
               <option value="effectue">Payés (confirmés)</option>
               <option value="prepare">Non confirmés (préparés)</option>
+              <option value="envoye">Envoyés (SMS attendu)</option>
               <option value="abandonne">Abandonnés</option>
               <option value="tous">Tous les statuts</option>
             </select>
