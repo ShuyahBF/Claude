@@ -102,10 +102,42 @@ function tiersDe(texte, genre) {
   return m ? sansRepetition(m[1].trim().replace(/[.\-]+$/, "")).slice(0, 60) : "";
 }
 
-/** Un SMS (adresse, recu_le en ms, corps) → une ligne de paiement, ou null (promotion, pas de montant, sens indéterminé). */
+// ---- Classement des SMS : promo / alerte / message / transaction (même règle que SAWALI lot 398 et Concentration 1.29) ----
+// Pour un développeur WinDev : on additionne des POINTS. Chaque signe commercial (code USSD, « composez », validité, pourcentage, verbes d'offre) en ajoute ;
+// chaque signe de vraie transaction (numéro de transaction, « Débit Montant : », « Vous avez reçu… ») en retire. À 4 points ou plus : promotion.
+// Seule une TRANSACTION du portefeuille mobile devient une ligne : promo, alerte de banque et message d'une personne sont lus puis oubliés.
+export const SEUIL_PROMO = 4;
+const RE_USSD = /\*\d{2,4}(\*[\w#*]*)?#/;
+const RE_APPEL = /stop \*|envoyez stop|composez|tapez/;
+const RE_VALIDITE = /jusqu|valable|a partir de/;
+const RE_POURCENT = /[0-9]\s?%/;
+const RE_OFFRE = /beneficiez|profitez|gagnez|retirez|reglez|rechargez|abonnez|obtenez|offre|promo|bonus|cadeau|vous accompagne|decouvrez/;
+const RE_VRAIE_FORME = /(debit|credit)\s*montant\s*:/;
+const RE_VOUS_AVEZ = /vous avez (recu|envoye|paye|transfere|effectu)/;
+const RE_BANQUE = /ubabf|\buba\b|banque|bank|coris|ecobank|sgbf|\bboa\b|bicia|bdm|cbao|sonibank|societe generale/;
+const RE_NUMERO_EXPEDITEUR = /^\+?\d{7,}$/;
+
+/** Points « promotion » d'un SMS (reference = numéro de transaction trouvé dans le SMS, ou null). */
+export function scorePromo(corps, reference) {
+  const t = sansAccents(corps);
+  return (RE_USSD.test(t) ? 3 : 0) + (RE_APPEL.test(t) ? 2 : 0) + (RE_VALIDITE.test(t) ? 2 : 0) + (RE_POURCENT.test(t) ? 2 : 0) + (RE_OFFRE.test(t) ? 2 : 0)
+    - (reference ? 5 : 0) - (RE_VRAIE_FORME.test(t) ? 5 : 0) - (RE_VOUS_AVEZ.test(t) ? 3 : 0);
+}
+
+/** Catégorie d'un SMS : "alerte" (banque) → "message" (expéditeur = numéro de téléphone) → "promo" (score ≥ 4) → sinon "transaction". */
+export function categorieSms({ adresse, corps }) {
+  const a = String(adresse || "").trim();
+  if (RE_VRAIE_FORME.test(sansAccents(corps)) || RE_BANQUE.test(sansAccents(a))) return "alerte";
+  if (RE_NUMERO_EXPEDITEUR.test(a.replace(/\s/g, ""))) return "message";
+  const ref = (REFERENCE.exec(corps || "") || [])[1] || null;
+  return scorePromo(corps, ref) >= SEUIL_PROMO ? "promo" : "transaction";
+}
+
+/** Un SMS (adresse, recu_le en ms, corps) → une ligne de paiement, ou null (promotion, alerte de banque, message de personne, pas de montant, sens indéterminé). */
 export function analyserSms({ adresse, recu_le: recuLe, corps }) {
   const t = String(corps || "").toLowerCase();
   if (MOTS_PROMO.some((m) => t.includes(m))) return null;
+  if (categorieSms({ adresse, corps }) !== "transaction") return null;      // promo / alerte / message : jamais gardés
   const montant = montantDe(corps);
   if (!montant) return null;
   const genre = MOTS_RECETTE.some((m) => t.includes(m)) ? "RECETTE" : MOTS_DEPENSE.some((m) => t.includes(m)) ? "DEPENSE" : null;
