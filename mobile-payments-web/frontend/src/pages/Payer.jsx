@@ -159,8 +159,9 @@ export default function Payer() {
       // Géolocalisation (si le compte l'a activée) : la position part avec la demande ; 4 s au plus d'attente, jamais bloquant
       const position = user?.geoloc ? await positionActuelle({ delaiMs: 4000 }) : null;
       const { data } = await apiClient.post("/paiements", { service_id: service.id, valeurs, ...(position ? { position } : {}) });
-      // Application « direct » + code avec le mot PIN : l'application envoie elle-même la séquence (fenêtre de sécurité), sans QR code ni légende
-      if (appliDirect && data.code_ussd?.includes("PIN")) setPaiementDirect(data); else setPaiement(data);
+      // Application « direct » + paiement chez un marchand : l'application envoie elle-même la séquence (fenêtre de sécurité : montant retapé + code secret),
+      // SANS QR code ni légende. Les autres services (transfert, crédit…) gardent l'écran habituel.
+      if (appliDirect && service.categorie === "merchant_payment" && champMarchand) setPaiementDirect(data); else setPaiement(data);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       toast.erreur(messageErreur(err, "Préparation impossible"));
@@ -352,7 +353,7 @@ export default function Payer() {
           )}
 
           <button type="submit" className="btn-primary w-full py-3 text-base" disabled={envoi}>
-            {envoi ? "Préparation…" : mode === "pispi" ? "Payer par PI-SPI →" : appliDirect && service.gabarit_ussd.includes("{pin}") ? "💳 Payer maintenant →" : "Préparer le paiement →"}
+            {envoi ? "Préparation…" : mode === "pispi" ? "Payer par PI-SPI →" : appliDirect && service.categorie === "merchant_payment" && champMarchand ? "💳 Payer maintenant →" : "Préparer le paiement →"}
           </button>
         </form>
       )}

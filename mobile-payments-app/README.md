@@ -168,3 +168,7 @@ Les SMS lus restent sur le téléphone. Hors connexion : page « Pas de connexio
 - `gradle -PsansSms=true assembleDirectDebug` : même version SANS l'autorisation de lire les SMS (paiement direct, caméra, position conservés ; la lecture des SMS n'est alors pas proposée) ;
 - ou suspendre temporairement l'analyse Play Protect (Play Store → profil → Play Protect → ⚙ → « Analyser les applications avec Play Protect »), installer, puis la réactiver.
 **Conflit à l'installation de la version « standard »** : elle porte le même identifiant que l'ancienne application auRor (« Raccourcis Paiement Mobile ») signée avec une autre clé : désinstaller l'ancienne avant. Les données du compte sont sur le serveur, rien n'est perdu.
+
+**Paiement chez un marchand dans l'application direct (lot 123)** : dès qu'un marchand est choisi (liste, « Nouveau », QR ou marchands proches), il n'y a **ni QR code ni légende** : l'application ouvre sa fenêtre de sécurité,
+qui affiche le montant en chiffres ET en toutes lettres (« 200 000 FCFA (deux cent mille francs) », pour repérer 20 000 au lieu de 200 000), demande de le **retaper**, puis le code secret, et envoie la séquence.
+Si la séquence du service ne contient pas `{pin}`, le code secret est **ajouté en dernier élément avant le `#`** (`*144*10*code*montant*PIN#`) : à vérifier avec l'opérateur ; sinon définir le gabarit exact dans l'administration.
