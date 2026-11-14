@@ -1,6 +1,6 @@
 // Test des lignes de paiement des SMS (logique pure). Lancer : cd frontend && node tests/smsPaiements.test.mjs (Node 20+, aucune installation).
 // Données FICTIVES : aucun vrai numéro de transaction, nom ni solde.
-import { analyserSms, confirmePaiement, fusionner, lireNombre, memeMarchand, montantDe, sansRepetition, telephoneDe } from "../src/lib/smsPaiements.js";
+import { analyserSms, categorieSms, confirmePaiement, fusionner, lireNombre, memeMarchand, montantDe, sansRepetition, telephoneDe } from "../src/lib/smsPaiements.js";
 const ok = (n, v) => { console.log((v ? "OK  " : "ECHEC ") + n); if (!v) process.exitCode = 1; };
 const T = 1_800_000_000_000;
 
@@ -20,6 +20,16 @@ const recette = analyserSms({ adresse: "MOOV", recu_le: T, corps: "Vous avez re�
 ok("recette : sens et montant", recette?.genre === "RECETTE" && recette.montant === 25000);
 ok("promotion ignorée", analyserSms({ adresse: "X", recu_le: T, corps: "Gagnez 500000 FCFA avec notre jeu concours" }) === null);
 ok("sans montant ignoré", analyserSms({ adresse: "X", recu_le: T, corps: "Votre forfait internet expire le 15/11/2026" }) === null);
+
+// --- Classement promo / alerte / message / transaction
+const promo = "Orange Money: retirez 50 000 FCFA et beneficiez de 0% de frais jusqu'au 31/12. Composez *144#";
+ok("promo détectée", categorieSms({ adresse: "OrangeMoney", corps: promo }) === "promo");
+ok("promo : aucune ligne", analyserSms({ adresse: "OrangeMoney", recu_le: T, corps: promo }) === null);
+ok("alerte de banque", categorieSms({ adresse: "UBA", corps: "DEBIT Montant : XOF600,000.00 Compte : 0123" }) === "alerte");
+ok("alerte : aucune ligne", analyserSms({ adresse: "UBA", recu_le: T, corps: "DEBIT Montant : XOF600,000.00 Compte : 0123" }) === null);
+ok("message d'une personne", categorieSms({ adresse: "+22670123456", corps: "Je t'ai envoye 5000 FCFA" }) === "message");
+ok("message : aucune ligne", analyserSms({ adresse: "70123456", recu_le: T, corps: "Vous avez reçu 5000 FCFA de ma part" }) === null);
+ok("vraie transaction", categorieSms({ adresse: "OrangeMoney", corps: "Vous avez paye 15 000 FCFA a SONABEL. Trans id: MP261113.1339.95787510" }) === "transaction");
 
 // --- Fusion sans doublon
 const a = fusionner([], [depense, recette]);
