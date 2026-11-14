@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/Toast";
 import { apiClient, fcfa, messageErreur } from "@/lib/api";
-import { capacites, lireSmsPaiements, payerDirectDialogue, payerDirectMontant } from "@/lib/pontAndroid";
+import { capacites, lireSmsPaiements, payerDirectDialogue, journalUssd, payerDirectMontant } from "@/lib/pontAndroid";
 import { enLettres } from "@/lib/nombreEnLettres";
 import { analyserSms, chargerLignes, confirmePaiement, enregistrerLignes, fusionner } from "@/lib/smsPaiements";
 
@@ -19,6 +19,8 @@ export default function PaiementDirect({ paiement, onTermine }) {
   const toast = useToast();
   const [etat, setEtat] = useState("dialogue");        // dialogue | non_envoye | envoye | confirme
   const [message, setMessage] = useState("");
+  const [journal, setJournal] = useState("");             // journal des envois USSD (ce qui a été composé et la réponse exacte), relu à chaque changement d'état
+  useEffect(() => { if (etat === "non_envoye" || etat === "envoye") setJournal(journalUssd()); }, [etat]);
   const [reponse, setReponse] = useState("");           // texte rendu par l'opérateur à l'envoi
   const envoyeLe = useRef(0);
   const lance = useRef(false);
@@ -100,6 +102,14 @@ export default function PaiementDirect({ paiement, onTermine }) {
         </div>
 
         {etat === "dialogue" && <p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900">⏳ Fenêtre de sécurité ouverte : retapez le montant et saisissez votre code secret.</p>}
+
+        {journal && (etat === "non_envoye" || etat === "envoye") && (
+          <details className="rounded-lg bg-gray-50 p-3 text-xs text-gray-700" data-testid="journal-ussd">
+            <summary className="cursor-pointer font-semibold">🔎 Détails techniques : ce qui a été envoyé et la réponse exacte</summary>
+            <pre className="mt-2 whitespace-pre-wrap break-words font-mono">{journal}</pre>
+            <p className="mt-1 text-gray-500">Le code secret n'apparaît jamais (remplacé par ****). Ce journal reste sur votre téléphone.</p>
+          </details>
+        )}
 
         {etat === "non_envoye" && (
           <div className="space-y-2">

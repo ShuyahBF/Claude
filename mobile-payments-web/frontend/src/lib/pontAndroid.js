@@ -61,6 +61,11 @@ export function payerDirectDialogue({ operateur, code, resume, montant }) {
   return promesse;
 }
 
+/** Journal des envois USSD tenu par l'application (code composé, réponses exactes de l'opérateur, échecs ; le code secret y est masqué) : texte, ou "" hors application. */
+export function journalUssd() {
+  try { return dansApplication() && window.AuRorAndroid.journalUssd ? String(window.AuRorAndroid.journalUssd() || "") : ""; } catch { return ""; }
+}
+
 /** Lit les SMS de paiement reçus ces derniers jours (version « direct » seulement) : rend { sms: [{ adresse, recu_le, corps }] } ou { erreur }. */
 export function lireSmsPaiements(jours = 30) {
   const [id, promesse] = attendreRetour();

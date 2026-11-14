@@ -28,6 +28,8 @@ object SaisieUssd {
     private val principal = Handler(Looper.getMainLooper())
 
     private var pin: CharArray? = null
+    private var contexte: Context? = null
+    private fun journal(l: String) { contexte?.let { JournalUssd.ajouter(it, l, pin?.let { p -> String(p) }) } }
     private var surFin: ((UssdDirect.Reponse) -> Unit)? = null
     private var attenteReponse = false          // faux : on attend la fenêtre « code secret » ; vrai : le code est tapé, on attend la réponse finale
 
@@ -39,8 +41,9 @@ object SaisieUssd {
     }
 
     /** Arme le service pour UN paiement : `codeSecret` sera tapé dans la fenêtre de l'opérateur, `fin` reçoit la réponse (ou l'échec). */
-    fun armer(codeSecret: String, fin: (UssdDirect.Reponse) -> Unit) {
+    fun armer(c: Context, codeSecret: String, fin: (UssdDirect.Reponse) -> Unit) {
         terminer(null)
+        contexte = c.applicationContext
         pin = codeSecret.toCharArray(); surFin = fin; attenteReponse = false
         principal.postDelayed({ terminer(UssdDirect.Reponse(null, "Pas de réponse de l'opérateur (délai dépassé). Vérifiez votre solde ou votre historique avant de réessayer.")) }, DELAI_MS)
     }
@@ -51,6 +54,7 @@ object SaisieUssd {
     internal fun terminer(r: UssdDirect.Reponse?) {
         principal.removeCallbacksAndMessages(null)
         pin?.fill('0'); pin = null
+        if (r != null) contexte?.let { JournalUssd.ajouter(it, if (r.texte != null) "Réponse finale de l'opérateur : ${r.texte}" else "Échec : ${r.erreur}") }
         val f = surFin; surFin = null; attenteReponse = false
         if (r != null) f?.invoke(r)
     }
@@ -66,10 +70,12 @@ object SaisieUssd {
         val champ = trouverChamp(racine)
         if (!attenteReponse) {
             // 1) La fenêtre « code secret » est affichée : on tape le code puis on appuie sur « Envoyer »
-            if (champ == null) return
+            if (champ == null) { journal("Fenêtre vue (sans champ de saisie) : " + textes(racine).joinToString(" | ")); return }
+            journal("Fenêtre « code secret » vue : " + textes(racine).filter { it != String(pin ?: CharArray(0)) }.joinToString(" | "))
             val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, String(pin ?: return)) }
             champ.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-            trouverBouton(racine, BOUTONS_ENVOI)?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            val bouton = trouverBouton(racine, BOUTONS_ENVOI)?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+            journal("Code secret tapé (****) et bouton « Envoyer » " + (if (bouton) "cliqué" else "introuvable"))
             pin?.fill('0'); pin = null                      // le code secret n'est plus nécessaire : effacé tout de suite
             attenteReponse = true
         } else {
