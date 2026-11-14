@@ -6,7 +6,7 @@ import { apiClient, messageErreur } from "@/lib/api";
 
 // Administration du carnet USSD (lot 66) : ajouter / corriger / désactiver / supprimer un code, ou IMPORTER en bloc un texte collé
 // (une ligne par code : Opérateur | Catégorie | Titre | Code | Description). Aucun code n'est prérempli : l'administrateur saisit des codes vérifiés.
-const VIDE = { operateur: "Orange", categorie: "Mon numéro", autre: "", titre: "", code: "*", description: "" };
+const VIDE = { operateur: "Orange", categorie: "Mon numéro", autre: "", titre: "", code: "*", description: "", usage: "" };
 
 export default function AdminUssd() {
   const toast = useToast();
@@ -21,7 +21,7 @@ export default function AdminUssd() {
   }, [toast]);
   useEffect(() => { charger(); }, [charger]);
 
-  const corps = (c) => ({ operateur: c.operateur, categorie: c.categorie, titre: c.titre, code: c.code, description: c.description || "", actif: c.actif });
+  const corps = (c) => ({ operateur: c.operateur, categorie: c.categorie, titre: c.titre, code: c.code, description: c.description || "", usage: c.usage || "", actif: c.actif });
   const agir = async (appel, ok) => {
     try { await appel(); if (ok) toast.succes(ok); await charger(); return true; } catch (err) { toast.erreur(messageErreur(err, "Action impossible")); return false; }
   };
@@ -29,7 +29,7 @@ export default function AdminUssd() {
   const enregistrer = async (e) => {
     e.preventDefault();
     const categorie = form.categorie === "autre" ? form.autre.trim() : form.categorie;
-    const donnees = { operateur: form.operateur, categorie, titre: form.titre, code: form.code, description: form.description, actif: true };
+    const donnees = { operateur: form.operateur, categorie, titre: form.titre, code: form.code, description: form.description, usage: form.usage, actif: true };
     const ok = enCours ? await agir(() => apiClient.put(`/admin/ussd/codes/${enCours}`, donnees), "Code corrigé") : await agir(() => apiClient.post("/admin/ussd/codes", donnees), "Code ajouté");
     if (ok) { setForm({ ...VIDE, operateur: form.operateur, categorie: form.categorie }); setEnCours(null); }
   };
@@ -37,7 +37,7 @@ export default function AdminUssd() {
     // Une catégorie absente de la liste reste sélectionnable via « Autre… » (aucune perte de donnée)
     const connue = d.categories.includes(c.categorie);
     setEnCours(c.id);
-    setForm({ operateur: c.operateur, categorie: connue ? c.categorie : "autre", autre: connue ? "" : c.categorie, titre: c.titre, code: c.code, description: c.description || "" });
+    setForm({ operateur: c.operateur, categorie: connue ? c.categorie : "autre", autre: connue ? "" : c.categorie, titre: c.titre, code: c.code, description: c.description || "", usage: c.usage || "" });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const importer = async (e) => {
@@ -65,6 +65,10 @@ export default function AdminUssd() {
             {form.categorie === "autre" && <input className="input mt-1" required minLength={2} maxLength={40} placeholder="Nom de la nouvelle catégorie" value={form.autre} onChange={(e) => setForm({ ...form, autre: e.target.value })} aria-label="Nouvelle catégorie" />}</div>
           <div><label className="label" htmlFor="x-titre">Titre</label><input id="x-titre" className="input" required minLength={2} maxLength={80} placeholder="ex. Connaître mon numéro" value={form.titre} onChange={(e) => setForm({ ...form, titre: e.target.value })} /></div>
           <div><label className="label" htmlFor="x-code">Code (commence par * et finit par #)</label><input id="x-code" className="input font-mono" required maxLength={44} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} /></div>
+          <div className="sm:col-span-2"><label className="label" htmlFor="x-usage">Usage pour les autres plateformes (Concentration, SAWALI…)</label>
+            <select id="x-usage" className="input" value={form.usage} onChange={(e) => setForm({ ...form, usage: e.target.value })}>
+              {Object.entries(d.usages || { "": "Aucun usage particulier" }).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+            <p className="mt-1 text-xs text-gray-500">Les autres plateformes retrouvent ce code par son usage et le lisent sur l'adresse publique <span className="font-mono">/api/android/ussd-codes</span> : le corriger ici le corrige partout. Si le code demande le code secret, écrivez le mot <span className="font-mono">PIN</span> à sa place (ex. <span className="font-mono">*123*4*PIN#</span>) : il sera saisi par l'utilisateur au moment de l'appel, jamais enregistré.</p></div>
           <div className="sm:col-span-2"><label className="label" htmlFor="x-desc">Explication (facultative)</label><input id="x-desc" className="input" maxLength={200} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
           <div className="boutons-distincts flex gap-2 sm:col-span-2">
             <button type="submit" className="btn-primary">{enCours ? "Enregistrer la correction" : "Ajouter"}</button>
@@ -75,7 +79,7 @@ export default function AdminUssd() {
 
       <section className="card space-y-3">
         <h2 className="text-lg font-semibold">Importer plusieurs codes d'un coup</h2>
-        <p className="text-sm text-gray-600">Collez une ligne par code, sous la forme <span className="font-mono">Opérateur | Catégorie | Titre | Code | Explication</span> (l'explication est facultative). Les codes déjà présents sont ignorés.</p>
+        <p className="text-sm text-gray-600">Collez une ligne par code, sous la forme <span className="font-mono">Opérateur | Catégorie | Titre | Code | Explication | Usage</span> (l'explication et l'usage — solde, releve ou renvoi_notification — sont facultatifs). Les codes déjà présents sont ignorés.</p>
         <form onSubmit={importer} className="space-y-2">
           <textarea className="input min-h-32 font-mono text-sm" required minLength={3} aria-label="Texte à importer" placeholder="Orange | Mon numéro | Connaître mon numéro | *123#" value={texte} onChange={(e) => setTexte(e.target.value)} />
           <button type="submit" className="btn-primary">Importer</button>
@@ -92,11 +96,11 @@ export default function AdminUssd() {
         <h2 className="text-lg font-semibold">Codes du carnet ({d.codes.length})</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-gray-500"><th className="p-1">Opérateur</th><th>Catégorie</th><th>Titre</th><th>Code</th><th>Actif</th><th /></tr></thead>
+            <thead><tr className="text-left text-gray-500"><th className="p-1">Opérateur</th><th>Catégorie</th><th>Titre</th><th>Code</th><th>Usage</th><th>Actif</th><th /></tr></thead>
             <tbody>
               {d.codes.map((c) => (
                 <tr key={c.id} className="border-t border-gray-100 align-top">
-                  <td className="p-1">{c.operateur}</td><td>{c.categorie}</td><td className="font-medium">{c.titre}</td><td className="font-mono">{c.code}</td>
+                  <td className="p-1">{c.operateur}</td><td>{c.categorie}</td><td className="font-medium">{c.titre}</td><td className="font-mono">{c.code}</td><td>{c.usage ? (d.usages || {})[c.usage] : "—"}</td>
                   <td><input type="checkbox" checked={c.actif} aria-label={`Code actif : ${c.titre}`} onChange={(e) => agir(() => apiClient.put(`/admin/ussd/codes/${c.id}`, { ...corps(c), actif: e.target.checked }))} /></td>
                   <td><div className="boutons-distincts flex gap-1">
                     <button type="button" className="btn-outline btn-sm" onClick={() => corriger(c)}>Corriger</button>
