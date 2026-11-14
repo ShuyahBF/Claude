@@ -12,7 +12,7 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 /**
- * Routes de l'API unique « Paiement Mobile » (FastAPI, partagée avec le site web).
+ * Routes de l'API unique d'auRor (FastAPI, partagée avec le site web).
  * Préfixe dédié « api/android/… » : routes publiques au format JSON de l'app (Models.kt),
  * qui lisent le même catalogue et le même annuaire de marchands que le site.
  */

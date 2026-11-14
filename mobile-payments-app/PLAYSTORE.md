@@ -1,4 +1,4 @@
-# Fiche Play Store — Raccourcis Paiement Mobile (lot 16)
+# Fiche Play Store — auRor (lot 16)
 
 Textes et réponses préparés pour la **Play Console** (application `com.ouoba.mobilepay`,
 version 1.2.0 / versionCode 3). À copier-coller tels quels, en vérifiant les points
@@ -15,7 +15,7 @@ marqués « À confirmer ».
 ### Titre de l'application (30 caractères max.)
 
 ```
-Raccourcis Paiement Mobile
+auRor
 ```
 (26 caractères)
 
@@ -29,7 +29,7 @@ Préparez vos codes USSD Mobile Money sans erreur, ouvrez-les dans le composeur.
 ### Description longue (4000 caractères max.)
 
 ```
-Raccourcis Paiement Mobile vous évite de retenir et de taper à la main les longs codes USSD des paiements Mobile Money au Burkina Faso.
+auRor vous évite de retenir et de taper à la main les longs codes USSD des paiements Mobile Money au Burkina Faso.
 
 COMMENT ÇA MARCHE
 1. Choisissez votre opérateur.
@@ -46,12 +46,12 @@ POINTS FORTS
 • Aucune autorisation sensible : l'application n'appelle jamais à votre place et ne lit ni vos contacts, ni vos SMS, ni votre position.
 
 VOTRE ARGENT RESTE CHEZ VOTRE OPÉRATEUR
-Raccourcis Paiement Mobile ne réalise aucune transaction, ne détient et ne transfère aucun fonds. Il prépare seulement le code USSD : le paiement est traité par le réseau de votre opérateur. Votre code secret Mobile Money n'est jamais demandé, enregistré ni transmis.
+auRor ne réalise aucune transaction, ne détient et ne transfère aucun fonds. Il prépare seulement le code USSD : le paiement est traité par le réseau de votre opérateur. Votre code secret Mobile Money n'est jamais demandé, enregistré ni transmis.
 
 VOS DONNÉES
 À la première ouverture, vous indiquez votre nom, votre prénom, votre numéro de téléphone et, si vous le souhaitez, votre e-mail. Ces informations servent uniquement à votre compte et sont transmises de façon chiffrée (HTTPS). Détails dans notre politique de confidentialité.
 
-Paiement Mobile n'est affilié ni à Orange, ni à Moov Africa, ni à Telecel Faso ; les marques citées appartiennent à leurs propriétaires.
+auRor n'est affilié ni à Orange, ni à Moov Africa, ni à Telecel Faso ; les marques citées appartiennent à leurs propriétaires.
 
 Une question ? contact@sawalismartsystems.com
 ```
@@ -115,7 +115,7 @@ Dans *Contenu de l'application → Fonctionnalités financières* :
 - Texte d'explication à fournir :
 
 ```
-Raccourcis Paiement Mobile est un assistant de saisie : il construit le code USSD d'un service Mobile Money (paiement marchand, transfert, crédit) à partir des informations saisies par l'utilisateur, puis ouvre le composeur du téléphone avec ce code pré-rempli (ACTION_DIAL). L'utilisateur lance lui-même l'appel. L'application ne réalise aucune transaction, ne détient ni ne transfère de fonds, ne demande ni ne stocke aucun code secret, et n'a aucun accès aux comptes Mobile Money : la transaction est entièrement traitée par le réseau de l'opérateur. Elle n'est affiliée à aucun opérateur.
+auRor est un assistant de saisie : il construit le code USSD d'un service Mobile Money (paiement marchand, transfert, crédit) à partir des informations saisies par l'utilisateur, puis ouvre le composeur du téléphone avec ce code pré-rempli (ACTION_DIAL). L'utilisateur lance lui-même l'appel. L'application ne réalise aucune transaction, ne détient ni ne transfère de fonds, ne demande ni ne stocke aucun code secret, et n'a aucun accès aux comptes Mobile Money : la transaction est entièrement traitée par le réseau de l'opérateur. Elle n'est affiliée à aucun opérateur.
 ```
 
 - Aucune licence financière n'est requise pour ce fonctionnement (pas de détention ni de transfert de fonds). À confirmer par le propriétaire selon la réglementation BCEAO si la fonction évolue.
