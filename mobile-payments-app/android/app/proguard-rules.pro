@@ -50,3 +50,9 @@
 
 # --- WorkManager : la tâche de synchronisation est créée par réflexion -------
 -keep class com.ouoba.mobilepay.data.sync.SyncWorker { <init>(...); }
+
+# --- Lot 18 : pont entre le site et le téléphone ----------------------------------------------------------------------
+# Les fonctions appelées par le site (annotées @JavascriptInterface) ne doivent ni être renommées ni supprimées par R8.
+-keepclassmembers class com.ouoba.mobilepay.web.PontAuRor { @android.webkit.JavascriptInterface <methods>; }
+# Anciens modèles / Retrofit / Room retirés de l'application (écrans natifs remplacés par le site) : pas d'avertissement
+-dontwarn com.ouoba.mobilepay.data.model.**

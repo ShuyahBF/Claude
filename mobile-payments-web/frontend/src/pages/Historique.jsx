@@ -5,6 +5,7 @@ import DetailsDepense from "@/components/DetailsDepense";
 import FlechesDefilement from "@/components/FlechesDefilement";         // lot 99 : flèches haut / bas pour parcourir la page
 import Camembert from "@/components/Camembert";                    // lot 98 : répartition des bénéficiaires par opérateur
 import HistogrammePaiements from "@/components/HistogrammePaiements";   // lot 98 : histogramme en montant, par jour ou par mois
+import LectureSms from "@/components/LectureSms";             // lot 115 : SMS de paiement lus par l'application Android (version direct)
 import ImportJournal from "@/components/ImportJournal";           // lot 96 : journal des transactions de l'opérateur
 import NomBeneficiaire from "@/components/NomBeneficiaire";       // lot 96 : nom modifiable après coup
 import Portefeuilles from "@/components/Portefeuilles";
@@ -201,6 +202,7 @@ export default function Historique() {
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <h1 className="text-2xl font-bold">Historique</h1>
+      <LectureSms />
 
       {/* Filtres : période, opérateur, statut, recherche de bénéficiaire */}
       <section className="card space-y-3" data-testid="filtres">
