@@ -52,10 +52,12 @@ export default function CarteCodeUssd({ paiement, onStatut }) {
       )}
 
       <div className="grid items-center gap-5 sm:grid-cols-[auto_1fr]">
-        {/* QR code : lien « tel: » lu par l'appareil photo du téléphone */}
-        <div className="order-2 mx-auto rounded-xl border border-gray-200 bg-white p-3 sm:order-none">
-          <QrCode valeur={paiement.lien_tel} taille={220} />
-        </div>
+        {/* QR code : lien « tel: » lu par l'appareil photo du téléphone (absent d'un code avec code secret : il ne se compose jamais tel quel) */}
+        {paiement.lien_tel && (
+          <div className="order-2 mx-auto rounded-xl border border-gray-200 bg-white p-3 sm:order-none">
+            <QrCode valeur={paiement.lien_tel} taille={220} />
+          </div>
+        )}
         {/* Sur téléphone, le bouton « Composer » passe avant le QR code */}
         <div className="order-1 space-y-3 sm:order-none">
           <p className="text-sm text-gray-600">
@@ -72,7 +74,7 @@ export default function CarteCodeUssd({ paiement, onStatut }) {
                 {envoi ? "⏳ En attente de l'opérateur…" : "💳 Payer maintenant"}
               </button>
             )}
-            <a href={paiement.lien_tel} className={appli?.direct ? "btn-outline flex-1" : "btn-primary flex-1"}>📞 Composer sur ce téléphone</a>
+            {paiement.lien_tel && <a href={paiement.lien_tel} className={appli?.direct ? "btn-outline flex-1" : "btn-primary flex-1"}>📞 Composer sur ce téléphone</a>}
             <button type="button" onClick={copier} className="btn-outline">Copier</button>
           </div>
           {reponse && (
@@ -96,7 +98,8 @@ export default function CarteCodeUssd({ paiement, onStatut }) {
       {onStatut && (
         <div className="flex flex-wrap gap-2">
           <button type="button" className="btn-outline flex-1" onClick={() => onStatut("effectue")}>✅ J'ai payé</button>
-          <button type="button" className="btn-outline flex-1" onClick={() => onStatut("abandonne")}>✖ Abandonné</button>
+          {/* Un paiement ENVOYÉ à l'opérateur ne peut plus être abandonné */}
+          {paiement.statut !== "envoye" && <button type="button" className="btn-outline flex-1" onClick={() => onStatut("abandonne")}>✖ Abandonné</button>}
         </div>
       )}
     </div>

@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import SelecteurOperateur from "@/components/SelecteurOperateur";
+import { useToast } from "@/components/Toast";
 import { apiClient, couleurOperateur, messageErreur } from "@/lib/api";
+import { positionActuelle } from "@/lib/geoloc";
 
 // Paiement rapide d'un marchand (début du parcours de paiement) : deux façons d'aller directement au montant, sans choisir l'opérateur ni le service.
 //  1. « Nouveau code marchand » : l'opérateur et le code, puis le montant (le marchand pourra recevoir un nom, comme d'habitude) ;
 //  2. « Liste des marchands » : tous les marchands déjà connus (recherche par nom ou par code). Chaque marchand est enregistré avec son opérateur : un appui ouvre le montant.
 export default function RaccourcisMarchand({ operateurs, onChoisir, onNouveau }) {
+  const toast = useToast();
   const [panneau, setPanneau] = useState(null);          // null | "nouveau" | "liste"
   const [operateur, setOperateur] = useState("");
   const [code, setCode] = useState("");
@@ -24,6 +27,19 @@ export default function RaccourcisMarchand({ operateurs, onChoisir, onNouveau })
     return () => clearTimeout(t);
   }, [panneau, q]);
 
+  // Marchand sans position connue : l'utilisateur, sur place, l'enregistre (la position du MARCHAND est gardée, jamais celle de l'utilisateur)
+  const enregistrerPosition = async (m) => {
+    const pos = await positionActuelle({ delaiMs: 8000 });
+    if (!pos) { toast.erreur("Position indisponible : autorisez la position du téléphone."); return; }
+    try {
+      const { data } = await apiClient.post(`/marchands/${encodeURIComponent(m.operateur)}/${encodeURIComponent(m.code)}/position`, { lat: pos.lat, lon: pos.lon, precision: pos.precision });
+      if (data.retenu) { toast.succes("Position du marchand enregistrée"); setListe((l) => l.map((x) => (x.operateur === m.operateur && x.code === m.code ? { ...x, a_position: true } : x))); }
+      else toast.erreur("Position trop imprécise : réessayez en extérieur.");
+    } catch (err) {
+      toast.erreur(messageErreur(err, "Activez la géolocalisation dans votre profil pour enregistrer la position."));
+    }
+  };
+
   const basculer = (nom) => setPanneau((p) => (p === nom ? null : nom));
 
   return (
@@ -32,11 +48,11 @@ export default function RaccourcisMarchand({ operateurs, onChoisir, onNouveau })
       <div className="grid grid-cols-2 gap-2">
         <button type="button" aria-pressed={panneau === "nouveau"} onClick={() => basculer("nouveau")}
           className={`rounded-xl border p-3 text-left text-sm font-semibold ${panneau === "nouveau" ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-gray-300 bg-white"}`}>
-          ➕ Nouveau code marchand
+          ➕ Nouveau
         </button>
         <button type="button" aria-pressed={panneau === "liste"} onClick={() => basculer("liste")}
           className={`rounded-xl border p-3 text-left text-sm font-semibold ${panneau === "liste" ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-gray-300 bg-white"}`}>
-          📒 Liste des marchands
+          📒 Liste
         </button>
       </div>
 
@@ -68,10 +84,16 @@ export default function RaccourcisMarchand({ operateurs, onChoisir, onNouveau })
                     <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: couleurOperateur(m.operateur) }} aria-hidden="true" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{m.libelle || `Code ${m.code}`}</span>
-                      <span className="block text-xs text-gray-500">{m.operateur} · code {m.code}</span>
+                      <span className="block text-xs text-gray-500">{m.operateur} · code {m.code}{m.a_position ? " · 📍" : ""}</span>
                     </span>
                     <span className="shrink-0 text-sm font-semibold text-primary">Payer →</span>
                   </button>
+                  {/* Position du marchand inconnue : proposer de l'enregistrer (l'utilisateur est sur place) */}
+                  {!m.a_position && (
+                    <button type="button" className="mb-2 ml-8 rounded-lg border border-gray-300 px-2 py-1 text-xs text-gray-700" onClick={() => enregistrerPosition(m)}>
+                      📍 Enregistrer la position de ce marchand (je suis chez lui)
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

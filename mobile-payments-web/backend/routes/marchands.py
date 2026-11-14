@@ -50,7 +50,32 @@ async def rechercher(operateur: Optional[str] = None, q: Optional[str] = None, u
     if q and q.strip():
         motif = re.escape(q.strip())
         filtre["$or"] = [{"code": {"$regex": f"^{motif}"}}, {"libelle": {"$regex": motif, "$options": "i"}}]
-    return [_vue(m, user) for m in await db.marchands.find(filtre, SANS_ID).sort("modifie_le", -1).to_list(100)]
+    liste = await db.marchands.find(filtre, SANS_ID).sort("modifie_le", -1).to_list(100)
+    # Lot 120 : « a_position » = la position du marchand est déjà connue (sinon la liste propose de l'enregistrer). Une seule requête pour toute la liste.
+    if liste:
+        lieux = await db.marchands_lieux.find({"$or": [{"operateur": m["operateur"], "code": m["code"]} for m in liste]}, SANS_ID).to_list(200)
+        connus = {(l["operateur"], l["code"]) for l in lieux}
+    else:
+        connus = set()
+    return [{**_vue(m, user), "a_position": (m["operateur"], m["code"]) in connus} for m in liste]
+
+
+class PositionMarchand(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+    precision: Optional[float] = Field(None, ge=0, le=100_000)
+
+
+@router.post("/{operateur}/{code}/position")
+async def enregistrer_position(operateur: str, code: str, data: PositionMarchand, user: dict = Depends(get_current_user)):
+    """Lot 120 : enregistre la position du marchand quand l'utilisateur est chez lui (depuis la liste des marchands). Réservé aux comptes qui ont activé leur
+    géolocalisation ; c'est la position du MARCHAND qui est gardée (moyenne des relevés), jamais celle de l'utilisateur."""
+    if not user.get("geoloc"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Géolocalisation désactivée sur ce compte")
+    if not re.fullmatch(r"[0-9]{1,20}", code) or not await db.marchands.find_one({"operateur": operateur, "code": code}):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Marchand introuvable")
+    retenu = await lieux_marchands.noter(operateur, code, data.lat, data.lon, data.precision)
+    return {"retenu": retenu}
 
 
 @router.get("/proches")

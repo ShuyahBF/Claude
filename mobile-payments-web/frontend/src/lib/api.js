@@ -8,11 +8,17 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localho
 // le navigateur l'envoie à chaque appel). Ni jeton ni mot de passe dans le stockage
 // du navigateur. L'en-tête « X-Paiement-Mobile » protège contre les requêtes
 // forgées depuis un autre site (CSRF).
+import { capacites } from "@/lib/pontAndroid";
+
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
   headers: { "X-Paiement-Mobile": "1" },
 });
+
+// Lot 120 : dans l'application Android « direct », chaque appel porte « X-AuRor-Direct: 1 » (le serveur autorise alors les services à code secret, que le site et le Play Store ne voient jamais)
+const DIRECT = !!capacites()?.direct;
+if (DIRECT) apiClient.defaults.headers.common["X-AuRor-Direct"] = "1";
 
 // Motif de la dernière fermeture de session, affiché sur la page de connexion
 export const MOTIF_DECONNEXION_KEY = "mpw_motif_deconnexion";

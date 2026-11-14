@@ -6,13 +6,13 @@ import uuid
 from datetime import datetime, timezone
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from pymongo.errors import DuplicateKeyError
 
 from db import SANS_ID, db
 from securite import get_current_user, require_admin
-from ussd import FILTRE_SANS_CODE_SECRET, gabarit_valide, placeholders
+from ussd import est_direct, filtre_services, gabarit_valide, placeholders
 
 router = APIRouter(tags=["Catalogue"])
 
@@ -54,15 +54,15 @@ def _verifier(data: ServiceEntree) -> None:
 
 
 @router.get("/operateurs")
-async def operateurs(pays: Optional[str] = None, _: dict = Depends(get_current_user)):
+async def operateurs(request: Request, pays: Optional[str] = None, _: dict = Depends(get_current_user)):
     # Les services « code secret » (paiement direct Android) ne sont jamais proposés sur le site
-    filtre = {"actif": True, **FILTRE_SANS_CODE_SECRET, **({"pays": pays.upper()} if pays else {})}
+    filtre = {"actif": True, **filtre_services(est_direct(request)), **({"pays": pays.upper()} if pays else {})}
     return sorted(await db.services.distinct("operateur", filtre))
 
 
 @router.get("/services")
-async def services(operateur: Optional[str] = None, pays: Optional[str] = None, _: dict = Depends(get_current_user)):
-    filtre: dict = {"actif": True, **FILTRE_SANS_CODE_SECRET}
+async def services(request: Request, operateur: Optional[str] = None, pays: Optional[str] = None, _: dict = Depends(get_current_user)):
+    filtre: dict = {"actif": True, **filtre_services(est_direct(request))}
     if operateur:
         filtre["operateur"] = operateur
     if pays:
@@ -71,8 +71,8 @@ async def services(operateur: Optional[str] = None, pays: Optional[str] = None, 
 
 
 @router.get("/services/{service_id}")
-async def service(service_id: str, _: dict = Depends(get_current_user)):
-    doc = await db.services.find_one({"id": service_id, **FILTRE_SANS_CODE_SECRET}, SANS_ID)
+async def service(service_id: str, request: Request, _: dict = Depends(get_current_user)):
+    doc = await db.services.find_one({"id": service_id, **filtre_services(est_direct(request))}, SANS_ID)
     if not doc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Service introuvable")
     return doc
