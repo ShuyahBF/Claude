@@ -11,7 +11,7 @@ import { analyserSms, chargerLignes, confirmePaiement, enregistrerLignes, fusion
 //  4. problème de réseau et le marchand confirme la réception : « J'ai payé ».
 const DELAI_MS = 5 * 60 * 1000;       // on guette le SMS pendant 5 minutes
 const PAS_MS = 8000;
-// Confirmation : le MONTANT et le CODE MARCHAND doivent figurer dans le SMS (le montant seul ne suffit jamais) : voir confirmePaiement (lib/smsPaiements.js).
+// Confirmation : le MONTANT et le MARCHAND doivent concorder avec le SMS (le montant seul ne suffit jamais). Orange n'affiche que le NOM du marchand, souvent en double : voir confirmePaiement (lib/smsPaiements.js).
 
 
 export default function PaiementDirect({ paiement, onTermine }) {
@@ -102,10 +102,13 @@ export default function PaiementDirect({ paiement, onTermine }) {
         {etat === "envoye" && (
           <div className="space-y-2">
             <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
-              <b>📨 Code envoyé à l'opérateur.</b> {sms ? "L'opération sera confirmée automatiquement à la réception de son SMS (montant et code marchand identiques)." : "Attendez le SMS de l'opérateur."}
+              <b>📨 Code envoyé à l'opérateur.</b> {sms ? "L'opération sera confirmée automatiquement à la réception de son SMS (même montant et même marchand)." : "Attendez le SMS de l'opérateur."}
               {" "}Ce paiement ne peut plus être abandonné.
             </p>
             {reponse && <p className="whitespace-pre-wrap rounded-lg bg-gray-50 p-3 text-sm text-gray-700"><b>Réponse de l'opérateur :</b> {reponse}</p>}
+            {sms && !paiement.marchand?.libelle && (
+              <p className="rounded-lg bg-sky-50 p-2 text-xs text-sky-900">Ce marchand n'a pas encore de nom dans auRor : le SMS de l'opérateur ne pourra pas le reconnaître. Donnez-lui un nom pour la prochaine fois ; ici, utilisez « J'ai payé » après confirmation du marchand.</p>
+            )}
             <p className="text-xs text-gray-600">Problème de réseau, mais le marchand confirme avoir reçu le paiement ? Appuyez sur « J'ai payé ».</p>
             <button type="button" className="btn-primary w-full" onClick={jAiPaye}>✅ J'ai payé</button>
           </div>

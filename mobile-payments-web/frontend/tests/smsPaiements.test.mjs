@@ -1,6 +1,6 @@
 // Test des lignes de paiement des SMS (logique pure). Lancer : cd frontend && node tests/smsPaiements.test.mjs (Node 20+, aucune installation).
 // Données FICTIVES : aucun vrai numéro de transaction, nom ni solde.
-import { analyserSms, confirmePaiement, fusionner, lireNombre, montantDe } from "../src/lib/smsPaiements.js";
+import { analyserSms, confirmePaiement, fusionner, lireNombre, memeMarchand, montantDe, sansRepetition, telephoneDe } from "../src/lib/smsPaiements.js";
 const ok = (n, v) => { console.log((v ? "OK  " : "ECHEC ") + n); if (!v) process.exitCode = 1; };
 const T = 1_800_000_000_000;
 
@@ -17,7 +17,7 @@ ok("dépense : sens, montant, solde, numéro", depense?.genre === "DEPENSE" && d
 ok("dépense : bénéficiaire", depense?.tiers === "BOUTIQUE TEST");
 ok("la date vient du numéro de transaction", new Date(depense.quand).getFullYear() === 2026 && new Date(depense.quand).getHours() === 13 && new Date(depense.quand).getMinutes() === 39);
 const recette = analyserSms({ adresse: "MOOV", recu_le: T, corps: "Vous avez reçu 25.000 F CFA de AWA TEST. Solde: 40 000 F CFA" });
-ok("recette : sens, montant, expéditeur", recette?.genre === "RECETTE" && recette.montant === 25000 && recette.tiers === "AWA TEST");
+ok("recette : sens et montant", recette?.genre === "RECETTE" && recette.montant === 25000);
 ok("promotion ignorée", analyserSms({ adresse: "X", recu_le: T, corps: "Gagnez 500000 FCFA avec notre jeu concours" }) === null);
 ok("sans montant ignoré", analyserSms({ adresse: "X", recu_le: T, corps: "Votre forfait internet expire le 15/11/2026" }) === null);
 
@@ -37,3 +37,20 @@ ok("à défaut du code, le nom du marchand suffit avec le montant", confirmePaie
 ok("argent reçu : PAS confirmé", !confirmePaiement({ ...sms, corps: "Vous avez reçu 50 FCFA de LA MENAGERE (6557908)." }, p));
 ok("SMS antérieur à l'envoi : PAS confirmé", !confirmePaiement({ ...sms, recu_le: T - 3_600_000 }, p));
 ok("code plus long (65579089) : PAS confirmé", !confirmePaiement({ ...sms, corps: "Paiement de 50 FCFA a XYZ (65579089) effectue." }, p));
+
+// --- Argent REÇU : le SMS donne le NUMÉRO de téléphone ; PAIEMENT : le NOM du marchand seul, souvent en double
+const recu = analyserSms({ adresse: "OrangeMoney", recu_le: T, corps: "Vous avez recu 5000 FCFA du 70 12 34 56. Nouveau solde: 12 000 FCFA. Trans id: MP261113.1500.33333333" });
+ok("reçu : le tiers est le numéro de téléphone", recu?.genre === "RECETTE" && recu.tiers === "70 12 34 56" && recu.solde === 12000);
+ok("reçu avec indicatif", telephoneDe("Vous avez reçu 5000 FCFA de +226 70123456 ref MP261113.1500.33333333") === "+226 70 12 34 56");
+ok("les montants et numéros de transaction ne sont pas pris pour un téléphone", telephoneDe("Vous avez recu 12345678 FCFA. Solde 87654321 FCFA. MP261113.1500.33333333") === "");
+ok("nom répété dédoublonné", sansRepetition("ALIMENTATION LA MENAGERE ALIMENTATION LA MENAGERE") === "ALIMENTATION LA MENAGERE" && sansRepetition("BOUTIQUE TEST") === "BOUTIQUE TEST");
+const double = analyserSms({ adresse: "OrangeMoney", recu_le: T, corps: "Votre paiement de 50 FCFA a ALIMENTATION LA MENAGERE ALIMENTATION LA MENAGERE a ete effectue avec succes. Nouveau solde: 9 950 FCFA. Trans id: MP261113.1600.44444444" });
+ok("paiement : nom du marchand seul, dédoublonné", double?.genre === "DEPENSE" && double.tiers === "ALIMENTATION LA MENAGERE" && double.montant === 50);
+ok("noms : accents, casse, mot en plus", memeMarchand("ALIMENTATION LA MENAGERE", "La Ménagère") && memeMarchand("LA MENAGERE", "alimentation la menagere"));
+ok("noms différents", !memeMarchand("PHARMACIE DU MARCHE", "La Ménagère") && !memeMarchand("AB", "AB"));
+
+// --- Confirmation par le NOM (le SMS d'un paiement ne donne pas le code marchand)
+const pn = { montant: 50, codeMarchand: "6557908", libelle: "La Ménagère", envoyeLe: T - 1000 };
+ok("montant + nom du marchand (en double) : confirmé", confirmePaiement({ adresse: "OrangeMoney", recu_le: T, corps: double ? "Votre paiement de 50 FCFA a ALIMENTATION LA MENAGERE ALIMENTATION LA MENAGERE a ete effectue avec succes. Trans id: MP261113.1600.44444444" : "" }, pn));
+ok("montant seul avec un AUTRE marchand : PAS confirmé", !confirmePaiement({ adresse: "OrangeMoney", recu_le: T, corps: "Votre paiement de 50 FCFA a PHARMACIE DU MARCHE a ete effectue avec succes." }, pn));
+ok("marchand sans nom enregistré : pas de confirmation automatique", !confirmePaiement({ adresse: "OrangeMoney", recu_le: T, corps: "Votre paiement de 50 FCFA a ALIMENTATION LA MENAGERE a ete effectue avec succes." }, { ...pn, libelle: "" }));

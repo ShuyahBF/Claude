@@ -75,7 +75,7 @@ export default function LectureSms() {
                 </div>
                 {(l.tiers || l.reference || l.solde != null) && (
                   <p className="mt-1 text-gray-700">
-                    {l.tiers && <b>{l.tiers}</b>}{l.reference && <span className="ml-2 font-mono text-xs text-primary">{l.reference}</span>}{l.solde != null && <span className="ml-2 text-xs text-gray-500">solde {fcfa(l.solde)}</span>}
+                    {l.tiers && <b>{l.genre === "RECETTE" ? `📞 ${l.tiers}` : l.tiers}</b>}{l.reference && <span className="ml-2 font-mono text-xs text-primary">{l.reference}</span>}{l.solde != null && <span className="ml-2 text-xs text-gray-500">solde {fcfa(l.solde)}</span>}
                   </p>
                 )}
               </li>
