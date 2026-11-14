@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/Toast";
+import { useAuth } from "@/context/AuthContext";
 import { apiClient, fcfa, messageErreur } from "@/lib/api";
 import { capacites, lireSmsPaiements, payerDirectDialogue, journalUssd, payerDirectMontant } from "@/lib/pontAndroid";
 import { enLettres } from "@/lib/nombreEnLettres";
@@ -19,6 +20,8 @@ export default function PaiementDirect({ paiement, onTermine }) {
   const toast = useToast();
   const [etat, setEtat] = useState("dialogue");        // dialogue | non_envoye | envoye | confirme
   const [message, setMessage] = useState("");
+  const { user } = useAuth();
+  const [chaine, setChaine] = useState("");               // chaîne exactement envoyée (rendue par l'application) : affichée seulement si le débogage est activé dans le profil
   const [journal, setJournal] = useState("");             // journal des envois USSD (ce qui a été composé et la réponse exacte), relu à chaque changement d'état
   useEffect(() => { if (etat === "non_envoye" || etat === "envoye") setJournal(journalUssd()); }, [etat]);
   const [reponse, setReponse] = useState("");           // texte rendu par l'opérateur à l'envoi
@@ -44,10 +47,12 @@ export default function PaiementDirect({ paiement, onTermine }) {
     // Deux façons d'envoyer, selon le service :
     //  - la séquence contient {pin} (code secret au milieu du code) : envoi en UNE fois, le mot PIN est remplacé par l'application ;
     //  - sinon (cas d'Orange : l'opérateur demande le code secret dans une seconde fenêtre) : le code est composé SANS code secret et l'application tape le code secret dans la fenêtre
-    const enUneFois = paiement.code_ussd.includes("PIN") || !capacites()?.dialogue;
+    //  - le réglage « PIN envoyé en même temps » de ce compte pour cet opérateur (Profil) force l'envoi en une fois (le mot PIN est ajouté avant le # si la séquence ne l'a pas).
+    const enUneFois = paiement.code_ussd.includes("PIN") || !!user?.pin_simultane?.[paiement.operateur] || !capacites()?.dialogue;
     const r = enUneFois
       ? await payerDirectMontant({ operateur: paiement.operateur, code: paiement.code_ussd.includes("PIN") ? paiement.code_ussd : paiement.code_ussd.replace(/#\s*$/, "*PIN#"), resume, montant: paiement.montant })
       : await payerDirectDialogue({ operateur: paiement.operateur, code: paiement.code_ussd, resume, montant: paiement.montant });
+    setChaine(r.chaine || "");
     if (r.erreur) { setMessage(r.erreur); setEtat("non_envoye"); return; }
     envoyeLe.current = Date.now();
     setReponse(r.texte || "");
@@ -102,6 +107,12 @@ export default function PaiementDirect({ paiement, onTermine }) {
         </div>
 
         {etat === "dialogue" && <p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900">⏳ Fenêtre de sécurité ouverte : retapez le montant et saisissez votre code secret.</p>}
+
+        {user?.debug_chaine && chaine && (etat === "non_envoye" || etat === "envoye") && (
+          <p className="break-all rounded-lg border border-amber-300 bg-amber-50 p-3 font-mono text-xs text-amber-900" data-testid="chaine-envoyee">
+            <b>🐞 Chaîne envoyée (débogage, en clair) :</b> {chaine}
+          </p>
+        )}
 
         {journal && (etat === "non_envoye" || etat === "envoye") && (
           <details className="rounded-lg bg-gray-50 p-3 text-xs text-gray-700" data-testid="journal-ussd">

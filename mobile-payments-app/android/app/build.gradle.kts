@@ -17,8 +17,8 @@ android {
         targetSdk = 35
         // versionCode : nombre entier qui DOIT augmenter à chaque envoi sur le Play Store ;
         // versionName : numéro affiché à l'utilisateur (et envoyé à SAWALI dans le signal de présence)
-        versionCode = 14
-        versionName = "2.4.0"
+        versionCode = 15
+        versionName = "2.5.0"
 
         // Adresse du site auRor affiché dans l'application (version hybride, lot 18) : TOUT auRor (marchands, QR codes, géolocalisation, historique…).
         // Surcharge possible pour un essai : -PsiteUrl=https://autre-adresse/

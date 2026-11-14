@@ -79,7 +79,8 @@ class PontAuRor(private val activite: WebActivity) {
         activite.runOnUiThread {
             if (!UssdDirect.disponible()) { activite.retour(id, JSONObject().put("erreur", "Le paiement direct n'est pas disponible dans cette version de l'application.")); return@runOnUiThread }
             var termine = false
-            fun finir(r: JSONObject) { if (!termine) { termine = true; activite.retour(id, r) } }
+            var chaine = ""                      // chaîne exactement envoyée (code secret en clair) : rendue au site pour l'affichage de débogage, jamais enregistrée
+            fun finir(r: JSONObject) { if (!termine) { termine = true; if (chaine.isNotBlank()) r.put("chaine", chaine); activite.retour(id, r) } }
             FenetrePaiement(activite).afficher(FenetrePaiement.lire(resume).let { if (it.operateur.isBlank()) it.copy(operateur = operateur) else it }, montant, true,
                 surValider = { pin ->
                     // Le service d'accessibilité doit être activé une fois : sinon on ouvre les réglages et on explique
@@ -91,6 +92,7 @@ class PontAuRor(private val activite: WebActivity) {
                     }
                     activite.demanderAutorisations(arrayOf(Manifest.permission.CALL_PHONE)) { _ ->
                         if (!UssdDirect.autorise(contexte)) { finir(JSONObject().put("erreur", "Autorisation « Appels » refusée : utilisez « Composer sur ce téléphone ».")); return@demanderAutorisations }
+                        chaine = "${code.trim()}  puis, dans la fenêtre de l'opérateur, saisie du code secret : $pin"
                         // Armer le service (il tapera le code secret), puis composer le code SANS code secret
                         JournalUssd.ajouter(contexte, "Paiement en deux temps : code composé = ${code.trim()} (le code secret sera tapé dans la fenêtre de l'opérateur)")
                         SaisieUssd.armer(contexte, pin) { r ->
@@ -112,11 +114,13 @@ class PontAuRor(private val activite: WebActivity) {
             if (!UssdDirect.disponible()) { activite.retour(id, JSONObject().put("erreur", "Le paiement direct n'est pas disponible dans cette version de l'application.")); return@runOnUiThread }
             val demandePin = Regex("PIN").containsMatchIn(code)
             var termine = false
-            fun finir(r: JSONObject) { if (!termine) { termine = true; activite.retour(id, r) } }
+            var chaine = ""                      // chaîne exactement envoyée (code secret en clair) : rendue au site pour l'affichage de débogage, jamais enregistrée
+            fun finir(r: JSONObject) { if (!termine) { termine = true; if (chaine.isNotBlank()) r.put("chaine", chaine); activite.retour(id, r) } }
             // Fenêtre de sécurité (lot 124) : blocs distincts, montant en chiffres et en lettres, montant retapé, code secret masqué
             FenetrePaiement(activite).afficher(FenetrePaiement.lire(resume).let { if (it.operateur.isBlank()) it.copy(operateur = operateur) else it }, montant, demandePin,
                 surValider = { pin ->
                     val aEnvoyer = if (demandePin) code.replace("PIN", pin) else code
+                    chaine = aEnvoyer
                     activite.demanderAutorisations(arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE)) { _ ->
                         if (!UssdDirect.autorise(contexte)) { finir(JSONObject().put("erreur", "Autorisation « Appels » refusée : utilisez « Composer sur ce téléphone ».")); return@demanderAutorisations }
                         JournalUssd.ajouter(contexte, "Envoi direct : code = $aEnvoyer", pin)

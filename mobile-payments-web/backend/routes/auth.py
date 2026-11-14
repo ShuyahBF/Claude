@@ -209,6 +209,33 @@ async def geolocalisation(data: Geolocalisation, user: dict = Depends(get_curren
     return utilisateur_public(await db.users.find_one({"id": user["id"]}, SANS_ID))
 
 
+class PinSimultane(BaseModel):
+    operateur: str = Field(..., min_length=2, max_length=40)
+    actif: bool
+
+
+@router.put("/pin-simultane")
+async def pin_simultane(data: PinSimultane, user: dict = Depends(get_current_user)):
+    """Réglage PAR OPÉRATEUR et PROPRE À CE COMPTE (paiement direct, application Android « direct ») :
+      - actif   : le code secret part AVEC la séquence (ex. *144*10*code*montant*PIN#), en un seul envoi ;
+      - inactif : (réglage de départ) le code est composé SANS code secret et l'application le tape dans la fenêtre que l'opérateur affiche.
+    Le code secret lui-même n'est JAMAIS enregistré : seul ce choix l'est."""
+    await db.users.update_one({"id": user["id"]}, {"$set": {f"pin_simultane.{data.operateur.strip()}": data.actif}})
+    return utilisateur_public(await db.users.find_one({"id": user["id"]}, SANS_ID))
+
+
+class DebugChaine(BaseModel):
+    actif: bool
+
+
+@router.put("/debug-chaine")
+async def debug_chaine(data: DebugChaine, user: dict = Depends(get_current_user)):
+    """Débogage : afficher, dans la zone des résultats du paiement direct, la chaîne EXACTEMENT envoyée à l'opérateur (code secret en clair).
+    Réglage de ce compte seulement ; la chaîne n'est jamais enregistrée ni envoyée au serveur (elle reste sur le téléphone)."""
+    await db.users.update_one({"id": user["id"]}, {"$set": {"debug_chaine": data.actif}})
+    return utilisateur_public(await db.users.find_one({"id": user["id"]}, SANS_ID))
+
+
 class ModeDemo(BaseModel):
     actif: bool
 

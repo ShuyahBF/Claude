@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { apiClient, messageErreur } from "@/lib/api";
 import ChampMotDePasse from "@/components/ChampMotDePasse";
 import ChampTelephone from "@/components/ChampTelephone";
+import PinProfil from "@/components/PinProfil";                           // lot 130 : envoi du code secret par opérateur (application direct)
 import PortefeuillesProfil from "@/components/PortefeuillesProfil";   // lot 88 : opérateurs chez qui on a un portefeuille
 import { etatAutorisation, geolocalisationDisponible, positionActuelle } from "@/lib/geoloc";
 import { abonnerPush, activerNotifications, CHOIX_TONALITE, declencherAlerteRenforcee, desabonnerPush, ecrirePreferences, etatNotifications, jouerSon, lirePreferences, pushDisponible, vibrer } from "@/lib/alertes";
@@ -151,6 +152,7 @@ export default function Profil() {
       {/* Géolocalisation du compte (lot 49) */}
       {/* Lot 88 : opérateurs cochés = portefeuilles suivis dans l'Historique */}
       <PortefeuillesProfil />
+      <PinProfil />
 
       <section className="card space-y-2" data-testid="geolocalisation">
         <h2 className="text-lg font-bold">📍 Géolocalisation des paiements</h2>
