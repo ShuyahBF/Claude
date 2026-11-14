@@ -19,10 +19,10 @@ import retrofit2.http.Query
 interface ApiService {
 
     @GET("api/android/operators")
-    suspend fun getOperators(): List<String>
+    suspend fun getOperators(@Query("direct") direct: Boolean = false): List<String>
 
     @GET("api/android/services")
-    suspend fun getServices(@Query("operator") operator: String): List<Service>
+    suspend fun getServices(@Query("operator") operator: String, @Query("direct") direct: Boolean = false): List<Service>
 
     @GET("api/android/merchants/{operator}/{code}")
     suspend fun findMerchant(

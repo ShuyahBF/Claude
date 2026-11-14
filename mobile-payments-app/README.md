@@ -135,3 +135,21 @@ L'app est **hors-ligne d'abord** : l'interface lit toujours une base locale (Roo
 - **Présence SAWALI** : au lancement et au retour au premier plan (au plus toutes les 5 minutes), l'app envoie en arrière-plan `POST https://api.sawalismartsystems.com/api/presence-logiciel` (application `paiement-mobile-android`, version, modèle de l'appareil, version d'Android) — aucune donnée personnelle.
 - **Alerte WhatsApp** : l'enregistrement du profil (`POST /api/android/users`) est signalé au propriétaire par l'API (type « connexion »).
 - Les codes USSD du catalogue de départ sont fournis à titre indicatif : vérifiez-les auprès de chaque opérateur (page Administration du site).
+
+
+## Paiement direct (lot 17 de l'application, lot 111 du serveur) — version à part, hors Play Store
+
+Par défaut l'application reste celle du Play Store : elle **ouvre le composeur** avec le code pré-rempli et n'a aucune autorisation sensible.
+Une version « **paiement direct** » (APK installé à la main, jamais publiée sur le Play Store) envoie le code USSD **elle-même** :
+
+1. L'utilisateur remplit le formulaire, appuie sur **Continuer**, puis sur **Payer maintenant**.
+2. Une fenêtre de **confirmation** affiche le montant, le service et le bénéficiaire (« Envoyer 2 500 FCFA — Paiement marchand (Orange) ? ») avec les boutons **Envoyer** / **Annuler**.
+3. L'application envoie le code (autorisation « Appels » demandée une fois) et affiche la réponse de l'opérateur. Elle n'a **pas d'historique** : rien n'est conservé.
+
+**Compilation** : GitHub → Actions → « Build APK » → Run workflow → `mode_direct` = `true` (ou `gradle assembleDebug -PmodeDirect=true`). Sans cela, la version compilée est celle du Play Store (aucune autorisation `CALL_PHONE` ni `READ_PHONE_STATE`, vérifié dans le manifeste fusionné).
+
+**Code secret** : Android n'autorise qu'**un seul échange** USSD (impossible de répondre à un second écran « Entrez votre code secret »). Un service « direct » doit donc avoir un gabarit
+**complet** avec le champ `pin` (ex. `*100*{code}*{amount}*{pin}#` : séquence à vérifier auprès de l'opérateur, aucune n'est préremplie). Le champ `pin` est saisi **masqué**, jamais affiché
+(ni dans le résumé ni dans le code montré), jamais enregistré ni envoyé au serveur.
+Ces services (gabarit contenant `{pin}`) sont **cachés** du site, de l'historique du site et de toutes les versions du Play Store : ils ne sont envoyés qu'à la version directe (`?direct=true`).
+Si l'opérateur répond par un menu au lieu d'exécuter le paiement, le texte de sa réponse s'affiche et rien n'est confirmé : l'utilisateur vérifie son SMS ou son historique.

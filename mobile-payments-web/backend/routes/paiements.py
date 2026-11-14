@@ -35,7 +35,7 @@ from pydantic import BaseModel, Field
 import lieux_marchands
 from db import SANS_ID, db
 from securite import get_current_user
-from ussd import ErreurSaisie, construire_code, lien_tel
+from ussd import FILTRE_SANS_CODE_SECRET, ErreurSaisie, construire_code, lien_tel
 
 router = APIRouter(prefix="/paiements", tags=["Paiements"])
 
@@ -71,7 +71,7 @@ def _avec_lien(p: dict) -> dict:
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def preparer(data: Preparation, user: dict = Depends(get_current_user)):
-    service = await db.services.find_one({"id": data.service_id, "actif": True}, SANS_ID)
+    service = await db.services.find_one({"id": data.service_id, "actif": True, **FILTRE_SANS_CODE_SECRET}, SANS_ID)
     if not service:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Service introuvable ou désactivé")
     champs = service.get("champs", [])

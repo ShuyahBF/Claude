@@ -1,6 +1,17 @@
 package com.ouoba.mobilepay
 
 import android.graphics.Color
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material3.Icon
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import com.ouoba.mobilepay.util.ResumePaiement
+import com.ouoba.mobilepay.util.UssdDirect
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -157,6 +168,9 @@ fun PaymentApp(
                 Step.CONFIRM -> ConfirmScreen(
                     ussdCode = state.ussdCode.orEmpty(),
                     serviceName = state.selectedService?.name.orEmpty(),
+                    service = state.selectedService,
+                    valeurs = state.fieldValues,
+                    marchand = state.merchantFound,
                     onOpenDialer = onOpenDialer,
                     onBack = viewModel::backToForm
                 )
@@ -322,6 +336,9 @@ fun FormScreen(viewModel: PaymentViewModel) {
                 onValueChange = { viewModel.updateField(field.key, it) },
                 label = { Text(field.label) },
                 singleLine = true,
+                // Lot 17 : le code secret (clé « pin », version directe seulement) est saisi masqué
+                visualTransformation = if (field.key == ResumePaiement.CLE_PIN) PasswordVisualTransformation()
+                    else androidx.compose.ui.text.input.VisualTransformation.None,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                     keyboardType = if (field.type == "numeric") KeyboardType.Number else KeyboardType.Text
                 ),
@@ -383,9 +400,30 @@ private fun MerchantResolutionBlock(state: UiState, viewModel: PaymentViewModel,
 fun ConfirmScreen(
     ussdCode: String,
     serviceName: String,
+    service: com.ouoba.mobilepay.data.model.Service?,
+    valeurs: Map<String, String>,
+    marchand: com.ouoba.mobilepay.data.model.Merchant?,
     onOpenDialer: (String) -> Unit,
     onBack: () -> Unit
 ) {
+    // Lot 17 : paiement DIRECT (version « directe » seulement, service au gabarit complet). Sinon : comportement du Play Store inchangé (composeur).
+    val context = LocalContext.current
+    val direct = UssdDirect.disponible() && service != null
+    val pin = valeurs[ResumePaiement.CLE_PIN].orEmpty()
+    var confirmation by remember { mutableStateOf(false) }       // fenêtre « Envoyer 2 500 FCFA … ? »
+    var enCours by remember { mutableStateOf(false) }
+    var resultat by remember { mutableStateOf<UssdDirect.Reponse?>(null) }
+    // Envoie réellement le code : appelé après la confirmation explicite ET l'autorisation « Appels »
+    val envoyer = {
+        enCours = true
+        UssdDirect.envoyer(context, service?.operator.orEmpty(), ussdCode) { r -> enCours = false; resultat = r }
+    }
+    val demanderAutorisation = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) envoyer() else resultat = UssdDirect.Reponse(null, "Autorisation « Appels » refusée : utilisez « Composer le code ».")
+    }
+    // Le code secret n'est jamais affiché en clair
+    val codeVisible = ResumePaiement.codeAffiche(ussdCode, pin)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -395,17 +433,57 @@ fun ConfirmScreen(
         TextButton(onClick = onBack) { Text("< Modifier") }
         Text(serviceName, style = MaterialTheme.typography.titleLarge)
         Text("Code à composer :", style = MaterialTheme.typography.bodyMedium)
-        Text(ussdCode, style = MaterialTheme.typography.headlineSmall)
+        Text(codeVisible, style = MaterialTheme.typography.headlineSmall)
 
-        // Lot 16 : un seul bouton — ouvre le composeur avec le code pré-rempli (aucune permission)
-        Button(onClick = { onOpenDialer(ussdCode) }, modifier = Modifier.fillMaxWidth()) {
-            Text("Composer le code")
+        // Lot 17 (version directe) : résumé lisible, puis envoi par l'application après une confirmation explicite
+        if (direct && service != null) {
+            ResumePaiement.lignes(service, valeurs, marchand).forEach { (libelle, valeur) ->
+                Text("$libelle : $valeur", style = MaterialTheme.typography.bodyMedium)
+            }
+            Button(onClick = { confirmation = true }, enabled = !enCours, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Filled.Check, contentDescription = null); Text(" Payer maintenant")
+            }
+            if (enCours) { CircularProgressIndicator(); Text("En attente de l'opérateur…", style = MaterialTheme.typography.bodySmall) }
+            resultat?.let { r ->
+                Text(r.texte ?: r.erreur.orEmpty(), style = MaterialTheme.typography.bodyMedium)
+                if (r.texte != null) Text("Vérifiez le SMS ou l'historique de votre compte pour confirmer le paiement.", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+
+        // Lot 16 : ouvre le composeur avec le code pré-rempli (aucune permission) — toujours disponible, y compris en version directe
+        // Un code qui contient le code secret n'est JAMAIS transmis au composeur (il y apparaîtrait en clair) : seul l'envoi direct le porte.
+        if (pin.isBlank()) {
+            Button(onClick = { onOpenDialer(ussdCode) }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Filled.Phone, contentDescription = null); Text(" Composer le code")
+            }
         }
         Text(
             "Le clavier de votre téléphone s'ouvre avec le code déjà saisi : vérifiez-le puis appuyez " +
                 "vous-même sur Appeler. Votre code secret Mobile Money se saisit ensuite sur le menu " +
                 "de l'opérateur ; l'application ne le voit jamais.",
             style = MaterialTheme.typography.bodySmall
+        )
+    }
+
+    // Fenêtre de confirmation du paiement direct : montant et bénéficiaire en clair, deux boutons à pictogramme
+    if (confirmation && service != null) {
+        AlertDialog(
+            onDismissRequest = { confirmation = false },
+            icon = { Icon(Icons.Filled.Lock, contentDescription = null) },
+            title = { Text(ResumePaiement.question(service, valeurs)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    ResumePaiement.lignes(service, valeurs, marchand).forEach { (libelle, valeur) -> Text("$libelle : $valeur") }
+                    Text("Vérifiez le montant et le bénéficiaire : un paiement envoyé ne peut pas être annulé par l'application.", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    confirmation = false
+                    if (UssdDirect.autorise(context)) envoyer() else demanderAutorisation.launch(android.Manifest.permission.CALL_PHONE)
+                }) { Icon(Icons.Filled.Check, contentDescription = null); Text(" Envoyer") }
+            },
+            dismissButton = { TextButton(onClick = { confirmation = false }) { Icon(Icons.Filled.Close, contentDescription = null); Text(" Annuler") } }
         )
     }
 }

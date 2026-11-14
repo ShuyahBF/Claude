@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lot 17 « paiement direct » : manifeste ajouté UNIQUEMENT quand l'application est compilée avec -PmodeDirect=true (APK installé à la main).
+     La version du Play Store ne l'utilise pas : elle n'a aucune de ces deux autorisations sensibles. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Envoyer le code USSD sans ouvrir le composeur -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <!-- Retrouver la carte SIM de l'opérateur choisi (téléphone à deux cartes) -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+</manifest>
