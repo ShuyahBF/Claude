@@ -39,6 +39,18 @@ object UssdDirect {
         } catch (e: SecurityException) { null }
     }
 
+    /**
+     * Message d'un échec d'envoi, AVEC le code d'échec du système (pour savoir quoi corriger) :
+     *  -1 (USSD_RETURN_FAILURE) : l'opérateur n'a pas exécuté le code — séquence refusée, ou code secret incorrect, ou menu qui attend une réponse ;
+     *  -2 (USSD_ERROR_SERVICE_UNAVAIL) : service USSD indisponible sur cette carte (réseau, carte SIM, mode avion).
+     * Le code envoyé et le code secret ne sont JAMAIS repris dans le message.
+     */
+    fun messageEchec(codeEchec: Int): String = when (codeEchec) {
+        TelephonyManager.USSD_ERROR_SERVICE_UNAVAIL -> "Service USSD indisponible sur cette carte (code d'échec $codeEchec) : vérifiez le réseau et la carte SIM. Aucun paiement n'a été confirmé."
+        else -> "L'opérateur a refusé ou n'a pas compris le code (code d'échec $codeEchec). Causes possibles : code secret incorrect, ou séquence que l'opérateur n'accepte pas " +
+            "(à corriger dans le gabarit du service d'auRor). Aucun paiement n'a été confirmé."
+    }
+
     /** Envoie le code (délai maximal 45 s) et rend la réponse au thread principal. Ne garde aucune trace du code. */
     fun envoyer(c: Context, operateur: String, code: String, surFin: (Reponse) -> Unit) {
         val principal = Handler(Looper.getMainLooper())
@@ -53,7 +65,7 @@ object UssdDirect {
             tm.sendUssdRequest(code.trim(), object : TelephonyManager.UssdResponseCallback() {
                 override fun onReceiveUssdResponse(telephonyManager: TelephonyManager, request: String, response: CharSequence) = terminer(Reponse(response.toString(), null))
                 override fun onReceiveUssdResponseFailed(telephonyManager: TelephonyManager, request: String, failureCode: Int) =
-                    terminer(Reponse(null, "L'opérateur a refusé ou n'a pas compris le code. Aucun paiement n'a été confirmé."))
+                    terminer(Reponse(null, messageEchec(failureCode)))
             }, principal)
         } catch (e: SecurityException) { terminer(Reponse(null, "Autorisation refusée par le téléphone."))
         } catch (e: Exception) { terminer(Reponse(null, "Envoi impossible : " + (e.message ?: e.javaClass.simpleName))) }
