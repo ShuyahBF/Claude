@@ -32,10 +32,13 @@ export default function PaiementDirect({ paiement, onTermine }) {
   /** Ouvre la fenêtre de sécurité de l'application puis envoie le code. */
   const payer = useCallback(async () => {
     setEtat("dialogue"); setMessage("");
-    // Le montant est écrit en CHIFFRES et en LETTRES : « 200 000 FCFA (deux cent mille francs) » — une faute de frappe (20 000 au lieu de 200 000) saute aux yeux
-    const resume = [paiement.service_nom, paiement.operateur,
-      paiement.montant ? `MONTANT : ${fcfa(paiement.montant)} (${enLettres(paiement.montant)} francs)` : null,
-      paiement.marchand ? `${paiement.marchand.libelle || "Marchand"} (${paiement.marchand.code})` : null].filter(Boolean).join("\n");
+    // Informations de la fenêtre de sécurité de l'application (blocs distincts) : le montant est écrit en CHIFFRES et en LETTRES — « 200 000 FCFA (deux cent mille francs) » —
+    // pour qu'une faute de frappe (20 000 au lieu de 200 000) saute aux yeux
+    const resume = JSON.stringify({
+      service: paiement.service_nom, operateur: paiement.operateur,
+      montant: paiement.montant ? fcfa(paiement.montant) : "", lettres: paiement.montant ? `${enLettres(paiement.montant)} francs` : "",
+      marchand: paiement.marchand ? (paiement.marchand.libelle || "Marchand sans nom") : "", code: paiement.marchand?.code || "",
+    });
     // Le code secret est saisi dans la fenêtre de l'application : si la séquence du service ne le prévoit pas (pas de {pin}), il est ajouté en dernier élément avant le #
     const code = paiement.code_ussd.includes("PIN") ? paiement.code_ussd : paiement.code_ussd.replace(/#\s*$/, "*PIN#");
     const r = await payerDirectMontant({ operateur: paiement.operateur, code, resume, montant: paiement.montant });

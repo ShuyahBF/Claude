@@ -1,14 +1,9 @@
 package com.ouoba.mobilepay.web
 
 import android.Manifest
-import android.app.AlertDialog
 import android.content.Context
 import android.content.pm.PackageManager
-import android.text.InputType
 import android.webkit.JavascriptInterface
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.TextView
 import com.ouoba.mobilepay.BuildConfig
 import com.ouoba.mobilepay.util.UssdDirect
 import com.ouoba.mobilepay.util.openDialerWithUssd
@@ -69,38 +64,20 @@ class PontAuRor(private val activite: WebActivity) {
         activite.runOnUiThread {
             if (!UssdDirect.disponible()) { activite.retour(id, JSONObject().put("erreur", "Le paiement direct n'est pas disponible dans cette version de l'application.")); return@runOnUiThread }
             val demandePin = Regex("PIN").containsMatchIn(code)
-            val colonne = LinearLayout(contexte).apply { orientation = LinearLayout.VERTICAL; setPadding(48, 24, 48, 0) }
-            colonne.addView(TextView(contexte).apply { text = resume + "\n\nVérifiez le montant et le bénéficiaire : un paiement envoyé ne peut pas être annulé par l'application." })
-            val champMontant = EditText(contexte).apply { hint = "Retapez le montant à payer (FCFA)"; inputType = InputType.TYPE_CLASS_NUMBER }
-            if (montant != null) colonne.addView(champMontant)
-            val champPin = EditText(contexte).apply { hint = "Code secret Mobile Money"; inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD }
-            if (demandePin) colonne.addView(champPin)
             var termine = false
             fun finir(r: JSONObject) { if (!termine) { termine = true; activite.retour(id, r) } }
-            val fenetre = AlertDialog.Builder(contexte).setTitle("Envoyer ce paiement ?").setView(colonne)
-                .setPositiveButton("✔ Envoyer", null)                                           // action posée ci-dessous : la fenêtre reste ouverte tant que la saisie est incorrecte
-                .setNegativeButton("✖ Annuler") { _, _ -> finir(JSONObject().put("erreur", "Paiement annulé : rien n'a été envoyé.")) }
-                .setOnCancelListener { finir(JSONObject().put("erreur", "Paiement annulé : rien n'a été envoyé.")) }
-                .create()
-            fenetre.show()
-            fenetre.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                // 1. le montant retapé doit être EXACTEMENT celui du paiement (chiffres seulement)
-                if (montant != null && champMontant.text.toString().filter { c -> c.isDigit() } != montant.filter { c -> c.isDigit() }) {
-                    champMontant.error = "Le montant ne correspond pas : retapez ${montant.filter { c -> c.isDigit() }} FCFA"; return@setOnClickListener
-                }
-                // 2. code secret saisi (4 chiffres au moins)
-                val pin = champPin.text.toString()
-                if (demandePin && pin.length < 4) { champPin.error = "Code secret manquant"; return@setOnClickListener }
-                val aEnvoyer = if (demandePin) code.replace("PIN", pin) else code
-                champPin.setText(""); champMontant.setText("")                                  // rien ne reste dans les champs
-                fenetre.dismiss()
-                activite.demanderAutorisations(arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE)) { _ ->
-                    if (!UssdDirect.autorise(contexte)) { finir(JSONObject().put("erreur", "Autorisation « Appels » refusée : utilisez « Composer sur ce téléphone ».")); return@demanderAutorisations }
-                    UssdDirect.envoyer(contexte, operateur, aEnvoyer) { r ->
-                        finir(if (r.texte != null) JSONObject().put("texte", r.texte) else JSONObject().put("erreur", r.erreur ?: "Échec de l'envoi."))
+            // Fenêtre de sécurité (lot 124) : blocs distincts, montant en chiffres et en lettres, montant retapé, code secret masqué
+            FenetrePaiement(activite).afficher(FenetrePaiement.lire(resume).let { if (it.operateur.isBlank()) it.copy(operateur = operateur) else it }, montant, demandePin,
+                surValider = { pin ->
+                    val aEnvoyer = if (demandePin) code.replace("PIN", pin) else code
+                    activite.demanderAutorisations(arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE)) { _ ->
+                        if (!UssdDirect.autorise(contexte)) { finir(JSONObject().put("erreur", "Autorisation « Appels » refusée : utilisez « Composer sur ce téléphone ».")); return@demanderAutorisations }
+                        UssdDirect.envoyer(contexte, operateur, aEnvoyer) { r ->
+                            finir(if (r.texte != null) JSONObject().put("texte", r.texte) else JSONObject().put("erreur", r.erreur ?: "Échec de l'envoi."))
+                        }
                     }
-                }
-            }
+                },
+                surAnnuler = { finir(JSONObject().put("erreur", "Paiement annulé : rien n'a été envoyé.")) })
         }
     }
 
