@@ -19,8 +19,14 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.graphics.Color
+import android.view.View
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.ProgressBar
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -73,10 +79,27 @@ class WebActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         web = WebView(this)
         progression = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100; visibility = android.view.View.GONE }
-        setContentView(FrameLayout(this).apply {
+        // Android 15 affiche les applications SOUS la barre d'état (heure, signal) et la barre de navigation : le site doit donc être décalé de la hauteur de ces barres
+        // (sinon l'en-tête du site et ses boutons passent dessous). Bande du haut = bleu de l'en-tête du site ; le clavier remonte aussi le contenu.
+        val bandeHaut = View(this).apply { setBackgroundColor(Color.parseColor("#0B2A80")) }
+        val zoneSite = FrameLayout(this).apply {
             addView(web, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             addView(progression, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 8))
-        })
+        }
+        val racine = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#F3F7FC"))
+            addView(bandeHaut, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0))
+            addView(zoneSite, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        }
+        setContentView(racine)
+        WindowCompat.getInsetsController(window, racine).isAppearanceLightStatusBars = false     // icônes claires sur la bande bleue
+        ViewCompat.setOnApplyWindowInsetsListener(racine) { vue, insets ->
+            val barres = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime())
+            bandeHaut.layoutParams = bandeHaut.layoutParams.apply { height = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top }
+            vue.setPadding(barres.left, 0, barres.right, barres.bottom)
+            WindowInsetsCompat.CONSUMED
+        }
 
         web.settings.apply {
             javaScriptEnabled = true
