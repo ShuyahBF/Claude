@@ -8,6 +8,7 @@ import VerrouEcran from "@/components/VerrouEcran";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/components/Toast";
 import { apiClient, definirCouleursOperateurs } from "@/lib/api";
+import { capacites } from "@/lib/pontAndroid";   // application Android : étiquette « Android » et bandeau moins haut
 import { abonnerPush, debloquerAudio, lirePreferences, traiterEvenements } from "@/lib/alertes";
 
 // Menus de l'application (« Payer » est la bulle flottante « + » ; « Support » ouvre le chat SAWALI) (l'entrée « Administration » n'apparaît qu'à l'administrateur)
@@ -21,6 +22,7 @@ const MENUS = [
 // identique sur téléphone, tablette et ordinateur (règle du 17/10/2026).
 export default function Layout() {
   const { user, deconnexion } = useAuth();
+  const appli = capacites();   // null hors de l'application Android
   const navigate = useNavigate();
   const [menuOuvert, setMenuOuvert] = useState(false);   // menu latéral glissant (lot 33)
   const { pathname } = useLocation();
@@ -88,7 +90,8 @@ export default function Layout() {
       {/* Lot 72 (demande du 18/10/2026) : ce bandeau (nom « auRor », bouton ☰, nom de l'utilisateur, Déconnexion) est ÉPINGLÉ en haut :
           il reste visible quand on fait défiler la page. Le menu du bas ne change pas. */}
       <header className="no-print sticky top-0 z-40 bg-nuit-900 text-white shadow-md">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:py-5">
+        {/* Dans l'application Android la barre d'état est déjà gérée par l'application : le bandeau est moins haut */}
+        <div className={`mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 ${appli ? "py-1" : "py-3"} sm:grid sm:grid-cols-[1fr_auto_1fr] sm:py-5`}>
           <div className="flex items-center gap-2 sm:contents">
           {/* Bouton ☰ : ouvre le menu latéral (à gauche) */}
           <button type="button" onClick={() => setMenuOuvert(true)} aria-label="Ouvrir le menu" aria-expanded={menuOuvert}
@@ -99,6 +102,8 @@ export default function Layout() {
             {/* Lot 75 : identité auRor — pictogramme sur téléphone, mot blanc sur grand écran */}
             <img src="/auror-marque.webp" alt="" className="h-8 w-auto sm:hidden" />
             <img src="/auror-mot-blanc.webp" alt="auRor" className="h-9 w-auto sm:h-14" />
+            {/* Application Android : étiquette à droite du titre */}
+            {appli && <span className="self-end pb-1 text-[10px] font-semibold uppercase tracking-wider text-sky-300" data-testid="etiquette-android">{appli.direct ? "Android direct" : "Android"}</span>}
           </NavLink>
           </div>
           <div className="flex items-center gap-3 text-sm sm:col-start-3 sm:justify-self-end">

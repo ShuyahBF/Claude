@@ -7,6 +7,7 @@
 // entrée ou au changement de page. Il regroupe les services « du quotidien » ; en bas, seule information
 // du site : « Ver X · date » (les détails lot / commit / API ne sont plus affichés une fois connecté).
 // ============================================================================
+import { dansApplication } from "@/lib/pontAndroid";
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { LIBELLE_VER, VERSION } from "@/version";
@@ -87,7 +88,7 @@ export default function MenuLateral({ ouvert, fermer, compteurs = {} }) {
           </div>
         </div>
         <ul className={`flex-1 space-y-1 overflow-y-auto ${reduit ? "p-1.5" : "p-3"}`}>
-          {ENTREES_MENU.map((e) => (e.to === "/rappels" && !reduit ? (
+          {ENTREES_MENU.filter((e) => !(dansApplication() && e.to === "/installer")).map((e) => (   /* application Android : plus besoin d'« Installer l'application » */e.to === "/rappels" && !reduit ? (
             <li key={e.to}>
               <button type="button" aria-expanded={rappelsOuvert} onClick={() => setRappelsOuvert((v) => !v)}
                 className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-semibold transition ${surRappels ? "bg-primary text-white" : "text-gray-700 hover:bg-gray-100"}`}>

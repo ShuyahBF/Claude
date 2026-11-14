@@ -7,6 +7,7 @@ import WidgetAujourdhui from "@/components/WidgetAujourdhui";
 import QrOperateur from "@/components/QrOperateur";
 import LogoMode from "@/components/LogoMode";
 import PaiementPispi from "@/components/PaiementPispi";
+import RaccourcisMarchand from "@/components/RaccourcisMarchand";   // paiement rapide : nouveau code ou liste des marchands
 import MarchandsProches from "@/components/MarchandsProches";   // lot 102 : liste des marchands proches à choisir
 import ScannerQr from "@/components/ScannerQr";
 import { useToast } from "@/components/Toast";
@@ -232,6 +233,11 @@ export default function Payer() {
         <MarchandsProches onChoisir={(m) => ouvrirDepuisQr(m.operateur, m.service_id || null, m.code)} />
       )}
 
+      {/* Paiement rapide : nouveau code marchand ou liste de tous les marchands (chacun a son opérateur : on passe directement au montant) */}
+      {!operateur && !service && (
+        <RaccourcisMarchand operateurs={operateurs} onChoisir={(m) => ouvrirDepuisQr(m.operateur, m.service_id || null, m.code)} onNouveau={(op, code) => ouvrirDepuisQr(op, null, code)} />
+      )}
+
       {/* Étape 1 : opérateur — liste déroulante (règle : une liste finie se choisit dans une liste déroulante) */}
       {!operateur && (
         <section className="space-y-3">
@@ -273,6 +279,7 @@ export default function Payer() {
             <div key={c.key}>
               <label className="label" htmlFor={`champ-${c.key}`}>{c.label}</label>
               <input id={`champ-${c.key}`} className={`input ${c.key === "amount" ? "text-lg font-semibold" : "font-mono"}`}
+                autoFocus={c.key === "amount" && !!codeMarchand}   /* marchand déjà choisi : le curseur est sur le montant */
                 required inputMode={c.type === "numeric" ? "numeric" : "text"} pattern={c.type === "numeric" ? "[0-9 ]*" : undefined}
                 list={c.isMerchantCode ? "marchands-connus" : undefined}
                 value={valeurs[c.key] || ""} onChange={(e) => setValeurs({ ...valeurs, [c.key]: e.target.value })} />
