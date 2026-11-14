@@ -43,7 +43,7 @@ SE SOIGNER
 S'INFORMER
 • Actualités locales, technologie, mode, coaching, résumées et classées par catégorie, avec le lien pour tout lire.
 • Météo.
-• Carnet de codes USSD pratiques : solde, forfaits Internet, connaître son numéro…
+• Codes USSD pratiques : solde, forfaits Internet, connaître son numéro…
 
 CARTES VIRTUELLES
 Choisissez une occasion, écrivez votre message : l'IA dessine jusqu'à trois cartes et vous envoyez celle que vous préférez à votre proche sur WhatsApp (abonnement).

@@ -14,7 +14,7 @@ export default function Ussd() {
   const [recherche, setRecherche] = useState("");
   useEffect(() => {
     apiClient.get("/ussd").then((r) => { setD(r.data); setOperateur(r.data.operateurs[0]?.nom || ""); })
-      .catch((err) => { toast.erreur(messageErreur(err, "Carnet indisponible")); setD({ operateurs: [] }); });
+      .catch((err) => { toast.erreur(messageErreur(err, "Codes USSD indisponibles")); setD({ operateurs: [] }); });
   }, [toast]);
 
   const actif = d?.operateurs.find((o) => o.nom === operateur);
@@ -35,7 +35,7 @@ export default function Ussd() {
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <h1 className="text-2xl font-bold">📞 Codes USSD pratiques</h1>
-      {d.operateurs.length === 0 && <p className="rounded-xl bg-amber-50 p-4 text-amber-900">Le carnet est en cours de préparation : revenez bientôt.</p>}
+      {d.operateurs.length === 0 && <p className="rounded-xl bg-amber-50 p-4 text-amber-900">Les codes USSD sont en cours de préparation : revenez bientôt.</p>}
       {d.operateurs.length > 0 && (
         <div className="grid gap-2 sm:grid-cols-[1fr_2fr]">
           <div><label className="label" htmlFor="u-op">Mon opérateur</label>

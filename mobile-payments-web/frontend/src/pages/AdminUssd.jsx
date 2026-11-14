@@ -4,7 +4,7 @@ import OngletsAdmin from "@/components/OngletsAdmin";
 import { useToast } from "@/components/Toast";
 import { apiClient, messageErreur } from "@/lib/api";
 
-// Administration du carnet USSD (lot 66) : ajouter / corriger / désactiver / supprimer un code, ou IMPORTER en bloc un texte collé
+// Administration des codes USSD (lot 66) : ajouter / corriger / désactiver / supprimer un code, ou IMPORTER en bloc un texte collé
 // (une ligne par code : Opérateur | Catégorie | Titre | Code | Description). Aucun code n'est prérempli : l'administrateur saisit des codes vérifiés.
 const VIDE = { operateur: "Orange", categorie: "Mon numéro", autre: "", titre: "", code: "*", description: "", usage: "" };
 
@@ -52,7 +52,7 @@ export default function AdminUssd() {
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <OngletsAdmin />
-      <h1 className="text-2xl font-bold">📞 Carnet de codes USSD</h1>
+      <h1 className="text-2xl font-bold">📞 Codes USSD</h1>
 
       <section className="card space-y-3">
         <h2 className="text-lg font-semibold">{enCours ? "Corriger le code" : "Ajouter un code"}</h2>
@@ -93,7 +93,7 @@ export default function AdminUssd() {
       </section>
 
       <section className="card space-y-3">
-        <h2 className="text-lg font-semibold">Codes du carnet ({d.codes.length})</h2>
+        <h2 className="text-lg font-semibold">Codes USSD ({d.codes.length})</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-gray-500"><th className="p-1">Opérateur</th><th>Catégorie</th><th>Titre</th><th>Code</th><th>Usage</th><th>Actif</th><th /></tr></thead>
@@ -110,7 +110,7 @@ export default function AdminUssd() {
               ))}
             </tbody>
           </table>
-          {d.codes.length === 0 && <p className="p-2 text-gray-500">Le carnet est vide : ajoutez des codes vérifiés ou importez-les ci-dessus.</p>}
+          {d.codes.length === 0 && <p className="p-2 text-gray-500">La liste des codes USSD est vide : ajoutez des codes vérifiés ou importez-les ci-dessus.</p>}
         </div>
       </section>
     </div>
