@@ -158,3 +158,21 @@ SAWALI SMART SYSTEMS — contact@sawalismartsystems.com — +226 25 65 81 65 (af
   général de pré-remplir un code contenant `*` ou `#`. L'utilisateur copie alors le code affiché et le
   compose lui-même.
 - Les codes USSD du catalogue de départ viennent de l'app Android et sont **indicatifs**.
+
+
+## Base centrale des codes USSD, lisible par les autres plateformes (lot 110)
+
+Le carnet de codes USSD (page Administration → Carnet USSD) est la **source unique** des codes de tous les logiciels du propriétaire
+(Concentration, SAWALI, ALBARKA…). Chaque code peut recevoir un **usage** (solde, relevé, renvoi de notification) : les autres plateformes
+retrouvent le bon code par son usage, sans en connaître le texte, et un code corrigé ici est corrigé partout.
+
+Adresse publique en lecture seule, sans session :
+
+    GET /api/android/ussd-codes?operateur=Orange&usage=releve
+    → {"version": "a1b2c3d4e5f60718", "codes": [{id, operateur, categorie, titre, code, description, usage, appelable, demande_pin}]}
+
+- **Mise à jour locale et connexion intermittente** : la réponse porte l'en-tête `ETag` (= `version`). Le client garde sa copie locale,
+  renvoie `If-None-Match: "<version>"` et reçoit `304` (sans corps) s'il n'y a rien de nouveau. Sans Internet, il continue avec sa copie.
+- **Code secret** : un code qui contient le mot `PIN` (ex. `*123*4*PIN#`) est complété par l'utilisateur au moment de l'appel ; le code secret
+  n'est jamais enregistré ni envoyé à auRor.
+- **Import en bloc** : ligne `Opérateur | Catégorie | Titre | Code | Explication | Usage` (explication et usage facultatifs).

@@ -43,6 +43,8 @@ api = APIRouter(prefix="/api")
 # support_sawali : discussion avec le support SAWALI (icône de la page de connexion, lot 24)
 for module in (auth, catalogue, marchands, paiements, android, presence, support_sawali, publicites, anniversaires, meteo, rappels, rappels_medicaments, rappels_paiements, abonnement, qr_operateurs, ocr, push, voix, garde, comptes, archives, comptes_marchands, annonceurs, presse, carnet_ussd, cartes, suppression_compte, portefeuille, journal_operateur):
     api.include_router(module.router)
+# Lecture publique de la base des codes USSD (lot 110)
+api.include_router(carnet_ussd.router_public)
 
 
 @api.get("/health")
