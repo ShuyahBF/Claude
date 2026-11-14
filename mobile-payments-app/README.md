@@ -153,3 +153,5 @@ Une version « **paiement direct** » (APK installé à la main, jamais publiée
 (ni dans le résumé ni dans le code montré), jamais enregistré ni envoyé au serveur.
 Ces services (gabarit contenant `{pin}`) sont **cachés** du site, de l'historique du site et de toutes les versions du Play Store : ils ne sont envoyés qu'à la version directe (`?direct=true`).
 Si l'opérateur répond par un menu au lieu d'exécuter le paiement, le texte de sa réponse s'affiche et rien n'est confirmé : l'utilisateur vérifie son SMS ou son historique.
+
+**Installation** (1.3.1) : la version directe a son propre identifiant (`com.ouoba.mobilepay.direct`) et s'appelle « auRor direct » : elle s'installe **à côté** de l'application déjà présente, sans la remplacer ni la désinstaller. (La 1.3.0 utilisait le même identifiant et pouvait être refusée avec « package en conflit avec un package déjà présent » quand l'application installée était signée avec une autre clé.)
