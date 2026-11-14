@@ -137,21 +137,29 @@ L'app est **hors-ligne d'abord** : l'interface lit toujours une base locale (Roo
 - Les codes USSD du catalogue de départ sont fournis à titre indicatif : vérifiez-les auprès de chaque opérateur (page Administration du site).
 
 
-## Paiement direct (lot 17 de l'application, lot 111 du serveur) — version à part, hors Play Store
+## Application hybride : tout auRor sur Android (version 2.0.0, lot 18)
 
-Par défaut l'application reste celle du Play Store : elle **ouvre le composeur** avec le code pré-rempli et n'a aucune autorisation sensible.
-Une version « **paiement direct** » (APK installé à la main, jamais publiée sur le Play Store) envoie le code USSD **elle-même** :
+L'application affiche le **site auRor complet** (marchands, QR codes, géolocalisation, historique, codes USSD, météo, presse…) dans une fenêtre intégrée, toujours à jour
+(rien à réinstaller quand le site change), et lui donne accès au téléphone par un **pont natif** (`window.AuRorAndroid`, voir `web/PontAuRor.kt` et `frontend/src/lib/pontAndroid.js`).
+Les anciens écrans natifs (formulaire de paiement avec saisie des codes marchands, catalogue local) sont supprimés : le site offre la même chose avec la base de marchands
+(recherche, marchands proches, scan de QR code) — plus de codes marchands à retaper.
 
-1. L'utilisateur remplit le formulaire, appuie sur **Continuer**, puis sur **Payer maintenant**.
-2. Une fenêtre de **confirmation** affiche le montant, le service et le bénéficiaire (« Envoyer 2 500 FCFA — Paiement marchand (Orange) ? ») avec les boutons **Envoyer** / **Annuler**.
-3. L'application envoie le code (autorisation « Appels » demandée une fois) et affiche la réponse de l'opérateur. Elle n'a **pas d'historique** : rien n'est conservé.
+**Deux versions du même code** (saveurs Gradle `standard` et `direct`) :
 
-**Compilation** : GitHub → Actions → « Build APK » → Run workflow → `mode_direct` = `true` (ou `gradle assembleDebug -PmodeDirect=true`). Sans cela, la version compilée est celle du Play Store (aucune autorisation `CALL_PHONE` ni `READ_PHONE_STATE`, vérifié dans le manifeste fusionné).
+| | `standard` — Play Store | `direct` — APK installé à la main |
+|---|---|---|
+| Site complet, QR code (caméra), marchands proches (position) | oui | oui |
+| Composeur pré-rempli (« Composer sur ce téléphone ») | oui | oui |
+| **Payer maintenant** : l'application envoie elle-même le code USSD | non | **oui** (Appels) |
+| **Lire mes SMS de paiement** (page Historique) | non | **oui** (SMS) |
+| Nom / identifiant | auRor / `com.ouoba.mobilepay` | auRor direct / `com.ouoba.mobilepay.direct` (s'installe à côté) |
 
-**Code secret** : Android n'autorise qu'**un seul échange** USSD (impossible de répondre à un second écran « Entrez votre code secret »). Un service « direct » doit donc avoir un gabarit
-**complet** avec le champ `pin` (ex. `*100*{code}*{amount}*{pin}#` : séquence à vérifier auprès de l'opérateur, aucune n'est préremplie). Le champ `pin` est saisi **masqué**, jamais affiché
-(ni dans le résumé ni dans le code montré), jamais enregistré ni envoyé au serveur.
-Ces services (gabarit contenant `{pin}`) sont **cachés** du site, de l'historique du site et de toutes les versions du Play Store : ils ne sont envoyés qu'à la version directe (`?direct=true`).
-Si l'opérateur répond par un menu au lieu d'exécuter le paiement, le texte de sa réponse s'affiche et rien n'est confirmé : l'utilisateur vérifie son SMS ou son historique.
+Compilation : GitHub → Actions → « Build APK - auRor » → Run workflow ; artefacts `auror-standard-apk`, `auror-direct-apk` et `mobile-payments-release-aab` (version standard, pour la Play Console).
+En local : `gradle assembleStandardDebug assembleDirectDebug`. La version `standard` n'a **aucune autorisation Appels ni SMS** (vérifié dans le manifeste fusionné) : seulement Internet, caméra et position, demandées à l'usage.
 
-**Installation** (1.3.1) : la version directe a son propre identifiant (`com.ouoba.mobilepay.direct`) et s'appelle « auRor direct » : elle s'installe **à côté** de l'application déjà présente, sans la remplacer ni la désinstaller. (La 1.3.0 utilisait le même identifiant et pouvait être refusée avec « package en conflit avec un package déjà présent » quand l'application installée était signée avec une autre clé.)
+**Paiement direct** : le site affiche « 💳 Payer maintenant » (dans l'application « direct » seulement) → l'application ouvre **sa propre fenêtre de confirmation** (service, opérateur, montant, marchand), demande le **code secret** dans une saisie masquée si le code contient le mot `PIN`
+(jamais vu par le site ni enregistré), puis envoie le code et rend la réponse de l'opérateur. Limite d'Android : **un seul échange USSD** — si l'opérateur répond par un menu ou demande le code secret dans un second écran,
+le paiement n'aboutit pas et sa réponse s'affiche. Un service avec code secret (gabarit contenant `{pin}`) reste caché du site et du Play Store (voir lot 111 du serveur).
+
+**Sécurité du pont** : seules les pages d'auRor se chargent dans la fenêtre (tout autre lien s'ouvre dans le navigateur) ; le site ne peut jamais envoyer un code en silence (confirmation native obligatoire).
+Les SMS lus restent sur le téléphone. Hors connexion : page « Pas de connexion » avec bouton « Réessayer ».

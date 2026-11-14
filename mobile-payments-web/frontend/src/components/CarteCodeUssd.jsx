@@ -1,7 +1,9 @@
 import LogoMode from "@/components/LogoMode";
 import QrCode from "@/components/QrCode";
 import { useToast } from "@/components/Toast";
+import { useState } from "react";
 import { couleurOperateur, fcfa } from "@/lib/api";
+import { capacites, payerDirect } from "@/lib/pontAndroid";
 
 // Affiche un paiement préparé : code USSD, QR code à scanner avec le téléphone,
 // bouton « Composer » (ouvre le composeur quand le site est ouvert sur le téléphone).
@@ -11,6 +13,19 @@ const SUR_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
 
 export default function CarteCodeUssd({ paiement, onStatut }) {
   const toast = useToast();
+  // Application Android « direct » : l'application envoie elle-même le code USSD (après sa propre fenêtre de confirmation)
+  const appli = capacites();
+  const [envoi, setEnvoi] = useState(false);
+  const [reponse, setReponse] = useState(null);
+
+  /** Paiement direct : le résumé est montré par l'application ; le code secret éventuel est saisi dans l'application, jamais ici. */
+  const payerMaintenant = async () => {
+    setEnvoi(true); setReponse(null);
+    const resume = [paiement.service_nom, paiement.operateur, paiement.montant ? fcfa(paiement.montant) : null,
+      paiement.marchand ? `${paiement.marchand.libelle || "Marchand"} (${paiement.marchand.code})` : null].filter(Boolean).join("\n");
+    const r = await payerDirect({ operateur: paiement.operateur, code: paiement.code_ussd, resume });
+    setReponse(r); setEnvoi(false);
+  };
 
   const copier = async () => {
     try {
@@ -52,9 +67,21 @@ export default function CarteCodeUssd({ paiement, onStatut }) {
           </div>
           <div className="flex flex-wrap gap-2">
             {/* Sur téléphone : ouvre directement le composeur */}
-            <a href={paiement.lien_tel} className="btn-primary flex-1">📞 Composer sur ce téléphone</a>
+            {appli?.direct && (
+              <button type="button" onClick={payerMaintenant} disabled={envoi} className="btn-primary flex-1">
+                {envoi ? "⏳ En attente de l'opérateur…" : "💳 Payer maintenant"}
+              </button>
+            )}
+            <a href={paiement.lien_tel} className={appli?.direct ? "btn-outline flex-1" : "btn-primary flex-1"}>📞 Composer sur ce téléphone</a>
             <button type="button" onClick={copier} className="btn-outline">Copier</button>
           </div>
+          {reponse && (
+            <div className={`rounded-lg p-3 text-sm ${reponse.erreur ? "bg-red-50 text-red-900" : "bg-emerald-50 text-emerald-900"}`}>
+              <b>{reponse.erreur ? "Paiement non envoyé" : "Réponse de l'opérateur"}</b>
+              <p className="mt-1 whitespace-pre-wrap">{reponse.erreur || reponse.texte}</p>
+              {!reponse.erreur && <p className="mt-1 text-xs">Vérifiez le SMS ou l'historique de votre compte pour confirmer le paiement.</p>}
+            </div>
+          )}
           {SUR_IOS && (
             <p className="text-xs text-gray-500">Sur iPhone, le code n'est pas pré-rempli : copiez-le, puis collez-le dans le clavier d'appel.</p>
           )}

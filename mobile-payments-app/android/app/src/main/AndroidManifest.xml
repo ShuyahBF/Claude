@@ -1,39 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Permissions (lot 16 « Play Store ») : uniquement des permissions « normales »,
-         accordées à l'installation, sans aucune demande à l'utilisateur.
-         Plus de CALL_PHONE : l'app ouvre seulement le composeur (ACTION_DIAL), c'est
-         l'utilisateur qui appuie lui-même sur « Appeler ». -->
-
-    <!-- Nécessaire pour appeler l'API backend -->
+    <!-- auRor Android (version hybride, lot 18) : le site auRor complet dans l'application.
+         Version du PLAY STORE = permissions ci-dessous seulement : Internet, état du réseau, caméra (scan de QR code des marchands) et position
+         (marchands proches, géolocalisation des paiements), demandées à l'utilisateur au moment de l'usage.
+         Aucune autorisation Appels ni SMS ici : elles n'existent que dans la version « direct » (src/direct/AndroidManifest.xml). -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Permet de savoir si une connexion est disponible avant de tenter une synchro
-         (voir util/ConnectivityUtils.kt) : ne demande aucune autorisation à l'utilisateur. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- Ajoutée automatiquement par WorkManager mais inutile ici (aucune tâche au premier plan) :
-         retirée du manifeste final pour garder la liste des permissions minimale. -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Appareil sans caméra, sans GPS ou sans téléphonie : l'application reste installable -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
 
-    <!-- Android 11+ : déclare qu'on ouvre le composeur et le navigateur (sinon la vérification
-         « une application peut-elle traiter ce lien ? » répondrait toujours non). -->
+    <!-- Android 11+ : déclare qu'on ouvre le composeur, la messagerie et le navigateur -->
     <queries>
-        <intent>
-            <action android:name="android.intent.action.DIAL" />
-            <data android:scheme="tel" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="https" />
-        </intent>
+        <intent><action android:name="android.intent.action.DIAL" /><data android:scheme="tel" /></intent>
+        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="https" /></intent>
+        <intent><action android:name="android.intent.action.SENDTO" /><data android:scheme="mailto" /></intent>
     </queries>
 
-    <!-- Icône adaptative (lot 16) : mipmap-anydpi-v26/ic_launcher*.xml (Android 8+),
-         mipmap/ic_launcher*.xml pour Android 7. -->
     <application
-        android:name=".MobilePayApplication"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -41,12 +31,13 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:theme="@style/Theme.MobilePayments">
 
+        <!-- Une seule fenêtre : le site auRor. configChanges : la rotation ne recharge pas la page -->
         <activity
-            android:name=".MainActivity"
+            android:name=".web.WebActivity"
             android:exported="true"
             android:label="@string/app_name"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.MobilePayments">
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|uiMode">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

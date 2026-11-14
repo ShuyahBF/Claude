@@ -121,7 +121,7 @@ auRor est un assistant de saisie : il construit le code USSD d'un service Mobile
 - Aucune licence financière n'est requise pour ce fonctionnement (pas de détention ni de transfert de fonds). À confirmer par le propriétaire selon la réglementation BCEAO si la fonction évolue.
 
 Autres déclarations :
-- **Autorisations** : aucune autorisation sensible (plus de `CALL_PHONE` depuis le lot 16) → aucune déclaration particulière.
+- **Autorisations** (version hybride 2.0.0, saveur `standard`) : Internet, état du réseau, **caméra** (scan du QR code d'un marchand) et **position** (marchands proches, géolocalisation des paiements), demandées au moment de l'usage → à déclarer dans « Contenu de l'application » (accès à la position : fonction principale, avec explication). Aucune autorisation Appels ni SMS. Ne publier QUE la saveur `standard` (`bundleStandardRelease`).
 - **Accès à l'application** : toutes les fonctions sont accessibles sans identifiants particuliers (le profil se crée à la première ouverture) → « Toutes les fonctionnalités sont disponibles sans accès spécial ».
 - **Application gouvernementale / actualités / santé / COVID** : Non.
 

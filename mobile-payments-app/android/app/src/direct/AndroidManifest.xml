@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Lot 17 « paiement direct » : manifeste ajouté UNIQUEMENT quand l'application est compilée avec -PmodeDirect=true (APK installé à la main).
-     La version du Play Store ne l'utilise pas : elle n'a aucune de ces deux autorisations sensibles. -->
+<!-- Version « direct » : manifeste ajouté à celui de l'application, UNIQUEMENT pour cette version (APK installé à la main, jamais publié sur le Play Store).
+     La version « standard » (Play Store) n'a aucune de ces trois autorisations sensibles. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Envoyer le code USSD sans ouvrir le composeur -->
+    <!-- Envoyer le code USSD sans ouvrir le composeur (paiement direct) -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <!-- Retrouver la carte SIM de l'opérateur choisi (téléphone à deux cartes) -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- Lire les SMS de paiement dans la boîte de réception (jamais envoyés ailleurs) -->
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
 </manifest>

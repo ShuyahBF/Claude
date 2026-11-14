@@ -4,7 +4,6 @@ import java.time.Instant
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("com.google.devtools.ksp")
 }
 
 android {
@@ -18,23 +17,12 @@ android {
         targetSdk = 35
         // versionCode : nombre entier qui DOIT augmenter à chaque envoi sur le Play Store ;
         // versionName : numéro affiché à l'utilisateur (et envoyé à SAWALI dans le signal de présence)
-        versionCode = 6
-        versionName = "1.3.2"
+        versionCode = 7
+        versionName = "2.0.0"
 
-        // Lot 17 : PAIEMENT DIRECT (option, désactivée par défaut). La version du Play Store reste celle qui ouvre seulement le composeur
-        // (aucune autorisation sensible). La version « directe » (APK installé à la main, -PmodeDirect=true) ajoute les autorisations
-        // Appels / Téléphone et envoie le code USSD elle-même après une confirmation explicite.
-        val modeDirect = (project.findProperty("modeDirect") as String?) == "true"
-        buildConfigField("boolean", "MODE_DIRECT", modeDirect.toString())
-        // La version directe s'installe À CÔTÉ de l'application déjà présente (autre identifiant, autre nom) : sans cela, Android refuse l'installation
-        // (« package en conflit avec un package déjà présent ») quand l'application existante a été signée avec une autre clé.
-        if (modeDirect) { applicationIdSuffix = ".direct"; versionNameSuffix = "-direct" }
-        // Les deux autorisations viennent d'un manifeste séparé (src/direct/AndroidManifest.xml), ajouté seulement dans ce cas (voir plus bas)
-
-        // URL de base de l'API : par défaut l'API de PRODUCTION (lot 13, API unique FastAPI partagée
-        // avec le site web). Surcharge possible : -PapiBaseUrl=http://10.0.2.2:8000/ (émulateur + API locale).
-        // L'adresse doit se terminer par « / ».
-        buildConfigField("String", "API_BASE_URL", "\"${project.findProperty("apiBaseUrl") ?: "https://paiement-mobile-api-jo11.onrender.com/"}\"")
+        // Adresse du site auRor affiché dans l'application (version hybride, lot 18) : TOUT auRor (marchands, QR codes, géolocalisation, historique…).
+        // Surcharge possible pour un essai : -PsiteUrl=https://autre-adresse/
+        buildConfigField("String", "SITE_URL", "\"${project.findProperty("siteUrl") ?: "https://auror.space/"}\"")
         // Date et heure de compilation (UTC, ISO 8601) : « deploye_le » du signal de présence SAWALI
         buildConfigField("String", "DATE_BUILD", "\"${Instant.now()}\"")
     }
@@ -73,6 +61,24 @@ android {
         }
     }
 
+    // DEUX VERSIONS de la même application (même code, pont différent) :
+    //  - « standard » : version du PLAY STORE. Composeur pré-rempli, QR code, position ; AUCUNE autorisation sensible (ni Appels, ni SMS) ;
+    //  - « direct »   : APK installé à la main, jamais publié sur le Play Store. Ajoute le paiement direct (envoi du code USSD) et la lecture des SMS
+    //                   (src/direct/AndroidManifest.xml). Identifiant et nom distincts : elle s'installe À CÔTÉ de la version standard.
+    flavorDimensions += "version"
+    productFlavors {
+        create("standard") {
+            dimension = "version"
+            buildConfigField("boolean", "MODE_DIRECT", "false")
+        }
+        create("direct") {
+            dimension = "version"
+            applicationIdSuffix = ".direct"
+            versionNameSuffix = "-direct"
+            buildConfigField("boolean", "MODE_DIRECT", "true")
+        }
+    }
+
     buildTypes {
         release {
             // R8 : réduit et obscurcit le code ; les règles de proguard-rules.pro protègent
@@ -91,22 +97,8 @@ android {
         }
     }
 
-    // Lot 17 : manifeste « direct » (CALL_PHONE, READ_PHONE_STATE) ajouté aux versions debug et release seulement avec -PmodeDirect=true
-    if ((project.findProperty("modeDirect") as String?) == "true") {
-        sourceSets.getByName("debug").manifest.srcFile("src/direct/AndroidManifest.xml")
-        sourceSets.getByName("release").manifest.srcFile("src/direct/AndroidManifest.xml")
-        // Nom affiché distinct : « auRor direct »
-        sourceSets.getByName("debug").res.srcDir("src/direct/res")
-        sourceSets.getByName("release").res.srcDir("src/direct/res")
-    }
-
     buildFeatures {
-        compose = true
         buildConfig = true
-    }
-
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.14"
     }
 
     compileOptions {
@@ -120,30 +112,8 @@ android {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
-    implementation("androidx.activity:activity-compose:1.9.1")
-
-    implementation(platform("androidx.compose:compose-bom:2024.06.00"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
-
-    implementation("com.squareup.retrofit2:retrofit:2.11.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
-    implementation("com.google.code.gson:gson:2.10.1")
-
-    // Base locale (Room) : source de vérité pour l'UI, condition du mode hors-ligne.
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    ksp("androidx.room:room-compiler:2.6.1")
-
-    // Tâche de fond qui rattrape la synchro (profil, marchands) dès que le réseau revient.
-    implementation("androidx.work:work-runtime-ktx:2.9.1")
-
-    testImplementation("junit:junit:4.13.2")
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    debugImplementation("androidx.compose.ui:ui-tooling")
+    // ComponentActivity + demandes d'autorisations (registerForActivityResult)
+    implementation("androidx.activity:activity-ktx:1.9.1")
+    // Signal de présence à SAWALI (règle 4) et réseau
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
