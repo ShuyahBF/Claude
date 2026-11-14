@@ -138,7 +138,10 @@ export function guideInstallation(env, { nomApp = "l'application", invitePrete =
            etapes: ETAPES.copierLien("Chrome"), conseil: "Chrome est installé sur presque tous les téléphones Android (icône ronde rouge, jaune, verte et bleue)." };
 }
 
-/** Vrai si la page tourne déjà comme application installée (écran d'accueil). */
+/**
+ * Vrai si la page tourne déjà comme application installée : écran d'accueil (mode autonome, iPhone) OU application Android auRor (le site s'affiche dans l'application,
+ * qui expose « AuRorAndroid ») : aucune invitation à installer l'application n'a de sens dans ce cas.
+ */
 export function estInstallee(fenetre) {
-  try { return !!(fenetre?.matchMedia?.("(display-mode: standalone)")?.matches || fenetre?.navigator?.standalone === true); } catch { return false; }
+  try { return !!(fenetre?.AuRorAndroid || fenetre?.matchMedia?.("(display-mode: standalone)")?.matches || fenetre?.navigator?.standalone === true); } catch { return false; }
 }

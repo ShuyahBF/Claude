@@ -65,4 +65,5 @@ for (const ua of Object.values(UA)) {
 ok("Déjà installée (mode autonome)", estInstallee({ matchMedia: () => ({ matches: true }) }));
 ok("Déjà installée (iPhone)", estInstallee({ matchMedia: () => ({ matches: false }), navigator: { standalone: true } }));
 ok("Pas installée", !estInstallee({ matchMedia: () => ({ matches: false }), navigator: {} }));
+ok("Application Android auRor : déjà installée (plus d'invitation à installer)", estInstallee({ AuRorAndroid: {}, matchMedia: () => ({ matches: false }), navigator: {} }));
 ok("Fenêtre absente : ne plante pas", !estInstallee(undefined));
