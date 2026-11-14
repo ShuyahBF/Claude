@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
 import { apiClient, fcfa, messageErreur } from "@/lib/api";
-import { capacites, lireSmsPaiements, payerDirectDialogue, journalUssd, payerDirectMontant } from "@/lib/pontAndroid";
+import { capacites, composer, lireSmsPaiements, payerDirectDialogue, journalUssd, payerDirectMontant } from "@/lib/pontAndroid";
 import { enLettres } from "@/lib/nombreEnLettres";
 import { analyserSms, chargerLignes, confirmePaiement, enregistrerLignes, fusionner } from "@/lib/smsPaiements";
 
@@ -102,6 +102,14 @@ export default function PaiementDirect({ paiement, onTermine }) {
 
         {/* RAPPEL du code USSD (important) : toujours visible, SANS la partie code secret (saisie à l'étape suivante) */}
         <div>
+          {/* EN CAS D'ÉCHEC SEULEMENT : pictogramme (à droite, au-dessus du code) qui envoie la séquence au composeur du téléphone, pour la lancer à la main */}
+          {etat === "non_envoye" && (
+            <div className="mb-1 flex justify-end">
+              <button type="button" data-testid="vers-composeur" title="Copier la séquence dans le composeur du téléphone" aria-label="Copier la séquence dans le composeur du téléphone"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-600 text-xl text-white shadow active:scale-95"
+                onClick={() => { composer(paiement.code_ussd.replace(/\*?PIN/, "")); toast.succes("Séquence envoyée au composeur : appuyez sur « Appeler »"); }}>📞</button>
+            </div>
+          )}
           <div className="rounded-lg bg-nuit-900 px-4 py-3 text-center font-mono text-xl tracking-wider text-white sm:text-2xl" data-testid="rappel-code">{paiement.code_ussd.replace(/\*?PIN/, "")}</div>
           <p className="mt-1 text-center text-xs text-gray-500">Étape suivante : une fenêtre vous demande de retaper le montant et votre code secret.</p>
         </div>
