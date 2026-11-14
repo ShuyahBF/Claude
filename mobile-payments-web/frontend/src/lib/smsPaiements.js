@@ -57,12 +57,49 @@ export function dateDeReference(ref) {
   return Number.isNaN(d.getTime()) ? null : d.getTime();
 }
 
-/** Bénéficiaire (dépense) ou expéditeur (recette), tronqué ; chaîne vide si inconnu. */
+const sansAccents = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+/**
+ * Nom répété : « ALIMENTATION LA MENAGERE ALIMENTATION LA MENAGERE » → « ALIMENTATION LA MENAGERE » (Orange écrit souvent le nom du marchand deux fois).
+ * Si les premiers mots sont répétés juste après, on ne garde que la première occurrence.
+ */
+export function sansRepetition(nom) {
+  const mots = String(nom || "").trim().split(/\s+/).filter(Boolean);
+  for (let n = 1; n <= Math.floor(mots.length / 2); n++) {
+    const debut = mots.slice(0, n).map((m) => m.toLowerCase()).join(" ");
+    const suite = mots.slice(n, 2 * n).map((m) => m.toLowerCase()).join(" ");
+    if (debut === suite) return mots.slice(0, n).join(" ");
+  }
+  return mots.join(" ");
+}
+
+/**
+ * Numéro de téléphone de l'expéditeur dans un SMS d'argent REÇU (Orange précise le numéro, pas le nom). Les montants, soldes et numéros de transaction sont écartés avant la recherche.
+ * 8 chiffres (Burkina) ou 11 à 13 chiffres avec l'indicatif (226…), séparateurs permis. Rend le numéro en chiffres groupés par deux, ou "" si aucun.
+ */
+export function telephoneDe(texte) {
+  const propre = String(texte || "").replace(REFERENCE, " ").replace(MONTANT_APRES, " ").replace(MONTANT_AVANT, " ").replace(SOLDE, " ");
+  const re = /\+?\d[\d .\-]{6,16}\d/g;
+  let m;
+  while ((m = re.exec(propre))) {
+    const chiffres = m[0].replace(/\D/g, "");
+    if (chiffres.length === 8) return chiffres.replace(/(\d{2})(?=\d)/g, "$1 ");
+    if (chiffres.length >= 11 && chiffres.length <= 13) return "+" + chiffres.slice(0, chiffres.length - 8) + " " + chiffres.slice(-8).replace(/(\d{2})(?=\d)/g, "$1 ");
+  }
+  return "";
+}
+
+/**
+ * Tiers de l'opération :
+ *  - argent REÇU : le NUMÉRO DE TÉLÉPHONE de l'expéditeur (le SMS ne donne pas son nom) ;
+ *  - PAIEMENT effectué : le NOM DU MARCHAND seul (jamais son code), dédoublonné car souvent écrit deux fois.
+ */
 function tiersDe(texte, genre) {
-  const mots = genre === "RECETTE" ? "de|du" : "à|a|au profit de|chez|vers|pour|auprès de";
-  const re = new RegExp(`(?:^|\\s)(?:${mots})\\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’ .\\-]{2,40}?)(?=\\s+(?:le|du|au|n°|num|numéro|ref|réf|frais|solde|montant|trans|a\\s+[ée]t[ée]|est|\\d)|[,.;\\n\\d]|$)`, "i");
-  const m = re.exec(genre === "DEPENSE" ? texte.replace(/^.*?(?:fcfa|f\s?cfa|xof)\s+/i, "") : texte);
-  return (m ? m[1].trim().replace(/[.\-]+$/, "") : "").slice(0, 40);
+  if (genre === "RECETTE") return telephoneDe(texte);
+  const apresMontant = texte.replace(/^.*?(?:fcfa|f\s?cfa|xof)\s+/i, "");
+  const re = /(?:^|\s)(?:à|a|au profit de|chez|vers|pour|auprès de)\s+([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9'’ &.\-]{1,100}?)(?=\s+(?:le\s+\d|du\s+\d|n°|num|numéro|ref|réf|frais|solde|montant|trans|a\s+[ée]t[ée]|est\s+[ée]t[ée]|effectu|avec\s+succ)|[,;\n]|\.\s|$)/i;
+  const m = re.exec(apresMontant);
+  return m ? sansRepetition(m[1].trim().replace(/[.\-]+$/, "")).slice(0, 60) : "";
 }
 
 /** Un SMS (adresse, recu_le en ms, corps) → une ligne de paiement, ou null (promotion, pas de montant, sens indéterminé). */
@@ -79,22 +116,31 @@ export function analyserSms({ adresse, recu_le: recuLe, corps }) {
   return { id: ref || `${adresse}|${recuLe}|${montant}`, adresse, quand, genre, montant, tiers: tiersDe(corps, genre), solde: soldeM ? lireNombre(soldeM[1]) : null, reference: ref };
 }
 
-const sansAccents = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+/** Les deux noms désignent-ils le même marchand ? Sans accents ni casse ; l'un contient l'autre, ou tous les mots (3 lettres et plus) du plus court figurent dans l'autre. */
+export function memeMarchand(nomSms, nomEnregistre) {
+  const a = sansAccents(sansRepetition(nomSms)).replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  const b = sansAccents(sansRepetition(nomEnregistre)).replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  if (a.length < 4 || b.length < 4) return false;
+  if (a === b || a.includes(b) || b.includes(a)) return true;
+  const [court, long] = a.length <= b.length ? [a, b] : [b, a];
+  const mots = court.split(" ").filter((m) => m.length >= 3);
+  return mots.length >= 2 && mots.every((m) => long.includes(m));
+}
 
 /**
- * Ce SMS CONFIRME-T-IL le paiement envoyé ? Il faut le MONTANT **et** le MARCHAND : le montant seul ne suffit jamais.
- *  - montant identique ;
- *  - le code marchand figure dans le SMS, ou (à défaut) le nom du marchand enregistré avec ce code (≥ 4 caractères) ;
- *  - c'est un SMS de dépense (pas de l'argent reçu), arrivé après l'envoi (une minute de marge).
+ * Ce SMS CONFIRME-T-IL le paiement envoyé ? Le MONTANT seul ne suffit jamais : il faut aussi le MARCHAND.
+ * Orange n'affiche, pour un paiement, que le NOM du marchand (souvent écrit deux fois) : on compare ce nom à celui enregistré dans auRor avec le code marchand.
+ * Si le SMS porte le code marchand lui-même, il est accepté aussi. Un marchand sans nom enregistré ne peut pas être confirmé automatiquement (bouton « J'ai payé »).
+ *  - montant identique ; SMS de dépense (pas de l'argent reçu) arrivé après l'envoi (une minute de marge).
  */
 export function confirmePaiement(sms, { montant, codeMarchand, libelle, envoyeLe }) {
   if (!sms || (envoyeLe && sms.recu_le < envoyeLe - 60000)) return false;
   const ligne = analyserSms(sms);
   if (!ligne || ligne.genre !== "DEPENSE" || ligne.montant !== montant) return false;
   const corps = String(sms.corps || "");
-  if (codeMarchand && corps.replace(/\D+/g, " ").split(" ").includes(String(codeMarchand))) return true;
-  const nom = sansAccents(libelle).trim();
-  return nom.length >= 4 && sansAccents(corps).includes(nom);
+  if (codeMarchand && corps.replace(/\D+/g, " ").split(" ").includes(String(codeMarchand))) return true;     // le code figure dans le SMS
+  return !!libelle && memeMarchand(ligne.tiers, libelle);                                                       // sinon : le nom du marchand
 }
 
 // ---- Stockage local (téléphone) ----
