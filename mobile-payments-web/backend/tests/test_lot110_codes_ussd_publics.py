@@ -55,3 +55,21 @@ def test_lecture_publique_etag_et_filtres(client, admin):
     # un code désactivé n'est plus publié
     assert client.put(f"/api/admin/ussd/codes/{autre['id']}", headers=admin, json={**modif, "actif": False}).status_code == 200
     assert [c["code"] for c in client.get("/api/android/ussd-codes").json()["codes"]] == ["*111*7*PIN#"]
+
+
+def test_un_code_secret_ecrit_en_clair_est_refuse_et_jamais_publie(client, admin):
+    # Fonction pure : codes FICTIFS
+    assert cu.secret_probable("*400*9*4*1234#") and not cu.secret_probable("*400*9*4*PIN#") and not cu.secret_probable("*123#") and not cu.secret_probable("*144*10#")
+    corps = {"operateur": "Orange", "categorie": "Compte", "titre": "Mini relevé", "code": "*400*9*4*1234#", "usage": "releve"}
+    r = client.post("/api/admin/ussd/codes", headers=admin, json=corps)
+    assert r.status_code == 422 and "PIN" in r.json()["detail"]
+    # Confirmation explicite : accepté (ce n'est pas un code secret)
+    assert client.post("/api/admin/ussd/codes", headers=admin, json={**corps, "sans_code_secret": True}).status_code == 201
+    # Un code déjà en base sans confirmation (ancien enregistrement) n'est PAS publié
+    asyncio.run(cu.db.ussd_codes.insert_one({"id": "ancien", "operateur": "Moov", "categorie": "Compte", "titre": "Ancien", "code": "*555*9*4*4321#",
+                                             "description": "", "usage": "releve", "actif": True, "ordre": 99}))
+    publies = [c["code"] for c in client.get("/api/android/ussd-codes").json()["codes"]]
+    assert "*400*9*4*1234#" in publies and "*555*9*4*4321#" not in publies
+    # Import en bloc : refusé avec le numéro de ligne
+    ok, err = cu.lire_lignes("Orange | Compte | Relevé | *400*9*4*9999# | | releve")
+    assert not ok and err[0]["ligne"] == 1

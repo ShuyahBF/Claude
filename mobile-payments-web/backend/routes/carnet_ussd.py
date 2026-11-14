@@ -94,6 +94,9 @@ def lire_lignes(texte: str) -> tuple[list[dict], list[dict]]:
             if usage not in USAGES:
                 erreurs.append({"ligne": n, "motif": f"Usage inconnu : {parts[5]} (" + ", ".join(k for k in USAGES if k) + ")"})
                 continue
+            if usage and secret_probable(code):
+                erreurs.append({"ligne": n, "motif": "Le code se termine par 4 à 6 chiffres : code secret ? Écrivez le mot PIN à sa place (ex. *400*9*4*PIN#)."})
+                continue
             valides.append({"operateur": operateur, "categorie": parts[1], "titre": parts[2], "code": code,
                             "description": (parts[4] if len(parts) > 4 else "")[:200], "usage": usage})
     return valides, erreurs
@@ -102,6 +105,19 @@ def lire_lignes(texte: str) -> tuple[list[dict], list[dict]]:
 def demande_pin(code: str) -> bool:
     """Vrai si le code contient le mot PIN (ex. *144*4*PIN#) : le code secret est demandé à l'utilisateur au moment de l'appel."""
     return "PIN" in code.upper()
+
+
+def secret_probable(code: str) -> bool:
+    """Vrai si le code ressemble à un code qui CONTIENT un code secret écrit en clair (ex. *400*9*4*1708# : le dernier segment fait 4 à 6 chiffres)
+    au lieu du mot PIN (ex. *400*9*4*PIN#). Un code secret écrit dans la base serait lisible par tous (adresse publique) : on le refuse ou on ne le publie pas.
+    Fonction pure (testée sans base)."""
+    segments = code.strip().rstrip("#").split("*")[1:]
+    return len(segments) >= 3 and "PIN" not in code.upper() and bool(re.fullmatch(r"\d{4,6}", segments[-1]))
+
+
+def exposable(doc: dict) -> bool:
+    """Un code d'usage (solde, relevé, renvoi de notification) qui semble contenir un code secret n'est JAMAIS publié, sauf confirmation explicite de l'administrateur."""
+    return not (doc.get("usage") and secret_probable(doc["code"]) and not doc.get("sans_code_secret"))
 
 
 def publier(doc: dict) -> dict:
@@ -117,6 +133,7 @@ class CodeIn(BaseModel):
     code: str = Field(..., min_length=3, max_length=44)
     description: str = Field("", max_length=200)
     usage: str = Field("", max_length=30)
+    sans_code_secret: bool = False        # l'administrateur confirme que les derniers chiffres du code ne sont PAS un code secret
     actif: bool = True
 
 
@@ -133,8 +150,11 @@ def preparer(d: CodeIn) -> dict:
         raise HTTPException(status_code=422, detail="Un code USSD commence par * et finit par # (ex. *123#)")
     if d.usage not in USAGES:
         raise HTTPException(status_code=422, detail="Usage inconnu : " + ", ".join(k for k in USAGES if k))
+    if d.usage and secret_probable(code) and not d.sans_code_secret:
+        raise HTTPException(status_code=422, detail="Ce code se termine par 4 à 6 chiffres : est-ce votre code secret ? Un code secret ne doit JAMAIS être écrit ici (cette liste est lisible par "
+                            "les autres logiciels). Remplacez-le par le mot PIN (ex. *400*9*4*PIN#). Si ce n'est pas un code secret, cochez « Ce n'est pas un code secret ».")
     return {"operateur": operateur, "categorie": d.categorie.strip(), "titre": d.titre.strip(), "code": code,
-            "description": d.description.strip(), "usage": d.usage, "actif": d.actif,
+            "description": d.description.strip(), "usage": d.usage, "sans_code_secret": d.sans_code_secret, "actif": d.actif,
             "modifie_le": datetime.now(timezone.utc).isoformat()}
 
 
@@ -240,7 +260,7 @@ async def codes_publics(request: Request, response: Response, operateur: Optiona
         if usage not in USAGES:
             raise HTTPException(status_code=422, detail="Usage inconnu")
         filtre["usage"] = usage
-    lignes = await db.ussd_codes.find(filtre, SANS_ID).sort("ordre", 1).to_list(MAX_CODES)
+    lignes = [c for c in await db.ussd_codes.find(filtre, SANS_ID).sort("ordre", 1).to_list(MAX_CODES) if exposable(c)]
     codes = [{k: v for k, v in publier(c).items() if k in ("id", "operateur", "categorie", "titre", "code", "description", "usage",
                                                            "appelable", "demande_pin")} for c in lignes]
     version = empreinte(codes)
