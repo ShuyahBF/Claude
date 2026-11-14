@@ -34,6 +34,12 @@ on:
           https://paiement-mobile-api-jo11.onrender.com/ (émulateur + API locale : http://10.0.2.2:8000/).
         required: false
         default: 'https://paiement-mobile-api-jo11.onrender.com/'
+      # Lot 111 : version « paiement direct » (envoie le code USSD elle-même après confirmation ; autorisations Appels et Téléphone).
+      # À réserver à l'APK installé à la main : la version du Play Store reste celle par défaut (false).
+      mode_direct:
+        description: 'Compiler la version « paiement direct » (true) ou celle du Play Store (false, par défaut)'
+        required: false
+        default: 'false'
 
 jobs:
   build:
@@ -80,6 +86,10 @@ jobs:
           if [ -n "$API_BASE_URL" ]; then
             ARGS="$ARGS -PapiBaseUrl=$API_BASE_URL"
           fi
+          # Lot 111 : version « paiement direct » seulement si demandée au lancement manuel
+          if [ "$MODE_DIRECT" = "true" ]; then
+            ARGS="$ARGS -PmodeDirect=true"
+          fi
           set -o pipefail
           if ! gradle $ARGS 2>&1 | tee "$JOURNAL"; then
             grep -E "^e: |error:|ERROR:|What went wrong|Could not|Unresolved reference|Missing class|R8:|FAILURE" "$JOURNAL" | head -25 | while IFS= read -r ligne; do
@@ -94,6 +104,7 @@ jobs:
         shell: bash
         env:
           API_BASE_URL: ${{ github.event.inputs.api_base_url }}
+          MODE_DIRECT: ${{ github.event.inputs.mode_direct }}
         run: '"$RUNNER_TEMP/lancer-gradle.sh" assembleDebug build-debug.log'
 
       - name: Publier l'APK comme fichier téléchargeable (onglet Actions -> Artifacts)

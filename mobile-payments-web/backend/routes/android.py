@@ -31,7 +31,7 @@ from pymongo.errors import DuplicateKeyError
 import signal_connexion
 from db import SANS_ID, db
 from limiteur import limiter_appels_publics
-from ussd import ErreurSaisie, email_valide, normaliser_email, normaliser_telephone
+from ussd import FILTRE_SANS_CODE_SECRET, ErreurSaisie, email_valide, normaliser_email, normaliser_telephone
 
 router = APIRouter(prefix="/android", tags=["Application Android"], dependencies=[Depends(limiter_appels_publics)])
 
@@ -80,17 +80,18 @@ async def _operateur_connu(operateur: str) -> bool:
 # Catalogue des services
 # ---------------------------------------------------------------------------
 @router.get("/operators")
-async def operateurs(country: Optional[str] = Query(None, min_length=2, max_length=2)) -> list[str]:
-    """Liste des opérateurs ayant au moins un service actif (triée)."""
-    filtre = {"actif": True, **({"pays": country.upper()} if country else {})}
+async def operateurs(country: Optional[str] = Query(None, min_length=2, max_length=2), direct: bool = False) -> list[str]:
+    """Liste des opérateurs ayant au moins un service actif (triée). « direct » = version directe de l'app (services à code secret compris, lot 111)."""
+    filtre = {"actif": True, **({} if direct else FILTRE_SANS_CODE_SECRET), **({"pays": country.upper()} if country else {})}
     return sorted(await db.services.distinct("operateur", filtre))
 
 
 @router.get("/services")
 async def services(operator: str = Query(..., min_length=1, max_length=40),
-                   country: Optional[str] = Query(None, min_length=2, max_length=2)) -> list[dict]:
-    """Services actifs d'un opérateur, au format de l'app."""
-    filtre: dict = {"actif": True, "operateur": operator}
+                   country: Optional[str] = Query(None, min_length=2, max_length=2), direct: bool = False) -> list[dict]:
+    """Services actifs d'un opérateur, au format de l'app. Les services qui portent le code secret ({pin}) ne sont renvoyés qu'à la version
+    directe de l'application (direct=true, lot 111) : les versions du Play Store ne les voient jamais."""
+    filtre: dict = {"actif": True, "operateur": operator, **({} if direct else FILTRE_SANS_CODE_SECRET)}
     if country:
         filtre["pays"] = country.upper()
     docs = await db.services.find(filtre, SANS_ID).sort("nom", 1).to_list(500)

@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.ouoba.mobilepay.data.model.Merchant
 import com.ouoba.mobilepay.data.model.Service
 import com.ouoba.mobilepay.data.repository.PaymentRepository
+import com.ouoba.mobilepay.BuildConfig
+import com.ouoba.mobilepay.util.ResumePaiement
 import com.ouoba.mobilepay.util.buildUssdCode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -76,7 +78,8 @@ class PaymentViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             runCatching { repository.getServices(operator) }
                 .onSuccess { services ->
-                    _uiState.update { it.copy(loading = false, services = services, step = Step.SERVICES) }
+                    // Lot 17 : dans la version du Play Store, les services qui demandent le code secret sont masqués
+                    _uiState.update { it.copy(loading = false, services = ResumePaiement.servicesUtilisables(services, BuildConfig.MODE_DIRECT), step = Step.SERVICES) }
                 }
                 .onFailure { e ->
                     _uiState.update {

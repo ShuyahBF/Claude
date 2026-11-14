@@ -18,8 +18,15 @@ android {
         targetSdk = 35
         // versionCode : nombre entier qui DOIT augmenter à chaque envoi sur le Play Store ;
         // versionName : numéro affiché à l'utilisateur (et envoyé à SAWALI dans le signal de présence)
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.3.0"
+
+        // Lot 17 : PAIEMENT DIRECT (option, désactivée par défaut). La version du Play Store reste celle qui ouvre seulement le composeur
+        // (aucune autorisation sensible). La version « directe » (APK installé à la main, -PmodeDirect=true) ajoute les autorisations
+        // Appels / Téléphone et envoie le code USSD elle-même après une confirmation explicite.
+        val modeDirect = (project.findProperty("modeDirect") as String?) == "true"
+        buildConfigField("boolean", "MODE_DIRECT", modeDirect.toString())
+        // Les deux autorisations viennent d'un manifeste séparé (src/direct/AndroidManifest.xml), ajouté seulement dans ce cas (voir plus bas)
 
         // URL de base de l'API : par défaut l'API de PRODUCTION (lot 13, API unique FastAPI partagée
         // avec le site web). Surcharge possible : -PapiBaseUrl=http://10.0.2.2:8000/ (émulateur + API locale).
@@ -79,6 +86,12 @@ android {
         debug {
             isMinifyEnabled = false
         }
+    }
+
+    // Lot 17 : manifeste « direct » (CALL_PHONE, READ_PHONE_STATE) ajouté aux versions debug et release seulement avec -PmodeDirect=true
+    if ((project.findProperty("modeDirect") as String?) == "true") {
+        sourceSets.getByName("debug").manifest.srcFile("src/direct/AndroidManifest.xml")
+        sourceSets.getByName("release").manifest.srcFile("src/direct/AndroidManifest.xml")
     }
 
     buildFeatures {

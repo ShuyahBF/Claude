@@ -1,5 +1,6 @@
 package com.ouoba.mobilepay.data.repository
 
+import com.ouoba.mobilepay.BuildConfig
 import android.content.Context
 import androidx.room.withTransaction
 import com.ouoba.mobilepay.data.local.AppDatabase
@@ -41,8 +42,9 @@ class PaymentRepository(
     suspend fun refreshCatalogIfOnline() {
         if (!isOnline(context)) return
         runCatching {
-            val operators = api.getOperators()
-            val allServices = operators.flatMap { api.getServices(it) }
+            // Lot 111 : la version directe demande aussi les services à code secret ; celle du Play Store ne les reçoit jamais
+            val operators = api.getOperators(BuildConfig.MODE_DIRECT)
+            val allServices = operators.flatMap { api.getServices(it, BuildConfig.MODE_DIRECT) }
             if (allServices.isNotEmpty()) {
                 db.withTransaction {
                     db.serviceDao().deleteAll()

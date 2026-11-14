@@ -23,6 +23,11 @@ class ErreurSaisie(ValueError):
     """Valeur saisie refusée ; le message (en français) est affiché tel quel."""
 
 
+# Lot 111 « paiement direct » : un service dont le gabarit contient {pin} porte le CODE SECRET Mobile Money. Il est réservé à la version directe de l'application
+# Android (APK installé à la main) : jamais proposé sur le site ni dans l'historique (le code complet y serait gardé), ni dans la version du Play Store.
+FILTRE_SANS_CODE_SECRET = {"gabarit_ussd": {"$not": {"$regex": r"\{pin\}"}}}
+
+
 def placeholders(gabarit: str) -> list[str]:
     """Clés attendues par un gabarit, dans l'ordre (ex. ['code', 'amount'])."""
     return PLACEHOLDER.findall(gabarit)
