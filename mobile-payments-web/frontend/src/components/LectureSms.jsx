@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { EVENEMENT_MAJ, lireResume, synchroniserSms } from "@/lib/lectureSms";
-import { capacites } from "@/lib/pontAndroid";
+import { capacites, notificationsActives, ouvrirReglagesNotifications } from "@/lib/pontAndroid";
 import { chargerLignes } from "@/lib/smsPaiements";
 
 // Lecture des SMS de paiement (application Android auRor, version « direct » seulement) : bloc REPLIABLE, affiché REPLIÉ avec un récapitulatif
@@ -32,7 +32,15 @@ export default function LectureSms() {
     setEtat({ lus: r.lus, nouvelles: r.nouvelles });
   };
 
-  if (!appli?.sms) return null;                      // (après les hooks : règle des hooks de React)
+  // État de l'accès aux notifications (lecture des paiements application fermée), relu à chaque retour dans l'application (on revient des réglages du téléphone)
+  const [notifOk, setNotifOk] = useState(() => notificationsActives());
+  useEffect(() => {
+    const maj = () => setNotifOk(notificationsActives());
+    document.addEventListener("visibilitychange", maj);
+    return () => document.removeEventListener("visibilitychange", maj);
+  }, []);
+
+  if (!appli?.sms && !appli?.notifications) return null;                      // (après les hooks : règle des hooks de React)
 
   return (
     <details className="card" data-testid="bloc-sms">
@@ -47,6 +55,13 @@ export default function LectureSms() {
       </summary>
 
       <div className="mt-3 space-y-3">
+        {/* Lecture des paiements application FERMÉE : accès aux notifications (à activer une fois dans les réglages du téléphone) */}
+        {appli.notifications && (
+          <div className={`flex items-center gap-3 rounded-lg p-3 text-sm ${notifOk ? "bg-green-50 text-green-900" : "bg-amber-50 text-amber-900"}`} data-testid="notifications-etat">
+            <span className="flex-1">{notifOk ? "🔔 Lecture des notifications activée : les paiements reçus application fermée sont repris à l'ouverture." : "🔕 Lecture des notifications désactivée : activez « auRor direct » pour lire les paiements même application fermée."}</span>
+            {!notifOk && <button type="button" className="btn-primary btn-sm" onClick={ouvrirReglagesNotifications} title="Ouvrir les réglages « Accès aux notifications »" aria-label="Ouvrir les réglages d'accès aux notifications">🔔 Activer</button>}
+          </div>
+        )}
         <p className="text-sm text-gray-600">Lecture des SMS de vos opérateurs reçus sur ce téléphone. Les paiements sont gardés sur le téléphone (jamais le texte des SMS) : rien n'est envoyé à auRor.</p>
         <div className="flex flex-wrap items-center gap-2">
           <label className="label" htmlFor="sms-jours">Période</label>

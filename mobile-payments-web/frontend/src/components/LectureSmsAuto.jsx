@@ -2,7 +2,7 @@
 //   - à l'ouverture de l'application, puis chaque fois qu'elle revient au premier plan (on revient du composeur, d'une autre application…),
 //   - puis toutes les minutes tant que l'application est affichée.
 // Silencieuse quand il n'y a rien de nouveau ; un toast annonce les NOUVEAUX paiements trouvés. Si la lecture est refusée (autorisation « SMS »), elle s'arrête
-// (aucune demande répétée) : le bouton « Lire mes SMS » de l'Historique reste disponible et donne la marche à suivre.
+// (aucune demande répétée) ; les paiements reçus application FERMÉE (notifications) sont récupérés à chaque lecture : le bouton « Lire mes SMS » de l'Historique reste disponible et donne la marche à suivre.
 import { useEffect, useRef } from "react";
 import { useToast } from "@/components/Toast";
 import { synchroniserSms } from "@/lib/lectureSms";
@@ -17,12 +17,12 @@ export default function LectureSmsAuto() {
   const arret = useRef(false);
 
   useEffect(() => {
-    if (!capacites()?.sms) return undefined;
+    if (!capacites()?.sms && !capacites()?.notifications) return undefined;
     const lire = async () => {
-      if (enCours.current || arret.current || document.visibilityState !== "visible") return;
+      if (enCours.current || document.visibilityState !== "visible") return;
       enCours.current = true;
       try {
-        const r = await synchroniserSms(JOURS);
+        const r = await synchroniserSms(JOURS, { lireSms: !arret.current });     // lecture des SMS refusée : on continue seulement avec les notifications
         if (r.erreur) arret.current = true;
         else if (r.nouvelles > 0) toast.succes(`${r.nouvelles} nouveau(x) paiement(s) lu(s) dans vos SMS`);
       } finally { enCours.current = false; }

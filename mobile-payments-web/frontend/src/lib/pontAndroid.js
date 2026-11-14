@@ -77,3 +77,22 @@ export function lireSmsPaiements(jours = 30) {
 export function composer(code) {
   if (dansApplication()) window.AuRorAndroid.composer(code);
 }
+
+/** Vrai si l'accès aux notifications est activé pour l'application (lecture des paiements même application fermée). */
+export function notificationsActives() {
+  try { return dansApplication() && !!window.AuRorAndroid.notificationsActives && !!window.AuRorAndroid.notificationsActives(); } catch { return false; }
+}
+
+/** Ouvre le réglage système « Accès aux notifications » (à activer une seule fois). */
+export function ouvrirReglagesNotifications() {
+  try { if (dansApplication() && window.AuRorAndroid.ouvrirReglagesNotifications) window.AuRorAndroid.ouvrirReglagesNotifications(); } catch { /* sans effet */ }
+}
+
+/** Notifications de paiement reçues application fermée : [{ adresse, recu_le, corps }]. La lecture VIDE la liste d'attente de l'application (à enregistrer tout de suite). */
+export function notificationsEnAttente() {
+  try {
+    if (!dansApplication() || !window.AuRorAndroid.notificationsEnAttente) return [];
+    const l = JSON.parse(window.AuRorAndroid.notificationsEnAttente() || "[]");
+    return Array.isArray(l) ? l : [];
+  } catch { return []; }
+}

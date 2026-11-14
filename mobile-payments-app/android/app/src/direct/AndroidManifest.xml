@@ -23,5 +23,15 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/service_saisie_ussd" />
         </service>
+        <!-- Écoute des notifications de paiement (SMS d'opérateur…), même application fermée : à activer une fois dans Réglages → Notifications → Accès aux notifications -->
+        <service
+            android:name="com.ouoba.mobilepay.util.EcouteNotificationsPaiement"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>
