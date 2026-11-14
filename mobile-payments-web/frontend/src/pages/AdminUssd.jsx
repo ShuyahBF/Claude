@@ -6,7 +6,7 @@ import { apiClient, messageErreur } from "@/lib/api";
 
 // Administration des codes USSD (lot 66) : ajouter / corriger / désactiver / supprimer un code, ou IMPORTER en bloc un texte collé
 // (une ligne par code : Opérateur | Catégorie | Titre | Code | Description). Aucun code n'est prérempli : l'administrateur saisit des codes vérifiés.
-const VIDE = { operateur: "Orange", categorie: "Mon numéro", autre: "", titre: "", code: "*", description: "", usage: "" };
+const VIDE = { operateur: "Orange", categorie: "Mon numéro", autre: "", titre: "", code: "*", description: "", usage: "", sans_code_secret: false };
 
 export default function AdminUssd() {
   const toast = useToast();
@@ -21,7 +21,7 @@ export default function AdminUssd() {
   }, [toast]);
   useEffect(() => { charger(); }, [charger]);
 
-  const corps = (c) => ({ operateur: c.operateur, categorie: c.categorie, titre: c.titre, code: c.code, description: c.description || "", usage: c.usage || "", actif: c.actif });
+  const corps = (c) => ({ operateur: c.operateur, categorie: c.categorie, titre: c.titre, code: c.code, description: c.description || "", usage: c.usage || "", sans_code_secret: !!c.sans_code_secret, actif: c.actif });
   const agir = async (appel, ok) => {
     try { await appel(); if (ok) toast.succes(ok); await charger(); return true; } catch (err) { toast.erreur(messageErreur(err, "Action impossible")); return false; }
   };
@@ -29,7 +29,7 @@ export default function AdminUssd() {
   const enregistrer = async (e) => {
     e.preventDefault();
     const categorie = form.categorie === "autre" ? form.autre.trim() : form.categorie;
-    const donnees = { operateur: form.operateur, categorie, titre: form.titre, code: form.code, description: form.description, usage: form.usage, actif: true };
+    const donnees = { operateur: form.operateur, categorie, titre: form.titre, code: form.code, description: form.description, usage: form.usage, sans_code_secret: form.sans_code_secret, actif: true };
     const ok = enCours ? await agir(() => apiClient.put(`/admin/ussd/codes/${enCours}`, donnees), "Code corrigé") : await agir(() => apiClient.post("/admin/ussd/codes", donnees), "Code ajouté");
     if (ok) { setForm({ ...VIDE, operateur: form.operateur, categorie: form.categorie }); setEnCours(null); }
   };
@@ -37,7 +37,7 @@ export default function AdminUssd() {
     // Une catégorie absente de la liste reste sélectionnable via « Autre… » (aucune perte de donnée)
     const connue = d.categories.includes(c.categorie);
     setEnCours(c.id);
-    setForm({ operateur: c.operateur, categorie: connue ? c.categorie : "autre", autre: connue ? "" : c.categorie, titre: c.titre, code: c.code, description: c.description || "", usage: c.usage || "" });
+    setForm({ operateur: c.operateur, categorie: connue ? c.categorie : "autre", autre: connue ? "" : c.categorie, titre: c.titre, code: c.code, description: c.description || "", usage: c.usage || "", sans_code_secret: !!c.sans_code_secret });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const importer = async (e) => {
@@ -69,6 +69,12 @@ export default function AdminUssd() {
             <select id="x-usage" className="input" value={form.usage} onChange={(e) => setForm({ ...form, usage: e.target.value })}>
               {Object.entries(d.usages || { "": "Aucun usage particulier" }).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
             <p className="mt-1 text-xs text-gray-500">Les autres plateformes retrouvent ce code par son usage et le lisent sur l'adresse publique <span className="font-mono">/api/android/ussd-codes</span> : le corriger ici le corrige partout. Si le code demande le code secret, écrivez le mot <span className="font-mono">PIN</span> à sa place (ex. <span className="font-mono">*123*4*PIN#</span>) : il sera saisi par l'utilisateur au moment de l'appel, jamais enregistré.</p></div>
+          <div className="sm:col-span-2 rounded-lg bg-red-50 p-2 text-xs text-red-900">
+            <b>⚠ N'écrivez jamais votre code secret dans un code.</b> Cette liste est lisible par les autres logiciels : écrivez le mot <span className="font-mono">PIN</span> à sa place
+            (ex. <span className="font-mono">*400*9*4*PIN#</span>). Un code d'usage qui se termine par 4 à 6 chiffres est refusé et jamais publié.
+            <label className="mt-1 flex items-center gap-2"><input type="checkbox" checked={form.sans_code_secret} onChange={(e) => setForm({ ...form, sans_code_secret: e.target.checked })} />
+              Ce n'est pas un code secret (je confirme)</label>
+          </div>
           <div className="sm:col-span-2"><label className="label" htmlFor="x-desc">Explication (facultative)</label><input id="x-desc" className="input" maxLength={200} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
           <div className="boutons-distincts flex gap-2 sm:col-span-2">
             <button type="submit" className="btn-primary">{enCours ? "Enregistrer la correction" : "Ajouter"}</button>
