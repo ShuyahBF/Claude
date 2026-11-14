@@ -194,7 +194,7 @@ fun PaymentApp(
 
 /** Mention de non-affiliation, imposée par les règles du Play Store (noms d'opérateurs cités). */
 const val MENTION_NON_AFFILIATION =
-    "Paiement Mobile n'est affilié ni à Orange, ni à Moov Africa, ni à Telecel Faso ; " +
+    "auRor n'est affilié ni à Orange, ni à Moov Africa, ni à Telecel Faso ; " +
         "les marques citées appartiennent à leurs propriétaires."
 
 /**
@@ -212,7 +212,7 @@ fun AProposDialog(onDismiss: () -> Unit) {
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Raccourcis Paiement Mobile — version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleSmall)
+                Text("auRor — version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleSmall)
                 Text(
                     "L'application prépare le code USSD et ouvre le composeur de votre téléphone. " +
                         "Elle ne réalise aucune transaction et ne demande jamais votre code secret : " +

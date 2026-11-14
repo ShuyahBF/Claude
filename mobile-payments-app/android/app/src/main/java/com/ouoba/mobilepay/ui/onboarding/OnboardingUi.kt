@@ -126,7 +126,7 @@ private fun ProfileStep(state: OnboardingUiState, viewModel: OnboardingViewModel
         // Lot 16 : information sur l'usage des données saisies, avec lien vers la politique publique
         val context = LocalContext.current
         Text(
-            "Ces informations servent uniquement à votre compte Paiement Mobile. " +
+            "Ces informations servent uniquement à votre compte auRor. " +
                 "Aucun code secret Mobile Money ne vous sera jamais demandé.",
             style = MaterialTheme.typography.bodySmall
         )
