@@ -2,4 +2,5 @@
 <!-- Version « paiement direct » seulement : nom affiché distinct, pour la distinguer de l'application déjà installée -->
 <resources>
     <string name="app_name">auRor direct</string>
+    <string name="saisie_ussd_description">auRor direct tape votre code secret dans la fenêtre de l\'opérateur, uniquement pendant un paiement que vous avez validé dans auRor. Il ne lit rien d\'autre.</string>
 </resources>

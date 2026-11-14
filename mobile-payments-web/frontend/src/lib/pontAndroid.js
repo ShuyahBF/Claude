@@ -51,6 +51,16 @@ export function payerDirectMontant({ operateur, code, resume, montant }) {
   return promesse;
 }
 
+/**
+ * Paiement direct EN DEUX TEMPS : `code` est SANS code secret. L'application affiche la fenêtre de sécurité (montant retapé + code secret), compose le code,
+ * et un service d'accessibilité tape le code secret dans la fenêtre de l'opérateur. Rend { texte } (réponse finale) ou { erreur }.
+ */
+export function payerDirectDialogue({ operateur, code, resume, montant }) {
+  const [id, promesse] = attendreRetour();
+  window.AuRorAndroid.payerDirectDialogue(id, operateur, code, resume, String(montant));
+  return promesse;
+}
+
 /** Lit les SMS de paiement reçus ces derniers jours (version « direct » seulement) : rend { sms: [{ adresse, recu_le, corps }] } ou { erreur }. */
 export function lireSmsPaiements(jours = 30) {
   const [id, promesse] = attendreRetour();
