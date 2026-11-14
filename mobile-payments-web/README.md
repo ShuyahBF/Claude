@@ -162,7 +162,7 @@ SAWALI SMART SYSTEMS — contact@sawalismartsystems.com — +226 25 65 81 65 (af
 
 ## Base centrale des codes USSD, lisible par les autres plateformes (lot 110)
 
-Le carnet de codes USSD (page Administration → Carnet USSD) est la **source unique** des codes de tous les logiciels du propriétaire
+La base des codes USSD (page Administration → Codes USSD) est la **source unique** des codes de tous les logiciels du propriétaire
 (Concentration, SAWALI, ALBARKA…). Chaque code peut recevoir un **usage** (solde, relevé, renvoi de notification) : les autres plateformes
 retrouvent le bon code par son usage, sans en connaître le texte, et un code corrigé ici est corrigé partout.
 
