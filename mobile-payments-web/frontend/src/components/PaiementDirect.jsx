@@ -2,20 +2,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/Toast";
 import { apiClient, fcfa, messageErreur } from "@/lib/api";
 import { capacites, lireSmsPaiements, payerDirectMontant } from "@/lib/pontAndroid";
+import { analyserSms, chargerLignes, confirmePaiement, enregistrerLignes, fusionner } from "@/lib/smsPaiements";
 
 // Paiement DIRECT dans l'application Android « direct » (lot 120). Plus de QR code ni de légende :
 //  1. une fenêtre de SÉCURITÉ de l'application demande de RETAPER le montant et de saisir le code secret, puis envoie la séquence USSD ;
 //  2. le paiement passe à « envoyé » : il ne peut PLUS être abandonné ;
 //  3. l'application guette le SMS de retour de l'opérateur (si la lecture des SMS est disponible) : dès qu'il arrive avec le même montant, l'opération est CONFIRMÉE toute seule ;
 //  4. problème de réseau et le marchand confirme la réception : « J'ai payé ».
-const MONTANT = /(\d[\d .,  ]*)\s*(?:fcfa|f\s?cfa|xof|cfa)\b/i;
 const DELAI_MS = 5 * 60 * 1000;       // on guette le SMS pendant 5 minutes
 const PAS_MS = 8000;
+// Confirmation : le MONTANT et le CODE MARCHAND doivent figurer dans le SMS (le montant seul ne suffit jamais) : voir confirmePaiement (lib/smsPaiements.js).
 
-/** Montant (entier) lu dans le texte d'un SMS, ou null. */
-const montantDuSms = (corps) => { const m = corps.match(MONTANT); const n = m ? parseInt(m[1].replace(/\D/g, ""), 10) : NaN; return Number.isNaN(n) ? null : n; };
-/** Ce SMS ressemble-t-il à la confirmation d'un paiement envoyé (et non à de l'argent reçu) ? */
-const estConfirmationPaiement = (corps) => /pay|paiement|achat|effectu|envoy|transf|d[ée]bit/i.test(corps) && !/re[cç]u de|vous avez re[cç]u/i.test(corps);
 
 export default function PaiementDirect({ paiement, onTermine }) {
   const toast = useToast();
@@ -56,8 +53,14 @@ export default function PaiementDirect({ paiement, onTermine }) {
       if (arrete || Date.now() - debut > DELAI_MS) return;
       const r = await lireSmsPaiements(1);
       if (arrete || !r.sms) return;
-      const trouve = r.sms.find((s) => s.recu_le >= envoyeLe.current - 60000 && montantDuSms(s.corps) === paiement.montant && estConfirmationPaiement(s.corps));
-      if (trouve && await changerStatut("effectue")) { setEtat("confirme"); toast.succes("Paiement confirmé par le SMS de l'opérateur"); }
+      const critere = { montant: paiement.montant, codeMarchand: paiement.marchand?.code, libelle: paiement.marchand?.libelle, envoyeLe: envoyeLe.current };
+      const trouve = r.sms.find((x) => confirmePaiement(x, critere));
+      if (trouve && await changerStatut("effectue")) {
+        // La ligne du SMS est aussi gardée sur le téléphone (historique des SMS de paiement)
+        const ligne = analyserSms(trouve);
+        if (ligne) enregistrerLignes(fusionner(chargerLignes(), [ligne]).lignes);
+        setEtat("confirme"); toast.succes("Paiement confirmé par le SMS de l'opérateur");
+      }
     };
     const t = setInterval(verifier, PAS_MS);
     verifier();
@@ -78,10 +81,10 @@ export default function PaiementDirect({ paiement, onTermine }) {
         </div>
         {paiement.marchand && <p className="text-sm text-gray-600">Marchand : <b>{paiement.marchand.libelle || "sans nom"}</b> <span className="font-mono">({paiement.marchand.code})</span></p>}
 
-        {/* RAPPEL du code USSD (important) : toujours visible, le code secret est remplacé par des points */}
+        {/* RAPPEL du code USSD (important) : toujours visible, SANS la partie code secret (saisie à l'étape suivante) */}
         <div>
-          <div className="rounded-lg bg-nuit-900 px-4 py-3 text-center font-mono text-xl tracking-wider text-white sm:text-2xl" data-testid="rappel-code">{paiement.code_ussd.replace("PIN", "••••")}</div>
-          <p className="mt-1 text-center text-xs text-gray-500">Code envoyé à l'opérateur (votre code secret n'est jamais affiché).</p>
+          <div className="rounded-lg bg-nuit-900 px-4 py-3 text-center font-mono text-xl tracking-wider text-white sm:text-2xl" data-testid="rappel-code">{paiement.code_ussd.replace(/\*?PIN/, "")}</div>
+          <p className="mt-1 text-center text-xs text-gray-500">Étape suivante : une fenêtre vous demande de retaper le montant et votre code secret.</p>
         </div>
 
         {etat === "dialogue" && <p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900">⏳ Fenêtre de sécurité ouverte : retapez le montant et saisissez votre code secret.</p>}
@@ -99,7 +102,7 @@ export default function PaiementDirect({ paiement, onTermine }) {
         {etat === "envoye" && (
           <div className="space-y-2">
             <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
-              <b>📨 Code envoyé à l'opérateur.</b> {sms ? "L'opération sera confirmée automatiquement à la réception de son SMS." : "Attendez le SMS de l'opérateur."}
+              <b>📨 Code envoyé à l'opérateur.</b> {sms ? "L'opération sera confirmée automatiquement à la réception de son SMS (montant et code marchand identiques)." : "Attendez le SMS de l'opérateur."}
               {" "}Ce paiement ne peut plus être abandonné.
             </p>
             {reponse && <p className="whitespace-pre-wrap rounded-lg bg-gray-50 p-3 text-sm text-gray-700"><b>Réponse de l'opérateur :</b> {reponse}</p>}
