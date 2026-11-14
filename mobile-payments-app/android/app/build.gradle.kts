@@ -18,8 +18,8 @@ android {
         targetSdk = 35
         // versionCode : nombre entier qui DOIT augmenter à chaque envoi sur le Play Store ;
         // versionName : numéro affiché à l'utilisateur (et envoyé à SAWALI dans le signal de présence)
-        versionCode = 5
-        versionName = "1.3.1"
+        versionCode = 6
+        versionName = "1.3.2"
 
         // Lot 17 : PAIEMENT DIRECT (option, désactivée par défaut). La version du Play Store reste celle qui ouvre seulement le composeur
         // (aucune autorisation sensible). La version « directe » (APK installé à la main, -PmodeDirect=true) ajoute les autorisations
