@@ -17,8 +17,8 @@ android {
         targetSdk = 35
         // versionCode : nombre entier qui DOIT augmenter à chaque envoi sur le Play Store ;
         // versionName : numéro affiché à l'utilisateur (et envoyé à SAWALI dans le signal de présence)
-        versionCode = 7
-        versionName = "2.0.0"
+        versionCode = 8
+        versionName = "2.0.1"
 
         // Adresse du site auRor affiché dans l'application (version hybride, lot 18) : TOUT auRor (marchands, QR codes, géolocalisation, historique…).
         // Surcharge possible pour un essai : -PsiteUrl=https://autre-adresse/
@@ -95,6 +95,13 @@ android {
         debug {
             isMinifyEnabled = false
         }
+    }
+
+    // Essai d'installation : -PsansSms=true retire l'autorisation de lire les SMS de la version « direct » (Google Play Protect bloque parfois les APK qui
+    // cumulent SMS, Appels et position). Paiement direct, caméra et position restent ; la lecture des SMS n'est alors pas proposée.
+    if ((project.findProperty("sansSms") as String?) == "true") {
+        sourceSets.maybeCreate("directDebug").manifest.srcFile("src/sanssms/AndroidManifest.xml")
+        sourceSets.maybeCreate("directRelease").manifest.srcFile("src/sanssms/AndroidManifest.xml")
     }
 
     buildFeatures {
