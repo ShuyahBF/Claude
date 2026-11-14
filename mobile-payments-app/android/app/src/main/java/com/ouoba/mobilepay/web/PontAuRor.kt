@@ -2,6 +2,10 @@ package com.ouoba.mobilepay.web
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import com.ouoba.mobilepay.util.SaisieUssd
 import android.content.pm.PackageManager
 import android.webkit.JavascriptInterface
 import com.ouoba.mobilepay.BuildConfig
@@ -29,7 +33,7 @@ class PontAuRor(private val activite: WebActivity) {
     /** Ce que cette version de l'application sait faire. */
     @JavascriptInterface
     fun capacites(): String = JSONObject().put("application", true).put("version", BuildConfig.VERSION_NAME)
-        .put("direct", BuildConfig.MODE_DIRECT).put("sms", BuildConfig.MODE_DIRECT && declare(Manifest.permission.READ_SMS)).toString()
+        .put("direct", BuildConfig.MODE_DIRECT).put("dialogue", BuildConfig.MODE_DIRECT).put("sms", BuildConfig.MODE_DIRECT && declare(Manifest.permission.READ_SMS)).toString()
 
     /** Vrai si l'application déclare cette autorisation (la version « direct sans SMS » n'a pas READ_SMS : la lecture des SMS n'est alors pas proposée). */
     private fun declare(permission: String): Boolean = try {
@@ -59,6 +63,43 @@ class PontAuRor(private val activite: WebActivity) {
      */
     @JavascriptInterface
     fun payerDirectMontant(id: String, operateur: String, code: String, resume: String, montant: String) = fenetrePaiement(id, operateur, code, resume, montant)
+
+    /**
+     * Paiement direct EN DEUX TEMPS (Orange et autres opérateurs qui demandent le code secret dans une seconde fenêtre) : `code` est SANS code secret.
+     * Même fenêtre de sécurité (montant retapé + code secret), puis le code est composé et le service d'accessibilité tape le code secret dans la fenêtre de l'opérateur.
+     * Rend {texte} (réponse finale de l'opérateur) ou {erreur}.
+     */
+    @JavascriptInterface
+    fun payerDirectDialogue(id: String, operateur: String, code: String, resume: String, montant: String) {
+        activite.runOnUiThread {
+            if (!UssdDirect.disponible()) { activite.retour(id, JSONObject().put("erreur", "Le paiement direct n'est pas disponible dans cette version de l'application.")); return@runOnUiThread }
+            var termine = false
+            fun finir(r: JSONObject) { if (!termine) { termine = true; activite.retour(id, r) } }
+            FenetrePaiement(activite).afficher(FenetrePaiement.lire(resume).let { if (it.operateur.isBlank()) it.copy(operateur = operateur) else it }, montant, true,
+                surValider = { pin ->
+                    // Le service d'accessibilité doit être activé une fois : sinon on ouvre les réglages et on explique
+                    if (!SaisieUssd.serviceActif(contexte)) {
+                        try { contexte.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+                        finir(JSONObject().put("erreur", "Activation nécessaire (une seule fois) : dans Réglages → Accessibilité → Applications installées, activez « auRor direct », puis revenez ici et appuyez sur Réessayer. " +
+                            "Si Android grise l'option : Réglages → Applications → auRor direct → ⋮ → « Autoriser les paramètres restreints »."))
+                        return@afficher
+                    }
+                    activite.demanderAutorisations(arrayOf(Manifest.permission.CALL_PHONE)) { _ ->
+                        if (!UssdDirect.autorise(contexte)) { finir(JSONObject().put("erreur", "Autorisation « Appels » refusée : utilisez « Composer sur ce téléphone ».")); return@demanderAutorisations }
+                        // Armer le service (il tapera le code secret), puis composer le code SANS code secret
+                        SaisieUssd.armer(pin) { r ->
+                            // Retour dans auRor une fois la réponse lue
+                            try { contexte.startActivity(Intent(contexte, WebActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+                            finir(if (r.texte != null) JSONObject().put("texte", r.texte) else JSONObject().put("erreur", r.erreur ?: "Échec de l'envoi."))
+                        }
+                        try {
+                            contexte.startActivity(Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(code.trim()))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        } catch (e: Exception) { SaisieUssd.terminer(UssdDirect.Reponse(null, "Impossible de composer le code : " + (e.message ?: e.javaClass.simpleName))) }
+                    }
+                },
+                surAnnuler = { finir(JSONObject().put("erreur", "Paiement annulé : rien n'a été envoyé.")) })
+        }
+    }
 
     private fun fenetrePaiement(id: String, operateur: String, code: String, resume: String, montant: String?) {
         activite.runOnUiThread {

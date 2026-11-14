@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/Toast";
 import { apiClient, fcfa, messageErreur } from "@/lib/api";
-import { capacites, lireSmsPaiements, payerDirectMontant } from "@/lib/pontAndroid";
+import { capacites, lireSmsPaiements, payerDirectDialogue, payerDirectMontant } from "@/lib/pontAndroid";
 import { enLettres } from "@/lib/nombreEnLettres";
 import { analyserSms, chargerLignes, confirmePaiement, enregistrerLignes, fusionner } from "@/lib/smsPaiements";
 
@@ -39,9 +39,13 @@ export default function PaiementDirect({ paiement, onTermine }) {
       montant: paiement.montant ? fcfa(paiement.montant) : "", lettres: paiement.montant ? `${enLettres(paiement.montant)} francs` : "",
       marchand: paiement.marchand ? (paiement.marchand.libelle || "Marchand sans nom") : "", code: paiement.marchand?.code || "",
     });
-    // Le code secret est saisi dans la fenêtre de l'application : si la séquence du service ne le prévoit pas (pas de {pin}), il est ajouté en dernier élément avant le #
-    const code = paiement.code_ussd.includes("PIN") ? paiement.code_ussd : paiement.code_ussd.replace(/#\s*$/, "*PIN#");
-    const r = await payerDirectMontant({ operateur: paiement.operateur, code, resume, montant: paiement.montant });
+    // Deux façons d'envoyer, selon le service :
+    //  - la séquence contient {pin} (code secret au milieu du code) : envoi en UNE fois, le mot PIN est remplacé par l'application ;
+    //  - sinon (cas d'Orange : l'opérateur demande le code secret dans une seconde fenêtre) : le code est composé SANS code secret et l'application tape le code secret dans la fenêtre
+    const enUneFois = paiement.code_ussd.includes("PIN") || !capacites()?.dialogue;
+    const r = enUneFois
+      ? await payerDirectMontant({ operateur: paiement.operateur, code: paiement.code_ussd.includes("PIN") ? paiement.code_ussd : paiement.code_ussd.replace(/#\s*$/, "*PIN#"), resume, montant: paiement.montant })
+      : await payerDirectDialogue({ operateur: paiement.operateur, code: paiement.code_ussd, resume, montant: paiement.montant });
     if (r.erreur) { setMessage(r.erreur); setEtat("non_envoye"); return; }
     envoyeLe.current = Date.now();
     setReponse(r.texte || "");
