@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import com.ouoba.mobilepay.util.JournalUssd
+import com.ouoba.mobilepay.util.NotificationsPaiement
 import com.ouoba.mobilepay.util.SaisieUssd
 import android.content.pm.PackageManager
 import android.webkit.JavascriptInterface
@@ -34,7 +35,7 @@ class PontAuRor(private val activite: WebActivity) {
     /** Ce que cette version de l'application sait faire. */
     @JavascriptInterface
     fun capacites(): String = JSONObject().put("application", true).put("version", BuildConfig.VERSION_NAME)
-        .put("direct", BuildConfig.MODE_DIRECT).put("dialogue", BuildConfig.MODE_DIRECT).put("sms", BuildConfig.MODE_DIRECT && declare(Manifest.permission.READ_SMS)).toString()
+        .put("direct", BuildConfig.MODE_DIRECT).put("dialogue", BuildConfig.MODE_DIRECT).put("notifications", BuildConfig.MODE_DIRECT).put("sms", BuildConfig.MODE_DIRECT && declare(Manifest.permission.READ_SMS)).toString()
 
     /** Vrai si l'application déclare cette autorisation (la version « direct sans SMS » n'a pas READ_SMS : la lecture des SMS n'est alors pas proposée). */
     private fun declare(permission: String): Boolean = try {
@@ -46,6 +47,20 @@ class PontAuRor(private val activite: WebActivity) {
     fun composer(code: String) {
         activite.runOnUiThread { openDialerWithUssd(contexte, code) }
     }
+
+    /** Vrai si l'accès aux notifications est activé pour auRor direct (lecture des paiements application fermée). */
+    @JavascriptInterface
+    fun notificationsActives(): Boolean = NotificationsPaiement.actif(contexte)
+
+    /** Ouvre le réglage système « Accès aux notifications » (à activer une seule fois). */
+    @JavascriptInterface
+    fun ouvrirReglagesNotifications() {
+        activite.runOnUiThread { try { contexte.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {} }
+    }
+
+    /** Notifications de paiement reçues pendant que l'application était fermée : tableau JSON [{adresse, recu_le, corps}] ; le fichier d'attente est VIDÉ par cette lecture. */
+    @JavascriptInterface
+    fun notificationsEnAttente(): String = NotificationsPaiement.retirer(contexte)
 
     /** Journal des envois USSD (code composé, réponses exactes, échecs ; le code secret est masqué). */
     @JavascriptInterface
