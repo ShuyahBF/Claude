@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
+import { LIBELLE_VERSION } from "@/version";
 import { apiClient, fcfa, messageErreur } from "@/lib/api";
 import { capacites, composer, lireSmsPaiements, payerDirectDialogue, journalUssd, payerDirectMontant } from "@/lib/pontAndroid";
 import { enLettres } from "@/lib/nombreEnLettres";
@@ -21,6 +22,7 @@ export default function PaiementDirect({ paiement, onTermine }) {
   const [etat, setEtat] = useState("dialogue");        // dialogue | non_envoye | envoye | confirme
   const [message, setMessage] = useState("");
   const { user } = useAuth();
+  const [chaineMasquee, setChaineMasquee] = useState("");   // même chaîne, code secret remplacé par **** : seule celle-ci est copiée pour le support
   const [chaine, setChaine] = useState("");               // chaîne exactement envoyée (rendue par l'application) : affichée seulement si le débogage est activé dans le profil
   const [journal, setJournal] = useState("");             // journal des envois USSD (ce qui a été composé et la réponse exacte), relu à chaque changement d'état
   useEffect(() => { if (etat === "non_envoye" || etat === "envoye") setJournal(journalUssd()); }, [etat]);
@@ -52,7 +54,7 @@ export default function PaiementDirect({ paiement, onTermine }) {
     const r = enUneFois
       ? await payerDirectMontant({ operateur: paiement.operateur, code: paiement.code_ussd.includes("PIN") ? paiement.code_ussd : paiement.code_ussd.replace(/#\s*$/, "*PIN#"), resume, montant: paiement.montant })
       : await payerDirectDialogue({ operateur: paiement.operateur, code: paiement.code_ussd, resume, montant: paiement.montant });
-    setChaine(r.chaine || "");
+    setChaine(r.chaine || ""); setChaineMasquee(r.chaine_masquee || "");
     if (r.erreur) { setMessage(r.erreur); setEtat("non_envoye"); return; }
     envoyeLe.current = Date.now();
     setReponse(r.texte || "");
@@ -86,6 +88,25 @@ export default function PaiementDirect({ paiement, onTermine }) {
     return () => { arrete = true; clearInterval(t); };
   }, [etat, sms, paiement.montant, changerStatut, toast]);
 
+  /** Débogage : copie dans le presse-papiers tout ce qu'il faut pour comprendre un paiement (version, mode, chaîne SANS code secret, message, journal). */
+  const copierInfos = async () => {
+    const cap = capacites() || {};
+    const texte = [
+      `auRor site ${LIBELLE_VERSION} · application ${cap.version || "?"}`,
+      `Opérateur : ${paiement.operateur} · mode : ${user?.pin_simultane?.[paiement.operateur] ? "PIN envoyé en même temps" : "dialogue du PIN"}`,
+      `Service : ${paiement.service_nom} · montant : ${paiement.montant || "?"} · marchand : ${paiement.marchand?.code || "?"}`,
+      `État : ${etat}${message ? ` · message : ${message}` : ""}${reponse ? ` · réponse : ${reponse}` : ""}`,
+      `Chaîne envoyée (code secret masqué) : ${chaineMasquee || "?"}`,
+      "--- Journal ---", journal || "(vide)",
+    ].join("\n");
+    try { await navigator.clipboard.writeText(texte); }
+    catch {                                                  // repli : zone de texte temporaire (anciens navigateurs intégrés)
+      const t = document.createElement("textarea"); t.value = texte; document.body.appendChild(t); t.select();
+      try { document.execCommand("copy"); } finally { document.body.removeChild(t); }
+    }
+    toast.succes("Informations copiées (code secret masqué) : collez-les dans votre message");
+  };
+
   const jAiPaye = async () => { if (await changerStatut("effectue")) { setEtat("confirme"); toast.succes("Paiement noté comme effectué"); } };
   const abandonner = async () => { if (await changerStatut("abandonne")) onTermine(); };
 
@@ -118,6 +139,10 @@ export default function PaiementDirect({ paiement, onTermine }) {
 
         {user?.debug_chaine && chaine && (etat === "non_envoye" || etat === "envoye") && (
           <p className="break-all rounded-lg border border-amber-300 bg-amber-50 p-3 font-mono text-xs text-amber-900" data-testid="chaine-envoyee">
+            <span className="float-right ml-2">
+              <button type="button" data-testid="copier-debug" title="Copier les informations pour le support (code secret masqué)" aria-label="Copier les informations pour le support"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-600 text-lg text-white shadow active:scale-95" onClick={copierInfos}>📋</button>
+            </span>
             <b>🐞 Chaîne envoyée (débogage, en clair) :</b> {chaine}
           </p>
         )}
