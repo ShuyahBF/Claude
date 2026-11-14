@@ -163,3 +163,8 @@ le paiement n'aboutit pas et sa réponse s'affiche. Un service avec code secret 
 
 **Sécurité du pont** : seules les pages d'auRor se chargent dans la fenêtre (tout autre lien s'ouvre dans le navigateur) ; le site ne peut jamais envoyer un code en silence (confirmation native obligatoire).
 Les SMS lus restent sur le téléphone. Hors connexion : page « Pas de connexion » avec bouton « Réessayer ».
+
+**Google Play Protect (version « direct »)** : l'APK qui cumule SMS, Appels, caméra et position peut être « bloqué pour protéger votre appareil » (message sans bouton « installer quand même »). Deux solutions :
+- `gradle -PsansSms=true assembleDirectDebug` : même version SANS l'autorisation de lire les SMS (paiement direct, caméra, position conservés ; la lecture des SMS n'est alors pas proposée) ;
+- ou suspendre temporairement l'analyse Play Protect (Play Store → profil → Play Protect → ⚙ → « Analyser les applications avec Play Protect »), installer, puis la réactiver.
+**Conflit à l'installation de la version « standard »** : elle porte le même identifiant que l'ancienne application auRor (« Raccourcis Paiement Mobile ») signée avec une autre clé : désinstaller l'ancienne avant. Les données du compte sont sur le serveur, rien n'est perdu.

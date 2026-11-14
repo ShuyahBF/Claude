@@ -34,7 +34,12 @@ class PontAuRor(private val activite: WebActivity) {
     /** Ce que cette version de l'application sait faire. */
     @JavascriptInterface
     fun capacites(): String = JSONObject().put("application", true).put("version", BuildConfig.VERSION_NAME)
-        .put("direct", BuildConfig.MODE_DIRECT).put("sms", BuildConfig.MODE_DIRECT).toString()
+        .put("direct", BuildConfig.MODE_DIRECT).put("sms", BuildConfig.MODE_DIRECT && declare(Manifest.permission.READ_SMS)).toString()
+
+    /** Vrai si l'application déclare cette autorisation (la version « direct sans SMS » n'a pas READ_SMS : la lecture des SMS n'est alors pas proposée). */
+    private fun declare(permission: String): Boolean = try {
+        contexte.packageManager.getPackageInfo(contexte.packageName, PackageManager.GET_PERMISSIONS).requestedPermissions?.contains(permission) == true
+    } catch (e: Exception) { false }
 
     /** Ouvre le composeur avec le code pré-rempli (aucune autorisation) : l'utilisateur appuie lui-même sur « Appeler ». */
     @JavascriptInterface
