@@ -1,15 +1,13 @@
-import { useState } from "react";
-import { capacites, lireSmsPaiements } from "@/lib/pontAndroid";
-import { analyserSms, chargerLignes, enregistrerLignes, fusionner } from "@/lib/smsPaiements";
+import { useEffect, useState } from "react";
+import { EVENEMENT_MAJ, lireResume, synchroniserSms } from "@/lib/lectureSms";
+import { capacites } from "@/lib/pontAndroid";
+import { chargerLignes } from "@/lib/smsPaiements";
 
 // Lecture des SMS de paiement (application Android auRor, version « direct » seulement) : bloc REPLIABLE, affiché REPLIÉ avec un récapitulatif
 // (opérateur, nombre de SMS lus, nombre de paiements enregistrés, date et heure de la dernière lecture).
 // Chaque SMS de paiement devient une LIGNE (date, sens, montant, bénéficiaire, solde, numéro de transaction) GARDÉE SUR LE TÉLÉPHONE : l'historique survit à la suppression des SMS.
 // Le texte complet des SMS n'est jamais enregistré et rien n'est envoyé à auRor.
-const CLE_RESUME = "auror_sms_resume";
-
-const lireResume = () => { try { return JSON.parse(localStorage.getItem(CLE_RESUME) || "null"); } catch { return null; } };
-const ecrireResume = (r) => { try { localStorage.setItem(CLE_RESUME, JSON.stringify(r)); } catch { /* stockage indisponible */ } };
+// La lecture se fait aussi AUTOMATIQUEMENT (ouverture, retour dans l'application, chaque minute : LectureSmsAuto) ; ce bloc se met à jour tout seul.
 const dateHeure = (ms) => new Date(ms).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
 const fcfa = (n) => `${Number(n).toLocaleString("fr-FR")} FCFA`;
 
@@ -19,23 +17,22 @@ export default function LectureSms() {
   const [etat, setEtat] = useState(null);                 // null | "lecture" | { erreur } | { lus, nouvelles }
   const [resume, setResume] = useState(lireResume);       // { le, lus, operateurs: [{ nom, nb }] }
   const [lignes, setLignes] = useState(() => chargerLignes());
-  if (!appli?.sms) return null;
+  // Mise à jour automatique quand la lecture automatique trouve de nouveaux paiements
+  useEffect(() => {
+    const maj = () => { setLignes(chargerLignes()); setResume(lireResume()); };
+    window.addEventListener(EVENEMENT_MAJ, maj);
+    return () => window.removeEventListener(EVENEMENT_MAJ, maj);
+  }, []);
 
   const lire = async () => {
     setEtat("lecture");
-    const r = await lireSmsPaiements(jours);
-    if (!r.sms) { setEtat(r); return; }
-    // Chaque SMS devient une ligne ; les lignes déjà connues ne sont pas dupliquées
-    const nouvelles = r.sms.map(analyserSms).filter(Boolean);
-    const { lignes: toutes, nouvelles: nb } = fusionner(chargerLignes(), nouvelles);
-    enregistrerLignes(toutes);
-    setLignes(toutes);
-    const par = {};
-    toutes.forEach((l) => { par[l.adresse] = (par[l.adresse] || 0) + 1; });
-    const nouveau = { le: Date.now(), lus: r.sms.length, operateurs: Object.entries(par).map(([nom, n]) => ({ nom, nb: n })).sort((a, b) => b.nb - a.nb) };
-    setResume(nouveau); ecrireResume(nouveau);
-    setEtat({ lus: r.sms.length, nouvelles: nb });
+    const r = await synchroniserSms(jours);
+    if (r.erreur) { setEtat({ erreur: r.erreur }); return; }
+    setLignes(r.lignes); setResume(r.resume);
+    setEtat({ lus: r.lus, nouvelles: r.nouvelles });
   };
+
+  if (!appli?.sms) return null;                      // (après les hooks : règle des hooks de React)
 
   return (
     <details className="card" data-testid="bloc-sms">

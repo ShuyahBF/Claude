@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import AlerteRenforcee from "@/components/AlerteRenforcee";
 import ArriveeMarchand from "@/components/ArriveeMarchand";
+import LectureSmsAuto from "@/components/LectureSmsAuto";            // lecture automatique des SMS de paiement (application direct)
 import MenuLateral from "@/components/MenuLateral";
 import SupportSawali from "@/components/SupportSawali";
 import VerrouEcran from "@/components/VerrouEcran";
@@ -119,6 +120,7 @@ export default function Layout() {
         <Outlet />
         <VerrouEcran />
         <ArriveeMarchand />
+        <LectureSmsAuto />
         <AlerteRenforcee />
       </main>
 

@@ -13,10 +13,11 @@ def test_reglages_de_depart_et_par_operateur(client, utilisateur):
     assert r.json()["pin_simultane"]["Orange"] is False
 
 
-def test_debug_chaine_par_compte(client, utilisateur):
+def test_debug_chaine_reserve_au_super_admin(client, utilisateur, admin):
     _, h, _ = utilisateur
-    assert client.put("/api/auth/debug-chaine", headers=h, json={"actif": True}).json()["debug_chaine"] is True
-    assert client.put("/api/auth/debug-chaine", headers=h, json={"actif": False}).json()["debug_chaine"] is False
+    assert client.put("/api/auth/debug-chaine", headers=h, json={"actif": True}).status_code == 403        # un utilisateur ordinaire ne peut pas l'activer
+    assert client.put("/api/auth/debug-chaine", headers=admin, json={"actif": True}).json()["debug_chaine"] is True
+    assert client.put("/api/auth/debug-chaine", headers=admin, json={"actif": False}).json()["debug_chaine"] is False
 
 
 def test_connexion_requise(client):

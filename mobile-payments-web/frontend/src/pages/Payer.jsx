@@ -241,7 +241,7 @@ export default function Payer() {
 
       {/* Lot 102 : marchands près de vous (géolocalisation activée) — un geste ouvre le paiement avec le marchand choisi */}
       {!operateur && !service && (
-        <MarchandsProches onChoisir={(m) => ouvrirDepuisQr(m.operateur, m.service_id || null, m.code)} />
+        <MarchandsProches accueil onChoisir={(m) => ouvrirDepuisQr(m.operateur, m.service_id || null, m.code)} />
       )}
 
       {/* Paiement rapide : nouveau code marchand ou liste de tous les marchands (chacun a son opérateur : on passe directement au montant) */}
