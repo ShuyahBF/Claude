@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import com.ouoba.mobilepay.util.JournalUssd
 import com.ouoba.mobilepay.util.SaisieUssd
 import android.content.pm.PackageManager
 import android.webkit.JavascriptInterface
@@ -45,6 +46,10 @@ class PontAuRor(private val activite: WebActivity) {
     fun composer(code: String) {
         activite.runOnUiThread { openDialerWithUssd(contexte, code) }
     }
+
+    /** Journal des envois USSD (code composé, réponses exactes, échecs ; le code secret est masqué). */
+    @JavascriptInterface
+    fun journalUssd(): String = JournalUssd.lire(contexte)
 
     /** Page « Pas de connexion » : bouton « Réessayer ». */
     @JavascriptInterface
@@ -87,7 +92,8 @@ class PontAuRor(private val activite: WebActivity) {
                     activite.demanderAutorisations(arrayOf(Manifest.permission.CALL_PHONE)) { _ ->
                         if (!UssdDirect.autorise(contexte)) { finir(JSONObject().put("erreur", "Autorisation « Appels » refusée : utilisez « Composer sur ce téléphone ».")); return@demanderAutorisations }
                         // Armer le service (il tapera le code secret), puis composer le code SANS code secret
-                        SaisieUssd.armer(pin) { r ->
+                        JournalUssd.ajouter(contexte, "Paiement en deux temps : code composé = ${code.trim()} (le code secret sera tapé dans la fenêtre de l'opérateur)")
+                        SaisieUssd.armer(contexte, pin) { r ->
                             // Retour dans auRor une fois la réponse lue
                             try { contexte.startActivity(Intent(contexte, WebActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
                             finir(if (r.texte != null) JSONObject().put("texte", r.texte) else JSONObject().put("erreur", r.erreur ?: "Échec de l'envoi."))
@@ -113,7 +119,9 @@ class PontAuRor(private val activite: WebActivity) {
                     val aEnvoyer = if (demandePin) code.replace("PIN", pin) else code
                     activite.demanderAutorisations(arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE)) { _ ->
                         if (!UssdDirect.autorise(contexte)) { finir(JSONObject().put("erreur", "Autorisation « Appels » refusée : utilisez « Composer sur ce téléphone ».")); return@demanderAutorisations }
+                        JournalUssd.ajouter(contexte, "Envoi direct : code = $aEnvoyer", pin)
                         UssdDirect.envoyer(contexte, operateur, aEnvoyer) { r ->
+                            JournalUssd.ajouter(contexte, if (r.texte != null) "Réponse de l'opérateur : ${r.texte}" else "Échec : ${r.erreur}")
                             finir(if (r.texte != null) JSONObject().put("texte", r.texte) else JSONObject().put("erreur", r.erreur ?: "Échec de l'envoi."))
                         }
                     }
