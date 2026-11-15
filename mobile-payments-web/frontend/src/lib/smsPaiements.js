@@ -203,3 +203,41 @@ export function fusionner(existantes, nouvelles) {
 export function enregistrerLignes(lignes, stockage = (typeof localStorage !== "undefined" ? localStorage : null)) {
   try { stockage.setItem(CLE, JSON.stringify(lignes)); return true; } catch { return false; }
 }
+
+/**
+ * Filtre des lignes de paiement (écran « Mes SMS de paiement »). Tous les critères sont facultatifs et se cumulent :
+ *  - texte    : cherché (sans accents ni majuscules) dans l'expéditeur, le bénéficiaire / le nom, la référence ; si la saisie est un numéro
+ *               (chiffres, espaces, « + »), la comparaison se fait sur les chiffres seuls (« 70 12 34 56 » trouve « +22670123456 ») ;
+ *  - min, max : montant en FCFA (bornes incluses) ; une seule borne suffit ; min = max donne un montant exact ;
+ *  - sens     : "tous" | "recu" | "paye" | "hors" (SMS qui ne sont pas des transactions : promo, alerte, message) ;
+ *  - adresse  : expéditeur exact (OrangeMoney, Moov Money…) ; "" = tous ;
+ *  - du, au   : dates « AAAA-MM-JJ » (jours inclus, heure locale).
+ */
+export function filtrerLignes(lignes, f = {}) {
+  const texte = sansAccents(f.texte).trim();
+  const chiffres = texte.replace(/[^\d]/g, "");
+  const saisieNumero = /^[\d\s+().-]+$/.test(texte) && chiffres.length >= 3;
+  const min = f.min === "" || f.min == null ? null : Number(f.min);
+  const max = f.max === "" || f.max == null ? null : Number(f.max);
+  const debut = f.du ? new Date(`${f.du}T00:00:00`).getTime() : null;
+  const fin = f.au ? new Date(`${f.au}T23:59:59.999`).getTime() : null;
+  return lignes.filter((l) => {
+    if (f.adresse && l.adresse !== f.adresse) return false;
+    if (f.sens === "recu" && !(estTransaction(l) && l.genre === "RECETTE")) return false;
+    if (f.sens === "paye" && !(estTransaction(l) && l.genre !== "RECETTE")) return false;
+    if (f.sens === "hors" && estTransaction(l)) return false;
+    if (min != null && !(Number(l.montant) >= min)) return false;
+    if (max != null && !(Number(l.montant) <= max)) return false;
+    if (debut != null && !(l.quand >= debut)) return false;
+    if (fin != null && !(l.quand <= fin)) return false;
+    if (texte) {
+      const champs = [l.adresse, l.tiers, l.reference].map(sansAccents).join(" ");
+      const numeros = String(l.tiers || "").replace(/[^\d]/g, "");
+      if (!(champs.includes(texte) || (saisieNumero && numeros.includes(chiffres)))) return false;
+    }
+    return true;
+  });
+}
+
+/** Vrai si au moins un critère du filtre est renseigné (affiche « Effacer les filtres »). */
+export const filtreActif = (f) => Boolean(f.texte?.trim() || f.min !== "" && f.min != null || f.max !== "" && f.max != null || (f.sens && f.sens !== "tous") || f.adresse || f.du || f.au);

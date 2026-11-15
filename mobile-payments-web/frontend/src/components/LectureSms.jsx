@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { EVENEMENT_MAJ, lireResume, synchroniserSms } from "@/lib/lectureSms";
 import { capacites, notificationsActives, ouvrirReglagesNotifications } from "@/lib/pontAndroid";
-import { chargerLignes, estTransaction } from "@/lib/smsPaiements";
+import { chargerLignes, estTransaction, filtrerLignes, filtreActif } from "@/lib/smsPaiements";
 
 // Lecture des SMS de paiement (application Android auRor, version « direct » seulement) : bloc REPLIABLE, affiché REPLIÉ avec un récapitulatif
 // (opérateur, nombre de SMS lus, nombre de paiements enregistrés, date et heure de la dernière lecture).
@@ -17,6 +17,12 @@ export default function LectureSms() {
   const [etat, setEtat] = useState(null);                 // null | "lecture" | { erreur } | { lus, nouvelles }
   const [resume, setResume] = useState(lireResume);       // { le, lus, operateurs: [{ nom, nb }] }
   const [lignes, setLignes] = useState(() => chargerLignes());
+  // Filtres de la liste (se cumulent, appliqués tout de suite : rien à enregistrer) : texte/numéro, montant mini/maxi, sens, expéditeur, dates
+  const FILTRE_VIDE = { texte: "", min: "", max: "", sens: "tous", adresse: "", du: "", au: "" };
+  const [filtre, setFiltre] = useState(FILTRE_VIDE);
+  const modif = (champ) => (e) => setFiltre((f) => ({ ...f, [champ]: e.target.value }));
+  const affichees = filtrerLignes(lignes, filtre);
+  const expediteurs = [...new Set(lignes.map((l) => l.adresse).filter(Boolean))].sort();
   // Seules les vraies transactions comptent ; promo, alerte de banque et message de personne restent affichés avec une pastille grise
   const nbTransactions = lignes.filter(estTransaction).length;
   const nbHorsDecompte = lignes.length - nbTransactions;
@@ -80,8 +86,33 @@ export default function LectureSms() {
         {etat?.lus !== undefined && <p className="text-sm text-gray-600">{etat.lus} SMS lus · {etat.nouvelles} nouveau(x) paiement(s) enregistré(s).</p>}
 
         {lignes.length > 0 && (
+          <div className="space-y-2 rounded-xl bg-gray-50 p-3" data-testid="filtres-sms">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <input type="search" className="input" placeholder="🔎 Numéro, nom ou référence" aria-label="Chercher un numéro, un nom ou une référence" value={filtre.texte} onChange={modif("texte")} />
+              <select className="input" aria-label="Sens du paiement" value={filtre.sens} onChange={modif("sens")}>
+                <option value="tous">↕ Tous les SMS</option><option value="recu">↓ Reçus</option><option value="paye">↑ Payés</option><option value="hors">Hors décompte (promo, alerte, message)</option>
+              </select>
+              <input type="number" inputMode="numeric" min="0" className="input" placeholder="💰 Montant minimum (FCFA)" aria-label="Montant minimum" value={filtre.min} onChange={modif("min")} />
+              <input type="number" inputMode="numeric" min="0" className="input" placeholder="💰 Montant maximum (FCFA)" aria-label="Montant maximum" value={filtre.max} onChange={modif("max")} />
+              <select className="input" aria-label="Expéditeur" value={filtre.adresse} onChange={modif("adresse")}>
+                <option value="">📱 Tous les expéditeurs</option>{expediteurs.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+              <div className="flex items-center gap-1 text-xs text-gray-600">
+                <label htmlFor="sms-du">📅 Du</label><input id="sms-du" type="date" className="input min-w-0 flex-1" value={filtre.du} onChange={modif("du")} />
+                <label htmlFor="sms-au">au</label><input id="sms-au" type="date" className="input min-w-0 flex-1" value={filtre.au} onChange={modif("au")} />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
+              <span data-testid="sms-compte"><b>{affichees.length}</b> SMS sur {lignes.length}{affichees.length > 100 && " (les 100 plus récents sont affichés)"}</span>
+              {filtreActif(filtre) && <button type="button" className="btn-sm rounded-lg border border-gray-300 bg-white px-3 py-1 font-semibold" onClick={() => setFiltre(FILTRE_VIDE)} title="Effacer tous les filtres" aria-label="Effacer tous les filtres">🧹 Effacer les filtres</button>}
+            </div>
+          </div>
+        )}
+        {lignes.length > 0 && affichees.length === 0 && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Aucun SMS ne correspond à ces filtres.</p>}
+
+        {affichees.length > 0 && (
           <ul className="space-y-2" data-testid="lignes-sms">
-            {lignes.slice(0, 100).map((l) => (
+            {affichees.slice(0, 100).map((l) => (
               <li key={l.id} className="rounded-xl border border-gray-200 p-3 text-sm">
                 <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
                   <span className="font-semibold text-nuit-900">{l.adresse}</span>

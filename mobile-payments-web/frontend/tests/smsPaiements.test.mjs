@@ -67,3 +67,27 @@ const pn = { montant: 50, codeMarchand: "6557908", libelle: "La Ménagère", env
 ok("montant + nom du marchand (en double) : confirmé", confirmePaiement({ adresse: "OrangeMoney", recu_le: T, corps: double ? "Votre paiement de 50 FCFA a ALIMENTATION LA MENAGERE ALIMENTATION LA MENAGERE a ete effectue avec succes. Trans id: MP261113.1600.44444444" : "" }, pn));
 ok("montant seul avec un AUTRE marchand : PAS confirmé", !confirmePaiement({ adresse: "OrangeMoney", recu_le: T, corps: "Votre paiement de 50 FCFA a PHARMACIE DU MARCHE a ete effectue avec succes." }, pn));
 ok("marchand sans nom enregistré : pas de confirmation automatique", !confirmePaiement({ adresse: "OrangeMoney", recu_le: T, corps: "Votre paiement de 50 FCFA a ALIMENTATION LA MENAGERE a ete effectue avec succes." }, { ...pn, libelle: "" }));
+
+// --- Filtre des SMS (numéro, montant, sens, expéditeur, dates)
+import { filtrerLignes, filtreActif } from "../src/lib/smsPaiements.js";
+const L = [
+  { id: 1, adresse: "OrangeMoney", quand: new Date("2026-11-10T10:00:00").getTime(), montant: 2500, genre: "DEPENSE", tiers: "ALIMENTATION LA MENAGERE", reference: "MP261110.1000.AAAA" },
+  { id: 2, adresse: "OrangeMoney", quand: new Date("2026-11-12T09:00:00").getTime(), montant: 10000, genre: "RECETTE", tiers: "+22670123456", reference: "MP261112.0900.BBBB" },
+  { id: 3, adresse: "Moov Money", quand: new Date("2026-11-14T18:30:00").getTime(), montant: 500, genre: "DEPENSE", tiers: "Pharmacie du Marché", reference: "CI261114.1830.CCCC" },
+  { id: 4, adresse: "Moov Money", quand: new Date("2026-11-14T19:00:00").getTime(), montant: 1000, categorie: "promo", tiers: "", reference: "" },
+];
+const ids = (f) => filtrerLignes(L, f).map((l) => l.id).join(",");
+ok("sans filtre : tout", ids({}) === "1,2,3,4");
+ok("numéro avec espaces trouve +226…", ids({ texte: "70 12 34 56" }) === "2");
+ok("nom sans accents ni casse", ids({ texte: "marche" }) === "3");
+ok("référence", ids({ texte: "mp261110" }) === "1");
+ok("montant exact (min = max)", ids({ min: 2500, max: 2500 }) === "1");
+ok("montant minimum seul", ids({ min: "2500" }) === "1,2");
+ok("montant maximum seul", ids({ max: 1000 }) === "3,4");
+ok("sens reçu", ids({ sens: "recu" }) === "2");
+ok("sens payé (hors promo)", ids({ sens: "paye" }) === "1,3");
+ok("hors décompte", ids({ sens: "hors" }) === "4");
+ok("expéditeur", ids({ adresse: "Moov Money" }) === "3,4");
+ok("dates incluses", ids({ du: "2026-11-12", au: "2026-11-14" }) === "2,3,4" && ids({ au: "2026-11-10" }) === "1");
+ok("critères cumulés", ids({ adresse: "Moov Money", min: 600 }) === "4");
+ok("filtreActif", !filtreActif({ texte: " ", min: "", sens: "tous" }) && filtreActif({ max: 0 }) && filtreActif({ sens: "recu" }));
