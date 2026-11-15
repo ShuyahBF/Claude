@@ -16,7 +16,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
+import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.Toast
+import androidx.fragment.app.FragmentActivity
+import com.ouoba.mobilepay.util.Biometrie
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -118,6 +122,7 @@ class FenetrePaiement(private val activite: Activity) {
         })
 
         // Champ 1 : le montant retapé (cadre bleu) avec retour immédiat
+        var actualiserRef: (() -> Unit)? = null
         var champMontant: EditText? = null; var retour: TextView? = null
         if (attendu.isNotEmpty()) {
             corps.addView(texte("✍ Retapez le montant (FCFA)", 14f, NUIT, gras = true).apply { setPadding(0, dp(14), 0, 0) })
@@ -126,9 +131,28 @@ class FenetrePaiement(private val activite: Activity) {
         }
         // Champ 2 : le code secret (cadre orange)
         var champPin: EditText? = null
+        // EMPREINTE : si le téléphone a un capteur et que le code secret de cet opérateur est mémorisé, on ne le tape plus : le doigt suffit
+        val fragment = activite as? FragmentActivity
+        val cleCode = info.operateur.trim().lowercase()                                   // un code secret par opérateur
+        val empreinteOk = demandePin && fragment != null && cleCode.isNotEmpty() && Biometrie.disponible(activite)
+        var memorise = empreinteOk && Biometrie.codeMemorise(activite, cleCode)
+        var caseMemoriser: CheckBox? = null; var blocPin: LinearLayout? = null; var blocEmpreinte: TextView? = null
         if (demandePin) {
-            corps.addView(texte("🔑 Code secret Mobile Money", 14f, AMBRE_TEXTE, gras = true).apply { setPadding(0, dp(12), 0, 0) })
-            champPin = champ(ORANGE, "••••", true).also { corps.addView(it) }
+            blocPin = LinearLayout(activite).apply { orientation = LinearLayout.VERTICAL }
+            blocPin.addView(texte("🔑 Code secret Mobile Money", 14f, AMBRE_TEXTE, gras = true).apply { setPadding(0, dp(12), 0, 0) })
+            champPin = champ(ORANGE, "••••", true).also { blocPin.addView(it) }
+            if (empreinteOk) caseMemoriser = CheckBox(activite).apply { text = "🖐️ Mémoriser mon code avec mon empreinte"; isChecked = true; setTextColor(VERT) }.also { blocPin.addView(it) }
+            blocPin.visibility = if (memorise) View.GONE else View.VISIBLE
+            corps.addView(blocPin)
+            // Message affiché quand le code est mémorisé (« Utiliser un autre code » = l'oublier pour le retaper)
+            blocEmpreinte = texte("🖐️ Votre code secret est mémorisé : après « Envoyer », posez votre doigt.  ✏️ Utiliser un autre code", 14f, VERT, gras = true).apply {
+                setPadding(0, dp(12), 0, 0); visibility = if (memorise) View.VISIBLE else View.GONE
+            }
+            blocEmpreinte.setOnClickListener {
+                Biometrie.oublier(activite, cleCode); memorise = false
+                blocPin.visibility = View.VISIBLE; blocEmpreinte.visibility = View.GONE; actualiserRef?.invoke()
+            }
+            corps.addView(blocEmpreinte)
         }
         corps.addView(texte("Un paiement envoyé ne peut pas être annulé par l'application.", 12f, ROUGE).apply { gravity = Gravity.CENTER; setPadding(0, dp(12), 0, dp(4)) })
 
@@ -145,7 +169,7 @@ class FenetrePaiement(private val activite: Activity) {
 
         // Retour immédiat et activation du bouton « Envoyer »
         fun montantOk() = attendu.isEmpty() || champMontant?.text?.toString()?.filter { it.isDigit() } == attendu
-        fun pinOk() = !demandePin || (champPin?.text?.length ?: 0) >= 4
+        fun pinOk() = !demandePin || memorise || (champPin?.text?.length ?: 0) >= 4
         fun actualiser() {
             val tape = champMontant?.text?.toString()?.filter { it.isDigit() }.orEmpty()
             if (attendu.isNotEmpty()) {
@@ -163,18 +187,32 @@ class FenetrePaiement(private val activite: Activity) {
             override fun afterTextChanged(s: Editable?) = actualiser()
         }
         champMontant?.addTextChangedListener(veille); champPin?.addTextChangedListener(veille)
+        actualiserRef = ::actualiser
         actualiser()
 
         var termine = false
-        fun fermer(valider: Boolean) {
+        fun fermer(valider: Boolean, pinMemorise: String? = null) {
             if (termine) return
             termine = true
-            val pin = champPin?.text?.toString().orEmpty()
+            val pin = pinMemorise ?: champPin?.text?.toString().orEmpty()
             champMontant?.setText(""); champPin?.setText("")                              // rien ne reste dans les champs
             dialogue.dismiss()
             if (valider) surValider(pin) else surAnnuler()
         }
-        envoyer.setOnClickListener { if (montantOk() && pinOk()) fermer(true) }
+        envoyer.setOnClickListener {
+            if (!(montantOk() && pinOk())) return@setOnClickListener
+            when {
+                // Code mémorisé : le doigt remplace la saisie ; si l'invite est annulée, la saisie du code reste possible
+                demandePin && memorise && fragment != null -> Biometrie.retrouver(fragment, cleCode, { pin -> fermer(true, pin) }, { message ->
+                    Toast.makeText(activite, message, Toast.LENGTH_LONG).show()
+                    memorise = false; blocPin?.visibility = View.VISIBLE; blocEmpreinte?.visibility = View.GONE; actualiser()
+                })
+                // Premier usage avec capteur : le code tapé est associé à l'empreinte (enrôlement) puis le paiement continue
+                demandePin && empreinteOk && caseMemoriser?.isChecked == true && fragment != null ->
+                    Biometrie.memoriser(fragment, cleCode, champPin?.text?.toString().orEmpty(), { Toast.makeText(activite, "🖐️ Code mémorisé avec votre empreinte.", Toast.LENGTH_SHORT).show(); fermer(true) }, { fermer(true) })
+                else -> fermer(true)
+            }
+        }
         annuler.setOnClickListener { fermer(false) }
         dialogue.setOnCancelListener { fermer(false) }
 

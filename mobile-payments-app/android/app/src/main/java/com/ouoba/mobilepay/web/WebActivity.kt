@@ -28,7 +28,8 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import android.widget.Toast
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
+import com.ouoba.mobilepay.util.Biometrie
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import com.ouoba.mobilepay.BuildConfig
@@ -48,7 +49,7 @@ import org.json.JSONObject
  *  - caméra (scan de QR code) et position (marchands proches, géolocalisation des paiements) : autorisations demandées au moment de l'usage ;
  *  - bouton Retour = page précédente du site ; il ferme l'application à la première page.
  */
-class WebActivity : ComponentActivity() {
+class WebActivity : FragmentActivity() {
     private lateinit var web: WebView
     private lateinit var progression: ProgressBar
     private var choixFichier: ValueCallback<Array<Uri>>? = null
@@ -162,6 +163,21 @@ class WebActivity : ComponentActivity() {
 
         if (savedInstanceState != null) web.restoreState(savedInstanceState) else web.loadUrl(adresseSite.toString())
     }
+
+    // ---- VERROU BIOMÉTRIQUE (« à la connexion ») : le site est masqué tant que le téléphone n'a pas reconnu l'utilisateur.
+    // Redemandé quand l'application revient au premier plan après plus d'une minute d'absence. Sans capteur ni verrouillage d'écran : pas de verrou.
+    private var derniereOuverture = 0L
+    private var verrouEnCours = false
+    private fun verrouiller() {
+        if (verrouEnCours || !Biometrie.verrouPossible(this)) { web.visibility = View.VISIBLE; return }
+        if (derniereOuverture != 0L && System.currentTimeMillis() - derniereOuverture < 60_000) { web.visibility = View.VISIBLE; return }
+        verrouEnCours = true; web.visibility = View.INVISIBLE
+        Biometrie.verifier(this, "Ouvrir auRor", "Posez votre doigt pour continuer",
+            surOk = { verrouEnCours = false; derniereOuverture = System.currentTimeMillis(); web.visibility = View.VISIBLE },
+            surEchec = { message -> verrouEnCours = false; Toast.makeText(this, "auRor est verrouillé : $message", Toast.LENGTH_LONG).show(); finish() })
+    }
+    override fun onStop() { super.onStop(); if (!verrouEnCours) derniereOuverture = System.currentTimeMillis() }
+    override fun onStart() { super.onStart(); verrouiller() }
 
     override fun onResume() { super.onResume(); PresenceSawali.signaler(this) }   // règle 4 : présence auprès de SAWALI
     override fun onSaveInstanceState(sortie: Bundle) { super.onSaveInstanceState(sortie); web.saveState(sortie) }

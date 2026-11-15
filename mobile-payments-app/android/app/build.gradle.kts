@@ -17,8 +17,8 @@ android {
         targetSdk = 35
         // versionCode : nombre entier qui DOIT augmenter à chaque envoi sur le Play Store ;
         // versionName : numéro affiché à l'utilisateur (et envoyé à SAWALI dans le signal de présence)
-        versionCode = 18
-        versionName = "2.7.1"
+        versionCode = 19
+        versionName = "2.8.0"
 
         // Adresse du site auRor affiché dans l'application (version hybride, lot 18) : TOUT auRor (marchands, QR codes, géolocalisation, historique…).
         // Surcharge possible pour un essai : -PsiteUrl=https://autre-adresse/
@@ -123,4 +123,6 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.1")
     // Signal de présence à SAWALI (règle 4) et réseau
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Empreinte digitale (verrou de l'application et code secret mémorisé)
+    implementation("androidx.biometric:biometric:1.1.0")
 }
