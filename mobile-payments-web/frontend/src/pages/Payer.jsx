@@ -17,7 +17,7 @@ import SelecteurOperateur from "@/components/SelecteurOperateur";   // lot 89 : 
 import { positionActuelle } from "@/lib/geoloc";
 import { apiClient, CATEGORIES, couleurOperateur, messageErreur } from "@/lib/api";
 import { analyserQr } from "@/lib/qrOperateurs";
-import { capacites } from "@/lib/pontAndroid";
+import { capacites, lireMontantPhoto } from "@/lib/pontAndroid";
 
 // Parcours de paiement, comme l'app Android :
 // Opérateur -> Service -> Formulaire (avec résolution du code marchand) -> Code USSD + QR.
@@ -32,6 +32,16 @@ export default function Payer() {
   const [operateur, setOperateur] = useState("");
   const [service, setService] = useState(null);
   const [valeurs, setValeurs] = useState({});
+  // Lecture optique du montant (application Android) : montants proposés après la photo d'un afficheur client ou d'une facture
+  const [lecture, setLecture] = useState({ enCours: false, montants: [] });
+  const lireLeMontant = async () => {
+    setLecture({ enCours: true, montants: [] });
+    toast.info("Lecture du montant en cours… cadrez l'afficheur ou la facture.");
+    const r = await lireMontantPhoto();
+    if (r.erreur) { setLecture({ enCours: false, montants: [] }); toast.erreur(r.erreur); return; }
+    setLecture({ enCours: false, montants: r.montants || [] });
+    toast.succes(`${(r.montants || []).length} montant(s) lu(s) : choisissez le bon. Il vous sera redemandé avant l'envoi.`);
+  };
   const [paiement, setPaiement] = useState(null); // paiement préparé (étape finale)
   const [paiementDirect, setPaiementDirect] = useState(null);   // application Android direct : paiement envoyé par l'application
   const appliDirect = !!capacites()?.direct;
@@ -298,6 +308,21 @@ export default function Payer() {
                 required inputMode={c.type === "numeric" ? "numeric" : "text"} pattern={c.type === "numeric" ? "[0-9 ]*" : undefined}
                 list={c.isMerchantCode ? "marchands-connus" : undefined}
                 value={valeurs[c.key] || ""} onChange={(e) => setValeurs({ ...valeurs, [c.key]: e.target.value })} />
+
+              {/* Lecture optique : photo d'un afficheur client ou d'une facture (papier ou à l'écran) ; le montant choisi est TOUJOURS redemandé avant l'envoi */}
+              {c.key === "amount" && capacites()?.ocr && (
+                <div className="mt-2 space-y-2" data-testid="lecture-montant">
+                  <button type="button" className="btn-secondary" onClick={lireLeMontant} disabled={lecture.enCours}>📷 Lire le montant (afficheur ou facture)</button>
+                  {lecture.montants.length > 0 && (
+                    <div className="flex flex-wrap gap-2" role="group" aria-label="Montants lus">
+                      {lecture.montants.map((m, i) => (
+                        <button key={m.valeur} type="button" title={m.ligne}
+                          className={`rounded-xl border px-3 py-2 text-left text-sm ${i === 0 ? "border-green-600 bg-green-50 font-bold text-green-800" : "border-gray-300 bg-white"}`}
+                          onClick={() => { setValeurs((v) => ({ ...v, [c.key]: String(m.valeur) })); setLecture({ enCours: false, montants: [] }); toast.succes(`Montant choisi : ${m.texte}. Vérifiez-le : il vous sera redemandé.`); }}>
+                          {i === 0 ? "✅ " : ""}{m.texte}<span className="block text-xs font-normal text-gray-500">{m.ligne.slice(0, 40)}</span>
+                        </button>))}
+                    </div>)}
+                </div>)}
 
               {/* Lot 102 : les marchands de cet opérateur près de vous, à choisir à la place de la saisie du code */}
               {c.isMerchantCode && !(valeurs[c.key] || "") && (

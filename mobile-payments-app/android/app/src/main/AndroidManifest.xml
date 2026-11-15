@@ -35,6 +35,14 @@
         android:theme="@style/Theme.MobilePayments">
 
         <!-- Une seule fenêtre : le site auRor. configChanges : la rotation ne recharge pas la page -->
+        <!-- Partage de la photo prise pour la lecture du montant avec l'appareil photo du téléphone -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fichiers"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/chemins_fichiers" />
+        </provider>
         <activity
             android:name=".web.WebActivity"
             android:exported="true"

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dossier temporaire des photos de montant (afficheur, facture) : lues puis effacées, jamais envoyées -->
+<paths>
+    <cache-path name="montants" path="montants/" />
+</paths>

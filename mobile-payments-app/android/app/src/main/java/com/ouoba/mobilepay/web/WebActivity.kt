@@ -65,6 +65,35 @@ class WebActivity : FragmentActivity() {
         choixFichier?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(r.resultCode, r.data)); choixFichier = null
     }
 
+    // ---- LECTURE OPTIQUE DU MONTANT : appareil photo ou galerie, puis lecture du texte sur le téléphone ; l'image est effacée aussitôt
+    private var retourMontant: String? = null
+    private var photoMontant: java.io.File? = null
+    private val selecteurMontant = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        val id = retourMontant; retourMontant = null
+        val fichier = photoMontant; photoMontant = null
+        if (id == null) return@registerForActivityResult
+        val image: Uri? = if (r.resultCode != RESULT_OK) null else (r.data?.data ?: fichier?.takeIf { it.length() > 0 }?.let { androidx.core.content.FileProvider.getUriForFile(this, "$packageName.fichiers", it) })
+        if (image == null) { fichier?.delete(); retour(id, JSONObject().put("erreur", "Aucune image choisie.")); return@registerForActivityResult }
+        com.ouoba.mobilepay.util.LectureMontant.reconnaitre(this, image) { json -> fichier?.delete(); retour(id, json) }
+    }
+
+    /** Demande l'autorisation de la caméra puis ouvre le choix « photographier / choisir une image » ; le résultat (montants lus) revient au site sous `id`. */
+    fun lireMontant(id: String) {
+        demanderAutorisations(arrayOf(Manifest.permission.CAMERA)) { ok ->
+            try {
+                val dossier = java.io.File(cacheDir, "montants").apply { mkdirs() }
+                val fichier = java.io.File(dossier, "montant-" + System.currentTimeMillis() + ".jpg")
+                val camera = Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).putExtra(android.provider.MediaStore.EXTRA_OUTPUT,
+                    androidx.core.content.FileProvider.getUriForFile(this, "$packageName.fichiers", fichier)).addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                val galerie = Intent(Intent.ACTION_GET_CONTENT).setType("image/*")
+                val choix = Intent.createChooser(galerie, "Lire le montant : photographier ou choisir une image")
+                if (ok) choix.putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(camera))        // sans autorisation de la caméra : galerie seulement
+                retourMontant = id; photoMontant = fichier
+                selecteurMontant.launch(choix)
+            } catch (e: Exception) { retour(id, JSONObject().put("erreur", "Lecture impossible : " + (e.message ?: "erreur"))) }
+        }
+    }
+
     /** Adresse du site (surcharge possible à la compilation : -PsiteUrl=…). */
     private val adresseSite: Uri = Uri.parse(BuildConfig.SITE_URL)
 

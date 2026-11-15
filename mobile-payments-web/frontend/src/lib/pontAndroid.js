@@ -88,6 +88,17 @@ export function ouvrirReglagesNotifications() {
   try { if (dansApplication() && window.AuRorAndroid.ouvrirReglagesNotifications) window.AuRorAndroid.ouvrirReglagesNotifications(); } catch { /* sans effet */ }
 }
 
+/**
+ * Lecture optique du montant : l'application ouvre l'appareil photo (ou la galerie), lit le texte SUR le téléphone (l'image n'est ni gardée ni envoyée) et rend
+ * { montants: [{ valeur, texte, ligne }] } du plus probable au moins probable, ou { erreur }. Rend { erreur } hors application.
+ */
+export function lireMontantPhoto() {
+  if (!dansApplication() || !window.AuRorAndroid.lireMontant) return Promise.resolve({ erreur: "La lecture du montant par l'appareil photo n'existe que dans l'application." });
+  const [id, promesse] = attendreRetour();
+  window.AuRorAndroid.lireMontant(id);
+  return promesse;
+}
+
 /** Ouvre les réglages d'auRor dans le téléphone (pour autoriser le micro, la caméra…). Rend vrai si l'application l'a fait. */
 export function ouvrirReglagesApplication() {
   try { if (dansApplication() && window.AuRorAndroid.ouvrirReglagesApplication) { window.AuRorAndroid.ouvrirReglagesApplication(); return true; } } catch { /* sans effet */ }
