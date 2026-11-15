@@ -122,9 +122,9 @@ export default function LectureSms() {
                     : <span className="rounded-full bg-gray-200 px-2 py-0.5 font-semibold text-gray-700" title="Ce SMS n'est pas une transaction : il n'est pas compté">{LIBELLE_CATEGORIE[l.categorie] || l.categorie}</span>}
                   <span className={`ml-auto text-base font-bold ${!estTransaction(l) ? "text-gray-500" : l.genre === "RECETTE" ? "text-green-700" : "text-red-700"}`}>{fcfa(l.montant)}</span>
                 </div>
-                {(l.tiers || l.reference || l.solde != null) && (
+                {(l.tiers || l.tel || l.reference || l.solde != null) && (
                   <p className="mt-1 text-gray-700">
-                    {l.tiers && <b>{l.genre === "RECETTE" ? `📞 ${l.tiers}` : l.tiers}</b>}{l.reference && <span className="ml-2 font-mono text-xs text-primary">{l.reference}</span>}{l.solde != null && <span className="ml-2 text-xs text-gray-500">solde {fcfa(l.solde)}</span>}
+                    {l.tiers && <b>{l.genre === "RECETTE" ? `📞 ${l.tiers}` : l.tiers}</b>}{l.tel && <span className="ml-2 text-xs text-gray-600">📞 {l.tel}</span>}{l.reference && <span className="ml-2 font-mono text-xs text-primary">{l.reference}</span>}{l.solde != null && <span className="ml-2 text-xs text-gray-500">solde {fcfa(l.solde)}</span>}
                   </p>
                 )}
               </li>
