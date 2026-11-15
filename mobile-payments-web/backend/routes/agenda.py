@@ -7,6 +7,7 @@ passe par auRor ; rien n'est conservé ici.
 
 Routes (utilisateur connecté) :
     POST /api/agenda/etat        → {lie, email}
+    POST /api/agenda/demander    {gmail}                          → {etat} demande d'accès avec SON compte Google (l'administrateur de SAWALI l'accepte)
     POST /api/agenda/lier        → {url} à ouvrir dans le navigateur (consentement Google, une seule fois)
     POST /api/agenda/delier      → retire la liaison
     POST /api/agenda/evenements  {du?, au?}                       → {evenements: [...]}
@@ -52,6 +53,10 @@ class Rdv(BaseModel):
     rappel_minutes: Optional[int] = Field(None, ge=0, le=40320)
 
 
+class Demande(BaseModel):
+    gmail: str = Field(min_length=5, max_length=120)
+
+
 class Identifiant(BaseModel):
     id: str = Field(min_length=1, max_length=200)
 
@@ -59,6 +64,12 @@ class Identifiant(BaseModel):
 @router.post("/etat")
 async def etat(user: dict = Depends(get_current_user)):
     return await _relayer("etat", user)
+
+
+@router.post("/demander")
+async def demander(data: Demande, user: dict = Depends(get_current_user)):
+    nom = f"{user.get('nom') or ''} {user.get('prenom') or ''}".strip()
+    return await _relayer("demander", user, {"gmail": data.gmail.strip(), "nom": nom})
 
 
 @router.post("/lier")
