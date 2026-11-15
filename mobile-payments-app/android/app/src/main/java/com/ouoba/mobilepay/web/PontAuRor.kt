@@ -35,7 +35,7 @@ class PontAuRor(private val activite: WebActivity) {
     /** Ce que cette version de l'application sait faire. */
     @JavascriptInterface
     fun capacites(): String = JSONObject().put("application", true).put("version", BuildConfig.VERSION_NAME)
-        .put("direct", BuildConfig.MODE_DIRECT).put("dialogue", BuildConfig.MODE_DIRECT).put("notifications", BuildConfig.MODE_DIRECT).put("sms", BuildConfig.MODE_DIRECT && declare(Manifest.permission.READ_SMS)).toString()
+        .put("ocr", true).put("direct", BuildConfig.MODE_DIRECT).put("dialogue", BuildConfig.MODE_DIRECT).put("notifications", BuildConfig.MODE_DIRECT).put("sms", BuildConfig.MODE_DIRECT && declare(Manifest.permission.READ_SMS)).toString()
 
     /** Vrai si l'application déclare cette autorisation (la version « direct sans SMS » n'a pas READ_SMS : la lecture des SMS n'est alors pas proposée). */
     private fun declare(permission: String): Boolean = try {
@@ -65,6 +65,10 @@ class PontAuRor(private val activite: WebActivity) {
     /** Journal des envois USSD (code composé, réponses exactes, échecs ; le code secret est masqué). */
     @JavascriptInterface
     fun journalUssd(): String = JournalUssd.lire(contexte)
+
+    /** Lecture optique du montant : photo (ou image choisie) lue SUR le téléphone ; rend { montants: [{valeur, texte, ligne}] } ou { erreur } au site (numéro `id`). */
+    @JavascriptInterface
+    fun lireMontant(id: String) { activite.runOnUiThread { activite.lireMontant(id) } }
 
     /** Ouvre la page des réglages d'auRor dans le téléphone (Autorisations : micro, caméra, position…) pour accorder un accès refusé. */
     @JavascriptInterface

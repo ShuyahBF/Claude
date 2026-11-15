@@ -210,6 +210,10 @@ class FenetrePaiement(private val activite: Activity) {
                 // Premier usage avec capteur : le code tapé est associé à l'empreinte (enrôlement) puis le paiement continue
                 demandePin && empreinteOk && caseMemoriser?.isChecked == true && fragment != null ->
                     Biometrie.memoriser(fragment, cleCode, champPin?.text?.toString().orEmpty(), { Toast.makeText(activite, "🖐️ Code mémorisé avec votre empreinte.", Toast.LENGTH_SHORT).show(); fermer(true) }, { fermer(true) })
+                // Pas de code secret à envoyer : le paiement est quand même VALIDÉ par l'empreinte (si le téléphone en a une), après le montant retapé
+                !demandePin && fragment != null && Biometrie.disponible(activite) ->
+                    Biometrie.verifier(fragment, "Valider le paiement", (if (info.montant.isNotBlank()) info.montant + " " else "") + "Posez votre doigt pour envoyer le paiement",
+                        { fermer(true) }, { message -> Toast.makeText(activite, message, Toast.LENGTH_LONG).show() })
                 else -> fermer(true)
             }
         }
