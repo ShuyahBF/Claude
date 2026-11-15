@@ -11,7 +11,7 @@ import { LIBELLE_VERSION } from "@/version";
 // ============================================================================
 
 // Date de dernière mise à jour affichée en haut de la page
-const MISE_A_JOUR = "11/10/2026";
+const MISE_A_JOUR = "15/11/2026";
 
 // Mention de non-affiliation (identique à celle de l'application Android)
 const MENTION_NON_AFFILIATION =
@@ -92,7 +92,17 @@ const SECTIONS = [
     ],
   },
   {
-    titre: "9. Non-affiliation",
+    titre: "9. Agenda Google (facultatif)",
+    paragraphes: [
+      "Dans la page « Mon Agenda », vous pouvez, si vous le souhaitez, lier VOTRE compte Google. SAWALI SMART SYSTEMS sert de passerelle sécurisée : auRor ne reçoit jamais de jeton Google. La liaison passe par la page d'autorisation de Google et ne demande que l'adresse e-mail de votre compte (pour vérifier que c'est bien le compte que vous avez déclaré, et que l'administrateur a accepté) et l'autorisation « calendar.events » (voir, créer et supprimer des événements de votre agenda principal). Aucune autre donnée Google n'est utilisée.",
+      "Vous pouvez voir vos prochains rendez-vous, en créer un à partir d'une note vocale ou tapée (par exemple « samedi 8h15 rdv chez le dentiste ») après avoir relu et confirmé le jour, l'heure et le titre, et en supprimer un. Chaque personne ne voit que son propre agenda ; l'administrateur ne peut pas le lire.",
+      "Vos événements sont lus chez Google au moment où vous les consultez : ils ne sont pas copiés dans notre base. Le jeton d'actualisation est conservé chiffré ; le texte d'une note est analysé puis oublié. Ces données ne sont ni vendues, ni partagées, ni utilisées pour de la publicité ou pour entraîner des modèles d'IA, et aucun humain ne les lit sauf avec votre consentement, pour des raisons de sécurité ou pour respecter la loi.",
+      "L'utilisation et le transfert par SAWALI des informations reçues des API Google respectent la politique « Google API Services User Data Policy », y compris les exigences d'usage limité (Limited Use). English summary: if you choose to link your Google Calendar, only your account e-mail and the calendar.events scope are used, solely to show, create (after your confirmation) and delete your own appointments; Google tokens never reach the app, events are not stored, and data is never sold, shared, used for advertising or to train AI models.",
+      "Vous pouvez délier à tout moment (bouton « Délier » : l'accès est révoqué chez Google et le jeton supprimé) ou sur myaccount.google.com/permissions.",
+    ],
+  },
+  {
+    titre: "10. Non-affiliation",
     paragraphes: [MENTION_NON_AFFILIATION],
   },
 ];
@@ -131,7 +141,7 @@ export default function Confidentialite() {
 
         {/* Contact officiel (le même que sur la page de connexion) */}
         <section className="card space-y-2">
-          <h2 className="text-lg font-semibold">10. Nous contacter</h2>
+          <h2 className="text-lg font-semibold">11. Nous contacter</h2>
           <p className="text-sm text-gray-700">
             SAWALI SMART SYSTEMS — <a href="mailto:contact@sawalismartsystems.com" className="font-semibold text-primary">contact@sawalismartsystems.com</a>
             {" · "}<a href="tel:+22625658165" className="font-semibold text-primary">+226 25 65 81 65</a>
