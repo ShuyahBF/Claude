@@ -25,6 +25,7 @@ export const ENTREES_MENU = [
   { to: "/rappels", icone: "🔔", libelle: "Rappels" },
   { to: "/ordonnances", icone: "📄", libelle: "OCR sur ordonnances" },
   { to: "/transcription", icone: "🎙️", libelle: "Transcription vocale" },
+  { to: "/agenda", icone: "📅", libelle: "Mon Agenda" },
   { to: "/cartes", icone: "💌", libelle: "Cartes virtuelles" },   // lot 79 : voeux illustrés par l'IA, envoyés par WhatsApp
   { to: "/presse", icone: "📰", libelle: "Actualités" },   // lot 65 : presse locale, tech, mode, coaching… (catégories réglées par l'administrateur)
   { to: "/ussd", icone: "📞", libelle: "Codes USSD" },     // lot 66 : carnet de codes pratiques par opérateur
