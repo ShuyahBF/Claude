@@ -133,21 +133,28 @@ export function categorieSms({ adresse, corps }) {
   return scorePromo(corps, ref) >= SEUIL_PROMO ? "promo" : "transaction";
 }
 
-/** Un SMS (adresse, recu_le en ms, corps) → une ligne de paiement, ou null (promotion, alerte de banque, message de personne, pas de montant, sens indéterminé). */
+/**
+ * Un SMS (adresse, recu_le en ms, corps) → une ligne, ou null (pas de montant, ou transaction dont le sens est indéterminé).
+ * Un SMS qui n'est pas une TRANSACTION (promo, alerte de banque, message de personne) est GARDÉ avec sa `categorie` (pastille grise à l'écran) et le sens « AUTRE » :
+ * il ne compte jamais comme paiement (voir estTransaction). Les mots promotionnels explicites (« gagnez », « jeu concours »…) donnent aussi « promo ».
+ */
 export function analyserSms({ adresse, recu_le: recuLe, corps }) {
   const t = String(corps || "").toLowerCase();
-  if (MOTS_PROMO.some((m) => t.includes(m))) return null;
-  if (categorieSms({ adresse, corps }) !== "transaction") return null;      // promo / alerte / message : jamais gardés
+  let categorie = categorieSms({ adresse, corps });
+  if (categorie === "transaction" && MOTS_PROMO.some((m) => t.includes(m))) categorie = "promo";
   const montant = montantDe(corps);
   if (!montant) return null;
-  const genre = MOTS_RECETTE.some((m) => t.includes(m)) ? "RECETTE" : MOTS_DEPENSE.some((m) => t.includes(m)) ? "DEPENSE" : null;
-  if (!genre) return null;
+  const sens = MOTS_RECETTE.some((m) => t.includes(m)) ? "RECETTE" : MOTS_DEPENSE.some((m) => t.includes(m)) ? "DEPENSE" : null;
+  if (categorie === "transaction" && !sens) return null;          // prudence : sens indéterminé = ignoré plutôt que mal classé
+  const genre = sens || "AUTRE";
   const ref = (REFERENCE.exec(corps) || [])[1] || null;
   const soldeM = SOLDE.exec(corps);
   const quand = dateDeReference(ref) || recuLe;
-  return { id: ref || `${adresse}|${recuLe}|${montant}`, adresse, quand, genre, montant, tiers: tiersDe(corps, genre), solde: soldeM ? lireNombre(soldeM[1]) : null, reference: ref };
+  return { id: ref || `${adresse}|${recuLe}|${montant}`, adresse, quand, genre, categorie, montant, tiers: tiersDe(corps, genre), solde: soldeM ? lireNombre(soldeM[1]) : null, reference: ref };
 }
 
+/** Vrai pour une vraie transaction du portefeuille mobile (les lignes anciennes, sans catégorie, en sont). Les autres sont hors décompte. */
+export const estTransaction = (ligne) => !ligne?.categorie || ligne.categorie === "transaction";
 
 /** Les deux noms désignent-ils le même marchand ? Sans accents ni casse ; l'un contient l'autre, ou tous les mots (3 lettres et plus) du plus court figurent dans l'autre. */
 export function memeMarchand(nomSms, nomEnregistre) {
@@ -169,7 +176,7 @@ export function memeMarchand(nomSms, nomEnregistre) {
 export function confirmePaiement(sms, { montant, codeMarchand, libelle, envoyeLe }) {
   if (!sms || (envoyeLe && sms.recu_le < envoyeLe - 60000)) return false;
   const ligne = analyserSms(sms);
-  if (!ligne || ligne.genre !== "DEPENSE" || ligne.montant !== montant) return false;
+  if (!ligne || !estTransaction(ligne) || ligne.genre !== "DEPENSE" || ligne.montant !== montant) return false;
   const corps = String(sms.corps || "");
   if (codeMarchand && corps.replace(/\D+/g, " ").split(" ").includes(String(codeMarchand))) return true;     // le code figure dans le SMS
   return !!libelle && memeMarchand(ligne.tiers, libelle);                                                       // sinon : le nom du marchand
