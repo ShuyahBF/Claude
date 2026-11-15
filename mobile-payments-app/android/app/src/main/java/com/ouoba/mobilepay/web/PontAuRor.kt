@@ -66,6 +66,14 @@ class PontAuRor(private val activite: WebActivity) {
     @JavascriptInterface
     fun journalUssd(): String = JournalUssd.lire(contexte)
 
+    /** Ouvre la page des réglages d'auRor dans le téléphone (Autorisations : micro, caméra, position…) pour accorder un accès refusé. */
+    @JavascriptInterface
+    fun ouvrirReglagesApplication() {
+        activite.runOnUiThread {
+            try { contexte.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:" + contexte.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+        }
+    }
+
     /** Page « Pas de connexion » : bouton « Réessayer ». */
     @JavascriptInterface
     fun reessayer() { activite.runOnUiThread { activite.recharger() } }

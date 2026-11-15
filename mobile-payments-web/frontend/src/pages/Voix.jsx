@@ -1,3 +1,4 @@
+import { dansApplication, ouvrirReglagesApplication } from "@/lib/pontAndroid";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useToast } from "@/components/Toast";
@@ -115,7 +116,7 @@ export default function Voix() {
           {refus.formule && <Link to="/abonnement" className="mt-1 inline-block font-semibold text-primary underline">Voir l'abonnement</Link>}
         </div>
       )}
-      {erreur && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700" role="alert">{erreur}</p>}
+      {erreur && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700" role="alert">{erreur}{dansApplication() && erreur.startsWith("Micro") && <> <button type="button" className="font-semibold underline" onClick={() => ouvrirReglagesApplication()}>⚙️ Ouvrir les réglages</button></>}</p>}
 
       {texte && (
         <section className="card space-y-3 p-4" data-testid="voix-texte">

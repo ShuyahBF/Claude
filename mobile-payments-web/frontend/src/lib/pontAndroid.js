@@ -88,6 +88,12 @@ export function ouvrirReglagesNotifications() {
   try { if (dansApplication() && window.AuRorAndroid.ouvrirReglagesNotifications) window.AuRorAndroid.ouvrirReglagesNotifications(); } catch { /* sans effet */ }
 }
 
+/** Ouvre les réglages d'auRor dans le téléphone (pour autoriser le micro, la caméra…). Rend vrai si l'application l'a fait. */
+export function ouvrirReglagesApplication() {
+  try { if (dansApplication() && window.AuRorAndroid.ouvrirReglagesApplication) { window.AuRorAndroid.ouvrirReglagesApplication(); return true; } } catch { /* sans effet */ }
+  return false;
+}
+
 /** Notifications de paiement reçues application fermée : [{ adresse, recu_le, corps }]. La lecture VIDE la liste d'attente de l'application (à enregistrer tout de suite). */
 export function notificationsEnAttente() {
   try {

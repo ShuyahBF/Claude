@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "@/components/Toast";
 import { apiClient, messageErreur } from "@/lib/api";
+import { dansApplication, ouvrirReglagesApplication } from "@/lib/pontAndroid";
 
 // Agenda Google (lot 140) : chacun lie SON agenda, voit ses prochains rendez-vous et en crée, y compris par note vocale
 // (« samedi 8h15 rdv chez le dentiste »). Pour un développeur WinDev : le navigateur parle seulement à CE serveur, qui relaie vers
@@ -19,6 +20,7 @@ export default function Agenda() {
   const [gmail, setGmail] = useState("");               // compte Google à faire accepter (étape 1)
   const [texte, setTexte] = useState("");                 // note dictée ou tapée
   const [prop, setProp] = useState(null);                 // proposition à relire : { titre, date, heure, minutes, offset, libelle, manque }
+  const [microRefuse, setMicroRefuse] = useState(false);          // micro refusé : on montre le bouton vers les réglages
   const [enregistrement, setEnregistrement] = useState("repos");   // repos | micro | envoi
   const rec = useRef(null); const flux = useRef(null); const morceaux = useRef([]); const debut = useRef(0); const minuteur = useRef(null);
 
@@ -66,7 +68,8 @@ export default function Agenda() {
   const arreter = () => { if (rec.current?.state === "recording") rec.current.stop(); };
   const dicter = async () => {
     if (enregistrement === "micro") { arreter(); return; }
-    try { flux.current = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch { toast.erreur("Micro inaccessible : autorisez-le dans les réglages."); return; }
+    try { flux.current = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch { setMicroRefuse(true); toast.erreur("Micro inaccessible : autorisez-le dans les réglages."); return; }
+    setMicroRefuse(false);
     const type = formatEnregistrement();
     const r = new MediaRecorder(flux.current, { ...(type ? { mimeType: type } : {}), audioBitsPerSecond: 32000 });
     rec.current = r; morceaux.current = []; debut.current = Date.now();
@@ -177,6 +180,15 @@ export default function Agenda() {
 
         <section className="card space-y-3 p-5" data-testid="agenda-note">
           <h2 className="text-lg font-semibold">🎙️ Nouveau rendez-vous</h2>
+          {microRefuse && (
+            <div className="my-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="alert">
+              🎙️ Le micro n'est pas autorisé.{" "}
+              {dansApplication()
+                ? <button type="button" className="font-semibold underline" onClick={() => ouvrirReglagesApplication()}>⚙️ Ouvrir les réglages pour l'autoriser</button>
+                : "Autorisez le micro pour ce site dans les réglages du navigateur."}
+              {dansApplication() && " (Autorisations → Micro → Autoriser), puis revenez ici."}
+            </div>
+          )}
           <div className="flex gap-2">
             <button type="button" onClick={dicter} disabled={enregistrement === "envoi"} aria-pressed={micro}
               className={`grid h-14 w-14 shrink-0 place-items-center rounded-full text-2xl text-white ${micro ? "animate-pulse bg-red-600" : "bg-primary"} disabled:opacity-50`}
