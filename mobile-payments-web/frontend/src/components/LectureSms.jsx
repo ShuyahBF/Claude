@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { EVENEMENT_MAJ, lireResume, synchroniserSms } from "@/lib/lectureSms";
 import { capacites, notificationsActives, ouvrirReglagesNotifications } from "@/lib/pontAndroid";
-import { chargerLignes } from "@/lib/smsPaiements";
+import { chargerLignes, estTransaction } from "@/lib/smsPaiements";
 
 // Lecture des SMS de paiement (application Android auRor, version « direct » seulement) : bloc REPLIABLE, affiché REPLIÉ avec un récapitulatif
 // (opérateur, nombre de SMS lus, nombre de paiements enregistrés, date et heure de la dernière lecture).
@@ -17,6 +17,10 @@ export default function LectureSms() {
   const [etat, setEtat] = useState(null);                 // null | "lecture" | { erreur } | { lus, nouvelles }
   const [resume, setResume] = useState(lireResume);       // { le, lus, operateurs: [{ nom, nb }] }
   const [lignes, setLignes] = useState(() => chargerLignes());
+  // Seules les vraies transactions comptent ; promo, alerte de banque et message de personne restent affichés avec une pastille grise
+  const nbTransactions = lignes.filter(estTransaction).length;
+  const nbHorsDecompte = lignes.length - nbTransactions;
+  const LIBELLE_CATEGORIE = { promo: "promo", alerte: "alerte", message: "message" };
   // Mise à jour automatique quand la lecture automatique trouve de nouveaux paiements
   useEffect(() => {
     const maj = () => { setLignes(chargerLignes()); setResume(lireResume()); };
@@ -49,8 +53,8 @@ export default function LectureSms() {
         <span className="text-lg font-semibold">📩 Mes SMS de paiement</span>
         <span className="block text-sm text-gray-600">
           {resume
-            ? <>Dernière lecture : <b>{dateHeure(resume.le)}</b> · <b>{resume.lus}</b> SMS lus · <b>{lignes.length}</b> paiement(s) enregistré(s){resume.operateurs.length > 0 && <> · {resume.operateurs.map((o) => `${o.nom} (${o.nb})`).join(", ")}</>}</>
-            : lignes.length > 0 ? <><b>{lignes.length}</b> paiement(s) enregistré(s) sur ce téléphone</> : "Aucune lecture pour l'instant : dépliez, puis appuyez sur « Lire mes SMS »."}
+            ? <>Dernière lecture : <b>{dateHeure(resume.le)}</b> · <b>{resume.lus}</b> SMS lus · <b>{nbTransactions}</b> paiement(s) enregistré(s){nbHorsDecompte > 0 && <> · {nbHorsDecompte} hors décompte</>}{resume.operateurs.length > 0 && <> · {resume.operateurs.map((o) => `${o.nom} (${o.nb})`).join(", ")}</>}</>
+            : lignes.length > 0 ? <><b>{nbTransactions}</b> paiement(s) enregistré(s) sur ce téléphone{nbHorsDecompte > 0 && <> · {nbHorsDecompte} hors décompte</>}</> : "Aucune lecture pour l'instant : dépliez, puis appuyez sur « Lire mes SMS »."}
         </span>
       </summary>
 
@@ -82,8 +86,10 @@ export default function LectureSms() {
                 <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
                   <span className="font-semibold text-nuit-900">{l.adresse}</span>
                   <span>{dateHeure(l.quand)}</span>
-                  <span className={`rounded-full px-2 py-0.5 font-semibold ${l.genre === "RECETTE" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-700"}`}>{l.genre === "RECETTE" ? "↓ Reçu" : "↑ Payé"}</span>
-                  <span className={`ml-auto text-base font-bold ${l.genre === "RECETTE" ? "text-green-700" : "text-red-700"}`}>{fcfa(l.montant)}</span>
+                  {estTransaction(l)
+                    ? <span className={`rounded-full px-2 py-0.5 font-semibold ${l.genre === "RECETTE" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-700"}`}>{l.genre === "RECETTE" ? "↓ Reçu" : "↑ Payé"}</span>
+                    : <span className="rounded-full bg-gray-200 px-2 py-0.5 font-semibold text-gray-700" title="Ce SMS n'est pas une transaction : il n'est pas compté">{LIBELLE_CATEGORIE[l.categorie] || l.categorie}</span>}
+                  <span className={`ml-auto text-base font-bold ${!estTransaction(l) ? "text-gray-500" : l.genre === "RECETTE" ? "text-green-700" : "text-red-700"}`}>{fcfa(l.montant)}</span>
                 </div>
                 {(l.tiers || l.reference || l.solde != null) && (
                   <p className="mt-1 text-gray-700">
