@@ -82,7 +82,7 @@ export default function Agenda() {
       setEnregistrement("envoi"); toast.info("Transcription en cours…");
       try {
         const { data } = await apiClient.post("/voix", { audio: await enDataUrl(blob), duree_s: Math.max(0.5, Math.min(duree, 31)) }, { timeout: 90000 });
-        setTexte((t) => (t ? `${t} ${data.texte}` : data.texte)); toast.succes("Note transcrite : relisez-la puis touchez « Comprendre ».");
+        setTexte((t) => (t ? `${t} ${data.texte}` : data.texte)); toast.succes("Note transcrite : relisez-la puis touchez « Enregistrer sur mon Agenda ».");
       } catch (err) {
         const d = err?.response?.data?.detail;
         toast.erreur(err?.response?.status === 402 && d?.message ? d.message : messageErreur(err, "Transcription impossible : tapez votre note à la place."));
@@ -99,7 +99,7 @@ export default function Agenda() {
     try {
       const { data } = await apiClient.post("/agenda/analyser", { texte: texte.trim() });
       setProp({ titre: data.titre, date: data.debut.slice(0, 10), heure: data.debut.slice(11, 16), minutes: data.duree_minutes || 60, offset: data.debut.slice(19) || "+00:00", libelle: data.libelle, manque: data.manque || [] });
-      toast.succes(data.manque?.length ? `À compléter : ${data.manque.join(", ")}.` : "Relisez le rendez-vous puis enregistrez-le.");
+      toast.succes(data.manque?.length ? `Vérifiez : ${data.manque.join(", ")} non précisé.` : "Relisez le rendez-vous puis confirmez.");
     } catch (err) { toast.erreur(messageErreur(err, "Analyse impossible.")); }
   };
   const enregistrer = async () => {
@@ -200,12 +200,12 @@ export default function Agenda() {
               aria-label={micro ? "Arrêter la dictée" : "Dicter une note"}>{micro ? "■" : "🎙️"}</button>
             <textarea className="input flex-1" rows={2} value={texte} onChange={(e) => setTexte(e.target.value)} placeholder="Ex. : samedi 8h15 rdv chez le dentiste" aria-label="Note du rendez-vous" />
           </div>
-          <button type="button" className="btn-primary" onClick={comprendre} disabled={!texte.trim()}>✨ Comprendre</button>
+          <button type="button" className="btn-primary" onClick={comprendre} disabled={!texte.trim()}>📅 Enregistrer sur mon Agenda</button>
 
           {prop && (
             <div className="space-y-2 rounded-xl border border-primary/30 bg-primary/5 p-3" data-testid="agenda-proposition">
               <p className="font-semibold">📌 {prop.libelle}</p>
-              {prop.manque.length > 0 && <p className="text-sm text-orange-700">⚠️ À compléter : {prop.manque.join(", ")}.</p>}
+              {prop.manque.length > 0 && <p className="text-sm text-orange-700">⚠️ Non précisé dans la note : {prop.manque.join(", ")}. Vérifiez la valeur proposée ci-dessous (modifiable), puis confirmez.</p>}
               <input className="input" value={prop.titre} onChange={(e) => setProp({ ...prop, titre: e.target.value })} aria-label="Titre" />
               <div className="flex flex-wrap gap-2">
                 <input type="date" className="input w-auto" value={prop.date} onChange={(e) => setProp({ ...prop, date: e.target.value, manque: prop.manque.filter((m) => m !== "date") })} aria-label="Jour" />
@@ -215,7 +215,7 @@ export default function Agenda() {
                 </select>
               </div>
               <div className="flex gap-2">
-                <button type="button" className="btn-primary" onClick={enregistrer} disabled={prop.manque.length > 0}>✅ Enregistrer dans mon agenda</button>
+                <button type="button" className="btn-primary" onClick={enregistrer} disabled={!prop.date || !prop.heure}>✅ Confirmer et enregistrer</button>
                 <button type="button" className="btn-secondary" onClick={() => setProp(null)}>✖️ Annuler</button>
               </div>
             </div>
