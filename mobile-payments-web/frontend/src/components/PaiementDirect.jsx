@@ -3,7 +3,7 @@ import { useToast } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
 import { LIBELLE_VERSION } from "@/version";
 import { apiClient, fcfa, messageErreur } from "@/lib/api";
-import { exigeFenetrePin } from "@/lib/pinOperateurs";
+import { exigeFenetrePin, sansPinSiImpose } from "@/lib/pinOperateurs";
 import { capacites, composer, lireSmsPaiements, payerDirectDialogue, journalUssd, payerDirectMontant } from "@/lib/pontAndroid";
 import { enLettres } from "@/lib/nombreEnLettres";
 import { analyserSms, chargerLignes, confirmePaiement, enregistrerLignes, fusionner } from "@/lib/smsPaiements";
@@ -53,11 +53,13 @@ export default function PaiementDirect({ paiement, onTermine }) {
     //  - le réglage « PIN envoyé en même temps » de ce compte pour cet opérateur (Profil) force l'envoi en une fois (le mot PIN est ajouté avant le # si la séquence ne l'a pas).
     // Orange ouvre TOUJOURS sa fenêtre pour le code secret, même s'il est dans la séquence (constaté en essai réel) : l'envoi « en une fois » échoue (code -1).
     // Pour Orange le mode en deux temps (code composé sans code secret, code tapé dans la fenêtre) est donc imposé, quel que soit le réglage du Profil.
-    const fenetreImposee = exigeFenetrePin(paiement.operateur) && !paiement.code_ussd.includes("PIN");
-    const enUneFois = paiement.code_ussd.includes("PIN") || (!fenetreImposee && !!user?.pin_simultane?.[paiement.operateur]) || !capacites()?.dialogue;
+    // Orange : toute information de PIN est retirée de la séquence (mot PIN et séparateur) ; le code secret n'est tapé que dans la fenêtre d'Orange.
+    const codeUssd = sansPinSiImpose(paiement.operateur, paiement.code_ussd);
+    const fenetreImposee = exigeFenetrePin(paiement.operateur);
+    const enUneFois = (!fenetreImposee && (codeUssd.includes("PIN") || !!user?.pin_simultane?.[paiement.operateur])) || !capacites()?.dialogue;
     const r = enUneFois
-      ? await payerDirectMontant({ operateur: paiement.operateur, code: paiement.code_ussd.includes("PIN") ? paiement.code_ussd : paiement.code_ussd.replace(/#\s*$/, "*PIN#"), resume, montant: paiement.montant })
-      : await payerDirectDialogue({ operateur: paiement.operateur, code: paiement.code_ussd, resume, montant: paiement.montant });
+      ? await payerDirectMontant({ operateur: paiement.operateur, code: codeUssd.includes("PIN") ? codeUssd : codeUssd.replace(/#\s*$/, "*PIN#"), resume, montant: paiement.montant })
+      : await payerDirectDialogue({ operateur: paiement.operateur, code: codeUssd, resume, montant: paiement.montant });
     setChaine(r.chaine || ""); setChaineMasquee(r.chaine_masquee || "");
     if (r.erreur) { setMessage(r.erreur); setEtat("non_envoye"); return; }
     envoyeLe.current = Date.now();
