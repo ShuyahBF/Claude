@@ -91,3 +91,16 @@ ok("expéditeur", ids({ adresse: "Moov Money" }) === "3,4");
 ok("dates incluses", ids({ du: "2026-11-12", au: "2026-11-14" }) === "2,3,4" && ids({ au: "2026-11-10" }) === "1");
 ok("critères cumulés", ids({ adresse: "Moov Money", min: 600 }) === "4");
 ok("filtreActif", !filtreActif({ texte: " ", min: "", sens: "tous" }) && filtreActif({ max: 0 }) && filtreActif({ sens: "recu" }));
+// --- Destinataire d'un transfert Orange (numéro + nom) : retrouvé par la recherche « Abibou » (signalé par le propriétaire le 15/11/2026)
+import { destinataireDe } from "../src/lib/smsPaiements.js";
+const SMS_TRANSFERT = "Cher client, vous avez transfere 25,000.00 FCFA au numero 54144722,ABIBOU. Votre solde est de  18002.3502 FCFA. ID Trans: PP260407.0042.95787716. Pour toute reclamation contactez par appel le 127 ou whatsapp 07000121. Orange Money BF";
+const dest = destinataireDe(SMS_TRANSFERT);
+ok("destinataire : numéro et nom", dest?.tel === "54 14 47 22" && dest?.nom === "ABIBOU");
+const lt = analyserSms({ adresse: "OrangeMoney", recu_le: T, corps: SMS_TRANSFERT });
+ok("ligne : montant, nom, numéro, sens", lt.montant === 25000 && lt.genre === "DEPENSE" && lt.tiers === "ABIBOU" && lt.tel === "54 14 47 22");
+ok("recherche par le nom (casse libre)", filtrerLignes([lt], { texte: "abibou" }).length === 1 && filtrerLignes([lt], { texte: "Moussa" }).length === 0);
+ok("recherche par le numéro", filtrerLignes([lt], { texte: "54 14 47 22" }).length === 1 && filtrerLignes([lt], { texte: "54144722" }).length === 1);
+ok("autre SMS sans destinataire : null", destinataireDe("Paiement de 2500 FCFA a PHARMACIE DU MARCHE effectue.") === null);
+const ancienne = { ...lt, tiers: "numero 54144722", tel: undefined };
+const fus = fusionner([ancienne], [lt]);
+ok("relecture : l'ancienne ligne reçoit le nom, sans doublon", fus.lignes.length === 1 && fus.lignes[0].tiers === "ABIBOU" && fus.nouvelles === 0);

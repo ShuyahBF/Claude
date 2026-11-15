@@ -11,7 +11,7 @@ const MONTANT_AVANT = new RegExp(`(?:fcfa|f\\s?cfa|xof|cfa)\\s*:?\\s*(${NOMBRE})
 const SOLDE = new RegExp(`(?:nouveau\\s+)?solde(?:\\s+(?:actuel|disponible|est|apr[eè]s))?(?:\\s*(?:est|:|de|=))*\\s*(${NOMBRE})`, "i");
 const REFERENCE = /([A-Z]{2}\d{6}\.\d{4}\.\d+)/;
 const DATE_REFERENCE = /^[A-Z]{2}(\d{2})(\d{2})(\d{2})\.(\d{2})(\d{2})\./;
-const MOTS_DEPENSE = ["vous avez payé", "vous avez paye", "votre paiement", "paiement", "payé", "achat", "retrait", "vous avez envoyé", "vous avez envoye", "envoi de", "transfert de", "transfert vers", "facture", "débit", "debit", "vous avez transféré"];
+const MOTS_DEPENSE = ["vous avez payé", "vous avez paye", "votre paiement", "paiement", "payé", "achat", "retrait", "vous avez envoyé", "vous avez envoye", "envoi de", "transfert de", "transfert vers", "facture", "débit", "debit", "vous avez transféré", "vous avez transfere"];
 const MOTS_RECETTE = ["vous avez reçu", "vous avez recu", "reçu de", "recu de", "dépôt", "depot", "crédit de", "credit de", "versement", "transfert reçu"];
 const MOTS_PROMO = ["gagnez", "gagner", "promo", "offre", "bonus", "félicitations", "felicitations", "tentez", "jeu concours", "cliquez"];
 
@@ -94,8 +94,21 @@ export function telephoneDe(texte) {
  *  - argent REÇU : le NUMÉRO DE TÉLÉPHONE de l'expéditeur (le SMS ne donne pas son nom) ;
  *  - PAIEMENT effectué : le NOM DU MARCHAND seul (jamais son code), dédoublonné car souvent écrit deux fois.
  */
+// Transfert Orange Money : « …vous avez transfere 25,000.00 FCFA au numero 54144722,ABIBOU. Votre solde… » → numéro ET nom du destinataire (le nom était perdu avant :
+// la recherche « Abibou » ne trouvait rien). Rend { tel, nom } ou null si le SMS n'a pas cette forme.
+const RE_TRANSFERT = /num[eé]ro\s+(\+?\d[\d .\-]{6,16}\d)\s*[,;:\-]?\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’ .\-]{1,60}?)(?=\.\s|\.$|,|\s+(?:votre|solde|id|trans|frais|pour)\b|$)/i;
+export function destinataireDe(texte) {
+  const m = RE_TRANSFERT.exec(String(texte || ""));
+  if (!m) return null;
+  const c = m[1].replace(/\D/g, "");
+  const tel = c.length === 8 ? c.replace(/(\d{2})(?=\d)/g, "$1 ") : c.length >= 11 ? "+" + c.slice(0, c.length - 8) + " " + c.slice(-8).replace(/(\d{2})(?=\d)/g, "$1 ") : c;
+  return { tel, nom: sansRepetition(m[2].trim().replace(/[.\-]+$/, "")).slice(0, 60) };
+}
+
 function tiersDe(texte, genre) {
   if (genre === "RECETTE") return telephoneDe(texte);
+  const dest = destinataireDe(texte);
+  if (dest) return dest.nom;
   const apresMontant = texte.replace(/^.*?(?:fcfa|f\s?cfa|xof)\s+/i, "");
   const re = /(?:^|\s)(?:à|a|au profit de|chez|vers|pour|auprès de)\s+([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9'’ &.\-]{1,100}?)(?=\s+(?:le\s+\d|du\s+\d|n°|num|numéro|ref|réf|frais|solde|montant|trans|a\s+[ée]t[ée]|est\s+[ée]t[ée]|effectu|avec\s+succ)|[,;\n]|\.\s|$)/i;
   const m = re.exec(apresMontant);
@@ -150,7 +163,7 @@ export function analyserSms({ adresse, recu_le: recuLe, corps }) {
   const ref = (REFERENCE.exec(corps) || [])[1] || null;
   const soldeM = SOLDE.exec(corps);
   const quand = dateDeReference(ref) || recuLe;
-  return { id: ref || `${adresse}|${recuLe}|${montant}`, adresse, quand, genre, categorie, montant, tiers: tiersDe(corps, genre), solde: soldeM ? lireNombre(soldeM[1]) : null, reference: ref };
+  return { id: ref || `${adresse}|${recuLe}|${montant}`, adresse, quand, genre, categorie, montant, tiers: tiersDe(corps, genre), tel: genre === "RECETTE" ? undefined : destinataireDe(corps)?.tel, solde: soldeM ? lireNombre(soldeM[1]) : null, reference: ref };
 }
 
 /** Vrai pour une vraie transaction du portefeuille mobile (les lignes anciennes, sans catégorie, en sont). Les autres sont hors décompte. */
@@ -193,6 +206,9 @@ export function chargerLignes(stockage = (typeof localStorage !== "undefined" ? 
 
 /** Ajoute les nouvelles lignes (sans doublon : même numéro de transaction, ou même adresse + heure + montant). Rend { lignes, nouvelles }. */
 export function fusionner(existantes, nouvelles) {
+  // Une ligne déjà gardée reçoit le destinataire (nom + numéro) quand une relecture le trouve (anciennes lignes sans nom) ; rien d'autre n'est modifié
+  const parId = new Map(nouvelles.filter(Boolean).map((l) => [l.id, l]));
+  existantes = existantes.map((o) => { const n = parId.get(o.id); return n && n.tel && (o.tel !== n.tel || o.tiers !== n.tiers) ? { ...o, tel: n.tel, tiers: n.tiers } : o; });
   const ids = new Set(existantes.map((l) => l.id));
   const ajoutees = nouvelles.filter((l) => l && !ids.has(l.id));
   const lignes = [...existantes, ...ajoutees].sort((a, b) => b.quand - a.quand).slice(0, MAX);
@@ -231,8 +247,8 @@ export function filtrerLignes(lignes, f = {}) {
     if (debut != null && !(l.quand >= debut)) return false;
     if (fin != null && !(l.quand <= fin)) return false;
     if (texte) {
-      const champs = [l.adresse, l.tiers, l.reference].map(sansAccents).join(" ");
-      const numeros = String(l.tiers || "").replace(/[^\d]/g, "");
+      const champs = [l.adresse, l.tiers, l.tel, l.reference].map(sansAccents).join(" ");
+      const numeros = String(l.tiers || "").replace(/[^\d]/g, "") + " " + String(l.tel || "").replace(/[^\d]/g, "");
       if (!(champs.includes(texte) || (saisieNumero && numeros.includes(chiffres)))) return false;
     }
     return true;
