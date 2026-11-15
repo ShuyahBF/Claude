@@ -99,6 +99,17 @@ export function lireMontantPhoto() {
   return promesse;
 }
 
+/**
+ * Saisie vocale du montant : l'application ouvre l'écoute du téléphone (français) et rend { transcriptions: [...] } (la plus probable d'abord) ou { erreur }.
+ * Le site en tire le montant (lib/montantParle.js) et le fait VALIDER en toutes lettres par l'utilisateur.
+ */
+export function dicterMontantVoix() {
+  if (!dansApplication() || !window.AuRorAndroid.dicterMontant) return Promise.resolve({ erreur: "La saisie vocale n'existe que dans l'application." });
+  const [id, promesse] = attendreRetour();
+  window.AuRorAndroid.dicterMontant(id);
+  return promesse;
+}
+
 /** Ouvre les réglages d'auRor dans le téléphone (pour autoriser le micro, la caméra…). Rend vrai si l'application l'a fait. */
 export function ouvrirReglagesApplication() {
   try { if (dansApplication() && window.AuRorAndroid.ouvrirReglagesApplication) { window.AuRorAndroid.ouvrirReglagesApplication(); return true; } } catch { /* sans effet */ }

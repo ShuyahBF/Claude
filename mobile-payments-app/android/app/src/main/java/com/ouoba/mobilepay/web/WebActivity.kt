@@ -94,6 +94,30 @@ class WebActivity : FragmentActivity() {
         }
     }
 
+    // ---- SAISIE VOCALE DU MONTANT : la reconnaissance vocale du téléphone (français) rend jusqu'à 5 transcriptions ; le site en tire le montant
+    private var retourVoix: String? = null
+    private val selecteurVoix = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        val id = retourVoix ?: return@registerForActivityResult; retourVoix = null
+        val textes = if (r.resultCode == RESULT_OK) r.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS).orEmpty() else emptyList()
+        retour(id, if (textes.isEmpty()) JSONObject().put("erreur", "Rien n'a été entendu. Réessayez en parlant près du micro, ou tapez le montant.")
+                    else JSONObject().put("transcriptions", org.json.JSONArray(textes)))
+    }
+
+    /** Vrai si le téléphone a un service de reconnaissance vocale. */
+    fun voixDisponible(): Boolean = Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).resolveActivity(packageManager) != null
+
+    /** Ouvre la fenêtre d'écoute du téléphone ; les transcriptions reviennent au site sous `id`. */
+    fun dicterMontant(id: String) {
+        try {
+            retourVoix = id
+            selecteurVoix.launch(Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "fr-FR")
+                .putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+                .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Dites le montant"))
+        } catch (e: Exception) { retourVoix = null; retour(id, JSONObject().put("erreur", "La reconnaissance vocale n'est pas disponible sur ce téléphone.")) }
+    }
+
     /** Adresse du site (surcharge possible à la compilation : -PsiteUrl=…). */
     private val adresseSite: Uri = Uri.parse(BuildConfig.SITE_URL)
 

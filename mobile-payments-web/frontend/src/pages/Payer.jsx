@@ -17,7 +17,9 @@ import SelecteurOperateur from "@/components/SelecteurOperateur";   // lot 89 : 
 import { positionActuelle } from "@/lib/geoloc";
 import { apiClient, CATEGORIES, couleurOperateur, messageErreur } from "@/lib/api";
 import { analyserQr } from "@/lib/qrOperateurs";
-import { capacites, lireMontantPhoto } from "@/lib/pontAndroid";
+import { capacites, lireMontantPhoto, dicterMontantVoix } from "@/lib/pontAndroid";
+import { montantsParles } from "@/lib/montantParle";
+import { enLettres } from "@/lib/nombreEnLettres";
 
 // Parcours de paiement, comme l'app Android :
 // Opérateur -> Service -> Formulaire (avec résolution du code marchand) -> Code USSD + QR.
@@ -34,6 +36,19 @@ export default function Payer() {
   const [valeurs, setValeurs] = useState({});
   // Lecture optique du montant (application Android) : montants proposés après la photo d'un afficheur client ou d'une facture
   const [lecture, setLecture] = useState({ enCours: false, montants: [] });
+  // Saisie VOCALE du montant : la personne (ou le marchand) dit le montant ; il apparaît en chiffres ET en toutes lettres ; elle le valide d'un geste
+  const [voix, setVoix] = useState({ enCours: false, propositions: [] });
+  const [montantVocal, setMontantVocal] = useState(null);                // montant validé à la voix (nombre) : dispense de le retaper dans la fenêtre de sécurité
+  const direLeMontant = async () => {
+    setVoix({ enCours: true, propositions: [] });
+    toast.info("Écoute en cours… dites le montant, par exemple « quatre mille sept cents francs ».");
+    const r = await dicterMontantVoix();
+    if (r.erreur) { setVoix({ enCours: false, propositions: [] }); toast.erreur(r.erreur); return; }
+    const propositions = montantsParles(r.transcriptions);
+    setVoix({ enCours: false, propositions });
+    if (propositions.length) toast.succes("Montant compris : vérifiez-le en toutes lettres puis validez."); else toast.erreur("Le montant n'a pas été compris. Répétez, ou tapez-le.");
+  };
+  const validerVocal = (valeur) => { setValeurs((v) => ({ ...v, amount: String(valeur) })); setMontantVocal(valeur); setVoix({ enCours: false, propositions: [] }); toast.succes(`Montant validé : ${valeur.toLocaleString("fr-FR")} FCFA.`); };
   const lireLeMontant = async () => {
     setLecture({ enCours: true, montants: [] });
     toast.info("Lecture du montant en cours… cadrez l'afficheur ou la facture.");
@@ -171,7 +186,7 @@ export default function Payer() {
       const { data } = await apiClient.post("/paiements", { service_id: service.id, valeurs, ...(position ? { position } : {}) });
       // Application « direct » + paiement chez un marchand : l'application envoie elle-même la séquence (fenêtre de sécurité : montant retapé + code secret),
       // SANS QR code ni légende. Les autres services (transfert, crédit…) gardent l'écran habituel.
-      if (appliDirect && service.categorie === "merchant_payment" && champMarchand) setPaiementDirect(data); else setPaiement(data);
+      if (appliDirect && service.categorie === "merchant_payment" && champMarchand) setPaiementDirect({ ...data, confirmation_lettres: montantVocal !== null && Number(data.montant) === montantVocal }); else setPaiement(data);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       toast.erreur(messageErreur(err, "Préparation impossible"));
@@ -196,6 +211,7 @@ export default function Payer() {
     setService(null);
     setOperateur("");
     setValeurs({});
+    setMontantVocal(null);
   };
 
   // Lecture d'un QR code avec la caméra (site ouvert sur le téléphone) : QR marchand auRor,
@@ -307,9 +323,30 @@ export default function Payer() {
                 autoFocus={c.key === "amount" && !!codeMarchand}   /* marchand déjà choisi : le curseur est sur le montant */
                 required inputMode={c.type === "numeric" ? "numeric" : "text"} pattern={c.type === "numeric" ? "[0-9 ]*" : undefined}
                 list={c.isMerchantCode ? "marchands-connus" : undefined}
-                value={valeurs[c.key] || ""} onChange={(e) => setValeurs({ ...valeurs, [c.key]: e.target.value })} />
+                value={valeurs[c.key] || ""} onChange={(e) => { if (c.key === "amount") setMontantVocal(null); setValeurs({ ...valeurs, [c.key]: e.target.value }); }} />
 
               {/* Lecture optique : photo d'un afficheur client ou d'une facture (papier ou à l'écran) ; le montant choisi est TOUJOURS redemandé avant l'envoi */}
+              {c.key === "amount" && capacites()?.voix && (
+                <div className="mt-2 space-y-2" data-testid="voix-montant">
+                  <button type="button" className="btn-secondary" onClick={direLeMontant} disabled={voix.enCours}>🎙️ Dire le montant</button>
+                  {voix.propositions.length > 0 && (() => {
+                    const meilleure = voix.propositions[0];
+                    return (
+                      <div className="rounded-2xl border-2 border-green-600 bg-green-50 p-3" role="group" aria-label="Montant compris">
+                        <p className="text-xs font-bold uppercase tracking-wide text-green-800">J'ai compris</p>
+                        <p className="text-3xl font-extrabold text-blue-900">{meilleure.valeur.toLocaleString("fr-FR")} FCFA</p>
+                        <p className="text-lg italic text-gray-700">{enLettres(meilleure.valeur)} francs</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button type="button" className="btn-primary" onClick={() => validerVocal(meilleure.valeur)}>✅ C'est bien ce montant</button>
+                          <button type="button" className="btn-secondary" onClick={direLeMontant}>🎙️ Redire</button>
+                        </div>
+                        {voix.propositions.slice(1).map((p) => (
+                          <button key={p.valeur} type="button" className="mt-2 mr-2 rounded-xl border border-gray-300 bg-white px-3 py-1 text-sm" onClick={() => validerVocal(p.valeur)}>
+                            ou {p.valeur.toLocaleString("fr-FR")} FCFA <span className="text-gray-500">({enLettres(p.valeur)})</span>
+                          </button>))}
+                      </div>);
+                  })()}
+                </div>)}
               {c.key === "amount" && capacites()?.ocr && (
                 <div className="mt-2 space-y-2" data-testid="lecture-montant">
                   <button type="button" className="btn-secondary" onClick={lireLeMontant} disabled={lecture.enCours}>📷 Lire le montant (afficheur ou facture)</button>
