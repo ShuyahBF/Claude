@@ -226,11 +226,12 @@ export default function Agenda() {
           <h2 className="mb-2 text-lg font-semibold">Prochains rendez-vous (14 jours)</h2>
           {triees.length === 0 ? <p className="text-sm text-gray-500">Aucun rendez-vous à venir.</p> : (
             <div className="overflow-x-auto"><table className="tableau w-full text-sm" data-testid="agenda-liste">
-              <thead><tr><Th cle="debut">Quand</Th><Th cle="titre">Titre</Th><Th cle="lieu">Lieu</Th><th className="p-2" /></tr></thead>
+              <thead><tr><Th cle="debut">Quand</Th><Th cle="titre">Titre</Th><Th cle="origine">Origine</Th><Th cle="lieu">Lieu</Th><th className="p-2" /></tr></thead>
               <tbody>{triees.map((e) => (
                 <tr key={e.id} className="border-t border-gray-100">
                   <td className="whitespace-nowrap p-2 font-medium text-primary">{e.toute_la_journee ? `${e.debut} (journée)` : dateHeure(e.debut)}</td>
-                  <td className="p-2">{e.titre}</td><td className="p-2 text-gray-600">{e.lieu || "—"}</td>
+                  <td className="p-2">{e.titre}</td>
+                  <td className="p-2">{e.origine ? <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800" title="Créé depuis auRor">📲 auRor</span> : <span className="text-xs text-gray-500" title="Créé directement dans Google Agenda">🗓️ Google</span>}</td><td className="p-2 text-gray-600">{e.lieu || "—"}</td>
                   <td className="p-2 text-right"><button type="button" onClick={() => supprimer(e)} title="Supprimer" aria-label={`Supprimer ${e.titre}`}>🗑️</button></td>
                 </tr>))}</tbody>
             </table></div>
