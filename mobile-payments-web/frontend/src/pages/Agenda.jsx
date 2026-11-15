@@ -82,7 +82,7 @@ export default function Agenda() {
       setEnregistrement("envoi"); toast.info("Transcription en cours…");
       try {
         const { data } = await apiClient.post("/voix", { audio: await enDataUrl(blob), duree_s: Math.max(0.5, Math.min(duree, 31)) }, { timeout: 90000 });
-        setTexte((t) => (t ? `${t} ${data.texte}` : data.texte)); toast.succes("Note transcrite : relisez-la puis touchez « Enregistrer sur mon Agenda ».");
+        setTexte((t) => (t ? `${t} ${data.texte}` : data.texte)); toast.succes("Note transcrite : relisez-la puis touchez « Enregistrer vers mon Agenda ».");
       } catch (err) {
         const d = err?.response?.data?.detail;
         toast.erreur(err?.response?.status === 402 && d?.message ? d.message : messageErreur(err, "Transcription impossible : tapez votre note à la place."));
@@ -200,7 +200,7 @@ export default function Agenda() {
               aria-label={micro ? "Arrêter la dictée" : "Dicter une note"}>{micro ? "■" : "🎙️"}</button>
             <textarea className="input flex-1" rows={2} value={texte} onChange={(e) => setTexte(e.target.value)} placeholder="Ex. : samedi 8h15 rdv chez le dentiste" aria-label="Note du rendez-vous" />
           </div>
-          <button type="button" className="btn-primary" onClick={comprendre} disabled={!texte.trim()}>📅 Enregistrer sur mon Agenda</button>
+          <button type="button" className="btn-primary" onClick={comprendre} disabled={!texte.trim()}>📅 Enregistrer vers mon Agenda</button>
 
           {prop && (
             <div className="space-y-2 rounded-xl border border-primary/30 bg-primary/5 p-3" data-testid="agenda-proposition">
