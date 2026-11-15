@@ -102,14 +102,27 @@ export default function Agenda() {
       toast.succes(data.manque?.length ? `Vérifiez : ${data.manque.join(", ")} non précisé.` : "Relisez le rendez-vous puis confirmez.");
     } catch (err) { toast.erreur(messageErreur(err, "Analyse impossible.")); }
   };
+  // ---- Modifier un rendez-vous existant (décalage…) : la fiche de relecture s'ouvre pré-remplie ; l'enregistrement le marque « auRor »
+  const modifier = (e) => {
+    if (e.toute_la_journee || !e.debut || e.debut.length < 16) { toast.info("Ce rendez-vous « toute la journée » se modifie dans Google Agenda."); return; }
+    const minutes = e.fin ? Math.max(15, Math.round((new Date(e.fin) - new Date(e.debut)) / 60000)) : 60;
+    const decalage = e.debut.slice(19);
+    setProp({ id: e.id, titre: e.titre, date: e.debut.slice(0, 10), heure: e.debut.slice(11, 16), minutes, offset: !decalage || decalage === "Z" ? "+00:00" : decalage, libelle: "✏️ Modifier ce rendez-vous", manque: [] });
+    toast.info("Corrigez le titre, le jour ou l'heure puis confirmez.");
+  };
   const enregistrer = async () => {
     if (!prop?.titre.trim() || !prop.date || !prop.heure) { toast.erreur("Titre, jour et heure sont nécessaires."); return; }
     const debutIso = `${prop.date}T${prop.heure}:00${prop.offset}`;
     const fin = new Date(new Date(debutIso).getTime() + prop.minutes * 60000);
     const pad = (n) => String(n).padStart(2, "0");
     const finIso = `${fin.getUTCFullYear()}-${pad(fin.getUTCMonth() + 1)}-${pad(fin.getUTCDate())}T${pad(fin.getUTCHours())}:${pad(fin.getUTCMinutes())}:00+00:00`;
-    toast.info("Enregistrement dans votre agenda en cours…");
+    toast.info(prop.id ? "Modification du rendez-vous en cours…" : "Enregistrement dans votre agenda en cours…");
     try {
+      if (prop.id) {
+        await apiClient.post("/agenda/modifier", { id: prop.id, titre: prop.titre.trim(), debut: debutIso, fin: finIso });
+        toast.succes(`Rendez-vous modifié : ${prop.titre.trim()}`);
+        setProp(null); await charger(false); return;
+      }
       await apiClient.post("/agenda/creer", { titre: prop.titre.trim(), debut: debutIso, fin: finIso });
       toast.succes(`Rendez-vous enregistré : ${prop.titre.trim()}`);
       setProp(null); setTexte(""); await charger(false);
@@ -215,7 +228,7 @@ export default function Agenda() {
                 </select>
               </div>
               <div className="flex gap-2">
-                <button type="button" className="btn-primary" onClick={enregistrer} disabled={!prop.date || !prop.heure}>✅ Confirmer et enregistrer</button>
+                <button type="button" className="btn-primary" onClick={enregistrer} disabled={!prop.date || !prop.heure}>{prop.id ? "✅ Enregistrer la modification" : "✅ Confirmer et enregistrer"}</button>
                 <button type="button" className="btn-secondary" onClick={() => setProp(null)}>✖️ Annuler</button>
               </div>
             </div>
@@ -232,7 +245,7 @@ export default function Agenda() {
                   <td className="whitespace-nowrap p-2 font-medium text-primary">{e.toute_la_journee ? `${e.debut} (journée)` : dateHeure(e.debut)}</td>
                   <td className="p-2">{e.titre}</td>
                   <td className="p-2">{e.origine ? <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800" title="Créé depuis auRor">📲 auRor</span> : <span className="text-xs text-gray-500" title="Créé directement dans Google Agenda">🗓️ Google</span>}</td><td className="p-2 text-gray-600">{e.lieu || "—"}</td>
-                  <td className="p-2 text-right"><button type="button" onClick={() => supprimer(e)} title="Supprimer" aria-label={`Supprimer ${e.titre}`}>🗑️</button></td>
+                  <td className="whitespace-nowrap p-2 text-right"><button type="button" onClick={() => modifier(e)} title="Modifier" aria-label={`Modifier ${e.titre}`} className="mr-2">✏️</button><button type="button" onClick={() => supprimer(e)} title="Supprimer" aria-label={`Supprimer ${e.titre}`}>🗑️</button></td>
                 </tr>))}</tbody>
             </table></div>
           )}

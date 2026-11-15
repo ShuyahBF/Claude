@@ -53,6 +53,13 @@ class Rdv(BaseModel):
     rappel_minutes: Optional[int] = Field(None, ge=0, le=40320)
 
 
+class Modif(BaseModel):
+    id: str = Field(min_length=1, max_length=200)
+    titre: Optional[str] = Field(None, min_length=1, max_length=200)
+    debut: Optional[str] = Field(None, min_length=10, max_length=40)
+    fin: Optional[str] = Field(None, max_length=40)
+
+
 class Demande(BaseModel):
     gmail: str = Field(min_length=5, max_length=120)
 
@@ -95,6 +102,12 @@ async def analyser(data: Note, user: dict = Depends(get_current_user)):
 @router.post("/creer")
 async def creer(data: Rdv, user: dict = Depends(get_current_user)):
     return await _relayer("creer", user, data.model_dump(exclude_none=True))
+
+
+@router.post("/modifier")
+async def modifier(data: Modif, user: dict = Depends(get_current_user)):
+    """Corrige un rendez-vous (décalage…) ; il prend l'étiquette « auRor » dans la colonne Origine."""
+    return await _relayer("modifier", user, data.model_dump(exclude_none=True))
 
 
 @router.post("/supprimer")
