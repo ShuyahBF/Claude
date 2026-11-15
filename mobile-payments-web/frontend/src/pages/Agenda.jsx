@@ -16,6 +16,7 @@ export default function Agenda() {
   const [evenements, setEvenements] = useState([]);
   const [charge, setCharge] = useState(false);
   const [tri, setTri] = useState({ cle: "debut", sens: "asc" });
+  const [gmail, setGmail] = useState("");               // compte Google à faire accepter (étape 1)
   const [texte, setTexte] = useState("");                 // note dictée ou tapée
   const [prop, setProp] = useState(null);                 // proposition à relire : { titre, date, heure, minutes, offset, libelle, manque }
   const [enregistrement, setEnregistrement] = useState("repos");   // repos | micro | envoi
@@ -39,6 +40,13 @@ export default function Agenda() {
   useEffect(() => { charger(false); }, [charger]);
   useEffect(() => () => { flux.current?.getTracks().forEach((p) => p.stop()); clearInterval(minuteur.current); }, []);
 
+  // Étape 1 : l'utilisateur indique SON compte Google ; l'administrateur de SAWALI l'accepte ou le refuse (étape 2) ; ensuite seulement, « Lier » (étape 3)
+  const demander = async () => {
+    if (!/^\S+@\S+\.\S+$/.test(gmail.trim())) { toast.erreur("Indiquez l'adresse e-mail de votre compte Google."); return; }
+    toast.info("Envoi de votre demande en cours…");
+    try { await apiClient.post("/agenda/demander", { gmail: gmail.trim() }); toast.succes("Demande envoyée : l'administrateur doit l'accepter."); await charger(false); }
+    catch (err) { toast.erreur(messageErreur(err, "Demande impossible : réessayez.")); }
+  };
   const lier = async () => {
     toast.info("Ouverture de la page d'autorisation Google…");
     try {
@@ -137,11 +145,24 @@ export default function Agenda() {
       {!etat?.lie ? (
         <section className="card space-y-3 p-5" data-testid="agenda-non-lie">
           <p>Votre agenda Google n'est pas encore lié.</p>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn-primary" onClick={lier}>🔗 Lier mon Google Agenda</button>
-            <button type="button" className="btn-secondary" onClick={() => charger(true)} disabled={charge}>🔄 Actualiser</button>
-          </div>
-          <p className="text-xs text-gray-500">Une page Google s'ouvre : choisissez votre compte et acceptez. Revenez ensuite ici et touchez « Actualiser ».</p>
+          {etat?.approbation_requise && etat?.demande !== "accepte" ? (<>
+            {/* Étapes 1 et 2 : demande d'accès avec le compte Google, acceptée par l'administrateur */}
+            {etat.demande === "attente" && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="status">⏳ Demande envoyée pour <b>{etat.gmail}</b> : en attente de l'administrateur. Touchez « Actualiser » pour voir la réponse.</p>}
+            {etat.demande === "refuse" && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-900" role="status">⛔ Demande refusée pour <b>{etat.gmail}</b>. Vous pouvez en envoyer une autre avec un autre compte.</p>}
+            <label className="label" htmlFor="agenda-gmail">Votre compte Google (Gmail)</label>
+            <input id="agenda-gmail" className="input" type="email" inputMode="email" value={gmail} onChange={(e) => setGmail(e.target.value)} placeholder="awa.badini@gmail.com" />
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="btn-primary" onClick={demander} disabled={!gmail.trim()}>📨 Demander l'accès</button>
+              <button type="button" className="btn-secondary" onClick={() => charger(true)} disabled={charge}>🔄 Actualiser</button>
+            </div>
+            <p className="text-xs text-gray-500">L'administrateur vérifie votre compte avant que vous puissiez lier votre agenda : vous êtes responsable de l'adresse indiquée.</p>
+          </>) : (<>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="btn-primary" onClick={lier}>🔗 Lier mon Google Agenda{etat?.gmail ? ` (${etat.gmail})` : ""}</button>
+              <button type="button" className="btn-secondary" onClick={() => charger(true)} disabled={charge}>🔄 Actualiser</button>
+            </div>
+            <p className="text-xs text-gray-500">Une page Google s'ouvre : choisissez le compte autorisé et acceptez. Revenez ensuite ici et touchez « Actualiser ».</p>
+          </>)}
         </section>
       ) : (<>
         <section className="card space-y-2 p-5">

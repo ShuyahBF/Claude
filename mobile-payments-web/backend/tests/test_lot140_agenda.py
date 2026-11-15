@@ -60,6 +60,17 @@ def test_parcours_lier_analyser_creer(client, utilisateur, sawali):
     assert r.status_code == 200 and sawali[-1].url.path == "/api/webhook/agenda/creer" and json.loads(sawali[-1].content)["rappel_minutes"] == 30
 
 
+def test_demande_d_acces_avec_le_compte_google(client, utilisateur, sawali):
+    _, h, _ = utilisateur
+    sawali.reponse = (200, {"etat": "attente", "gmail": "awa@gmail.com"})
+    r = client.post("/api/agenda/demander", headers=h, json={"gmail": "awa@gmail.com", "utilisateur": "pirate"})
+    corps = json.loads(sawali[-1].content)
+    assert r.json()["etat"] == "attente" and sawali[-1].url.path == "/api/webhook/agenda/demander" and corps["gmail"] == "awa@gmail.com" and corps["utilisateur"] != "pirate"
+    assert client.post("/api/agenda/demander", headers=h, json={"gmail": "x"}).status_code == 422
+    sawali.reponse = (403, {"detail": "Votre demande d'accès est en attente de l'administrateur"})
+    assert client.post("/api/agenda/lier", headers=h).status_code != 200
+
+
 def test_refus_de_sawali_transmis_et_validations(client, utilisateur, sawali):
     _, h, _ = utilisateur
     sawali.reponse = (409, {"detail": "Agenda non lié : reliez votre compte Google"})
