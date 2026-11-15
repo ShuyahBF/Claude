@@ -40,7 +40,7 @@ import org.json.JSONObject
  */
 class FenetrePaiement(private val activite: Activity) {
     /** Ce que la fenêtre affiche ; `texteLibre` sert seulement quand le site n'a envoyé qu'un texte (ancien format). */
-    data class Info(val service: String = "", val operateur: String = "", val montant: String = "", val lettres: String = "", val marchand: String = "", val code: String = "", val texteLibre: String = "")
+    data class Info(val service: String = "", val operateur: String = "", val montant: String = "", val lettres: String = "", val marchand: String = "", val code: String = "", val texteLibre: String = "", val confirmation: String = "")
 
     companion object {
         private val NUIT = Color.parseColor("#0B2A80"); private val BLEU = Color.parseColor("#0E6BA8"); private val BLEU_CLAIR = Color.parseColor("#EAF2FF")
@@ -52,7 +52,7 @@ class FenetrePaiement(private val activite: Activity) {
         /** Lit les informations envoyées par le site (JSON) ; un simple texte est gardé tel quel. */
         fun lire(resume: String): Info = try {
             val j = JSONObject(resume)
-            Info(j.optString("service"), j.optString("operateur"), j.optString("montant"), j.optString("lettres"), j.optString("marchand"), j.optString("code"))
+            Info(j.optString("service"), j.optString("operateur"), j.optString("montant"), j.optString("lettres"), j.optString("marchand"), j.optString("code"), "", j.optString("confirmation"))
         } catch (e: Exception) { Info(texteLibre = resume) }
     }
 
@@ -121,6 +121,10 @@ class FenetrePaiement(private val activite: Activity) {
             addView(texte("⚠ Lisez le montant en lettres, puis retapez-le pour confirmer : une faute (20 000 au lieu de 200 000) coûte cher.", 14f, AMBRE_TEXTE, gras = true))
         })
 
+        // Montant déjà VALIDÉ À LA VOIX (relu en toutes lettres par l'utilisateur, ou par le marchand) : pas de retape, utile aux personnes qui ne peuvent pas écrire
+        if (attendu.isEmpty() && info.confirmation == "lettres") corps.addView(bloc(AMBRE_FOND, AMBRE_TRAIT).apply {
+            addView(texte("🗣️ Ce montant a été validé à la voix, relu en toutes lettres. Vérifiez-le une dernière fois : il part avec votre empreinte ou votre code secret.", 14f, AMBRE_TEXTE, gras = true))
+        })
         // Champ 1 : le montant retapé (cadre bleu) avec retour immédiat
         var actualiserRef: (() -> Unit)? = null
         var champMontant: EditText? = null; var retour: TextView? = null

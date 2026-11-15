@@ -46,6 +46,8 @@ export default function PaiementDirect({ paiement, onTermine }) {
       service: paiement.service_nom, operateur: paiement.operateur,
       montant: paiement.montant ? fcfa(paiement.montant) : "", lettres: paiement.montant ? `${enLettres(paiement.montant)} francs` : "",
       marchand: paiement.marchand ? (paiement.marchand.libelle || "Marchand sans nom") : "", code: paiement.marchand?.code || "",
+      // Montant validé à la voix, relu en toutes lettres : la fenêtre de sécurité ne demande pas de le retaper (le doigt ou le code secret valide l'envoi)
+      confirmation: paiement.confirmation_lettres ? "lettres" : "",
     });
     // Deux façons d'envoyer, selon le service :
     //  - la séquence contient {pin} (code secret au milieu du code) : envoi en UNE fois, le mot PIN est remplacé par l'application ;
@@ -58,8 +60,8 @@ export default function PaiementDirect({ paiement, onTermine }) {
     const fenetreImposee = exigeFenetrePin(paiement.operateur);
     const enUneFois = (!fenetreImposee && (codeUssd.includes("PIN") || !!user?.pin_simultane?.[paiement.operateur])) || !capacites()?.dialogue;
     const r = enUneFois
-      ? await payerDirectMontant({ operateur: paiement.operateur, code: codeUssd.includes("PIN") ? codeUssd : codeUssd.replace(/#\s*$/, "*PIN#"), resume, montant: paiement.montant })
-      : await payerDirectDialogue({ operateur: paiement.operateur, code: codeUssd, resume, montant: paiement.montant });
+      ? await payerDirectMontant({ operateur: paiement.operateur, code: codeUssd.includes("PIN") ? codeUssd : codeUssd.replace(/#\s*$/, "*PIN#"), resume, montant: paiement.confirmation_lettres ? "" : paiement.montant })
+      : await payerDirectDialogue({ operateur: paiement.operateur, code: codeUssd, resume, montant: paiement.confirmation_lettres ? "" : paiement.montant });
     setChaine(r.chaine || ""); setChaineMasquee(r.chaine_masquee || "");
     if (r.erreur) { setMessage(r.erreur); setEtat("non_envoye"); return; }
     envoyeLe.current = Date.now();
