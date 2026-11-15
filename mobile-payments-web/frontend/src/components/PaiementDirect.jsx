@@ -3,6 +3,7 @@ import { useToast } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
 import { LIBELLE_VERSION } from "@/version";
 import { apiClient, fcfa, messageErreur } from "@/lib/api";
+import { exigeFenetrePin } from "@/lib/pinOperateurs";
 import { capacites, composer, lireSmsPaiements, payerDirectDialogue, journalUssd, payerDirectMontant } from "@/lib/pontAndroid";
 import { enLettres } from "@/lib/nombreEnLettres";
 import { analyserSms, chargerLignes, confirmePaiement, enregistrerLignes, fusionner } from "@/lib/smsPaiements";
@@ -50,7 +51,10 @@ export default function PaiementDirect({ paiement, onTermine }) {
     //  - la séquence contient {pin} (code secret au milieu du code) : envoi en UNE fois, le mot PIN est remplacé par l'application ;
     //  - sinon (cas d'Orange : l'opérateur demande le code secret dans une seconde fenêtre) : le code est composé SANS code secret et l'application tape le code secret dans la fenêtre
     //  - le réglage « PIN envoyé en même temps » de ce compte pour cet opérateur (Profil) force l'envoi en une fois (le mot PIN est ajouté avant le # si la séquence ne l'a pas).
-    const enUneFois = paiement.code_ussd.includes("PIN") || !!user?.pin_simultane?.[paiement.operateur] || !capacites()?.dialogue;
+    // Orange ouvre TOUJOURS sa fenêtre pour le code secret, même s'il est dans la séquence (constaté en essai réel) : l'envoi « en une fois » échoue (code -1).
+    // Pour Orange le mode en deux temps (code composé sans code secret, code tapé dans la fenêtre) est donc imposé, quel que soit le réglage du Profil.
+    const fenetreImposee = exigeFenetrePin(paiement.operateur) && !paiement.code_ussd.includes("PIN");
+    const enUneFois = paiement.code_ussd.includes("PIN") || (!fenetreImposee && !!user?.pin_simultane?.[paiement.operateur]) || !capacites()?.dialogue;
     const r = enUneFois
       ? await payerDirectMontant({ operateur: paiement.operateur, code: paiement.code_ussd.includes("PIN") ? paiement.code_ussd : paiement.code_ussd.replace(/#\s*$/, "*PIN#"), resume, montant: paiement.montant })
       : await payerDirectDialogue({ operateur: paiement.operateur, code: paiement.code_ussd, resume, montant: paiement.montant });
@@ -93,7 +97,7 @@ export default function PaiementDirect({ paiement, onTermine }) {
     const cap = capacites() || {};
     const texte = [
       `auRor site ${LIBELLE_VERSION} · application ${cap.version || "?"}`,
-      `Opérateur : ${paiement.operateur} · mode : ${user?.pin_simultane?.[paiement.operateur] ? "PIN envoyé en même temps" : "dialogue du PIN"}`,
+      `Opérateur : ${paiement.operateur} · mode : ${enUneFois ? "PIN envoyé en même temps" : "dialogue du PIN"}`,
       `Service : ${paiement.service_nom} · montant : ${paiement.montant || "?"} · marchand : ${paiement.marchand?.code || "?"}`,
       `État : ${etat}${message ? ` · message : ${message}` : ""}${reponse ? ` · réponse : ${reponse}` : ""}`,
       `Chaîne envoyée (code secret masqué) : ${chaineMasquee || "?"}`,

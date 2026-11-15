@@ -9,6 +9,7 @@ import { useToast } from "@/components/Toast";
 import { useAuth } from "@/context/AuthContext";
 import { apiClient, messageErreur } from "@/lib/api";
 import { capacites } from "@/lib/pontAndroid";
+import { exigeFenetrePin } from "@/lib/pinOperateurs";
 
 export default function PinProfil() {
   const toast = useToast();
@@ -37,10 +38,11 @@ export default function PinProfil() {
         {operateurs.map((o) => (
           <li key={o} className="rounded-xl border border-gray-200 px-3 py-2.5">
             <label className="flex cursor-pointer items-center gap-3">
-              <input type="checkbox" className="h-5 w-5" checked={!!user.pin_simultane?.[o]} disabled={occupe} data-testid={`pin-sim-${o}`}
+              <input type="checkbox" className="h-5 w-5" checked={!exigeFenetrePin(o) && !!user.pin_simultane?.[o]} disabled={occupe || exigeFenetrePin(o)} data-testid={`pin-sim-${o}`}
                 onChange={(e) => regler("/auth/pin-simultane", { operateur: o, actif: e.target.checked }, e.target.checked ? `${o} : le code secret part avec la séquence (enregistré)` : `${o} : le code secret est demandé dans la fenêtre de l'opérateur (enregistré)`)} />
               <span className="flex-1 font-medium">{o} : PIN envoyé en même temps</span>
             </label>
+            {exigeFenetrePin(o) && <p className="mt-1 text-xs text-amber-800">🔒 {o} ouvre toujours sa propre fenêtre pour le code secret : le mode « fenêtre de l'opérateur » est utilisé automatiquement (l'envoi en une fois est refusé par {o}).</p>}
           </li>
         ))}
       </ul>
