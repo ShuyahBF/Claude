@@ -133,9 +133,14 @@ class WebActivity : ComponentActivity() {
             override fun onPermissionRequest(demande: PermissionRequest) {
                 runOnUiThread {
                     val camera = demande.resources.contains(PermissionRequest.RESOURCE_VIDEO_CAPTURE)
-                    if (!estAuror(demande.origin) || !camera) { demande.deny(); return@runOnUiThread }
-                    demanderAutorisations(arrayOf(Manifest.permission.CAMERA)) { ok ->
-                        if (ok) demande.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE)) else demande.deny()
+                    val micro = demande.resources.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+                    if (!estAuror(demande.origin) || (!camera && !micro)) { demande.deny(); return@runOnUiThread }
+                    // Autorisations du téléphone nécessaires (caméra pour le scan, micro pour la dictée) puis réponse à la page
+                    val permissions = mutableListOf<String>(); val ressources = mutableListOf<String>()
+                    if (camera) { permissions += Manifest.permission.CAMERA; ressources += PermissionRequest.RESOURCE_VIDEO_CAPTURE }
+                    if (micro) { permissions += Manifest.permission.RECORD_AUDIO; ressources += PermissionRequest.RESOURCE_AUDIO_CAPTURE }
+                    demanderAutorisations(permissions.toTypedArray()) { ok ->
+                        if (ok) demande.grant(ressources.toTypedArray()) else demande.deny()
                     }
                 }
             }
