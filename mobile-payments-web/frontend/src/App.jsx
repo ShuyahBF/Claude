@@ -30,6 +30,7 @@ import Ordonnances from "@/pages/Ordonnances";
 import Payer from "@/pages/Payer";
 import Profil from "@/pages/Profil";
 import Voix from "@/pages/Voix";
+import Agenda from "@/pages/Agenda";
 import Cartes from "@/pages/Cartes";
 import SuppressionCompte from "@/pages/SuppressionCompte";
 
@@ -70,6 +71,7 @@ export default function App() {
               <Route path="/abonnement" element={<Abonnement />} />
               <Route path="/ordonnances" element={<Ordonnances />} />
               <Route path="/transcription" element={<Voix />} />
+              <Route path="/agenda" element={<Agenda />} />
               <Route path="/cartes" element={<Cartes />} />
               <Route path="/pharmacies-de-garde" element={<Garde />} />
               <Route path="/archives" element={<Archives />} />
