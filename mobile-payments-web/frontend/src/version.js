@@ -27,7 +27,7 @@
 // ============================================================================
 
 // Compteur de déploiements : +1 à chaque déploiement.
-export const VERSION = 120;
+export const VERSION = 121;
 
 // Numéro de la PR GitHub fusionnée pour ce déploiement.
 export const LOT = 143;

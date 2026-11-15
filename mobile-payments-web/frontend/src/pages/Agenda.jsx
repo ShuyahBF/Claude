@@ -160,6 +160,11 @@ export default function Agenda() {
             </div>
             <p className="text-xs text-gray-500">L'administrateur vérifie votre compte avant que vous puissiez lier votre agenda : vous êtes responsable de l'adresse indiquée.</p>
           </>) : (<>
+            {/* Consigne AVANT la liaison : la case « Agenda » est décochée par défaut chez Google tant que l'application n'est pas validée */}
+            <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="note">
+              ⚠️ <b>Avant de continuer :</b> une page Google va s'ouvrir. Vous y verrez la case « Afficher et modifier les événements de tous vos agendas ».
+              <b> COCHEZ cette case</b>, puis touchez « Continuer ». Sans elle, votre agenda ne pourra pas être lié.
+            </div>
             <div className="flex flex-wrap gap-2">
               <button type="button" className="btn-primary" onClick={lier}>🔗 Lier mon Google Agenda{etat?.gmail ? ` (${etat.gmail})` : ""}</button>
               <button type="button" className="btn-secondary" onClick={() => charger(true)} disabled={charge}>🔄 Actualiser</button>
