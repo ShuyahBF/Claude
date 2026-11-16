@@ -1,3 +1,6 @@
+import { BoutonOuvrirTelephone, CaseMemoriserTelephone, memoriserSiDemande } from "@/components/OuvertureTelephone";
+import { coffreTelephoneOublier } from "@/lib/pontAndroid";
+import { BoutonRetirerTelephone } from "@/components/OuvertureTelephone";
 import ChampMotDePasse from "@/components/ChampMotDePasse";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -41,6 +44,7 @@ export default function Archives() {
   const [recherche, setRecherche] = useState("");
   const [filtres, setFiltres] = useState({ categorie: "", annee: "", tag: "" });
   const [phrase, setPhrase] = useState({ a: "", b: "" });
+  const [memoriserTel, setMemoriserTel] = useState(false);   // case « ouvrir ensuite avec l'empreinte / le code du téléphone »
   const [occupe, setOccupe] = useState(false);
   const [ajout, setAjout] = useState(null);                 // formulaire d'ajout / de modification (null = fermé)
   const [fichier, setFichier] = useState(null);             // fichier à archiver (photo, PDF, capture)
@@ -120,20 +124,22 @@ export default function Archives() {
       setCodeSecours({ code, confirme: false });                // le code de secours est montré une seule fois, avec obligation de confirmer
     } catch (err) { verrouiller(); toast.erreur(messageErreur(err, "Activation impossible")); } finally { setOccupe(false); }
   };
-  const ouvrirCoffre = async (e) => {
-    e.preventDefault();
+  // `secretTel` : secret retrouvé par l'empreinte / le code du téléphone (sinon, la saisie)
+  const ouvrirCoffre = async (e, secretTel) => {
+    e?.preventDefault?.();
+    const secret = secretTel || phrase.a;
     setOccupe(true);
     try {
       if (etat.pin) {
         // Archives protégées par code + poivre du serveur : le serveur contrôle la preuve et limite les essais
-        const { preuve, partie } = await etapeSecret(phrase.a, etat.sel);
+        const { preuve, partie } = await etapeSecret(secret, etat.sel);
         const { data } = await apiClient.post("/archives/pin/ouvrir", { preuve, ...(etat.a2f ? { code_totp: codeApp } : {}) });
         if (!(await deverrouillerAvecPoivre(partie, data.poivre, etat.verif, etat.enveloppe))) { toast.erreur("Ouverture impossible : réessayez"); return; }
       } else {
         // Archives créées avant le lot 93 (protégées par la phrase seule) : ouverture, puis mise à niveau vers code + poivre
-        const r = await deverrouiller(phrase.a, etat.sel, etat.verif, etat.enveloppe);
+        const r = await deverrouiller(secret, etat.sel, etat.verif, etat.enveloppe);
         if (!r.ok) { toast.erreur("Phrase secrète incorrecte"); return; }
-        const { preuve, partie } = await etapeSecret(phrase.a, etat.sel);
+        const { preuve, partie } = await etapeSecret(secret, etat.sel);
         const { data } = await apiClient.post("/archives/pin/enregistrer", { preuve, type_secret: "phrase", verif_actuelle: etat.verif });
         const enveloppe = await nouvelleEnveloppePin(partie, data.poivre);
         let maj = { verif_actuelle: etat.verif, enveloppe };
@@ -145,8 +151,9 @@ export default function Archives() {
         await apiClient.post("/archives/cle/enveloppes", maj);
         await chargerEtat();
       }
+      if (!secretTel) await memoriserSiDemande(memoriserTel, secret, toast);
       setPhrase({ a: "", b: "" }); setCodeApp(""); setDeverrouille(true);
-    } catch (err) { verrouiller(); toast.erreur(messageErreur(err, "Ouverture impossible")); } finally { setOccupe(false); }
+    } catch (err) { verrouiller(); if (secretTel) { coffreTelephoneOublier(); toast.erreur("Le secret mémorisé n'est plus valable (il a changé) : tapez-le, puis mémorisez-le à nouveau."); } else toast.erreur(messageErreur(err, "Ouverture impossible")); } finally { setOccupe(false); }
   };
 
   // ---- Lot 94 : application d'authentification (Authenticator…) en plus du code PIN / de la phrase -----------------------------
@@ -185,6 +192,7 @@ export default function Archives() {
     try {
       if (!etat.secours) { toast.erreur("Aucun code de secours n'a été enregistré pour ces archives"); return; }
       if (!(await deverrouillerAvecCode(codeSaisi, etat.sel, etat.verif, etat.secours))) { toast.erreur("Code de secours incorrect"); return; }
+      coffreTelephoneOublier();   // le secret change : l'ancien mémorisé n'est plus bon
       const { preuve, partie } = await etapeSecret(phrase.a, etat.sel);
       const { data } = await apiClient.post("/archives/pin/enregistrer", { preuve, type_secret: typeSecret, verif_actuelle: etat.verif });
       const enveloppe = await nouvelleEnveloppePin(partie, data.poivre);
@@ -405,13 +413,15 @@ export default function Archives() {
               <input className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={7} placeholder="Code à 6 chiffres de votre application d'authentification" value={codeApp}
                 onChange={(e) => setCodeApp(e.target.value.replace(/[^\d ]/g, ""))} aria-label="Code de l'application d'authentification" />
             )}
+            <BoutonOuvrirTelephone etat={etat} disabled={occupe} onSecret={(secretTel) => ouvrirCoffre(null, secretTel)} />
+            <CaseMemoriserTelephone etat={etat} coche={memoriserTel} setCoche={setMemoriserTel} />
             {etat.secours && <button type="button" className="text-sm font-semibold text-primary underline" onClick={() => { setModeCode(true); setTypeSecret(etat.pin === "phrase" ? "phrase" : "pin"); setPhrase({ a: "", b: "" }); }}>{etat.pin === "pin" ? "Code PIN oublié" : "Phrase oubliée"} ? Utiliser mon code de secours</button>}
           </form>
         )}
         {etat && enLigneConfigure && !deverrouille && modeCode && (
           <form onSubmit={recupererAvecCode} className="space-y-2">
             <p className="text-sm text-gray-600">Saisissez votre <b>code de secours</b> (8 groupes de 4 caractères) puis choisissez un <b>nouveau code PIN ou une nouvelle phrase</b>. Vos documents ne changent pas.</p>
-            <input className="input font-mono" autoComplete="off" autoCapitalize="characters" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" value={codeSaisi} onChange={(e) => setCodeSaisi(e.target.value)} />
+            <ChampMotDePasse className="input font-mono" autoComplete="off" autoCapitalize="characters" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" value={codeSaisi} onChange={(e) => setCodeSaisi(e.target.value)} />
             <fieldset className="flex gap-4 text-sm">
               <label className="flex items-center gap-1.5"><input type="radio" name="type-secret2" checked={typeSecret === "pin"} onChange={() => { setTypeSecret("pin"); setPhrase({ a: "", b: "" }); }} /> 🔢 Code PIN</label>
               <label className="flex items-center gap-1.5"><input type="radio" name="type-secret2" checked={typeSecret === "phrase"} onChange={() => { setTypeSecret("phrase"); setPhrase({ a: "", b: "" }); }} /> 🔤 Phrase secrète</label>
@@ -447,6 +457,7 @@ export default function Archives() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span>🔓 Archives ouvertes{!abonne && <> · <Link to="/abonnement" className="font-semibold text-primary underline">plus d'espace</Link></>}</span>
               <button type="button" className="btn-outline btn-sm" onClick={fermerCoffre}>🔒 Verrouiller</button>
+              <BoutonRetirerTelephone etat={etat} apres={() => setMemoriserTel(false)} />
             </div>
             {etat.pin && (
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-gray-50 p-2" data-testid="bloc-a2f">

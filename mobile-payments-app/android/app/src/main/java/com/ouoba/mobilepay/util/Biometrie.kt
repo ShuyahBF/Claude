@@ -117,6 +117,77 @@ object Biometrie {
         } catch (e: Exception) { surEchec("Empreinte indisponible : " + (e.message ?: "erreur")) }
     }
 
+    // ---------------------------------------------------------------- 3. secret du COFFRE de données (empreinte OU code du téléphone)
+    // Le secret (code PIN / phrase) du coffre chiffré d'auRor est rangé CHIFFRÉ par une clé du coffre Android qui ne sert qu'après reconnaissance
+    // de l'utilisateur : empreinte, visage OU code / schéma du téléphone. Sans cela, personne (même avec le téléphone déverrouillé par un autre moyen,
+    // ou en copiant les fichiers de l'application) ne peut relire le secret. Clé « à durée limitée » (10 s) : l'invite est affichée sans objet cryptographique,
+    // puis le secret est (dé)chiffré tout de suite, ce qui fonctionne aussi avec le code du téléphone sur tous les Android.
+    private const val ALIAS_COFFRE = "auror_coffre_telephone"
+    private const val FICHIER_COFFRE = "biometrie_coffre"
+    private const val RANGEMENT_COFFRE = "secret"
+
+    /** Vrai si le téléphone a un verrouillage d'écran (empreinte, visage, code ou schéma) : sans lui, rien ne peut être mémorisé. */
+    fun coffrePossible(c: Context): Boolean = verrouPossible(c)
+
+    /** Vrai si le secret du coffre est déjà mémorisé sur ce téléphone. */
+    fun coffreMemorise(c: Context): Boolean = c.getSharedPreferences(FICHIER_COFFRE, Context.MODE_PRIVATE).contains(RANGEMENT_COFFRE)
+
+    /** Oublie le secret mémorisé (l'utilisateur ne veut plus de l'ouverture par le téléphone, ou le secret a changé). */
+    fun coffreOublier(c: Context) {
+        c.getSharedPreferences(FICHIER_COFFRE, Context.MODE_PRIVATE).edit().remove(RANGEMENT_COFFRE).apply()
+        try { KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(ALIAS_COFFRE) } catch (_: Exception) {}
+    }
+
+    /** Clé du coffre de données : utilisable 10 s après reconnaissance (biométrie forte ou code du téléphone) ; invalidée si les empreintes changent. */
+    private fun cleCoffreDonnees(): SecretKey {
+        val coffre = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (coffre.getKey(ALIAS_COFFRE, null) as? SecretKey)?.let { return it }
+        val spec = KeyGenParameterSpec.Builder(ALIAS_COFFRE, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+            .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setUserAuthenticationRequired(true)
+            .apply {
+                if (Build.VERSION.SDK_INT >= 30) setUserAuthenticationParameters(10, KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL)
+                else @Suppress("DEPRECATION") setUserAuthenticationValidityDurationSeconds(10)
+            }
+            .build()
+        return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").apply { init(spec) }.generateKey()
+    }
+
+    /** Invite « empreinte ou code du téléphone » ; `surOk` seulement si l'utilisateur est reconnu. */
+    private fun inviteTelephone(a: FragmentActivity, titre: String, sousTitre: String, surOk: () -> Unit, surEchec: (String) -> Unit) {
+        val invite = BiometricPrompt(a, ContextCompat.getMainExecutor(a), object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(resultat: BiometricPrompt.AuthenticationResult) = surOk()
+            override fun onAuthenticationError(code: Int, message: CharSequence) = surEchec(message.toString())
+        })
+        invite.authenticate(BiometricPrompt.PromptInfo.Builder().setTitle(titre).setSubtitle(sousTitre).setAllowedAuthenticators(autorisationsVerrou()).build())
+    }
+
+    /** ENRÔLEMENT : après reconnaissance, le secret du coffre est chiffré puis rangé. */
+    fun coffreMemoriser(a: FragmentActivity, secret: String, surOk: () -> Unit, surEchec: (String) -> Unit) {
+        inviteTelephone(a, "Mémoriser mon secret", "Confirmez avec votre empreinte ou le code du téléphone : le secret sera protégé par le téléphone.", {
+            try {
+                val chiffreur = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, cleCoffreDonnees()) }
+                val chiffre = chiffreur.doFinal(secret.toByteArray(Charsets.UTF_8))
+                a.getSharedPreferences(FICHIER_COFFRE, Context.MODE_PRIVATE).edit().putString(RANGEMENT_COFFRE, empaqueter(chiffreur.iv, chiffre)).apply()
+                surOk()
+            } catch (e: Exception) { surEchec("Enregistrement impossible : " + (e.message ?: "erreur")) }
+        }, surEchec)
+    }
+
+    /** UTILISATION : après reconnaissance, le secret mémorisé est rendu à `surSecret`. Empreintes modifiées : clé invalidée, secret oublié. */
+    fun coffreRetrouver(a: FragmentActivity, surSecret: (String) -> Unit, surEchec: (String) -> Unit) {
+        val rangee = a.getSharedPreferences(FICHIER_COFFRE, Context.MODE_PRIVATE).getString(RANGEMENT_COFFRE, null)
+        val (iv, chiffre) = deballer(rangee) ?: run { surEchec("Aucun secret mémorisé."); return }
+        inviteTelephone(a, "Ouvrir mon coffre", "Empreinte ou code du téléphone", {
+            try {
+                val chiffreur = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.DECRYPT_MODE, cleCoffreDonnees(), GCMParameterSpec(128, iv)) }
+                surSecret(String(chiffreur.doFinal(chiffre), Charsets.UTF_8))
+            } catch (e: KeyPermanentlyInvalidatedException) {
+                coffreOublier(a); surEchec("Les empreintes du téléphone ont changé : tapez votre secret, puis mémorisez-le à nouveau.")
+            } catch (e: Exception) { surEchec("Lecture impossible : " + (e.message ?: "erreur")) }
+        }, surEchec)
+    }
+
     // ---------------------------------------------------------------- rangement (testé sans téléphone)
     /** « iv:données » en hexadécimal. */
     internal fun empaqueter(iv: ByteArray, donnees: ByteArray): String = hex(iv) + ":" + hex(donnees)
