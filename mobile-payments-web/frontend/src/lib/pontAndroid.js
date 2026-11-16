@@ -124,3 +124,29 @@ export function notificationsEnAttente() {
     return Array.isArray(l) ? l : [];
   } catch { return []; }
 }
+
+// ---- Coffre de données protégé par l'empreinte OU le code du téléphone (Android Keystore) ----
+/** Vrai si l'application peut mémoriser le secret du coffre (le téléphone a un verrouillage d'écran). */
+export function coffreTelephoneDisponible() {
+  try { return dansApplication() && !!window.AuRorAndroid.coffreDisponible && !!window.AuRorAndroid.coffreDisponible(); } catch { return false; }
+}
+/** Vrai si le secret du coffre est déjà mémorisé sur ce téléphone. */
+export function coffreTelephoneMemorise() {
+  try { return coffreTelephoneDisponible() && !!window.AuRorAndroid.coffreMemorise(); } catch { return false; }
+}
+/** Mémorise le secret : le téléphone demande l'empreinte ou son code. Rend { ok } ou { erreur }. */
+export function coffreTelephoneMemoriser(secret) {
+  const [id, promesse] = attendreRetour();
+  window.AuRorAndroid.coffreMemoriser(id, String(secret));
+  return promesse;
+}
+/** Retrouve le secret mémorisé après empreinte / code du téléphone. Rend { secret } ou { erreur }. */
+export function coffreTelephoneRetrouver() {
+  const [id, promesse] = attendreRetour();
+  window.AuRorAndroid.coffreRetrouver(id);
+  return promesse;
+}
+/** Oublie le secret mémorisé sur ce téléphone. */
+export function coffreTelephoneOublier() {
+  try { if (dansApplication()) window.AuRorAndroid.coffreOublier(); } catch { /* sans importance */ }
+}

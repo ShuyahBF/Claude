@@ -2,6 +2,8 @@ import ChampMotDePasse from "@/components/ChampMotDePasse";
 import { useEffect, useState } from "react";
 import { useToast } from "@/components/Toast";
 import { messageErreur } from "@/lib/api";
+import { BoutonOuvrirTelephone, CaseMemoriserTelephone, memoriserSiDemande } from "@/components/OuvertureTelephone";
+import { coffreTelephoneOublier } from "@/lib/pontAndroid";
 import { MESSAGE_SECRET, coffreExiste, creerCoffre, lireEtatCoffre, ouvrirCoffre, ouvrirParCodeSecours, secretValide } from "@/lib/coffre";
 
 // Accès au coffre (lot 168) : créer la phrase secrète / le code PIN la première fois, ou l'ouvrir ensuite (avec le code de l'application d'authentification si elle
@@ -13,7 +15,7 @@ export default function CoffreAcces({ onPret, onAnnuler, libelleOuverture = "Ouv
   const [type, setType] = useState("pin");                    // création : « pin » | « phrase »
   const [a, setA] = useState(""); const [b, setB] = useState(""); const [totp, setTotp] = useState("");
   const [oubli, setOubli] = useState(false); const [codeSaisi, setCodeSaisi] = useState("");
-  const [occupe, setOccupe] = useState(false);
+  const [occupe, setOccupe] = useState(false); const [memoriser, setMemoriser] = useState(false);
   useEffect(() => { lireEtatCoffre().then(setEtat); }, []);
 
   if (etat === undefined) return <p className="text-sm text-gray-600">⏳ Lecture de votre coffre…</p>;
@@ -31,17 +33,25 @@ export default function CoffreAcces({ onPret, onAnnuler, libelleOuverture = "Ouv
     try { const { code } = await creerCoffre(a, type); onPret({ codeSecours: code }); }
     catch (err) { toast.erreur(messageErreur(err, "Création impossible")); } finally { setOccupe(false); }
   };
-  const ouvrir = async (e) => {
-    e.preventDefault(); setOccupe(true); toast.info("Ouverture en cours…");
-    try { const r = await ouvrirCoffre(a, etat, totp); onPret({ codeSecours: r.codeSecours }); }
-    catch (err) { toast.erreur(messageErreur(err, err?.message || "Ouverture impossible")); } finally { setOccupe(false); }
+  // `secretTelephone` : secret retrouvé par l'empreinte / le code du téléphone (sinon on prend la saisie)
+  const ouvrir = async (e, secretTelephone) => {
+    e?.preventDefault?.(); setOccupe(true); toast.info("Ouverture en cours…");
+    try {
+      const r = await ouvrirCoffre(secretTelephone || a, etat, totp);
+      if (!secretTelephone) await memoriserSiDemande(memoriser, a, toast);   // mémorisation demandée par l'utilisateur (case cochée)
+      onPret({ codeSecours: r.codeSecours });
+    } catch (err) {
+      if (secretTelephone) { coffreTelephoneOublier(); toast.erreur("Le secret mémorisé n'est plus valable (il a changé) : tapez-le, puis mémorisez-le à nouveau."); }
+      else toast.erreur(messageErreur(err, err?.message || "Ouverture impossible"));
+    } finally { setOccupe(false); }
   };
   const recuperer = async (e) => {
     e.preventDefault();
     if (!secretValide(typeAcces, a)) { toast.erreur(MESSAGE_SECRET(typeAcces)); return; }
     if (a !== b) { toast.erreur("Les deux saisies ne sont pas identiques"); return; }
     setOccupe(true); toast.info("Vérification du code de secours en cours…");
-    try { await ouvrirParCodeSecours(codeSaisi, a, typeAcces, etat); toast.succes("Coffre rouvert : votre nouveau secret est enregistré."); onPret({ codeSecours: null }); }
+    // le secret change : l'ancien secret mémorisé sur le téléphone n'est plus bon (il est oublié ci-dessous)
+    try { await ouvrirParCodeSecours(codeSaisi, a, typeAcces, etat); coffreTelephoneOublier(); toast.succes("Coffre rouvert : votre nouveau secret est enregistré."); onPret({ codeSecours: null }); }
     catch (err) { toast.erreur(messageErreur(err, err?.message || "Récupération impossible")); } finally { setOccupe(false); }
   };
   const champSecret = (id, libelle, valeur, set) => (
@@ -81,6 +91,8 @@ export default function CoffreAcces({ onPret, onAnnuler, libelleOuverture = "Ouv
       <p className="text-sm text-gray-700">Saisissez votre {typeAcces === "pin" ? "code PIN" : "phrase secrète"} (le même que pour vos archives en ligne).</p>
       {champSecret("cf-a", typeAcces === "pin" ? "Votre code PIN" : "Votre phrase secrète", a, setA)}
       {etat.a2f && <div><label className="label" htmlFor="cf-totp">Code à 6 chiffres de l'application d'authentification</label><input id="cf-totp" className="input" inputMode="numeric" autoComplete="one-time-code" value={totp} onChange={(e) => setTotp(e.target.value.replace(/\D/g, "").slice(0, 6))} /></div>}
+      <BoutonOuvrirTelephone etat={etat} disabled={occupe} onSecret={(secret) => ouvrir(null, secret)} />
+      <CaseMemoriserTelephone etat={etat} coche={memoriser} setCoche={setMemoriser} />
       <div className="flex flex-wrap items-center gap-2">{retour}<button type="submit" className="btn-primary" disabled={occupe || !a}>🔓 {libelleOuverture}</button>
         <button type="button" className="text-sm font-semibold text-primary underline" onClick={() => { setOubli(true); setA(""); setB(""); }}>Secret oublié ?</button></div>
     </form>

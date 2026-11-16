@@ -1,5 +1,6 @@
 package com.ouoba.mobilepay.web
 
+import com.ouoba.mobilepay.util.Biometrie
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -90,6 +91,31 @@ class PontAuRor(private val activite: WebActivity) {
      * Paiement direct : fenêtre de confirmation (résumé), saisie masquée du code secret si le code contient le mot PIN, puis envoi du code USSD.
      * Rend au site {texte} (réponse de l'opérateur) ou {erreur}.
      */
+    // ---- Coffre de données : secret mémorisé et protégé par l'empreinte OU le code du téléphone
+    /** Vrai si le téléphone a un verrouillage d'écran permettant de protéger le secret du coffre. */
+    @JavascriptInterface
+    fun coffreDisponible(): Boolean = Biometrie.coffrePossible(contexte)
+
+    /** Vrai si le secret du coffre est déjà mémorisé sur ce téléphone. */
+    @JavascriptInterface
+    fun coffreMemorise(): Boolean = Biometrie.coffreMemorise(contexte)
+
+    /** Mémorise le secret après reconnaissance du téléphone. Réponse : { ok } ou { erreur }. */
+    @JavascriptInterface
+    fun coffreMemoriser(id: String, secret: String) {
+        activite.runOnUiThread { Biometrie.coffreMemoriser(activite, secret, { activite.retour(id, JSONObject().put("ok", true)) }, { activite.retour(id, JSONObject().put("erreur", it)) }) }
+    }
+
+    /** Rend le secret mémorisé après reconnaissance du téléphone. Réponse : { secret } ou { erreur }. */
+    @JavascriptInterface
+    fun coffreRetrouver(id: String) {
+        activite.runOnUiThread { Biometrie.coffreRetrouver(activite, { activite.retour(id, JSONObject().put("secret", it)) }, { activite.retour(id, JSONObject().put("erreur", it)) }) }
+    }
+
+    /** Oublie le secret mémorisé. */
+    @JavascriptInterface
+    fun coffreOublier() { Biometrie.coffreOublier(contexte) }
+
     @JavascriptInterface
     fun payerDirect(id: String, operateur: String, code: String, resume: String) = fenetrePaiement(id, operateur, code, resume, null)
 
