@@ -98,7 +98,7 @@ export default function LectureSms() {
         {lignes.length > 0 && (
           <div className="space-y-2 rounded-xl bg-gray-50 p-3" data-testid="filtres-sms">
             <div className="grid gap-2 sm:grid-cols-2">
-              <input type="search" className="input" placeholder="🔎 Numéro, nom ou référence" aria-label="Chercher un numéro, un nom ou une référence" value={filtre.texte} onChange={modif("texte")} />
+              <input type="search" className="input" placeholder="🔎 Numéro, nom, référence ou début du SMS" aria-label="Chercher un numéro, un nom, une référence ou les premiers caractères d'un SMS" value={filtre.texte} onChange={modif("texte")} />
               <select className="input" aria-label="Sens du paiement" value={filtre.sens} onChange={modif("sens")}>
                 <option value="tous">↕ Tous les SMS</option><option value="recu">↓ Reçus</option><option value="paye">↑ Payés</option><option value="hors">Hors décompte (promo, alerte, message)</option>
               </select>
@@ -137,6 +137,7 @@ export default function LectureSms() {
                   )}
                   <span className={`ml-auto text-base font-bold ${!estTransaction(l) ? "text-gray-500" : l.genre === "RECETTE" ? "text-green-700" : "text-red-700"}`}>{fcfa(l.montant)}</span>
                 </div>
+                {l.debut && <p className="mt-1 text-xs text-gray-500" data-testid="sms-debut">✉️ Début du SMS : <span className="font-mono text-gray-700">« {l.debut}{l.debut.length >= 10 ? "…" : ""} »</span></p>}
                 {(l.tiers || l.tel || l.reference || l.solde != null) && (
                   <p className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-gray-700">
                     {/* Chaque élément reste d'un seul tenant (nowrap) : un numéro ou une référence ne se coupe plus en deux lignes ; seul le nom peut passer à la ligne */}

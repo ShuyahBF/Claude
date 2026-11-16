@@ -159,6 +159,9 @@ export function categorieSms({ adresse, corps }) {
  * Un SMS qui n'est pas une TRANSACTION (promo, alerte de banque, message de personne) est GARDÉ avec sa `categorie` (pastille grise à l'écran) et le sens « AUTRE » :
  * il ne compte jamais comme paiement (voir estTransaction). Les mots promotionnels explicites (« gagnez », « jeu concours »…) donnent aussi « promo ».
  */
+/** Les 10 PREMIERS caractères du SMS (espaces réduits) : ils servent à RETROUVER un SMS en tapant son début. Jamais le texte complet : le reste du SMS n'est pas gardé. */
+export const debutDuSms = (corps) => String(corps || "").replace(/\s+/g, " ").trim().slice(0, 10);
+
 export function analyserSms({ adresse, recu_le: recuLe, corps }) {
   const t = String(corps || "").toLowerCase();
   let categorie = categorieSms({ adresse, corps });
@@ -173,7 +176,7 @@ export function analyserSms({ adresse, recu_le: recuLe, corps }) {
   const ref = (REFERENCE.exec(corps) || [])[1] || null;
   const soldeM = SOLDE.exec(corps);
   const quand = dateDeReference(ref) || recuLe;
-  return { id: ref || `${adresse}|${recuLe}|${montant}`, adresse, quand, genre, categorie, montant, tiers: tiersDe(corps, genre), tel: genre === "RECETTE" ? undefined : numeroDuTiers(corps), solde: soldeM ? lireNombre(soldeM[1]) : null, reference: ref };
+  return { id: ref || `${adresse}|${recuLe}|${montant}`, adresse, quand, genre, categorie, montant, tiers: tiersDe(corps, genre), tel: genre === "RECETTE" ? undefined : numeroDuTiers(corps), solde: soldeM ? lireNombre(soldeM[1]) : null, reference: ref, debut: debutDuSms(corps) };
 }
 
 /** Vrai pour une vraie transaction du portefeuille mobile (les lignes anciennes, sans catégorie, en sont). Les autres sont hors décompte. */
@@ -223,7 +226,13 @@ export function chargerLignes(stockage = (typeof localStorage !== "undefined" ? 
 export function fusionner(existantes, nouvelles) {
   // Une ligne déjà gardée reçoit le destinataire (nom + numéro) quand une relecture le trouve (anciennes lignes sans nom) ; rien d'autre n'est modifié
   const parId = new Map(nouvelles.filter(Boolean).map((l) => [l.id, l]));
-  existantes = existantes.map((o) => { const n = parId.get(o.id); return n && n.tel && (o.tel !== n.tel || o.tiers !== n.tiers) ? { ...o, tel: n.tel, tiers: n.tiers } : o; });
+  existantes = existantes.map((o) => {
+    const n = parId.get(o.id);
+    let r = o;
+    if (n && n.tel && (o.tel !== n.tel || o.tiers !== n.tiers)) r = { ...r, tel: n.tel, tiers: n.tiers };
+    if (n && n.debut && !o.debut) r = { ...r, debut: n.debut };                 // anciennes lignes : le début du SMS est ajouté à la relecture
+    return r;
+  });
   const ids = new Set(existantes.map((l) => l.id));
   const ajoutees = nouvelles.filter((l) => l && !ids.has(l.id));
   const lignes = [...existantes, ...ajoutees].sort((a, b) => b.quand - a.quand).slice(0, MAX);
@@ -262,7 +271,7 @@ export function filtrerLignes(lignes, f = {}) {
     if (debut != null && !(l.quand >= debut)) return false;
     if (fin != null && !(l.quand <= fin)) return false;
     if (texte) {
-      const champs = [l.adresse, l.tiers, l.tel, l.reference].map(sansAccents).join(" ");
+      const champs = [l.adresse, l.tiers, l.tel, l.reference, l.debut].map(sansAccents).join(" ");     // le début du SMS (10 caractères) est cherché aussi
       const numeros = String(l.tiers || "").replace(/[^\d]/g, "") + " " + String(l.tel || "").replace(/[^\d]/g, "");
       if (!(champs.includes(texte) || (saisieNumero && numeros.includes(chiffres)))) return false;
     }

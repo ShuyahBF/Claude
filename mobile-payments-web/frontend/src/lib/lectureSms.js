@@ -1,5 +1,5 @@
 // Lecture des paiements PARTAGÉE (écran Historique et lecture automatique) : lit les SMS par le pont Android ET les notifications reçues application fermée, les transforme
-// en lignes gardées sur le téléphone et met à jour le récapitulatif. Aucun texte de SMS ni de notification n'est enregistré et rien n'est envoyé à auRor.
+// en lignes gardées sur le téléphone et met à jour le récapitulatif. Seuls les 10 premiers caractères de chaque SMS sont gardés (pour le retrouver en tapant son début), jamais le texte complet ; rien n'est envoyé à auRor.
 import { capacites, lireSmsPaiements, notificationsEnAttente } from "@/lib/pontAndroid";
 import { analyserSms, chargerLignes, enregistrerLignes, estTransaction, fusionner } from "@/lib/smsPaiements";
 
