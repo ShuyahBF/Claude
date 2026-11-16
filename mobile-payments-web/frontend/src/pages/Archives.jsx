@@ -1,6 +1,7 @@
 import { BoutonOuvrirTelephone, CaseMemoriserTelephone, memoriserSiDemande } from "@/components/OuvertureTelephone";
 import { coffreTelephoneOublier } from "@/lib/pontAndroid";
 import { BoutonRetirerTelephone } from "@/components/OuvertureTelephone";
+import RemiseAZeroCoffre from "@/components/RemiseAZeroCoffre";
 import ChampMotDePasse from "@/components/ChampMotDePasse";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -432,6 +433,8 @@ export default function Archives() {
               <button type="submit" className="btn-primary flex-1" disabled={occupe || !codeSaisi}>{occupe ? "Patientez…" : "Rouvrir mes archives"}</button>
               <button type="button" className="btn-outline" onClick={() => { setModeCode(false); setCodeSaisi(""); }}>Annuler</button>
             </div>
+            {/* Code de secours perdu lui aussi : seule issue, un coffre neuf */}
+            <RemiseAZeroCoffre onFait={() => { setModeCode(false); setCodeSaisi(""); setPhrase({ a: "", b: "" }); setDeverrouille(false); chargerEtat(); }} />
           </form>
         )}
         {/* Lot 94 : jauge d'occupation de l'espace utilisé sur l'espace alloué (visible aussi quand les archives sont verrouillées) */}

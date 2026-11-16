@@ -45,10 +45,24 @@ export default function RappelsPaiements() {
       toast.succes("Enregistré"); setEdition(null); charger();
     } catch (err) { toast.erreur(messageErreur(err, "Enregistrement impossible")); } finally { setEnvoi(false); }
   };
+  // « Marquer payé » (lot 178) : le bouton est GRISÉ pendant l'envoi, l'échéance affichée est envoyée au serveur (un appui en double n'avance
+  // qu'une fois) et le dernier « Payé » peut être ANNULÉ.
+  const [enCours, setEnCours] = useState(null);                // identifiant du rappel en cours d'envoi
   const paye = async (r) => {
-    try { const { data } = await apiClient.post(`/rappels-paiements/${r.id}/paye`);
-      toast.succes(data.termine ? "Rappel terminé" : `Prochaine échéance : ${dateFr(data.echeance)}`); charger(); }
-    catch (err) { toast.erreur(messageErreur(err)); }
+    if (enCours) return;
+    setEnCours(r.id); toast.info("Enregistrement du paiement en cours…");
+    try { const { data } = await apiClient.post(`/rappels-paiements/${r.id}/paye`, { echeance: r.echeance });
+      if (data.deja) toast.info(`Déjà marqué payé. Prochaine échéance : ${dateFr(data.echeance)}`);
+      else toast.succes(data.termine ? "✅ Payé : rappel terminé" : `✅ Payé. Prochaine échéance : ${dateFr(data.echeance)}`);
+      await charger(); }
+    catch (err) { toast.erreur(messageErreur(err)); } finally { setEnCours(null); }
+  };
+  const annulerPaye = async (r) => {
+    if (enCours) return;
+    setEnCours(r.id); toast.info("Annulation en cours…");
+    try { const { data } = await apiClient.post(`/rappels-paiements/${r.id}/annuler-paye`);
+      toast.succes(`↩️ « Payé » annulé. Échéance remise au ${dateFr(data.echeance)}`); await charger(); }
+    catch (err) { toast.erreur(messageErreur(err)); } finally { setEnCours(null); }
   };
   const supprimer = async (r) => {
     if (!window.confirm(`Supprimer le rappel « ${r.libelle} » ?`)) return;
@@ -97,7 +111,10 @@ export default function RappelsPaiements() {
                     ? <Link to={lienPayer({ ...contact, operateur: contact.operateur || (r.operateur === "Moov" ? "Moov Africa" : r.operateur || "") }, { montant: r.montant, fige: true })} className="btn-primary btn-sm" title={`Payer ${contact.nom} : numéro et montant préremplis`}>💸 Payer {contact.nom}</Link>
                     : <Link to="/" className="btn-primary btn-sm">💳 Payer</Link>;
                 })()}
-                <button type="button" className="btn-outline btn-sm" onClick={() => paye(r)}>✅ Marquer payé</button>
+                <button type="button" className="btn-outline btn-sm disabled:opacity-50" disabled={!!enCours} onClick={() => paye(r)}>{enCours === r.id ? "⏳ Patientez…" : "✅ Marquer payé"}</button>
+                {/* Dernier « Payé » annulable (appui par erreur) : remet l'échéance d'avant */}
+                {r.echeance_precedente && <button type="button" className="btn-outline btn-sm border-amber-500 text-amber-800 disabled:opacity-50" disabled={!!enCours} onClick={() => annulerPaye(r)}
+                  title={`Remettre l'échéance au ${dateFr(r.echeance_precedente)}`}>↩️ Annuler « payé » ({dateFr(r.echeance_precedente)})</button>}
               </div>
             </li>
           );

@@ -22,12 +22,13 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, Field
 
 from limiteur import limiter_appels_publics
 from routes.abonnement import utilisateur_sawali
-from securite import get_current_user
+from db import SANS_ID, db
+from securite import effacer_echecs, get_current_user, noter_echec, verifier_non_bloque, verify_password
 from support_sawali import appeler_sawali
 
 # Pas de limiteur par minute sur les écritures : connexion obligatoire, taille, espace et abonnement sont déjà contrôlés par SAWALI
@@ -130,6 +131,31 @@ async def remplacer_enveloppes(data: Enveloppes, user: dict = Depends(get_curren
     """Lot 92 : remplace l'enveloppe de la clé (et le secours). Les documents ne changent pas ; SAWALI exige le jeton de contrôle actuel."""
     plus = {"secours": data.secours} if data.secours else {}
     return await _relayer("enveloppes", user, verif_actuelle=data.verif_actuelle, enveloppe=data.enveloppe, **plus)
+
+
+class Reinitialisation(BaseModel):
+    """Lot 178 : coffre perdu. Le mot de passe du COMPTE est exigé (preuve que c'est bien le titulaire) et la phrase de confirmation doit être tapée."""
+    mot_de_passe: str = Field(..., min_length=1, max_length=128)
+    confirmation: str = Field(..., min_length=1, max_length=40)
+
+
+@router.post("/reinitialiser")
+async def reinitialiser(data: Reinitialisation, user: dict = Depends(get_current_user)):
+    """Secret ET code de secours perdus : personne ne peut rouvrir l'ancien coffre (ni auRor ni SAWALI). L'utilisateur repart d'un coffre NEUF :
+    les documents en ligne et la sauvegarde en ligne (chiffrés avec l'ancienne clé, donc déjà illisibles) sont supprimés. Les données du TÉLÉPHONE
+    ne sont pas touchées. Garde-fous : mot de passe du compte (essais limités comme à la connexion) + mot « EFFACER » tapé."""
+    if data.confirmation.strip().upper() != "EFFACER":
+        raise HTTPException(422, "Tapez EFFACER pour confirmer")
+    cle = f"coffre-zero:{user['id']}"
+    await verifier_non_bloque(cle)
+    fiche = await db.users.find_one({"id": user["id"]}, SANS_ID) or {}
+    if not verify_password(data.mot_de_passe, fiche.get("password_hash", "")):
+        await noter_echec(cle)
+        raise HTTPException(401, "Mot de passe incorrect")
+    await effacer_echecs(cle)
+    r = await _relayer("reinitialiser", user, delai=60)
+    await db.sauvegardes.update_one({"user_id": user["id"]}, {"$set": {"versions": []}})      # sauvegarde chiffrée avec l'ancienne clé : illisible
+    return {"ok": True, "supprimes": r.get("supprimes", 0)}
 
 
 @router.get("", dependencies=[Depends(limiter_appels_publics)])

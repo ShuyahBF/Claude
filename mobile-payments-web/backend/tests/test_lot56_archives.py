@@ -185,3 +185,18 @@ def test_modification_avec_preuve_et_nouvelle_image(client, utilisateur, sawali)
     n = len(sawali)
     assert client.put("/api/archives/a1b2c3d4e5", headers=h, json={"meta": "N" * 48, "preuve": "court"}).status_code == 422
     assert len(sawali) == n
+
+
+# --- Lot 178 : coffre perdu (secret ET code de secours oubliés) → remise à zéro, mot de passe du compte exigé
+def test_remise_a_zero_du_coffre_exige_mot_de_passe_et_confirmation(client, utilisateur, sawali):
+    _, h, MDP = utilisateur
+    sawali.reponse = (200, {"ok": True, "supprimes": 3})
+    assert client.post("/api/archives/reinitialiser", json={"mot_de_passe": "x", "confirmation": "EFFACER"}).status_code == 401      # connexion requise
+    # mauvaise confirmation, puis mauvais mot de passe : SAWALI n'est jamais appelé
+    assert client.post("/api/archives/reinitialiser", headers=h, json={"mot_de_passe": MDP, "confirmation": "oui"}).status_code == 422
+    assert client.post("/api/archives/reinitialiser", headers=h, json={"mot_de_passe": "mauvais-mot-de-passe", "confirmation": "EFFACER"}).status_code == 401
+    assert len(sawali) == 0
+    # bon mot de passe : relais signé vers SAWALI
+    r = client.post("/api/archives/reinitialiser", headers=h, json={"mot_de_passe": MDP, "confirmation": "effacer"})
+    assert r.status_code == 200 and r.json() == {"ok": True, "supprimes": 3}
+    assert sawali[-1].url.path == "/api/formules-plateformes/archives/reinitialiser"
