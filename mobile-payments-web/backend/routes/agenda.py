@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import field_validator, BaseModel, Field
 
 from limiteur import limiter_appels_publics
 from securite import get_current_user
@@ -46,11 +46,17 @@ class Note(BaseModel):
 
 
 class Rdv(BaseModel):
-    titre: str = Field(min_length=1, max_length=200)
-    debut: str = Field(min_length=10, max_length=40)     # ISO avec fuseau
-    fin: Optional[str] = Field(None, max_length=40)
-    lieu: Optional[str] = Field(None, max_length=200)
+    titre: str = Field(min_length=1, max_length=1000)    # un titre dicté trop long est TRONQUÉ à 200 (validateur ci-dessous), jamais refusé
+    debut: str = Field(min_length=10, max_length=64)     # ISO avec fuseau
+    fin: Optional[str] = Field(None, max_length=64)
+    lieu: Optional[str] = Field(None, max_length=1000)
     rappel_minutes: Optional[int] = Field(None, ge=0, le=40320)
+
+    @field_validator("titre", "lieu", mode="after")
+    @classmethod
+    def _couper(cls, v):
+        """Texte nettoyé puis limité à 200 caractères (limite de SAWALI / Google)."""
+        return v.strip()[:200] if isinstance(v, str) else v
 
 
 class Modif(BaseModel):

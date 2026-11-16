@@ -113,17 +113,20 @@ export default function Agenda() {
   const enregistrer = async () => {
     if (!prop?.titre.trim() || !prop.date || !prop.heure) { toast.erreur("Titre, jour et heure sont nécessaires."); return; }
     const debutIso = `${prop.date}T${prop.heure}:00${prop.offset}`;
-    const fin = new Date(new Date(debutIso).getTime() + prop.minutes * 60000);
+    const debutDate = new Date(debutIso);
+    if (Number.isNaN(debutDate.getTime())) { toast.erreur("Le jour ou l'heure n'est pas valide : corrigez-les puis réessayez."); return; }   // jamais d'envoi d'une date illisible
+    const titre = prop.titre.trim().slice(0, 200);                // limite de 200 caractères (Google) : un titre dicté trop long est coupé
+    const fin = new Date(debutDate.getTime() + (Number(prop.minutes) || 60) * 60000);
     const pad = (n) => String(n).padStart(2, "0");
     const finIso = `${fin.getUTCFullYear()}-${pad(fin.getUTCMonth() + 1)}-${pad(fin.getUTCDate())}T${pad(fin.getUTCHours())}:${pad(fin.getUTCMinutes())}:00+00:00`;
     toast.info(prop.id ? "Modification du rendez-vous en cours…" : "Enregistrement dans votre agenda en cours…");
     try {
       if (prop.id) {
-        await apiClient.post("/agenda/modifier", { id: prop.id, titre: prop.titre.trim(), debut: debutIso, fin: finIso });
+        await apiClient.post("/agenda/modifier", { id: prop.id, titre, debut: debutIso, fin: finIso });
         toast.succes(`Rendez-vous modifié : ${prop.titre.trim()}`);
         setProp(null); await charger(false); return;
       }
-      await apiClient.post("/agenda/creer", { titre: prop.titre.trim(), debut: debutIso, fin: finIso });
+      await apiClient.post("/agenda/creer", { titre, debut: debutIso, fin: finIso });
       toast.succes(`Rendez-vous enregistré : ${prop.titre.trim()}`);
       setProp(null); setTexte(""); await charger(false);
     } catch (err) { toast.erreur(messageErreur(err, "Enregistrement impossible.")); }

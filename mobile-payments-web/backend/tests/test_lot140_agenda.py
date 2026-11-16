@@ -78,3 +78,13 @@ def test_refus_de_sawali_transmis_et_validations(client, utilisateur, sawali):
     assert r.status_code == 409 and "reliez" in r.json()["detail"]
     assert client.post("/api/agenda/creer", headers=h, json={"titre": "", "debut": "2026-11-21T08:15:00+00:00"}).status_code == 422
     assert client.post("/api/agenda/analyser", headers=h, json={"texte": ""}).status_code == 422
+
+
+def test_titre_dicte_trop_long_est_tronque_et_non_refuse(client, utilisateur, sawali):
+    """Un titre dicté de plus de 200 caractères (ou une date avec fuseau long) ne doit plus donner « Enregistrement impossible » : il est coupé à 200."""
+    _, h, _ = utilisateur
+    sawali.reponse = (200, {"ok": True})
+    r = client.post("/api/agenda/creer", headers=h, json={"titre": "R" * 450, "debut": "2026-11-17T08:00:00+00:00", "fin": "2026-11-17T09:00:00+00:00"})
+    assert r.status_code == 200, r.text
+    corps = json.loads(sawali[-1].content)
+    assert len(corps["titre"]) == 200
