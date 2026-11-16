@@ -182,3 +182,17 @@ def test_widget_aujourdhui(client, utilisateur):
     assert [p["libelle"] for p in w["paiements"]] == ["Eau", "Loyer"] and w["paiements"][0]["etat"] == "retard"       # les 2 plus proches
     assert [a["nom"] for a in w["anniversaires"]] == ["Awa"]                                                       # « Lointain » (> 30 jours) exclu
     assert client.get("/api/rappels/aujourdhui").status_code == 401
+
+
+def test_rappel_garde_l_identifiant_opaque_du_contact_sans_numero(client, utilisateur):
+    """Lot 172 : le rappel relie le contact par un identifiant opaque ; le numéro de téléphone reste sur le téléphone de l'utilisateur."""
+    _, h, _ = utilisateur
+    corps = {"libelle": "Envoyer à Abibou", "montant": 25000, "operateur": "Orange", "frequence": "mensuel", "echeance": "2026-12-01", "rappel_jours": 1, "contact_id": "cabc123-x"}
+    r = client.post("/api/rappels-paiements", headers=h, json=corps)
+    assert r.status_code == 201 and r.json()["contact_id"] == "cabc123-x" and "5414" not in r.text
+    rid = r.json()["id"]
+    assert client.get("/api/rappels-paiements", headers=h).json()["rappels"][0]["contact_id"] == "cabc123-x"
+    # modifier en renvoyant le même identifiant le conserve ; un identifiant invalide est refusé
+    assert client.put(f"/api/rappels-paiements/{rid}", headers=h, json={**corps, "montant": 30000}).json()["contact_id"] == "cabc123-x"
+    assert client.put(f"/api/rappels-paiements/{rid}", headers=h, json={**corps, "contact_id": "../etc/passwd"}).status_code == 422
+    assert client.post("/api/rappels-paiements", headers=h, json={**corps, "contact_id": None, "libelle": "Loyer"}).json()["contact_id"] is None

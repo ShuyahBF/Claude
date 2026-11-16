@@ -29,6 +29,7 @@ export default function Payer() {
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
 
+  const [numeroFige, setNumeroFige] = useState(false);       // venu d'une fiche de rappel : le numéro du contact est grisé, le montant reste modifiable
   const [operateurs, setOperateurs] = useState(null);
   const [services, setServices] = useState([]);
   const [operateur, setOperateur] = useState("");
@@ -103,6 +104,7 @@ export default function Payer() {
 
   // Choix d'un service : formulaire vide (ou pré-rempli par un QR marchand)
   const choisirService = useCallback((svc, preRemplies = {}) => {
+    setNumeroFige(false);
     setService(svc);
     setValeurs(preRemplies);
     setMarchand(null);
@@ -128,7 +130,7 @@ export default function Payer() {
   // la personne relit, puis valide comme d'habitude (le site ne paie jamais seul)
   useEffect(() => {
     if (params.get("transfert") !== "1" || operateurs === null) return;
-    const phone = (params.get("phone") || "").replace(/\D/g, ""), montant = (params.get("montant") || "").replace(/\D/g, ""), op = params.get("operateur") || "Orange";
+    const phone = (params.get("phone") || "").replace(/\D/g, ""), montant = (params.get("montant") || "").replace(/\D/g, ""), op = params.get("operateur") || "Orange", fige = params.get("fige") === "1";
     setParams({}, { replace: true });
     (async () => {
       const svc = await choisirOperateur(op);
@@ -136,6 +138,7 @@ export default function Payer() {
       if (!s) { toast.erreur(`Pas de transfert d'argent disponible pour ${op} : choisissez le service.`); return; }
       const cleTel = s.champs.find((c) => c.key === "phone")?.key, cleMontant = s.champs.find((c) => c.key === "amount")?.key;
       choisirService(s, { ...(cleTel && phone ? { [cleTel]: phone } : {}), ...(cleMontant && montant ? { [cleMontant]: montant } : {}) });
+      if (fige && cleTel && phone) setNumeroFige(true);
       toast.succes("Transfert prérempli : vérifiez le numéro et le montant avant de valider.");
     })();
   }, [operateurs, params, setParams, choisirOperateur, choisirService, toast]);
@@ -335,9 +338,10 @@ export default function Payer() {
 
           {service.champs.filter((c) => c.key !== "pin").map((c) => (      /* le code secret n'est JAMAIS saisi ici : fenêtre de sécurité de l'application */
             <div key={c.key}>
-              <label className="label" htmlFor={`champ-${c.key}`}>{c.label}</label>
-              <input id={`champ-${c.key}`} className={`input ${c.key === "amount" ? "text-lg font-semibold" : "font-mono"}`}
-                autoFocus={c.key === "amount" && !!codeMarchand}   /* marchand déjà choisi : le curseur est sur le montant */
+              <label className="label" htmlFor={`champ-${c.key}`}>{c.label}{numeroFige && c.key === "phone" ? " 🔒 (contact)" : ""}</label>
+              <input id={`champ-${c.key}`} className={`input ${c.key === "amount" ? "text-lg font-semibold" : "font-mono"} ${numeroFige && c.key === "phone" ? "bg-gray-100 text-gray-600" : ""}`}
+                disabled={numeroFige && c.key === "phone"}          /* numéro du contact (fiche de rappel) : grisé */
+                autoFocus={c.key === "amount" && (!!codeMarchand || numeroFige)}   /* marchand déjà choisi : le curseur est sur le montant */
                 required inputMode={c.type === "numeric" ? "numeric" : "text"} pattern={c.type === "numeric" ? "[0-9 ]*" : undefined}
                 list={c.isMerchantCode ? "marchands-connus" : undefined}
                 value={valeurs[c.key] || ""} onChange={(e) => { if (c.key === "amount") setMontantVocal(null); setValeurs({ ...valeurs, [c.key]: e.target.value }); }} />

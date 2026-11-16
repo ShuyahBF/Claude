@@ -40,17 +40,29 @@ export function filtrerContacts(contacts, texte) {
 /** Contacts triés par nom (sans accents ni casse). */
 export const trierContacts = (contacts) => [...contacts].sort((a, b) => sansAccents(a.nom).localeCompare(sansAccents(b.nom)));
 
-/** Adresse de l'écran de paiement, transfert prérempli (numéro, opérateur, montant habituel) : l'utilisateur relit puis valide comme d'habitude. */
-export function lienPayer(c) {
+/**
+ * Adresse de l'écran de paiement, transfert prérempli (numéro, opérateur, montant) : l'utilisateur relit puis valide comme d'habitude.
+ * `options.montant` remplace le montant habituel (ex. celui du rappel) ; `options.fige` grise le numéro (venant d'une fiche de rappel : le numéro est celui du contact, le montant reste modifiable).
+ */
+export function lienPayer(c, options = {}) {
   const q = new URLSearchParams({ transfert: "1", phone: chiffres(c.tel) });
   if (c.operateur) q.set("operateur", c.operateur);
-  if (c.montant) q.set("montant", String(c.montant));
+  const montant = options.montant || c.montant;
+  if (montant) q.set("montant", String(montant));
+  if (options.fige) q.set("fige", "1");
   return `/?${q.toString()}`;
+}
+
+/** Contact d'un rappel de paiement : par son identifiant (rappels créés depuis le carnet), sinon par le titre « Envoyer à NOM » (premiers rappels). undefined si introuvable sur ce téléphone. */
+export function contactDuRappel(contacts, rappel) {
+  if (rappel?.contact_id) { const c = contacts.find((x) => x.id === rappel.contact_id); if (c) return c; }
+  const m = /^Envoyer à (.+)$/.exec(rappel?.libelle || "");
+  return m ? contacts.find((x) => sansAccents(x.nom) === sansAccents(m[1].trim())) : undefined;
 }
 
 /** Rappel de paiement récurrent à créer sur le serveur : libellé + montant seulement (jamais le numéro). Rend le corps de POST /rappels-paiements. */
 export function corpsRappel(c, { frequence, echeance, rappel_jours = 1 }) {
-  return { libelle: `Envoyer à ${c.nom}`.slice(0, 60), montant: c.montant ? Number(c.montant) : null, operateur: c.operateur === "Moov Africa" ? "Moov" : c.operateur || null, frequence, echeance, rappel_jours, note: null };
+  return { libelle: `Envoyer à ${c.nom}`.slice(0, 60), montant: c.montant ? Number(c.montant) : null, operateur: c.operateur === "Moov Africa" ? "Moov" : c.operateur || null, frequence, echeance, rappel_jours, note: null, contact_id: c.id || null };
 }
 
 // ---- Stockage chiffré (même clé que le journal) ----

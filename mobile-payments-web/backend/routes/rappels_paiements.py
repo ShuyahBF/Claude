@@ -43,6 +43,9 @@ class Rappel(BaseModel):
     echeance: date                                                       # prochaine échéance
     rappel_jours: Literal[0, 1, 3, 7] = 1                                # devient « à traiter » ce nombre de jours avant
     note: Optional[str] = Field(default=None, max_length=120)
+    # Identifiant OPAQUE du contact du carnet (lot 172) : le numéro de téléphone, lui, reste sur le téléphone de l'utilisateur (carnet chiffré) ; le site relie le rappel
+    # à son contact pour préremplir le paiement, sans que le serveur connaisse le numéro.
+    contact_id: Optional[str] = Field(default=None, max_length=40, pattern=r"^[A-Za-z0-9_-]*$")
 
 
 def _aujourdhui() -> date:
@@ -110,7 +113,7 @@ def _donnees(r: Rappel) -> dict:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Libellé requis")
     return {"libelle": libelle, "montant": r.montant, "operateur": (r.operateur or "").strip() or None,
             "frequence": r.frequence, "echeance": r.echeance.isoformat(), "jour_ref": r.echeance.day,
-            "rappel_jours": r.rappel_jours, "note": (r.note or "").strip() or None}
+            "rappel_jours": r.rappel_jours, "note": (r.note or "").strip() or None, "contact_id": (r.contact_id or "").strip() or None}
 
 
 @router.get("")
