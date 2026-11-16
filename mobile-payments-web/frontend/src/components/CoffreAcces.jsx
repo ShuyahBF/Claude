@@ -68,7 +68,7 @@ export default function CoffreAcces({ onPret, onAnnuler, libelleOuverture = "Ouv
     return (
       <form className="space-y-3" onSubmit={recuperer} data-testid="coffre-secours">
         <p className="text-sm text-gray-700">Saisissez le <b>code de secours</b> qui vous a été montré à la création, puis choisissez un nouveau {typeAcces === "pin" ? "code PIN" : "secret"}.</p>
-        <div><label className="label" htmlFor="cf-code">Code de secours</label><input id="cf-code" className="input font-mono" autoComplete="off" placeholder="XXXX-XXXX-…" value={codeSaisi} onChange={(e) => setCodeSaisi(e.target.value)} /></div>
+        <div><label className="label" htmlFor="cf-code">Code de secours</label><ChampMotDePasse id="cf-code" className="input font-mono" autoComplete="off" placeholder="XXXX-XXXX-…" value={codeSaisi} onChange={(e) => setCodeSaisi(e.target.value)} /></div>
         {champSecret("cf-a", typeAcces === "pin" ? "Nouveau code PIN" : "Nouvelle phrase secrète", a, setA)}
         {champSecret("cf-b", "Répétez-le", b, setB)}
         <div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold" onClick={() => setOubli(false)}>↩️ Retour</button><button type="submit" className="btn-primary" disabled={occupe}>🔓 Rouvrir avec ce code</button></div>
