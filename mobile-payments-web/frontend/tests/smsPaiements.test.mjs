@@ -105,6 +105,15 @@ const ancienne = { ...lt, tiers: "numero 54144722", tel: undefined };
 const fus = fusionner([ancienne], [lt]);
 ok("relecture : l'ancienne ligne reçoit le nom, sans doublon", fus.lignes.length === 1 && fus.lignes[0].tiers === "ABIBOU" && fus.nouvelles === 0);
 
+// --- Recherche par les 10 PREMIERS caractères du SMS (jamais le texte complet)
+ok("début du SMS : 10 premiers caractères seulement", lt.debut === "Cher clien" && lt.debut.length === 10 && !JSON.stringify(lt).includes("reclamation"));
+ok("recherche par le début du SMS (casse et accents libres)", filtrerLignes([lt], { texte: "cher clien" }).length === 1 && filtrerLignes([lt], { texte: "CHER" }).length === 1 && filtrerLignes([lt], { texte: "Bonjour" }).length === 0);
+const sansDebut = { ...lt, debut: undefined };
+ok("ancienne ligne sans début : introuvable par le début", filtrerLignes([sansDebut], { texte: "cher clien" }).length === 0);
+const relue = fusionner([sansDebut], [lt]);
+ok("relecture : l'ancienne ligne reçoit le début du SMS, sans doublon", relue.lignes.length === 1 && relue.lignes[0].debut === "Cher clien" && relue.nouvelles === 0 && filtrerLignes(relue.lignes, { texte: "cher clien" }).length === 1);
+ok("début : espaces réduits", analyserSms({ adresse: "OrangeMoney", recu_le: T, corps: "  " + SMS_TRANSFERT.replace("Cher client", "Cher    client") })?.debut === "Cher clien");
+
 // --- Moov : « vers 70123456 reussi » → le numéro seul (sans « reussi »), isolé comme numéro
 const lm = analyserSms({ adresse: "Moov Money", recu_le: T, corps: "Transfert de 5000 FCFA vers 70123456 reussi. Nouveau solde: 9000 FCFA. Trans id: CI260409.1000.33333333" });
 ok("Moov : tiers = numéro seul, tel isolé", lm && lm.tiers === "70123456" && lm.tel === "70 12 34 56");
