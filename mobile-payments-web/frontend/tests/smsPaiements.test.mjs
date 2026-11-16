@@ -116,3 +116,12 @@ const lr = analyserSms({ adresse: "OrangeMoney", recu_le: T, corps: SMS_RECHARGE
 ok("recharge : transaction (pas promo), dépense de 1 000", lr && lr.categorie === "transaction" && estTransaction(lr) && lr.genre === "DEPENSE" && lr.montant === 1000 && lr.reference === "RC261115.2130.68181965" && lr.solde === 66623);
 ok("vraie promo sans numéro de transaction : toujours promo", analyserSms({ adresse: "OrangeMoney", recu_le: T, corps: "Gagnez 100% de bonus sur vos recharges de 1000 FCFA. Offre valable 7 jours. Composez *144*9#." }).categorie === "promo");
 ok("promo avec mot « bonus » mais sans transaction", (analyserSms({ adresse: "OrangeMoney", recu_le: T, corps: "Profitez d'un bonus de 500 FCFA ce week-end sur vos achats" }) || { categorie: "promo" }).categorie === "promo");
+
+// --- Confirmation d'un TRANSFERT d'argent : montant + numéro du bénéficiaire (pas de marchand)
+const smsTransfert = { adresse: "OrangeMoney", recu_le: T, corps: SMS_TRANSFERT };
+ok("transfert : confirmé par montant + numéro", confirmePaiement(smsTransfert, { montant: 25000, envoyeLe: T - 1000, telephone: "54144722" }));
+ok("transfert : indicatif ignoré", confirmePaiement(smsTransfert, { montant: 25000, envoyeLe: T - 1000, telephone: "+226 54 14 47 22" }));
+ok("transfert : autre numéro refusé", !confirmePaiement(smsTransfert, { montant: 25000, envoyeLe: T - 1000, telephone: "70123456" }));
+ok("transfert : autre montant refusé", !confirmePaiement(smsTransfert, { montant: 20000, envoyeLe: T - 1000, telephone: "54144722" }));
+ok("transfert : SMS antérieur à l'envoi refusé", !confirmePaiement(smsTransfert, { montant: 25000, envoyeLe: T + 3_600_000, telephone: "54144722" }));
+ok("marchand : inchangé (montant seul ne suffit pas)", !confirmePaiement({ adresse: "OrangeMoney", recu_le: T, corps: "Votre paiement de 50 FCFA a PHARMACIE DU MARCHE a ete effectue avec succes." }, { montant: 50, codeMarchand: "6557908", libelle: "La Ménagère", envoyeLe: T - 1000 }));

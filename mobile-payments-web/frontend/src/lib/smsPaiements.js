@@ -196,11 +196,16 @@ export function memeMarchand(nomSms, nomEnregistre) {
  * Si le SMS porte le code marchand lui-même, il est accepté aussi. Un marchand sans nom enregistré ne peut pas être confirmé automatiquement (bouton « J'ai payé »).
  *  - montant identique ; SMS de dépense (pas de l'argent reçu) arrivé après l'envoi (une minute de marge).
  */
-export function confirmePaiement(sms, { montant, codeMarchand, libelle, envoyeLe }) {
+export function confirmePaiement(sms, { montant, codeMarchand, libelle, envoyeLe, telephone }) {
   if (!sms || (envoyeLe && sms.recu_le < envoyeLe - 60000)) return false;
   const ligne = analyserSms(sms);
   if (!ligne || !estTransaction(ligne) || ligne.genre !== "DEPENSE" || ligne.montant !== montant) return false;
   const corps = String(sms.corps || "");
+  // Transfert d'argent : le SMS doit porter le NUMÉRO du bénéficiaire (8 derniers chiffres), en plus du montant
+  if (telephone) {
+    const n = String(telephone).replace(/\D/g, "").slice(-8);
+    return n.length === 8 && (String(ligne.tel || "").replace(/\D/g, "").slice(-8) === n || corps.replace(/\D+/g, " ").split(" ").some((m) => m.slice(-8) === n && m.length >= 8));
+  }
   if (codeMarchand && corps.replace(/\D+/g, " ").split(" ").includes(String(codeMarchand))) return true;     // le code figure dans le SMS
   return !!libelle && memeMarchand(ligne.tiers, libelle);                                                       // sinon : le nom du marchand
 }
