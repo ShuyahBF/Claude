@@ -105,12 +105,20 @@ export function destinataireDe(texte) {
   return { tel, nom: sansRepetition(m[2].trim().replace(/[.\-]+$/, "")).slice(0, 60) };
 }
 
+/** Numéro du destinataire d'un paiement : celui du transfert Orange (« au numero … »), sinon le tiers quand il est lui-même un numéro (ex. « vers 70123456 »). */
+function numeroDuTiers(texte) {
+  const d = destinataireDe(texte);
+  if (d) return d.tel;
+  const t = tiersDe(texte, "DEPENSE");
+  return /^\+?[\d .\-]{8,16}$/.test(t) ? telephoneDe(t) || undefined : undefined;
+}
+
 function tiersDe(texte, genre) {
   if (genre === "RECETTE") return telephoneDe(texte);
   const dest = destinataireDe(texte);
   if (dest) return dest.nom;
   const apresMontant = texte.replace(/^.*?(?:fcfa|f\s?cfa|xof)\s+/i, "");
-  const re = /(?:^|\s)(?:à|a|au profit de|chez|vers|pour|auprès de)\s+([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9'’ &.\-]{1,100}?)(?=\s+(?:le\s+\d|du\s+\d|n°|num|numéro|ref|réf|frais|solde|montant|trans|a\s+[ée]t[ée]|est\s+[ée]t[ée]|effectu|avec\s+succ)|[,;\n]|\.\s|$)/i;
+  const re = /(?:^|\s)(?:à|a|au profit de|chez|vers|pour|auprès de)\s+([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9'’ &.\-]{1,100}?)(?=\s+(?:le\s+\d|du\s+\d|n°|num|numéro|ref|réf|frais|solde|montant|trans|a\s+[ée]t[ée]|est\s+[ée]t[ée]|effectu|avec\s+succ|r[ée]ussi|succ[eè]s|termin)|[,;\n]|\.\s|$)/i;
   const m = re.exec(apresMontant);
   return m ? sansRepetition(m[1].trim().replace(/[.\-]+$/, "")).slice(0, 60) : "";
 }
@@ -163,7 +171,7 @@ export function analyserSms({ adresse, recu_le: recuLe, corps }) {
   const ref = (REFERENCE.exec(corps) || [])[1] || null;
   const soldeM = SOLDE.exec(corps);
   const quand = dateDeReference(ref) || recuLe;
-  return { id: ref || `${adresse}|${recuLe}|${montant}`, adresse, quand, genre, categorie, montant, tiers: tiersDe(corps, genre), tel: genre === "RECETTE" ? undefined : destinataireDe(corps)?.tel, solde: soldeM ? lireNombre(soldeM[1]) : null, reference: ref };
+  return { id: ref || `${adresse}|${recuLe}|${montant}`, adresse, quand, genre, categorie, montant, tiers: tiersDe(corps, genre), tel: genre === "RECETTE" ? undefined : numeroDuTiers(corps), solde: soldeM ? lireNombre(soldeM[1]) : null, reference: ref };
 }
 
 /** Vrai pour une vraie transaction du portefeuille mobile (les lignes anciennes, sans catégorie, en sont). Les autres sont hors décompte. */
