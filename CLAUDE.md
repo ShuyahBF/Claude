@@ -40,3 +40,10 @@ Les règles générales (livraison, version et lot, tableaux, HFSQL, chargement 
 - Seules les colonnes d'ACTIONS (boutons) et les colonnes sans valeur comparable (case à cocher de sélection, pictogramme seul) ne sont pas triables.
 - Mise en œuvre : SAWALI = `frontend/src/lib/tri.js` (`useTri`, `trierLignes`) et `frontend/src/components/ThTri.jsx` (en-tête triable), tri serveur de Transactions SMS dans `backend/routes/transactions_sms.py` (`trier`) ; e-Kol = `triTableaux.js` ; WinForms = `DataGridView` avec `SortMode = Automatic` ; Android Compose = en-tête cliquable. Même règle sur toute plateforme, existante ou à venir.
 - Cette règle complète la règle 3 « Tableaux » (survol, sélection, nombres à droite).
+
+
+## APK livré à CHAQUE livraison (règle du propriétaire, 16/11/2026 : « Tu ne m'envoies plus les APK »)
+- Après toute livraison qui touche cette application (même quand le changement vit dans le site affiché par l'application), construire un APK **release** (non débogable, jamais « debug » dans le nom) et l'ENVOYER au propriétaire avec `SendUserFile`, dans le chat, sans attendre qu'il le demande.
+- Numéro de version +1 à chaque APK ; nom du fichier livré sans « debug » ni « release » (ex. `concentration-1.38.apk`, `personnel-maison-1.33.apk`, `auror-direct-2.12.0.apk`).
+- Build : option Gradle `-PsignerAvecCleLocale=true` (clé locale de l'environnement, aucune clé dans le dépôt). Vérifier que le fichier contient bien la nouvelle version avant de l'envoyer.
+- Mentionner dans le compte rendu que Android refuse parfois la mise à jour (signature différente) et que la désinstallation efface les données locales.
