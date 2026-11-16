@@ -102,7 +102,15 @@ const SECTIONS = [
     ],
   },
   {
-    titre: "10. Non-affiliation",
+    titre: "10. Journal intime et « Liluvine, ma coach » (facultatif)",
+    paragraphes: [
+      "Dans la page « Mon Journal Intime », vous pouvez écrire vos pensées. Elles sont gardées UNIQUEMENT sur votre téléphone, chiffrées (AES-256) : ni auRor ni SAWALI SMART SYSTEMS n'en conservent de copie et personne d'autre ne peut les lire. Si vous désinstallez l'application, effacez ses données ou changez de téléphone, elles sont perdues définitivement. Vous pouvez effacer une entrée ou tout le journal à tout moment.",
+      "Vous pouvez aussi converser avec Liluvine, une coach par intelligence artificielle (service payant après quelques échanges d'essai). Pour obtenir chaque réponse, les derniers messages de la conversation en cours sont envoyés à SAWALI SMART SYSTEMS et à son prestataire d'intelligence artificielle ; ils ne sont pas conservés. Vos entrées de journal ne sont jamais envoyées, sauf ce que vous écrivez vous-même dans la conversation. Liluvine ne donne ni diagnostic, ni prescription, ni conseil juridique ou financier, et ne remplace pas un professionnel de santé ; en cas de détresse, elle invite à joindre les secours ou une personne proche.",
+      "Avant tout usage, l'application affiche ces mentions et vous demande de les approuver vous-même ; votre accord (date et version du texte) est gardé sur votre téléphone, et vous pouvez le retirer à tout moment.",
+    ],
+  },
+  {
+    titre: "11. Non-affiliation",
     paragraphes: [MENTION_NON_AFFILIATION],
   },
 ];
