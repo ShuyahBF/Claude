@@ -18,6 +18,8 @@ const dec = new TextDecoder();
 let cleActive = null;                                  // clé gardée en mémoire seulement (perdue au rechargement de la page)
 let octetsActifs = null;                               // lot 92 : octets de la clé (pour fabriquer enveloppe et secours), en mémoire seulement
 export const cleDeverrouillee = () => !!cleActive;
+/** Clé du coffre ouverte (objet CryptoKey NON extractible) : sert à chiffrer les sauvegardes en ligne (lot 168) ; null si verrouillé. */
+export const cleCourante = () => cleActive;
 export const verrouiller = () => { cleActive = null; octetsActifs = null; };
 
 export function versBase64(octets) {

@@ -110,7 +110,16 @@ const SECTIONS = [
     ],
   },
   {
-    titre: "11. Non-affiliation",
+    titre: "11. Sauvegarde en ligne chiffrée (facultative)",
+    paragraphes: [
+      "Au premier lancement (puis dans votre profil, bloc « Sécurité et sauvegarde »), vous choisissez vous-même : sauvegarde en ligne chiffrée, ou données gardées uniquement sur votre téléphone. Vous pouvez changer ce choix à tout moment.",
+      "Si vous choisissez la sauvegarde en ligne, votre journal intime, votre carnet de contacts et les lignes de paiement de vos SMS (jamais le texte complet des SMS) sont chiffrés SUR VOTRE TÉLÉPHONE (AES-256) avec la clé de votre coffre, protégée par votre secret (code PIN ou phrase) et par un code de secours que vous seul détenez. Seuls des octets illisibles sont envoyés à auRor, qui en garde la dernière sauvegarde et la précédente. Ni auRor ni SAWALI SMART SYSTEMS ne peuvent les lire.",
+      "Sur un nouveau téléphone, vous vous connectez, vous remettez votre secret, et vos données sont retrouvées (sans écraser ce qui existe déjà). Si vous perdez votre secret ET votre code de secours, la sauvegarde est définitivement irrécupérable : personne ne peut la déchiffrer à votre place.",
+      "Vous pouvez effacer la sauvegarde en ligne à tout moment ; elle est aussi effacée avec la suppression de votre compte. Sur votre téléphone, une copie de la clé (non extractible) permet les sauvegardes automatiques ; vous pouvez la faire oublier à tout moment.",
+    ],
+  },
+  {
+    titre: "12. Non-affiliation",
     paragraphes: [MENTION_NON_AFFILIATION],
   },
 ];

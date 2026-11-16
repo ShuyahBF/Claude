@@ -98,6 +98,20 @@ export async function cleDuJournal() {
   return neuve;
 }
 
+/** Mémorise sur CET appareil la clé du coffre (CryptoKey non extractible) pour les sauvegardes automatiques ; une phrase n'est alors plus redemandée ici (nouveau téléphone : toujours redemandée). */
+export async function memoriserCleCoffre(cle) {
+  const base = await ouvrirBase();
+  await demande(base.transaction(MAGASIN, "readwrite").objectStore(MAGASIN).put(cle, `coffre${SUFFIXE}`));
+}
+/** Clé du coffre mémorisée sur cet appareil, ou null. */
+export async function lireCleCoffre() {
+  try { return (await demande((await ouvrirBase()).transaction(MAGASIN).objectStore(MAGASIN).get(`coffre${SUFFIXE}`))) || null; } catch { return null; }
+}
+/** Oublie la clé du coffre sur cet appareil (la sauvegarde automatique s'arrête ici ; la phrase redevient nécessaire). */
+export async function oublierCleCoffre() {
+  try { await demande((await ouvrirBase()).transaction(MAGASIN, "readwrite").objectStore(MAGASIN).delete(`coffre${SUFFIXE}`)); } catch { /* sans importance */ }
+}
+
 // ---- Entrées du journal (chiffrées dans localStorage) ----
 const CLE_ENTREES_BASE = "mpw_journal_entrees";
 const cleEntrees = () => `${CLE_ENTREES_BASE}${SUFFIXE}`;
