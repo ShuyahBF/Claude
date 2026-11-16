@@ -18,6 +18,7 @@ import android.view.Window
 import android.view.WindowManager
 import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.fragment.app.FragmentActivity
 import com.ouoba.mobilepay.util.Biometrie
@@ -74,6 +75,30 @@ class FenetrePaiement(private val activite: Activity) {
         filters = arrayOf(InputFilter.LengthFilter(if (motDePasse) 8 else 12))
         background = forme(Color.WHITE, 12, couleurCadre, 3); setPadding(dp(12), dp(10), dp(12), dp(10))
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) }
+    }
+
+    /**
+     * Règle 22 du propriétaire (16/11/2026) : sur TOUTE saisie d'un mot de passe, d'un code PIN ou d'une phrase secrète, un pictogramme œil affiche ou masque ce qui est tapé.
+     * Enveloppe le champ dans un cadre et pose l'œil à droite : « 👁 » = masqué (un toucher l'affiche), « 🙈 » = visible (un toucher le masque). Masqué par défaut à chaque ouverture.
+     */
+    private fun avecOeil(c: EditText): View {
+        val cadre = FrameLayout(activite).apply { layoutParams = c.layoutParams }
+        c.layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        c.setPadding(dp(48), dp(10), dp(48), dp(10))                              // place réservée à l'œil (droite) et symétrie pour garder le texte centré
+        var visible = false
+        val oeil = TextView(activite).apply {
+            text = "👁"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f); contentDescription = "Afficher le code"; gravity = Gravity.CENTER
+            minimumWidth = dp(44); minimumHeight = dp(44)
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.END or Gravity.CENTER_VERTICAL).apply { marginEnd = dp(4) }
+            setOnClickListener {
+                visible = !visible
+                c.inputType = if (visible) InputType.TYPE_CLASS_NUMBER else InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+                c.setTypeface(Typeface.MONOSPACE, Typeface.BOLD); c.setSelection(c.text.length)       // le changement de type remet la police par défaut : on la rétablit
+                text = if (visible) "🙈" else "👁"; contentDescription = if (visible) "Masquer le code" else "Afficher le code"
+            }
+        }
+        cadre.addView(c); cadre.addView(oeil)
+        return cadre
     }
 
     /**
@@ -144,7 +169,7 @@ class FenetrePaiement(private val activite: Activity) {
         if (demandePin) {
             blocPin = LinearLayout(activite).apply { orientation = LinearLayout.VERTICAL }
             blocPin.addView(texte("🔑 Code secret Mobile Money", 14f, AMBRE_TEXTE, gras = true).apply { setPadding(0, dp(12), 0, 0) })
-            champPin = champ(ORANGE, "••••", true).also { blocPin.addView(it) }
+            champPin = champ(ORANGE, "••••", true).also { blocPin.addView(avecOeil(it)) }
             if (empreinteOk) caseMemoriser = CheckBox(activite).apply { text = "🖐️ Mémoriser mon code avec mon empreinte"; isChecked = true; setTextColor(VERT) }.also { blocPin.addView(it) }
             blocPin.visibility = if (memorise) View.GONE else View.VISIBLE
             corps.addView(blocPin)

@@ -47,3 +47,10 @@ Les règles générales (livraison, version et lot, tableaux, HFSQL, chargement 
 - Numéro de version +1 à chaque APK ; nom du fichier livré sans « debug » ni « release » (ex. `concentration-1.38.apk`, `personnel-maison-1.33.apk`, `auror-direct-2.12.0.apk`).
 - Build : option Gradle `-PsignerAvecCleLocale=true` (clé locale de l'environnement, aucune clé dans le dépôt). Vérifier que le fichier contient bien la nouvelle version avant de l'envoyer.
 - Mentionner dans le compte rendu que Android refuse parfois la mise à jour (signature différente) et que la désinstallation efface les données locales.
+
+
+## Pictogramme œil sur toute saisie secrète (règle 22, 16/11/2026 : « pour toute saisie d'un mot de passe, pin ou passphrase mettre un pictogramme œil pour afficher ou masquer. Applique cela à tous nos projets, web comme Android »)
+- **Toute saisie d'un mot de passe, d'un code PIN, d'une phrase secrète, d'un jeton ou d'une clé secrète** (connexion, création, confirmation, changement, ouverture d'un coffre, fenêtre de sécurité d'un paiement, paramètres…) porte un **pictogramme œil** : œil ouvert = saisie masquée (un clic l'affiche), œil barré / singe = saisie visible (un clic la masque). **Masquée par défaut** à chaque ouverture.
+- Le pictogramme est **dans le champ** (à droite), avec une description d'accessibilité (« Afficher la saisie » / « Masquer la saisie ») et une zone tactile d'au moins 44 px.
+- **Un seul composant par plateforme**, utilisé partout (jamais un `<input type="password">` nu) : web = `ChampMotDePasse` / `MotDePasse` / `PasswordInput` (ou le champ de base de l'interface qui l'intègre quand `type="password"`) ; Android Compose = champ avec `trailingIcon` (`Visibility` / `VisibilityOff`) ; Android à vues = `FrameLayout` + œil ; WinForms = case ou bouton œil qui bascule `UseSystemPasswordChar`.
+- Un nouvel écran, un nouveau projet : le champ secret reçoit l'œil dès la première version. Exception : la saisie d'un code à usage unique (code reçu par e-mail ou SMS, code de l'application d'authentification), qui n'est pas un secret durable.

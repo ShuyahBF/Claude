@@ -1,3 +1,4 @@
+import ChampMotDePasse from "@/components/ChampMotDePasse";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Chargement from "@/components/Chargement";
@@ -387,8 +388,8 @@ export default function Archives() {
               <label className="flex items-center gap-1.5"><input type="radio" name="type-secret" checked={typeSecret === "pin"} onChange={() => { setTypeSecret("pin"); setPhrase({ a: "", b: "" }); }} /> 🔢 Code PIN</label>
               <label className="flex items-center gap-1.5"><input type="radio" name="type-secret" checked={typeSecret === "phrase"} onChange={() => { setTypeSecret("phrase"); setPhrase({ a: "", b: "" }); }} /> 🔤 Phrase secrète</label>
             </fieldset>
-            <input className="input" type="password" inputMode={typeSecret === "pin" ? "numeric" : "text"} autoComplete="new-password" placeholder={typeSecret === "pin" ? "Code PIN (4 à 12 chiffres)" : "Phrase secrète (4 caractères au moins)"} value={phrase.a} onChange={(e) => saisirSecret("a", e.target.value)} />
-            <input className="input" type="password" inputMode={typeSecret === "pin" ? "numeric" : "text"} autoComplete="new-password" placeholder={typeSecret === "pin" ? "Répétez le code PIN" : "Répétez la phrase secrète"} value={phrase.b} onChange={(e) => saisirSecret("b", e.target.value)} />
+            <ChampMotDePasse className="input" inputMode={typeSecret === "pin" ? "numeric" : "text"} autoComplete="new-password" placeholder={typeSecret === "pin" ? "Code PIN (4 à 12 chiffres)" : "Phrase secrète (4 caractères au moins)"} value={phrase.a} onChange={(e) => saisirSecret("a", e.target.value)} />
+            <ChampMotDePasse className="input" inputMode={typeSecret === "pin" ? "numeric" : "text"} autoComplete="new-password" placeholder={typeSecret === "pin" ? "Répétez le code PIN" : "Répétez la phrase secrète"} value={phrase.b} onChange={(e) => saisirSecret("b", e.target.value)} />
             <button type="submit" className="btn-primary w-full" disabled={occupe}>{occupe ? "Patientez…" : "Activer la sauvegarde en ligne chiffrée"}</button>
           </form>
         )}
@@ -396,7 +397,7 @@ export default function Archives() {
           <form onSubmit={ouvrirCoffre} className="space-y-2">
             <p className="text-sm text-gray-600">{nbEnLigne} document{nbEnLigne > 1 ? "s" : ""} en ligne, verrouillé{nbEnLigne > 1 ? "s" : ""}. Saisissez votre {etat.pin === "pin" ? "code PIN" : "phrase secrète"} pour les voir.{!abonne && etat.nombre_max != null && ` Espace gratuit : ${etat.nombre_max} documents, ${taille(etat.quota_octets)}.`}</p>
             <div className="flex gap-2">
-              <input className="input min-w-0 flex-1" type="password" inputMode={etat.pin === "pin" ? "numeric" : "text"} autoComplete="current-password" placeholder={etat.pin === "pin" ? "Code PIN" : "Phrase secrète"} value={phrase.a}
+              <ChampMotDePasse className="input" classeConteneur="min-w-0 flex-1" inputMode={etat.pin === "pin" ? "numeric" : "text"} autoComplete="current-password" placeholder={etat.pin === "pin" ? "Code PIN" : "Phrase secrète"} value={phrase.a}
                 onChange={(e) => setPhrase({ ...phrase, a: etat.pin === "pin" ? e.target.value.replace(/\D/g, "").slice(0, 12) : e.target.value })} />
               <button type="submit" className="btn-primary" disabled={occupe || !phrase.a || (etat.a2f && codeApp.replace(/\D/g, "").length !== 6)}>{occupe ? "…" : "🔓 Ouvrir"}</button>
             </div>
@@ -415,8 +416,8 @@ export default function Archives() {
               <label className="flex items-center gap-1.5"><input type="radio" name="type-secret2" checked={typeSecret === "pin"} onChange={() => { setTypeSecret("pin"); setPhrase({ a: "", b: "" }); }} /> 🔢 Code PIN</label>
               <label className="flex items-center gap-1.5"><input type="radio" name="type-secret2" checked={typeSecret === "phrase"} onChange={() => { setTypeSecret("phrase"); setPhrase({ a: "", b: "" }); }} /> 🔤 Phrase secrète</label>
             </fieldset>
-            <input className="input" type="password" inputMode={typeSecret === "pin" ? "numeric" : "text"} autoComplete="new-password" placeholder={typeSecret === "pin" ? "Nouveau code PIN" : "Nouvelle phrase secrète"} value={phrase.a} onChange={(e) => saisirSecret("a", e.target.value)} />
-            <input className="input" type="password" inputMode={typeSecret === "pin" ? "numeric" : "text"} autoComplete="new-password" placeholder="Répétez" value={phrase.b} onChange={(e) => saisirSecret("b", e.target.value)} />
+            <ChampMotDePasse className="input" inputMode={typeSecret === "pin" ? "numeric" : "text"} autoComplete="new-password" placeholder={typeSecret === "pin" ? "Nouveau code PIN" : "Nouvelle phrase secrète"} value={phrase.a} onChange={(e) => saisirSecret("a", e.target.value)} />
+            <ChampMotDePasse className="input" inputMode={typeSecret === "pin" ? "numeric" : "text"} autoComplete="new-password" placeholder="Répétez" value={phrase.b} onChange={(e) => saisirSecret("b", e.target.value)} />
             <div className="flex gap-2">
               <button type="submit" className="btn-primary flex-1" disabled={occupe || !codeSaisi}>{occupe ? "Patientez…" : "Rouvrir mes archives"}</button>
               <button type="button" className="btn-outline" onClick={() => { setModeCode(false); setCodeSaisi(""); }}>Annuler</button>
@@ -538,7 +539,7 @@ export default function Archives() {
         {a2f?.etape === "retirer" && (
           <form onSubmit={retirerA2f} className="space-y-3">
             <p className="text-sm text-gray-700">Pour retirer l'application, saisissez votre {etat?.pin === "pin" ? "code PIN" : "phrase secrète"} et le code actuel de l'application.</p>
-            <input className="input" type="password" inputMode={etat?.pin === "pin" ? "numeric" : "text"} autoComplete="current-password" placeholder={etat?.pin === "pin" ? "Code PIN" : "Phrase secrète"} value={a2f.pin}
+            <ChampMotDePasse className="input" inputMode={etat?.pin === "pin" ? "numeric" : "text"} autoComplete="current-password" placeholder={etat?.pin === "pin" ? "Code PIN" : "Phrase secrète"} value={a2f.pin}
               onChange={(e) => setA2f({ ...a2f, pin: etat?.pin === "pin" ? e.target.value.replace(/\D/g, "").slice(0, 12) : e.target.value })} />
             <input className="input text-center font-mono text-lg tracking-widest" inputMode="numeric" autoComplete="one-time-code" maxLength={7} placeholder="000 000" value={a2f.code}
               onChange={(e) => setA2f({ ...a2f, code: e.target.value.replace(/[^\d ]/g, "") })} aria-label="Code à 6 chiffres" />
@@ -629,7 +630,7 @@ export default function Archives() {
             {ajout.id && ajout.source === "cloud" && etat?.pin && (
               <div>
                 <label className="label" htmlFor="ar-secret">{etat.pin === "pin" ? "Code PIN" : "Phrase secrète"} <span className="font-normal text-gray-500">(obligatoire pour modifier un document)</span></label>
-                <input id="ar-secret" className="input" type="password" inputMode={etat.pin === "pin" ? "numeric" : "text"} autoComplete="current-password" placeholder={etat.pin === "pin" ? "Code PIN" : "Phrase secrète"} value={ajout.secret}
+                <ChampMotDePasse id="ar-secret" className="input" inputMode={etat.pin === "pin" ? "numeric" : "text"} autoComplete="current-password" placeholder={etat.pin === "pin" ? "Code PIN" : "Phrase secrète"} value={ajout.secret}
                   onChange={(e) => setAjout({ ...ajout, secret: etat.pin === "pin" ? e.target.value.replace(/\D/g, "").slice(0, 12) : e.target.value })} />
               </div>
             )}

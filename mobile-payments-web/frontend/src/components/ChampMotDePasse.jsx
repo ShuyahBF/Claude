@@ -1,20 +1,20 @@
 import { useState } from "react";
 
 // Champ « mot de passe » avec un pictogramme œil pour voir / masquer la saisie
-// (règle du propriétaire : sur TOUT champ mot de passe).
+// (règle 22 du propriétaire, 16/11/2026 : sur TOUTE saisie d'un mot de passe, d'un code PIN ou d'une phrase secrète). `classeConteneur` : classes du conteneur (ex. flex-1).
 // S'utilise comme un <input> ordinaire : toutes les propriétés lui sont transmises.
-export default function ChampMotDePasse({ className = "input", ...props }) {
+export default function ChampMotDePasse({ className = "input", classeConteneur = "", ...props }) {
   const [visible, setVisible] = useState(false);
   return (
-    <div className="relative">
+    <div className={`relative ${classeConteneur}`}>
       {/* pr-11 : place réservée au bouton œil à droite du champ */}
       <input {...props} type={visible ? "text" : "password"} className={`${className} pr-11`} />
       <button
         type="button"
         onClick={() => setVisible((v) => !v)}
         className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-gray-400 hover:text-gray-700"
-        aria-label={visible ? "Masquer le mot de passe" : "Afficher le mot de passe"}
-        title={visible ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+        aria-label={visible ? "Masquer la saisie" : "Afficher la saisie"}
+        title={visible ? "Masquer la saisie" : "Afficher la saisie"}
       >
         {visible ? (
           // Œil barré : la saisie est visible, un clic la masque
