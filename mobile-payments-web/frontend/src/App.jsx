@@ -10,6 +10,7 @@ import { AuthProvider } from "@/context/AuthContext";
 import Abonnement from "@/pages/Abonnement";
 import Admin from "@/pages/Admin";
 import Annonceur from "@/pages/Annonceur";
+import AdminModeration from "@/pages/AdminModeration";
 import AdminPresse from "@/pages/AdminPresse";
 import Presse from "@/pages/Presse";
 import Ussd from "@/pages/Ussd";
@@ -85,6 +86,7 @@ export default function App() {
               <Route path="/admin" element={<RouteProtegee admin><Admin /></RouteProtegee>} />
               <Route path="/admin/ussd" element={<RouteProtegee admin><AdminUssd /></RouteProtegee>} />
               <Route path="/admin/presse" element={<RouteProtegee admin><AdminPresse /></RouteProtegee>} />
+              <Route path="/admin/moderation" element={<RouteProtegee admin><AdminModeration /></RouteProtegee>} />
               <Route path="/admin/comptes" element={<RouteProtegee admin><AdminComptes /></RouteProtegee>} />
               <Route path="/admin/marchands" element={<RouteProtegee admin><AdminMarchands /></RouteProtegee>} />
               <Route path="/mon-marchand" element={<MonMarchand />} />

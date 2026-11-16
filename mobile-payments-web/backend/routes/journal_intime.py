@@ -21,6 +21,7 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+import moderation
 from limiteur import limiter_appels_publics
 from routes.abonnement import utilisateur_sawali
 from securite import get_current_user
@@ -48,6 +49,13 @@ async def liluvine(data: Demande, user: dict = Depends(get_current_user)) -> Dic
     # L'utilisateur a-t-il approuvé LUI-MÊME les mentions en vigueur ? Sinon rien n'est envoyé (ni texte, ni identité) vers SAWALI.
     if not data.consentement or data.version_mentions != VERSION_MENTIONS:
         raise HTTPException(422, "Vous devez d'abord lire et approuver les mentions du journal intime.")
+    # Modération : un DERNIER message hors du cadre légal n'est pas transmis à SAWALI ; Liluvine décline gentiment et le super-administrateur est signalé
+    # (catégorie et date seulement : le texte n'est jamais gardé). Une détresse n'est JAMAIS modérée : elle va à Liluvine.
+    dernier = next((m.content for m in reversed(data.messages) if m.role == "user"), "")
+    categorie = moderation.categorie_hors_cadre(dernier)
+    if categorie:
+        await moderation.enregistrer_signalement(user, categorie)
+        return {"reponse": moderation.REPONSES[categorie], "urgence": False, "modere": categorie, "restant_aujourdhui": None, "essais_restants": None}
     rep = await appeler_sawali("/coach-plateformes/repondre",
                                {"utilisateur": utilisateur_sawali(user), "messages": [m.model_dump() for m in data.messages]}, service=SERVICE, delai=60)
     return {"reponse": rep.get("reponse") or "", "urgence": bool(rep.get("urgence")), "restant_aujourdhui": rep.get("restant_aujourdhui"),

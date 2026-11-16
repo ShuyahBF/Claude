@@ -8,6 +8,8 @@ import LectureSmsAuto from "@/components/LectureSmsAuto";            // lecture 
 import MenuLateral from "@/components/MenuLateral";
 import SupportSawali from "@/components/SupportSawali";
 import VerrouEcran from "@/components/VerrouEcran";
+import BulleLiluvine from "@/components/BulleLiluvine";
+import { useLiluvine } from "@/lib/liluvineStore";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/components/Toast";
 import { apiClient, definirCouleursOperateurs } from "@/lib/api";
@@ -25,6 +27,7 @@ const MENUS = [
 // identique sur téléphone, tablette et ordinateur (règle du 17/10/2026).
 export default function Layout() {
   const { user, deconnexion } = useAuth();
+  const { nonLus: liluvineNonLus } = useLiluvine();          // messages de Liluvine non lus : pastille du menu « Mon Journal Intime »
   const appli = capacites();   // null hors de l'application Android
   const navigate = useNavigate();
   const [menuOuvert, setMenuOuvert] = useState(false);   // menu latéral glissant (lot 33)
@@ -149,7 +152,8 @@ export default function Layout() {
         <NavLink to="/confidentialite" className="underline hover:text-gray-600">Confidentialité</NavLink>
       </footer>
 
-      <MenuLateral ouvert={menuOuvert} fermer={() => setMenuOuvert(false)} compteurs={{ ...rappels, presse: nouveautesPresse }} />
+      <BulleLiluvine />
+      <MenuLateral ouvert={menuOuvert} fermer={() => setMenuOuvert(false)} compteurs={{ ...rappels, presse: nouveautesPresse, liluvine: liluvineNonLus }} />
 
       {/* Menu FLOTTANT, toujours aligné sur le bas de l'écran (tous appareils) ; la marge basse respecte la zone de geste des téléphones */}
       <div className={`no-print pointer-events-none fixed inset-x-0 bottom-0 z-40 justify-center px-3 ${clavier ? "hidden" : "flex"} pb-[max(0.75rem,env(safe-area-inset-bottom))]`}>

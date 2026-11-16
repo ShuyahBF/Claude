@@ -10,6 +10,7 @@ export default function OngletsAdmin() {
       <NavLink to="/admin/marchands" className={classe}>Marchands</NavLink>
       <NavLink to="/admin/presse" className={classe}>Presse</NavLink>
       <NavLink to="/admin/ussd" className={classe}>Codes USSD</NavLink>
+      <NavLink to="/admin/moderation" className={classe}>Modération</NavLink>
     </div>
   );
 }
