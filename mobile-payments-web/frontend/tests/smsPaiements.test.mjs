@@ -104,3 +104,8 @@ ok("autre SMS sans destinataire : null", destinataireDe("Paiement de 2500 FCFA a
 const ancienne = { ...lt, tiers: "numero 54144722", tel: undefined };
 const fus = fusionner([ancienne], [lt]);
 ok("relecture : l'ancienne ligne reçoit le nom, sans doublon", fus.lignes.length === 1 && fus.lignes[0].tiers === "ABIBOU" && fus.nouvelles === 0);
+
+// --- Moov : « vers 70123456 reussi » → le numéro seul (sans « reussi »), isolé comme numéro
+const lm = analyserSms({ adresse: "Moov Money", recu_le: T, corps: "Transfert de 5000 FCFA vers 70123456 reussi. Nouveau solde: 9000 FCFA. Trans id: CI260409.1000.33333333" });
+ok("Moov : tiers = numéro seul, tel isolé", lm && lm.tiers === "70123456" && lm.tel === "70 12 34 56");
+ok("Orange inchangé", analyserSms({ adresse: "OrangeMoney", recu_le: T, corps: SMS_TRANSFERT }).tel === "54 14 47 22");

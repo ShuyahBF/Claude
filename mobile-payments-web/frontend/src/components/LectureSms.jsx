@@ -138,8 +138,9 @@ export default function LectureSms() {
                   <span className={`ml-auto text-base font-bold ${!estTransaction(l) ? "text-gray-500" : l.genre === "RECETTE" ? "text-green-700" : "text-red-700"}`}>{fcfa(l.montant)}</span>
                 </div>
                 {(l.tiers || l.tel || l.reference || l.solde != null) && (
-                  <p className="mt-1 text-gray-700">
-                    {l.tiers && <b>{l.genre === "RECETTE" ? `📞 ${l.tiers}` : l.tiers}</b>}{l.tel && <span className="ml-2 text-xs text-gray-600">📞 {l.tel}</span>}{l.reference && <span className="ml-2 font-mono text-xs text-primary">{l.reference}</span>}{l.solde != null && <span className="ml-2 text-xs text-gray-500">solde {fcfa(l.solde)}</span>}
+                  <p className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-gray-700">
+                    {/* Chaque élément reste d'un seul tenant (nowrap) : un numéro ou une référence ne se coupe plus en deux lignes ; seul le nom peut passer à la ligne */}
+                    {l.tiers && <b className={l.genre === "RECETTE" ? "whitespace-nowrap" : ""}>{l.genre === "RECETTE" ? `📞 ${l.tiers}` : l.tiers}</b>}{l.tel && <span className="whitespace-nowrap text-xs text-gray-600">📞 {l.tel}</span>}{l.reference && <span className="whitespace-nowrap font-mono text-xs text-primary">{l.reference}</span>}{l.solde != null && <span className="whitespace-nowrap text-xs text-gray-500">solde {fcfa(l.solde)}</span>}
                   </p>
                 )}
               </li>
