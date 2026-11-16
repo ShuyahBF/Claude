@@ -109,3 +109,10 @@ ok("relecture : l'ancienne ligne reçoit le nom, sans doublon", fus.lignes.lengt
 const lm = analyserSms({ adresse: "Moov Money", recu_le: T, corps: "Transfert de 5000 FCFA vers 70123456 reussi. Nouveau solde: 9000 FCFA. Trans id: CI260409.1000.33333333" });
 ok("Moov : tiers = numéro seul, tel isolé", lm && lm.tiers === "70123456" && lm.tel === "70 12 34 56");
 ok("Orange inchangé", analyserSms({ adresse: "OrangeMoney", recu_le: T, corps: SMS_TRANSFERT }).tel === "54 14 47 22");
+
+// --- Recharge Orange avec phrase commerciale (signalée le 16/11/2026) : transaction, pas promo
+const SMS_RECHARGE = "Vous avez recharge 1,000.00 FCFA d unites. Gagnez 100% de bonus sur toutes vos recharges Orange Money. Bonus valable 7 jours et utilisable vers tous les reseaux nationaux. Votre solde est de 66622.5202 FCFA. TRANS ID: RC261115.2130.68181965. Rendez-vous sur Max it : http://urlz.fr/bpmE pour profiter de nos meilleures offres.";
+const lr = analyserSms({ adresse: "OrangeMoney", recu_le: T, corps: SMS_RECHARGE });
+ok("recharge : transaction (pas promo), dépense de 1 000", lr && lr.categorie === "transaction" && estTransaction(lr) && lr.genre === "DEPENSE" && lr.montant === 1000 && lr.reference === "RC261115.2130.68181965" && lr.solde === 66623);
+ok("vraie promo sans numéro de transaction : toujours promo", analyserSms({ adresse: "OrangeMoney", recu_le: T, corps: "Gagnez 100% de bonus sur vos recharges de 1000 FCFA. Offre valable 7 jours. Composez *144*9#." }).categorie === "promo");
+ok("promo avec mot « bonus » mais sans transaction", (analyserSms({ adresse: "OrangeMoney", recu_le: T, corps: "Profitez d'un bonus de 500 FCFA ce week-end sur vos achats" }) || { categorie: "promo" }).categorie === "promo");
