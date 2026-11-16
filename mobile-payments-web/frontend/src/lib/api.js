@@ -52,6 +52,12 @@ export function messageErreur(err, repli = "Une erreur est survenue") {
     return MESSAGES_GENERIQUES.has(detail.trim().toLowerCase()) ? repli : detail;
   }
   if (!err?.response) return "Serveur injoignable. Vérifiez votre connexion.";
+  // Refus de validation du serveur (422) : le détail est une LISTE {loc, msg} ; on affiche le champ concerné au lieu du message générique
+  if (Array.isArray(detail) && detail.length) {
+    const d = detail[0] || {};
+    const champ = Array.isArray(d.loc) ? d.loc.filter((x) => x !== "body").join(" › ") : "";
+    return `${repli.replace(/\.$/, "")} (${champ ? champ + " : " : ""}${d.msg || "valeur refusée"})`;
+  }
   return repli;
 }
 
