@@ -37,6 +37,9 @@ export default function PaiementDirect({ paiement, onTermine }) {
     catch (err) { toast.erreur(messageErreur(err)); return false; }
   }, [paiement.id, toast]);
 
+  // Transfert d'argent : numéro du bénéficiaire (chiffres) ; vide pour un paiement marchand
+  const telephone = paiement.categorie === "money_transfer" ? String(paiement.valeurs?.phone || "").replace(/\D/g, "") : "";
+
   /** Ouvre la fenêtre de sécurité de l'application puis envoie le code. */
   const payer = useCallback(async () => {
     setEtat("dialogue"); setMessage("");
@@ -45,7 +48,8 @@ export default function PaiementDirect({ paiement, onTermine }) {
     const resume = JSON.stringify({
       service: paiement.service_nom, operateur: paiement.operateur,
       montant: paiement.montant ? fcfa(paiement.montant) : "", lettres: paiement.montant ? `${enLettres(paiement.montant)} francs` : "",
-      marchand: paiement.marchand ? (paiement.marchand.libelle || "Marchand sans nom") : "", code: paiement.marchand?.code || "",
+      // Marchand : son nom et son code ; transfert d'argent : le NUMÉRO du bénéficiaire (affiché dans la fenêtre de sécurité pour être vérifié)
+      marchand: paiement.marchand ? (paiement.marchand.libelle || "Marchand sans nom") : (telephone ? `Bénéficiaire : ${telephone}` : ""), code: paiement.marchand?.code || "",
       // Montant validé à la voix, relu en toutes lettres : la fenêtre de sécurité ne demande pas de le retaper (le doigt ou le code secret valide l'envoi)
       confirmation: paiement.confirmation_lettres ? "lettres" : "",
     });
@@ -82,7 +86,7 @@ export default function PaiementDirect({ paiement, onTermine }) {
       if (arrete || Date.now() - debut > DELAI_MS) return;
       const r = await lireSmsPaiements(1);
       if (arrete || !r.sms) return;
-      const critere = { montant: paiement.montant, codeMarchand: paiement.marchand?.code, libelle: paiement.marchand?.libelle, envoyeLe: envoyeLe.current };
+      const critere = { montant: paiement.montant, codeMarchand: paiement.marchand?.code, libelle: paiement.marchand?.libelle, envoyeLe: envoyeLe.current, telephone };
       const trouve = r.sms.find((x) => confirmePaiement(x, critere));
       if (trouve && await changerStatut("effectue")) {
         // La ligne du SMS est aussi gardée sur le téléphone (historique des SMS de paiement)
@@ -127,6 +131,7 @@ export default function PaiementDirect({ paiement, onTermine }) {
           <span>· {paiement.operateur}</span>
           {paiement.montant ? <span className="ml-auto text-lg font-bold text-accent">{fcfa(paiement.montant)}</span> : null}
         </div>
+        {telephone && <p className="text-sm text-gray-600">Bénéficiaire : <b className="font-mono">{telephone}</b></p>}
         {paiement.marchand && <p className="text-sm text-gray-600">Marchand : <b>{paiement.marchand.libelle || "sans nom"}</b> <span className="font-mono">({paiement.marchand.code})</span></p>}
 
         {/* RAPPEL du code USSD (important) : toujours visible, SANS la partie code secret (saisie à l'étape suivante) */}
@@ -176,11 +181,11 @@ export default function PaiementDirect({ paiement, onTermine }) {
         {etat === "envoye" && (
           <div className="space-y-2">
             <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
-              <b>📨 Code envoyé à l'opérateur.</b> {sms ? "L'opération sera confirmée automatiquement à la réception de son SMS (même montant et même marchand)." : "Attendez le SMS de l'opérateur."}
+              <b>📨 Code envoyé à l'opérateur.</b> {sms ? `L'opération sera confirmée automatiquement à la réception de son SMS (même montant et ${telephone ? "même bénéficiaire" : "même marchand"}).` : "Attendez le SMS de l'opérateur."}
               {" "}Ce paiement ne peut plus être abandonné.
             </p>
             {reponse && <p className="whitespace-pre-wrap rounded-lg bg-gray-50 p-3 text-sm text-gray-700"><b>Réponse de l'opérateur :</b> {reponse}</p>}
-            {sms && !paiement.marchand?.libelle && (
+            {sms && !telephone && !paiement.marchand?.libelle && (
               <p className="rounded-lg bg-sky-50 p-2 text-xs text-sky-900">Ce marchand n'a pas encore de nom dans auRor : le SMS de l'opérateur ne pourra pas le reconnaître. Donnez-lui un nom pour la prochaine fois ; ici, utilisez « J'ai payé » après confirmation du marchand.</p>
             )}
             <p className="text-xs text-gray-600">Problème de réseau, mais le marchand confirme avoir reçu le paiement ? Appuyez sur « J'ai payé ».</p>

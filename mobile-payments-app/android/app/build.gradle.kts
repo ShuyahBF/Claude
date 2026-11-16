@@ -19,8 +19,8 @@ android {
         // versionName : numéro affiché à l'utilisateur (et envoyé à SAWALI dans le signal de présence)
         // Téléphones ARM seulement : la lecture de texte (ML Kit) embarque des bibliothèques natives par architecture ; ignorer x86 (émulateurs) allège l'application
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
-        versionCode = 25
-        versionName = "2.14.0"
+        versionCode = 26
+        versionName = "2.15.0"
 
         // Adresse du site auRor affiché dans l'application (version hybride, lot 18) : TOUT auRor (marchands, QR codes, géolocalisation, historique…).
         // Surcharge possible pour un essai : -PsiteUrl=https://autre-adresse/

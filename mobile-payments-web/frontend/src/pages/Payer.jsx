@@ -77,6 +77,8 @@ export default function Payer() {
 
   const champMarchand = useMemo(() => service?.champs.find((c) => c.isMerchantCode) || null, [service]);
   const codeMarchand = champMarchand ? (valeurs[champMarchand.key] || "") : "";
+  // Application « direct » : l'application envoie elle-même la séquence pour un paiement chez un marchand OU un transfert d'argent (même fenêtre de sécurité, mêmes conditions par opérateur)
+  const directEligible = appliDirect && ((service?.categorie === "merchant_payment" && !!champMarchand) || service?.categorie === "money_transfer");
 
   // Liste des opérateurs au chargement
   useEffect(() => {
@@ -206,7 +208,8 @@ export default function Payer() {
       const { data } = await apiClient.post("/paiements", { service_id: service.id, valeurs, ...(position ? { position } : {}) });
       // Application « direct » + paiement chez un marchand : l'application envoie elle-même la séquence (fenêtre de sécurité : montant retapé + code secret),
       // SANS QR code ni légende. Les autres services (transfert, crédit…) gardent l'écran habituel.
-      if (appliDirect && service.categorie === "merchant_payment" && champMarchand) setPaiementDirect({ ...data, confirmation_lettres: montantVocal !== null && Number(data.montant) === montantVocal }); else setPaiement(data);
+      // Transfert d'argent : MÊME flux que le paiement marchand (fenêtre de sécurité, Orange en deux temps sans code secret dans la séquence, SMS de confirmation)
+      if (directEligible) setPaiementDirect({ ...data, confirmation_lettres: montantVocal !== null && Number(data.montant) === montantVocal }); else setPaiement(data);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       toast.erreur(messageErreur(err, "Préparation impossible"));
@@ -436,7 +439,7 @@ export default function Payer() {
           )}
 
           <button type="submit" className="btn-primary w-full py-3 text-base" disabled={envoi}>
-            {envoi ? "Préparation…" : mode === "pispi" ? "Payer par PI-SPI →" : appliDirect && service.categorie === "merchant_payment" && champMarchand ? "💳 Payer maintenant →" : "Préparer le paiement →"}
+            {envoi ? "Préparation…" : mode === "pispi" ? "Payer par PI-SPI →" : directEligible ? "💳 Payer maintenant →" : "Préparer le paiement →"}
           </button>
         </form>
       )}
