@@ -48,3 +48,15 @@ const e = echangesPourLiluvine([...long, { role: "user", content: "x".repeat(500
 ok("16 au plus, commence et finit par l'utilisateur, texte borné", e.length <= 16 && e[0].role === "user" && e[e.length - 1].role === "user" && e[e.length - 1].content.length === 2000);
 ok("dernier message de Liluvine : rien à envoyer", echangesPourLiluvine([{ role: "user", content: "a" }, { role: "assistant", content: "b" }]).length === 0);
 ok("messages vides ignorés", echangesPourLiluvine([{ role: "user", content: "  " }]).length === 0);
+
+// --- Un téléphone, plusieurs comptes : chaque compte a son journal et ses accords
+import { pourUtilisateur } from "../src/lib/journalIntime.js";
+const s3 = faux();
+pourUtilisateur("compte-A");
+await enregistrerEntree(cle, { quand: 5, humeur: "joyeux", texte: "Journal du compte A" }, s3);
+donnerAccord("journal", s3);
+pourUtilisateur("compte-B");
+ok("autre compte : ni accord ni entrées du compte A", !accordDonne("journal", s3) && (await chargerEntrees(cle, s3)).length === 0);
+pourUtilisateur("compte-A");
+ok("retour au compte A : accord et entrées retrouvés", accordDonne("journal", s3) && (await chargerEntrees(cle, s3)).length === 1);
+pourUtilisateur("");

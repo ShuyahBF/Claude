@@ -30,8 +30,14 @@ export const MENTIONS = {
   ],
 };
 
+// ---- Utilisateur du téléphone : un téléphone peut servir à plusieurs comptes auRor ; journal, accords et clé sont PROPRES à chaque compte (règle 21 : usage détourné) ----
+let SUFFIXE = "";
+/** À appeler avec l'identifiant du compte connecté AVANT tout accès au journal ou au carnet. */
+export const pourUtilisateur = (id) => { SUFFIXE = id ? `_${String(id).replace(/[^\w-]/g, "")}` : ""; };
+export const suffixeUtilisateur = () => SUFFIXE;
+
 // ---- Accords (gardés sur le téléphone : version des mentions + date) ----
-const CLE_ACCORD = (qui) => `mpw_journal_accord_${qui}`;
+const CLE_ACCORD = (qui) => `mpw_journal_accord_${qui}${SUFFIXE}`;
 
 /** Vrai si l'utilisateur a approuvé les mentions EN VIGUEUR (qui = "journal" ou "liluvine"). */
 export function accordDonne(qui, stockage = (typeof localStorage !== "undefined" ? localStorage : null)) {
@@ -84,21 +90,23 @@ const demande = (r) => new Promise((ok, ko) => { r.onsuccess = () => ok(r.result
 /** Clé du journal de CET appareil : lue, ou créée à la première utilisation. */
 export async function cleDuJournal() {
   const base = await ouvrirBase();
-  const lue = await demande(base.transaction(MAGASIN).objectStore(MAGASIN).get("principale"));
+  const nom = `principale${SUFFIXE}`;
+  const lue = await demande(base.transaction(MAGASIN).objectStore(MAGASIN).get(nom));
   if (lue) return lue;
   const neuve = await nouvelleCle();
-  await demande(base.transaction(MAGASIN, "readwrite").objectStore(MAGASIN).put(neuve, "principale"));
+  await demande(base.transaction(MAGASIN, "readwrite").objectStore(MAGASIN).put(neuve, nom));
   return neuve;
 }
 
 // ---- Entrées du journal (chiffrées dans localStorage) ----
-const CLE_ENTREES = "mpw_journal_entrees";
+const CLE_ENTREES_BASE = "mpw_journal_entrees";
+const cleEntrees = () => `${CLE_ENTREES_BASE}${SUFFIXE}`;
 export const HUMEURS = [
   { id: "joyeux", icone: "😊", libelle: "Joyeux" }, { id: "serein", icone: "😌", libelle: "Serein" }, { id: "fatigue", icone: "😴", libelle: "Fatigué" },
   { id: "inquiet", icone: "😟", libelle: "Inquiet" }, { id: "triste", icone: "😢", libelle: "Triste" }, { id: "en_colere", icone: "😠", libelle: "En colère" },
   { id: "reconnaissant", icone: "🙏", libelle: "Reconnaissant" },
 ];
-const lirePaquets = (st) => { try { return JSON.parse(st.getItem(CLE_ENTREES) || "[]"); } catch { return []; } };
+const lirePaquets = (st) => { try { return JSON.parse(st.getItem(cleEntrees()) || "[]"); } catch { return []; } };
 
 /** Toutes les entrées déchiffrées, les plus récentes d'abord. */
 export async function chargerEntrees(cle, stockage = localStorage) {
@@ -112,14 +120,14 @@ export async function enregistrerEntree(cle, entree, stockage = localStorage) {
   const { id: _i, ...contenu } = entree;
   const paquets = lirePaquets(stockage).filter((p) => p.id !== id);
   paquets.push({ id, ...(await chiffrer(cle, contenu)) });
-  try { stockage.setItem(CLE_ENTREES, JSON.stringify(paquets)); return id; } catch { return null; }
+  try { stockage.setItem(cleEntrees(), JSON.stringify(paquets)); return id; } catch { return null; }
 }
 export function supprimerEntree(id, stockage = localStorage) {
-  try { stockage.setItem(CLE_ENTREES, JSON.stringify(lirePaquets(stockage).filter((p) => p.id !== id))); return true; } catch { return false; }
+  try { stockage.setItem(cleEntrees(), JSON.stringify(lirePaquets(stockage).filter((p) => p.id !== id))); return true; } catch { return false; }
 }
 /** Efface TOUT le journal (entrées chiffrées). La clé reste : un nouveau journal peut commencer. */
 export function toutEffacer(stockage = localStorage) {
-  try { stockage.removeItem(CLE_ENTREES); return true; } catch { return false; }
+  try { stockage.removeItem(cleEntrees()); return true; } catch { return false; }
 }
 
 const sansAccents = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();

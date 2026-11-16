@@ -124,8 +124,25 @@ export default function Payer() {
     }
   }, [choisirOperateur, choisirService, appliDirect]);
 
+  // Arrivée depuis le carnet de contacts : ?transfert=1&phone=54144722[&operateur=Orange][&montant=25000] → « Transfert d'argent » prérempli ;
+  // la personne relit, puis valide comme d'habitude (le site ne paie jamais seul)
+  useEffect(() => {
+    if (params.get("transfert") !== "1" || operateurs === null) return;
+    const phone = (params.get("phone") || "").replace(/\D/g, ""), montant = (params.get("montant") || "").replace(/\D/g, ""), op = params.get("operateur") || "Orange";
+    setParams({}, { replace: true });
+    (async () => {
+      const svc = await choisirOperateur(op);
+      const s = svc.find((x) => x.categorie === "money_transfer");
+      if (!s) { toast.erreur(`Pas de transfert d'argent disponible pour ${op} : choisissez le service.`); return; }
+      const cleTel = s.champs.find((c) => c.key === "phone")?.key, cleMontant = s.champs.find((c) => c.key === "amount")?.key;
+      choisirService(s, { ...(cleTel && phone ? { [cleTel]: phone } : {}), ...(cleMontant && montant ? { [cleMontant]: montant } : {}) });
+      toast.succes("Transfert prérempli : vérifiez le numéro et le montant avant de valider.");
+    })();
+  }, [operateurs, params, setParams, choisirOperateur, choisirService, toast]);
+
   // Arrivée par le QR code d'un marchand : ?operateur=Orange&service=<id>&code=1234
   useEffect(() => {
+    if (params.get("transfert") === "1") return;
     const op = params.get("operateur");
     if (!op || operateurs === null) return;
     ouvrirDepuisQr(op, params.get("service"), params.get("code") || "");

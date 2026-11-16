@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { EVENEMENT_MAJ, lireResume, synchroniserSms } from "@/lib/lectureSms";
 import { capacites, notificationsActives, ouvrirReglagesNotifications } from "@/lib/pontAndroid";
 import { chargerLignes, estTransaction, filtrerLignes, filtreActif } from "@/lib/smsPaiements";
+import FenetreContact, { useCarnet } from "@/components/FenetreContact";   // lot 167 : « ➕ Carnet » depuis un SMS
+import { normaliserNumero, operateurDeAdresse, trouverContact } from "@/lib/carnet";
 
 // Lecture des SMS de paiement (application Android auRor, version « direct » seulement) : bloc REPLIABLE, affiché REPLIÉ avec un récapitulatif
 // (opérateur, nombre de SMS lus, nombre de paiements enregistrés, date et heure de la dernière lecture).
@@ -20,6 +22,14 @@ export default function LectureSms() {
   // Filtres de la liste (se cumulent, appliqués tout de suite : rien à enregistrer) : texte/numéro, montant mini/maxi, sens, expéditeur, dates
   const FILTRE_VIDE = { texte: "", min: "", max: "", sens: "tous", adresse: "", du: "", au: "" };
   const [filtre, setFiltre] = useState(FILTRE_VIDE);
+  const carnet = useCarnet();
+  const [nouveauContact, setNouveauContact] = useState(null);        // contact à ajouter au carnet depuis un SMS (fenêtre)
+  // Numéro du correspondant d'une ligne : destinataire d'un transfert (tel) ou expéditeur d'un argent reçu (tiers = numéro)
+  const numeroDe = (l) => normaliserNumero(l.tel || (l.genre === "RECETTE" ? l.tiers : ""));
+  const versCarnet = (l) => {
+    const n = numeroDe(l), connu = trouverContact(carnet.contacts, n);
+    setNouveauContact(connu || { nom: l.tiers && !/\d{6}/.test(l.tiers) ? l.tiers : "", tel: n, operateur: operateurDeAdresse(l.adresse), montant: l.montant, note: "" });
+  };
   const modif = (champ) => (e) => setFiltre((f) => ({ ...f, [champ]: e.target.value }));
   const affichees = filtrerLignes(lignes, filtre);
   const expediteurs = [...new Set(lignes.map((l) => l.adresse).filter(Boolean))].sort();
@@ -120,6 +130,11 @@ export default function LectureSms() {
                   {estTransaction(l)
                     ? <span className={`rounded-full px-2 py-0.5 font-semibold ${l.genre === "RECETTE" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-700"}`}>{l.genre === "RECETTE" ? "↓ Reçu" : "↑ Payé"}</span>
                     : <span className="rounded-full bg-gray-200 px-2 py-0.5 font-semibold text-gray-700" title="Ce SMS n'est pas une transaction : il n'est pas compté">{LIBELLE_CATEGORIE[l.categorie] || l.categorie}</span>}
+                  {estTransaction(l) && numeroDe(l) && carnet.pret && (
+                    <button type="button" className="rounded-full border border-gray-300 px-2 py-0.5 font-semibold text-primary" onClick={() => versCarnet(l)}
+                            title={trouverContact(carnet.contacts, numeroDe(l)) ? "Ouvrir ce contact" : "Ajouter au carnet de contacts"} aria-label="Carnet de contacts">
+                      {trouverContact(carnet.contacts, numeroDe(l)) ? "📒 Contact" : "➕ Carnet"}</button>
+                  )}
                   <span className={`ml-auto text-base font-bold ${!estTransaction(l) ? "text-gray-500" : l.genre === "RECETTE" ? "text-green-700" : "text-red-700"}`}>{fcfa(l.montant)}</span>
                 </div>
                 {(l.tiers || l.tel || l.reference || l.solde != null) && (
@@ -132,6 +147,7 @@ export default function LectureSms() {
           </ul>
         )}
       </div>
+      <FenetreContact contact={nouveauContact} onFermer={() => setNouveauContact(null)} carnet={carnet} />
     </details>
   );
 }
