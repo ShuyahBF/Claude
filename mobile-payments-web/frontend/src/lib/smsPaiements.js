@@ -11,7 +11,7 @@ const MONTANT_AVANT = new RegExp(`(?:fcfa|f\\s?cfa|xof|cfa)\\s*:?\\s*(${NOMBRE})
 const SOLDE = new RegExp(`(?:nouveau\\s+)?solde(?:\\s+(?:actuel|disponible|est|apr[eè]s))?(?:\\s*(?:est|:|de|=))*\\s*(${NOMBRE})`, "i");
 const REFERENCE = /([A-Z]{2}\d{6}\.\d{4}\.\d+)/;
 const DATE_REFERENCE = /^[A-Z]{2}(\d{2})(\d{2})(\d{2})\.(\d{2})(\d{2})\./;
-const MOTS_DEPENSE = ["vous avez payé", "vous avez paye", "votre paiement", "paiement", "payé", "achat", "retrait", "vous avez envoyé", "vous avez envoye", "envoi de", "transfert de", "transfert vers", "facture", "débit", "debit", "vous avez transféré", "vous avez transfere"];
+const MOTS_DEPENSE = ["vous avez payé", "vous avez paye", "votre paiement", "paiement", "payé", "achat", "retrait", "vous avez envoyé", "vous avez envoye", "envoi de", "transfert de", "transfert vers", "facture", "débit", "debit", "vous avez transféré", "vous avez transfere", "vous avez recharge", "vous avez rechargé"];
 const MOTS_RECETTE = ["vous avez reçu", "vous avez recu", "reçu de", "recu de", "dépôt", "depot", "crédit de", "credit de", "versement", "transfert reçu"];
 const MOTS_PROMO = ["gagnez", "gagner", "promo", "offre", "bonus", "félicitations", "felicitations", "tentez", "jeu concours", "cliquez"];
 
@@ -134,7 +134,7 @@ const RE_VALIDITE = /jusqu|valable|a partir de/;
 const RE_POURCENT = /[0-9]\s?%/;
 const RE_OFFRE = /beneficiez|profitez|gagnez|retirez|reglez|rechargez|abonnez|obtenez|offre|promo|bonus|cadeau|vous accompagne|decouvrez/;
 const RE_VRAIE_FORME = /(debit|credit)\s*montant\s*:/;
-const RE_VOUS_AVEZ = /vous avez (recu|envoye|paye|transfere|effectu)/;
+const RE_VOUS_AVEZ = /vous avez (recu|envoye|paye|transfere|effectu|recharge)/;
 const RE_BANQUE = /ubabf|\buba\b|banque|bank|coris|ecobank|sgbf|\bboa\b|bicia|bdm|cbao|sonibank|societe generale/;
 const RE_NUMERO_EXPEDITEUR = /^\+?\d{7,}$/;
 
@@ -162,7 +162,9 @@ export function categorieSms({ adresse, corps }) {
 export function analyserSms({ adresse, recu_le: recuLe, corps }) {
   const t = String(corps || "").toLowerCase();
   let categorie = categorieSms({ adresse, corps });
-  if (categorie === "transaction" && MOTS_PROMO.some((m) => t.includes(m))) categorie = "promo";
+  // Un SMS qui porte un NUMÉRO DE TRANSACTION de l'opérateur est une transaction, même si l'opérateur y ajoute une phrase commerciale
+  // (« Vous avez recharge 1,000 FCFA… Gagnez 100% de bonus… TRANS ID: RC261115… ») : les mots promotionnels ne s'appliquent qu'aux SMS SANS numéro de transaction.
+  if (categorie === "transaction" && !REFERENCE.test(corps || "") && MOTS_PROMO.some((m) => t.includes(m))) categorie = "promo";
   const montant = montantDe(corps);
   if (!montant) return null;
   const sens = MOTS_RECETTE.some((m) => t.includes(m)) ? "RECETTE" : MOTS_DEPENSE.some((m) => t.includes(m)) ? "DEPENSE" : null;
