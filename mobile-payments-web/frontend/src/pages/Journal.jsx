@@ -5,8 +5,9 @@ import { useToast } from "@/components/Toast";
 import { apiClient, messageErreur } from "@/lib/api";
 import {
   HUMEURS, MENTIONS, VERSION_MENTIONS, accordDonne, chargerEntrees, cleDuJournal, dateAccord, donnerAccord, echangesPourLiluvine,
-  enregistrerEntree, filtrerEntrees, retirerAccord, supprimerEntree, toutEffacer,
+  enregistrerEntree, filtrerEntrees, pourUtilisateur, retirerAccord, supprimerEntree, toutEffacer,
 } from "@/lib/journalIntime";
+import { useAuth } from "@/context/AuthContext";
 
 // Journal intime + Liluvine, ma coach (lot 166).
 //  - Écrits GARDÉS SUR LE TÉLÉPHONE, chiffrés (lib/journalIntime.js) : aucun serveur n'en garde de copie.
@@ -45,6 +46,8 @@ function Mentions({ qui, titre, introduction, onApprouve, onRefuse }) {
 
 export default function Journal() {
   const toast = useToast();
+  const { user } = useAuth();
+  pourUtilisateur(user?.id);          // journal, accords et clé propres au compte connecté (un téléphone peut servir à plusieurs comptes)
   const [accordJournal, setAccordJournal] = useState(() => accordDonne("journal"));
   const [accordLiluvine, setAccordLiluvine] = useState(() => accordDonne("liluvine"));
   const [onglet, setOnglet] = useState("journal");                   // journal | liluvine

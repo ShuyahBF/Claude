@@ -26,6 +26,7 @@ export const ENTREES_MENU = [
   { to: "/ordonnances", icone: "📄", libelle: "OCR sur ordonnances" },
   { to: "/transcription", icone: "🎙️", libelle: "Transcription vocale" },
   { to: "/agenda", icone: "📅", libelle: "Mon Agenda" },
+  { to: "/carnet", icone: "📒", libelle: "Carnet De Contacts" },   // lot 167 : contacts chiffrés sur le téléphone, payer en un geste, paiements récurrents
   { to: "/journal", icone: "📔", libelle: "Mon Journal Intime" },   // lot 166 : journal chiffré sur le téléphone + Liluvine, ma coach (mentions à approuver)
   { to: "/cartes", icone: "💌", libelle: "Cartes virtuelles" },   // lot 79 : voeux illustrés par l'IA, envoyés par WhatsApp
   { to: "/presse", icone: "📰", libelle: "Actualités" },   // lot 65 : presse locale, tech, mode, coaching… (catégories réglées par l'administrateur)

@@ -18,6 +18,7 @@ import AdminUssd from "@/pages/AdminUssd";
 import Rappels, { Vers } from "@/pages/Rappels";
 import Archives from "@/pages/Archives";
 import Journal from "@/pages/Journal";
+import Carnet from "@/pages/Carnet";
 import AdminComptes from "@/pages/AdminComptes";
 import AdminMarchands from "@/pages/AdminMarchands";
 import MonMarchand from "@/pages/MonMarchand";
@@ -77,6 +78,7 @@ export default function App() {
               <Route path="/pharmacies-de-garde" element={<Garde />} />
               <Route path="/archives" element={<Archives />} />
               <Route path="/journal" element={<Journal />} />
+              <Route path="/carnet" element={<Carnet />} />
               <Route path="/annonceur" element={<Annonceur />} />
               {/* Services du menu latéral (lot 33) : pages d'attente, ouvertes une à une */}
               <Route path="/breves" element={<Navigate to="/presse" replace />} />

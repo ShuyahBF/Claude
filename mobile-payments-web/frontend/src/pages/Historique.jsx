@@ -7,6 +7,8 @@ import Camembert from "@/components/Camembert";                    // lot 98 : r
 import HistogrammePaiements from "@/components/HistogrammePaiements";   // lot 98 : histogramme en montant, par jour ou par mois
 import LectureSms from "@/components/LectureSms";             // lot 115 : SMS de paiement lus par l'application Android (version direct)
 import ImportJournal from "@/components/ImportJournal";           // lot 96 : journal des transactions de l'opérateur
+import FenetreContact, { useCarnet } from "@/components/FenetreContact";   // lot 167 : « ➕ Carnet » depuis un paiement
+import { normaliserNumero, operateurDeAdresse, trouverContact } from "@/lib/carnet";
 import NomBeneficiaire from "@/components/NomBeneficiaire";       // lot 96 : nom modifiable après coup
 import Portefeuilles from "@/components/Portefeuilles";
 import SelecteurOperateur from "@/components/SelecteurOperateur";   // lot 89 : listes d'opérateurs avec logos   // lot 86 : portefeuilles électronique / personnel et courbe   // lot 85 : motif et pièces d'une dépense
@@ -136,6 +138,8 @@ export default function Historique() {
   const [paiements, setPaiements] = useState(null);
   const [nbAffiches, setNbAffiches] = useState(TAILLE_PAGE);
   const [ouvert, setOuvert] = useState(null);
+  const carnet = useCarnet();
+  const [contactAjout, setContactAjout] = useState(null);        // contact à ajouter au carnet depuis un paiement (fenêtre)
   const [actualisation, setActualisation] = useState(0);   // lot 104 : bouton « Actualiser » (relit paiements, statistiques et courbe avec les filtres)
   const [importOuvert, setImportOuvert] = useState(false);   // lot 96 : fenêtre « Importer un journal »
   const [recherche, setRecherche] = useState("");   // texte tapé ; envoyé au serveur après une courte pause
@@ -422,6 +426,12 @@ export default function Historique() {
               : <CarteCodeUssd paiement={ouvert} onStatut={changerStatut} />}
             {/* Lot 85 : motif détaillé et pièces scannées, quel que soit le statut du paiement */}
             {/* Lot 96 : nom du bénéficiaire modifiable après la transaction */}
+            {/* Lot 167 : ajouter le bénéficiaire d'un transfert au carnet de contacts (gardé sur le téléphone) */}
+            {ouvert.categorie === "money_transfer" && normaliserNumero(ouvert.valeurs?.phone) && carnet.pret && (
+              <button type="button" className="mt-3 w-full rounded-lg border border-primary px-3 py-2 text-sm font-semibold text-primary"
+                      onClick={() => { const n = normaliserNumero(ouvert.valeurs.phone); setContactAjout(trouverContact(carnet.contacts, n) || { nom: ouvert.nom_beneficiaire || "", tel: n, operateur: operateurDeAdresse(ouvert.operateur), montant: ouvert.montant || "", note: "" }); }}>
+                {trouverContact(carnet.contacts, ouvert.valeurs.phone) ? "📒 Ouvrir ce contact" : "➕ Ajouter au carnet de contacts"}</button>
+            )}
             <NomBeneficiaire key={`nom-${ouvert.id}`} paiement={ouvert} onChange={(maj) => { setOuvert(maj); setPaiements((l) => (l || []).map((x) => (x.id === maj.id ? { ...x, ...maj, nom_beneficiaire: maj.nom_beneficiaire } : x))); if (maj.autres_modifies > 0) charger(); }} />
             <DetailsDepense key={ouvert.id} paiement={ouvert} onChange={(maj) => { setOuvert(maj); setPaiements((l) => (l || []).map((x) => (x.id === maj.id ? { ...x, ...maj } : x))); }} />
             <button type="button" className="mt-4 w-full text-sm text-red-600 hover:underline" onClick={() => supprimer(ouvert)}>
@@ -430,6 +440,7 @@ export default function Historique() {
           </>
         )}
       </Modal>
+      <FenetreContact contact={contactAjout} onFermer={() => setContactAjout(null)} carnet={carnet} />
     </div>
   );
 }
