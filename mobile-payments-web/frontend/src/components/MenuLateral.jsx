@@ -46,7 +46,7 @@ const SOUS_RAPPELS = [
 // compteurs : { anniversaires, paiements, medicaments } = ce qui demande une action maintenant (pastille rouge)
 // Un seul menu « Rappels » : la pastille additionne les trois types de rappels
 // Lot 83 : « Actualités » a sa pastille = articles apparus depuis la dernière visite de la page
-const COMPTEUR = { "/rappels": ["anniversaires", "paiements", "medicaments"], "/presse": ["presse"] };
+const COMPTEUR = { "/rappels": ["anniversaires", "paiements", "medicaments"], "/presse": ["presse"], "/journal": ["liluvine"] };   // « Mon Journal Intime » : messages non lus de Liluvine
 const nombre = (compteurs, to) => (COMPTEUR[to] || []).reduce((t, k) => t + (compteurs[k] || 0), 0);
 
 export default function MenuLateral({ ouvert, fermer, compteurs = {} }) {

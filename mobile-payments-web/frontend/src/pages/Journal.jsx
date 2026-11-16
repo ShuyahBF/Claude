@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
+import AvatarLiluvine from "@/components/AvatarLiluvine";
 import Modal from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { apiClient, messageErreur } from "@/lib/api";
@@ -8,6 +9,9 @@ import {
   enregistrerEntree, filtrerEntrees, pourUtilisateur, retirerAccord, supprimerEntree, toutEffacer,
 } from "@/lib/journalIntime";
 import { useAuth } from "@/context/AuthContext";
+import { initiativeDuMoment } from "@/lib/liluvineEmotion";
+import { effacerConversation, envoyerALiluvine, fermerBulle, initiativeDeLiluvine, lierUtilisateur, lireLiluvine, surLiluvine, useLiluvine } from "@/lib/liluvineStore";
+import { jouerBulle, reglerSon, sonActif } from "@/lib/sonBulle";
 
 // Journal intime + Liluvine, ma coach (lot 166).
 //  - Écrits GARDÉS SUR LE TÉLÉPHONE, chiffrés (lib/journalIntime.js) : aucun serveur n'en garde de copie.
@@ -47,10 +51,12 @@ function Mentions({ qui, titre, introduction, onApprouve, onRefuse }) {
 export default function Journal() {
   const toast = useToast();
   const { user } = useAuth();
-  pourUtilisateur(user?.id);          // journal, accords et clé propres au compte connecté (un téléphone peut servir à plusieurs comptes)
+  pourUtilisateur(user?.id);
+  lierUtilisateur(user?.id);          // la conversation de Liluvine (en mémoire) est celle du compte connecté seulement          // journal, accords et clé propres au compte connecté (un téléphone peut servir à plusieurs comptes)
   const [accordJournal, setAccordJournal] = useState(() => accordDonne("journal"));
   const [accordLiluvine, setAccordLiluvine] = useState(() => accordDonne("liluvine"));
-  const [onglet, setOnglet] = useState("journal");                   // journal | liluvine
+  const [params] = useSearchParams();
+  const [onglet, setOnglet] = useState(params.get("onglet") === "liluvine" ? "liluvine" : "journal");   // journal | liluvine
   const [cle, setCle] = useState(null);
   const [erreurCle, setErreurCle] = useState("");
   const [entrees, setEntrees] = useState([]);
@@ -151,7 +157,7 @@ export default function Journal() {
       )}
 
       {onglet === "liluvine" && (accordLiluvine
-        ? <Liluvine cle={cle} onGardee={async (texte) => { const id = await enregistrerEntree(cle, { quand: Date.now(), humeur: "serein", texte }); if (id) { toast.succes("Conversation gardée dans votre journal."); await relire(); } else toast.erreur("Enregistrement impossible."); }} />
+        ? <Liluvine cle={cle} derniereEntree={entrees[0]?.quand || null} onGardee={async (texte) => { const id = await enregistrerEntree(cle, { quand: Date.now(), humeur: "serein", texte }); if (id) { toast.succes("Conversation gardée dans votre journal."); await relire(); } else toast.erreur("Enregistrement impossible."); }} />
         : <Mentions qui="liluvine" titre="Avant de parler à Liluvine" introduction="Liluvine est une coach par intelligence artificielle. Lisez comment elle fonctionne, puis approuvez pour lui écrire."
             onApprouve={() => { if (donnerAccord("liluvine")) { setAccordLiluvine(true); toast.succes("Merci : vous pouvez écrire à Liluvine."); } else toast.erreur("Impossible de garder votre accord sur ce téléphone."); }}
             onRefuse={() => setOnglet("journal")} />)}
@@ -191,44 +197,64 @@ export default function Journal() {
   );
 }
 
-/** Conversation avec Liluvine : les échanges restent à l'écran (jamais enregistrés ici) ; « Garder dans mon journal » les copie, chiffrés, dans le journal. */
-function Liluvine({ onGardee }) {
+/** Conversation avec Liluvine : en mémoire seulement (jamais enregistrée ici, jamais sur un serveur) ; « Garder dans mon journal » la copie, chiffrée, dans le journal.
+ *  Elle est horodatée ; l'avatar s'anime (réflexion, réponse, émotion) ; Liluvine écrit parfois la première ; un son et une bulle signalent ses messages. */
+const heure = (ms) => new Date(ms).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+const jourEntier = (ms) => new Date(ms).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+const memeJour = (a, b) => new Date(a).toDateString() === new Date(b).toDateString();
+
+function Liluvine({ cle, derniereEntree, onGardee }) {
   const toast = useToast();
-  const [messages, setMessages] = useState([]);              // { role, content, urgence? }
+  const { messages, attente, essais, refus } = useLiluvine();
   const [saisie, setSaisie] = useState("");
-  const [attente, setAttente] = useState(false);
-  const [refus, setRefus] = useState(null);                  // { message, formule } : abonnement requis
-  const [essais, setEssais] = useState(null);
+  const [son, setSon] = useState(sonActif());
   const bas = useRef(null);
+  // L'écran de Liluvine est affiché : les messages non lus sont lus ; en le quittant, les suivants seront signalés par une bulle et un son
+  useEffect(() => { surLiluvine(true); fermerBulle(); return () => surLiluvine(false); }, []);
+  // Liluvine écrit PARFOIS la première (au plus une fois toutes les 8 heures, une fois sur deux et demie), une phrase locale : aucun envoi au serveur
+  useEffect(() => {
+    if (lireLiluvine().messages.length) return;
+    let derniere = null; try { derniere = Number(localStorage.getItem("mpw_liluvine_initiative")) || null; } catch { /* sans importance */ }
+    const i = initiativeDuMoment({ derniereEntree, derniereInitiative: derniere });
+    if (i) { initiativeDeLiluvine(i.texte, i.emotion); try { localStorage.setItem("mpw_liluvine_initiative", String(Date.now())); } catch { /* sans importance */ } }
+  }, [derniereEntree]);
   useEffect(() => { bas.current?.scrollIntoView?.({ behavior: "smooth", block: "end" }); }, [messages, attente]);
+
+  const dernier = messages[messages.length - 1];
+  const etat = attente ? "reflexion" : dernier?.role === "assistant" && Date.now() - dernier.quand < 4000 ? "parle" : "repos";
+  const emotion = dernier?.role === "assistant" ? dernier.emotion || "calme" : "calme";
 
   const envoyer = async () => {
     const texte = saisie.trim();
     if (!texte || attente) return;
-    const suite = [...messages, { role: "user", content: texte }];
-    setMessages(suite); setSaisie(""); setAttente(true); setRefus(null);
-    try {
-      const { data } = await apiClient.post("/journal-intime/liluvine", { messages: echangesPourLiluvine(suite), consentement: true, version_mentions: VERSION_MENTIONS });
-      setMessages([...suite, { role: "assistant", content: data.reponse, urgence: !!data.urgence }]);
-      if (data.essais_restants != null) setEssais(data.essais_restants);
-    } catch (err) {
-      const detail = err?.response?.data?.detail;
-      if (err?.response?.status === 402 && detail && typeof detail === "object") setRefus(detail);
-      else toast.erreur(messageErreur(err, "Liluvine ne peut pas répondre pour le moment."));
-      setMessages(messages); setSaisie(texte);            // l'échange n'a pas eu lieu : on rend son message à l'utilisateur pour qu'il puisse le renvoyer
-    } finally { setAttente(false); }
+    setSaisie("");
+    const r = await envoyerALiluvine(texte);
+    if (!r.ok) { setSaisie(r.texte); if (r.erreur) toast.erreur(r.erreur); }       // l'échange n'a pas eu lieu : on rend son message à l'utilisateur
   };
+  const basculerSon = () => { const v = !son; reglerSon(v); setSon(v); if (v) jouerBulle(); toast.succes(v ? "Son activé" : "Son coupé"); };
 
   return (
     <div className="space-y-3" data-testid="liluvine">
-      <p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900">💬 Liluvine est une assistante par intelligence artificielle : elle écoute et conseille, elle ne remplace pas un médecin ni un proche. N'écrivez ici ni mot de passe ni code PIN.</p>
-      {essais != null && <p className="text-xs text-gray-600">🎁 Échanges d'essai restants : <b>{essais}</b></p>}
+      <p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900">💬 Liluvine est une assistante par intelligence artificielle : elle écoute et conseille, elle ne remplace pas un médecin ni un proche. N'écrivez ici aucun code secret ni mot de passe.</p>
+      <div className="flex items-center gap-3">
+        <AvatarLiluvine etat={etat} emotion={emotion} taille={84} />
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-primary">Liluvine, ma coach</p>
+          <p className="text-sm text-gray-600" aria-live="polite">{attente ? "⏳ Liluvine réfléchit…" : etat === "parle" ? "💬 Liluvine vous répond" : "🌿 Liluvine vous écoute"}</p>
+          {essais != null && <p className="text-xs text-gray-600">🎁 Échanges d'essai restants : <b>{essais}</b></p>}
+        </div>
+        <button type="button" className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold" aria-pressed={son} onClick={basculerSon} title="Son des nouveaux messages">{son ? "🔔 Son activé" : "🔕 Son coupé"}</button>
+      </div>
       <div className="max-h-[50vh] space-y-2 overflow-y-auto rounded-xl border border-gray-200 p-3" aria-live="polite">
         {messages.length === 0 && <p className="text-sm text-gray-500">Dites-lui comment s'est passée votre journée, ce qui vous pèse ou ce qui vous rend heureux.</p>}
         {messages.map((m, i) => (
-          <div key={i} className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm ${m.role === "user" ? "ml-auto bg-primary text-white" : m.urgence ? "bg-red-100 text-red-900" : "bg-gray-100 text-gray-900"}`}>
-            {m.role === "assistant" && <span className="mb-1 block text-xs font-semibold">{m.urgence ? "🆘 Liluvine" : "💬 Liluvine"}</span>}
-            <span className="whitespace-pre-wrap">{m.content}</span>
+          <div key={m.id}>
+            {(i === 0 || !memeJour(messages[i - 1].quand, m.quand)) && <p className="my-1 text-center text-xs font-semibold capitalize text-gray-500">{jourEntier(m.quand)}</p>}
+            <div className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm ${m.role === "user" ? "ml-auto bg-primary text-white" : m.urgence ? "bg-red-100 text-red-900" : m.modere ? "bg-amber-50 text-amber-900" : "bg-gray-100 text-gray-900"}`}>
+              {m.role === "assistant" && <span className="mb-1 block text-xs font-semibold">{m.urgence ? "🆘 Liluvine" : m.modere ? "🛡️ Liluvine" : "💬 Liluvine"}{m.initiative ? " · écrit la première" : ""}</span>}
+              <span className="whitespace-pre-wrap">{m.content}</span>
+              <time className={`mt-1 block text-right text-[11px] ${m.role === "user" ? "text-white/80" : "text-gray-500"}`} dateTime={new Date(m.quand).toISOString()}>{heure(m.quand)}</time>
+            </div>
           </div>
         ))}
         {attente && <p className="text-sm text-gray-500">⏳ Liluvine réfléchit…</p>}
@@ -246,8 +272,8 @@ function Liluvine({ onGardee }) {
       </div>
       <div className="flex flex-wrap gap-2">
         <button type="button" className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold" disabled={messages.length === 0}
-                onClick={() => onGardee(messages.map((m) => `${m.role === "user" ? "Moi" : "Liluvine"} : ${m.content}`).join("\n\n"))}>📔 Garder dans mon journal</button>
-        <button type="button" className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold" disabled={messages.length === 0} onClick={() => { setMessages([]); setRefus(null); toast.succes("Conversation effacée de l'écran."); }}>🧹 Effacer la conversation</button>
+                onClick={() => onGardee(messages.map((m) => `[${new Date(m.quand).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}] ${m.role === "user" ? "Moi" : "Liluvine"} : ${m.content}`).join("\n\n"))}>📔 Garder dans mon journal</button>
+        <button type="button" className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold" disabled={messages.length === 0} onClick={() => { effacerConversation(); toast.succes("Conversation effacée de l'écran."); }}>🧹 Effacer la conversation</button>
       </div>
     </div>
   );
