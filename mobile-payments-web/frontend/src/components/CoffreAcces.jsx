@@ -1,3 +1,4 @@
+import ChampMotDePasse from "@/components/ChampMotDePasse";
 import { useEffect, useState } from "react";
 import { useToast } from "@/components/Toast";
 import { messageErreur } from "@/lib/api";
@@ -45,7 +46,7 @@ export default function CoffreAcces({ onPret, onAnnuler, libelleOuverture = "Ouv
   };
   const champSecret = (id, libelle, valeur, set) => (
     <div><label className="label" htmlFor={id}>{libelle}</label>
-      <input id={id} className="input" type="password" autoComplete="off" inputMode={typeAcces === "pin" ? "numeric" : "text"} value={valeur} onChange={saisie(set)} /></div>);
+      <ChampMotDePasse id={id} className="input" autoComplete="off" inputMode={typeAcces === "pin" ? "numeric" : "text"} value={valeur} onChange={saisie(set)} /></div>);
   const retour = onAnnuler && <button type="button" className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold" onClick={onAnnuler}>↩️ Retour</button>;
 
   // Création du coffre
