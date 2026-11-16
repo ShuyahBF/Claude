@@ -1,3 +1,5 @@
+import AssistantSauvegarde from "@/components/AssistantSauvegarde";   // lot 168 : choix au premier lancement, nouveau téléphone
+import SauvegardeAuto from "@/components/SauvegardeAuto";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import AlerteRenforcee from "@/components/AlerteRenforcee";
@@ -137,6 +139,8 @@ export default function Layout() {
         <VerrouEcran />
         <ArriveeMarchand />
         <LectureSmsAuto />
+        <AssistantSauvegarde />
+        <SauvegardeAuto />
         <AlerteRenforcee />
       </main>
 

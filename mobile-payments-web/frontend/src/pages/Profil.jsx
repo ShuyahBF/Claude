@@ -1,3 +1,4 @@
+import BlocSauvegarde from "@/components/BlocSauvegarde";   // lot 168 : sauvegarde en ligne chiffrée
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useToast } from "@/components/Toast";
@@ -153,6 +154,7 @@ export default function Profil() {
       {/* Lot 88 : opérateurs cochés = portefeuilles suivis dans l'Historique */}
       <PortefeuillesProfil />
       <PinProfil />
+      <BlocSauvegarde />
 
       <section className="card space-y-2" data-testid="geolocalisation">
         <h2 className="text-lg font-bold">📍 Géolocalisation des paiements</h2>
