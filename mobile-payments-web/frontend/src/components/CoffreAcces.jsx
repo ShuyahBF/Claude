@@ -4,6 +4,7 @@ import { useToast } from "@/components/Toast";
 import { messageErreur } from "@/lib/api";
 import { BoutonOuvrirTelephone, CaseMemoriserTelephone, memoriserSiDemande } from "@/components/OuvertureTelephone";
 import { coffreTelephoneOublier } from "@/lib/pontAndroid";
+import RemiseAZeroCoffre from "@/components/RemiseAZeroCoffre";
 import { MESSAGE_SECRET, coffreExiste, creerCoffre, lireEtatCoffre, ouvrirCoffre, ouvrirParCodeSecours, secretValide } from "@/lib/coffre";
 
 // Accès au coffre (lot 168) : créer la phrase secrète / le code PIN la première fois, ou l'ouvrir ensuite (avec le code de l'application d'authentification si elle
@@ -82,6 +83,8 @@ export default function CoffreAcces({ onPret, onAnnuler, libelleOuverture = "Ouv
         {champSecret("cf-a", typeAcces === "pin" ? "Nouveau code PIN" : "Nouvelle phrase secrète", a, setA)}
         {champSecret("cf-b", "Répétez-le", b, setB)}
         <div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold" onClick={() => setOubli(false)}>↩️ Retour</button><button type="submit" className="btn-primary" disabled={occupe}>🔓 Rouvrir avec ce code</button></div>
+        {/* Code de secours perdu lui aussi : seule issue, un coffre neuf (les données du téléphone sont conservées) */}
+        <RemiseAZeroCoffre onFait={() => { setOubli(false); setA(""); setB(""); setCodeSaisi(""); setEtat(undefined); lireEtatCoffre().then(setEtat); }} />
       </form>
     );
   }

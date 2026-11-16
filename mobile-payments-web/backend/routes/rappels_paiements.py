@@ -136,24 +136,49 @@ async def creer(data: Rappel, user: dict = Depends(get_current_user)):
 
 @router.put("/{rappel_id}")
 async def modifier(rappel_id: str, data: Rappel, user: dict = Depends(get_current_user)):
-    res = await db.rappels_paiements.update_one({"id": rappel_id, "user_id": user["id"]}, {"$set": _donnees(data)})
+    res = await db.rappels_paiements.update_one({"id": rappel_id, "user_id": user["id"]}, {"$set": _donnees(data), "$unset": {"echeance_precedente": ""}})   # échéance corrigée à la main : plus rien à annuler
     if not res.matched_count:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Rappel introuvable")
     return enrichir(await db.rappels_paiements.find_one({"id": rappel_id}, SANS_ID), _aujourdhui())
 
 
+class Paye(BaseModel):
+    """Échéance que l'écran AFFICHAIT au moment de l'appui : protège des appuis répétés (un 2e appui porte une échéance déjà dépassée)."""
+    echeance: date | None = None
+
+
 @router.post("/{rappel_id}/paye")
-async def marquer_paye(rappel_id: str, user: dict = Depends(get_current_user)):
-    """Avance l'échéance à la période suivante ; un rappel « unique » est supprimé."""
+async def marquer_paye(rappel_id: str, data: Paye | None = None, user: dict = Depends(get_current_user)):
+    """Avance l'échéance à la période suivante ; un rappel « unique » est supprimé.
+    Lot 178 : si l'écran envoie l'échéance qu'il affichait et qu'elle n'est plus celle du rappel, c'est un appui en double : rien n'est avancé
+    (réponse « deja »). L'échéance d'avant est gardée pour pouvoir ANNULER (route /annuler-paye)."""
     r = await db.rappels_paiements.find_one({"id": rappel_id, "user_id": user["id"]}, SANS_ID)
     if not r:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Rappel introuvable")
+    if data and data.echeance and data.echeance.isoformat() != r["echeance"]:
+        return {**enrichir(r, _aujourdhui()), "deja": True}                      # appui en double : on ne repousse pas une 2e fois
     if r["frequence"] == "unique":
         await db.rappels_paiements.delete_one({"id": rappel_id, "user_id": user["id"]})
         return {"termine": True}
     suivante = prochaine_echeance(date.fromisoformat(r["echeance"]), r["frequence"], r.get("jour_ref", date.fromisoformat(r["echeance"]).day), _aujourdhui())
-    await db.rappels_paiements.update_one({"id": rappel_id}, {"$set": {"echeance": suivante.isoformat(),
-                                                                       "paye_le": datetime.now(timezone.utc).isoformat()}})
+    # Mise à jour CONDITIONNELLE (échéance inchangée) : deux appuis arrivés en même temps n'avancent qu'une fois
+    res = await db.rappels_paiements.update_one({"id": rappel_id, "user_id": user["id"], "echeance": r["echeance"]},
+                                                {"$set": {"echeance": suivante.isoformat(), "echeance_precedente": r["echeance"],
+                                                          "paye_le": datetime.now(timezone.utc).isoformat()}})
+    apres = enrichir(await db.rappels_paiements.find_one({"id": rappel_id}, SANS_ID), _aujourdhui())
+    return apres if res.modified_count else {**apres, "deja": True}
+
+
+@router.post("/{rappel_id}/annuler-paye")
+async def annuler_paye(rappel_id: str, user: dict = Depends(get_current_user)):
+    """Lot 178 : annule le dernier « Payé » (appui par erreur) : l'échéance d'avant est remise. Une seule annulation par « Payé »."""
+    r = await db.rappels_paiements.find_one({"id": rappel_id, "user_id": user["id"]}, SANS_ID)
+    if not r:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Rappel introuvable")
+    if not r.get("echeance_precedente"):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Rien à annuler pour ce rappel")
+    await db.rappels_paiements.update_one({"id": rappel_id, "user_id": user["id"]},
+                                          {"$set": {"echeance": r["echeance_precedente"]}, "$unset": {"echeance_precedente": "", "paye_le": ""}})
     return enrichir(await db.rappels_paiements.find_one({"id": rappel_id}, SANS_ID), _aujourdhui())
 
 

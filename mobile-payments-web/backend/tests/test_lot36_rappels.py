@@ -196,3 +196,22 @@ def test_rappel_garde_l_identifiant_opaque_du_contact_sans_numero(client, utilis
     assert client.put(f"/api/rappels-paiements/{rid}", headers=h, json={**corps, "montant": 30000}).json()["contact_id"] == "cabc123-x"
     assert client.put(f"/api/rappels-paiements/{rid}", headers=h, json={**corps, "contact_id": "../etc/passwd"}).status_code == 422
     assert client.post("/api/rappels-paiements", headers=h, json={**corps, "contact_id": None, "libelle": "Loyer"}).json()["contact_id"] is None
+
+
+# --- Lot 178 : « Payé » appuyé plusieurs fois par erreur, et annulation
+def test_paye_en_double_n_avance_qu_une_fois_et_s_annule(client, utilisateur):
+    _, h, _ = utilisateur
+    r = client.post("/api/rappels-paiements", headers=h, json=_paiement(montant=25000)).json()
+    depart = r["echeance"]
+    # 1er appui : l'écran envoie l'échéance qu'il affiche → avancée d'une période
+    un = client.post(f"/api/rappels-paiements/{r['id']}/paye", headers=h, json={"echeance": depart}).json()
+    assert un["echeance"] > depart and un["echeance_precedente"] == depart and "deja" not in un
+    # 2e et 3e appuis (même écran, même échéance affichée) : rien ne bouge
+    for _ in range(2):
+        deux = client.post(f"/api/rappels-paiements/{r['id']}/paye", headers=h, json={"echeance": depart}).json()
+        assert deux["deja"] is True and deux["echeance"] == un["echeance"]
+    # annulation : l'échéance d'avant revient ; une seule annulation possible
+    ann = client.post(f"/api/rappels-paiements/{r['id']}/annuler-paye", headers=h)
+    assert ann.status_code == 200 and ann.json()["echeance"] == depart and "echeance_precedente" not in ann.json()
+    assert client.post(f"/api/rappels-paiements/{r['id']}/annuler-paye", headers=h).status_code == 409
+    assert client.post("/api/rappels-paiements/inconnu/annuler-paye", headers=h).status_code == 404
