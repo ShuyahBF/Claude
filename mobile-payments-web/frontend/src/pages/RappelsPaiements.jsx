@@ -5,6 +5,8 @@ import Modal from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import SelecteurOperateur from "@/components/SelecteurOperateur";   // lot 89 : listes d'opérateurs avec logos
 import { apiClient, fcfa, messageErreur } from "@/lib/api";
+import { useCarnet } from "@/components/FenetreContact";   // lot 172 : payer un contact depuis sa fiche de rappel
+import { contactDuRappel, lienPayer } from "@/lib/carnet";
 
 // Rappels de paiements récurrents (lot 36) : loyer, électricité, abonnement… 30 rappels au plus.
 // Le site ne paie rien : il rappelle l'échéance ; « Payé » avance à la période suivante.
@@ -25,6 +27,7 @@ export default function RappelsPaiements() {
   const [donnees, setDonnees] = useState(null);
   const [edition, setEdition] = useState(null);
   const [envoi, setEnvoi] = useState(false);
+  const carnet = useCarnet();                  // contacts du téléphone (chiffrés) : le numéro n'est JAMAIS sur le serveur, seul l'identifiant du contact l'est
 
   const charger = useCallback(async () => {
     try { setDonnees((await apiClient.get("/rappels-paiements")).data); }
@@ -36,7 +39,7 @@ export default function RappelsPaiements() {
     e.preventDefault();
     setEnvoi(true);
     const corps = { libelle: edition.libelle, montant: edition.montant ? Number(edition.montant) : null, operateur: edition.operateur || null,
-      frequence: edition.frequence, echeance: edition.echeance, rappel_jours: Number(edition.rappel_jours), note: edition.note || null };
+      frequence: edition.frequence, echeance: edition.echeance, rappel_jours: Number(edition.rappel_jours), note: edition.note || null, contact_id: edition.contact_id || null };
     try {
       if (edition.id) await apiClient.put(`/rappels-paiements/${edition.id}`, corps); else await apiClient.post("/rappels-paiements", corps);
       toast.succes("Enregistré"); setEdition(null); charger();
@@ -87,7 +90,13 @@ export default function RappelsPaiements() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Link to="/" className="btn-primary btn-sm">💳 Payer</Link>
+                {/* Rappel lié à un contact du carnet : transfert prérempli (numéro du contact grisé, montant du rappel modifiable). Sinon : écran de paiement habituel. */}
+                {(() => {
+                  const contact = contactDuRappel(carnet.contacts, r);
+                  return contact
+                    ? <Link to={lienPayer({ ...contact, operateur: contact.operateur || (r.operateur === "Moov" ? "Moov Africa" : r.operateur || "") }, { montant: r.montant, fige: true })} className="btn-primary btn-sm" title={`Payer ${contact.nom} : numéro et montant préremplis`}>💸 Payer {contact.nom}</Link>
+                    : <Link to="/" className="btn-primary btn-sm">💳 Payer</Link>;
+                })()}
                 <button type="button" className="btn-outline btn-sm" onClick={() => paye(r)}>✅ Marquer payé</button>
               </div>
             </li>

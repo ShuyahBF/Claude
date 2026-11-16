@@ -1,6 +1,6 @@
 // Test du carnet de contacts (logique pure). Lancer : cd frontend && node tests/carnet.test.mjs (Node 20+). Données FICTIVES.
 import { nouvelleCle, pourUtilisateur } from "../src/lib/journalIntime.js";
-import { normaliserNumero, operateurDeAdresse, trouverContact, filtrerContacts, trierContacts, lienPayer, corpsRappel, chargerContacts, enregistrerContact, supprimerContact } from "../src/lib/carnet.js";
+import { contactDuRappel, normaliserNumero, operateurDeAdresse, trouverContact, filtrerContacts, trierContacts, lienPayer, corpsRappel, chargerContacts, enregistrerContact, supprimerContact } from "../src/lib/carnet.js";
 const ok = (n, v) => { console.log((v ? "OK  " : "ECHEC ") + n); if (!v) process.exitCode = 1; };
 const faux = () => { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) }; };
 
@@ -33,3 +33,11 @@ ok("autre compte : carnet vide", (await chargerContacts(cle, st)).length === 0);
 pourUtilisateur("compte-A");
 supprimerContact(id, st);
 ok("suppression", (await chargerContacts(cle, st)).length === 0);
+
+// --- Paiement depuis une fiche de rappel : numéro du contact (figé), montant du rappel (modifiable)
+ok("lien depuis un rappel : numéro figé et montant du rappel", lienPayer(A, { montant: 30000, fige: true }) === "/?transfert=1&phone=54144722&operateur=Orange&montant=30000&fige=1");
+ok("sans option : inchangé", lienPayer(A) === "/?transfert=1&phone=54144722&operateur=Orange&montant=25000");
+ok("rappel : contact_id opaque transmis, numéro absent", corpsRappel(A, { frequence: "mensuel", echeance: "2026-12-01" }).contact_id === "1" && !JSON.stringify(corpsRappel(A, { frequence: "mensuel", echeance: "2026-12-01" })).includes("5414"));
+ok("contact retrouvé par identifiant", contactDuRappel([A, B], { contact_id: "2", libelle: "autre" })?.id === "2");
+ok("contact retrouvé par le titre « Envoyer à NOM » (rappels d'avant)", contactDuRappel([A, B], { libelle: "Envoyer à Élodie Sawadogo" })?.id === "2" && contactDuRappel([A, B], { libelle: "Envoyer à elodie sawadogo" })?.id === "2");
+ok("contact introuvable : undefined", contactDuRappel([A], { contact_id: "9", libelle: "Loyer" }) === undefined);
