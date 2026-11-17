@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { EVENEMENT_MAJ, lireResume, synchroniserSms } from "@/lib/lectureSms";
 import { capacites, notificationsActives, ouvrirReglagesNotifications } from "@/lib/pontAndroid";
-import { chargerLignes, estTransaction, filtrerLignes, filtreActif } from "@/lib/smsPaiements";
+import { chargerLignes, estTransaction, filtrerLignes, energieParMois, filtreActif } from "@/lib/smsPaiements";
 import FenetreContact, { useCarnet } from "@/components/FenetreContact";   // lot 167 : « ➕ Carnet » depuis un SMS
 import { normaliserNumero, operateurDeAdresse, trouverContact } from "@/lib/carnet";
 
@@ -36,6 +36,9 @@ export default function LectureSms() {
   // Seules les vraies transactions comptent ; promo, alerte de banque et message de personne restent affichés avec une pastille grise
   const nbTransactions = lignes.filter(estTransaction).length;
   const nbHorsDecompte = lignes.length - nbTransactions;
+  const energie = energieParMois(lignes);                       // dépenses d'énergie (SONABEL) par mois : demande du propriétaire du 17/11/2026
+  const moyenneEnergie = energie.length ? Math.round(energie.reduce((t, m) => t + m.total, 0) / energie.length) : 0;
+  const libelleMois = (m) => new Date(`${m}-15T12:00:00`).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
   const LIBELLE_CATEGORIE = { promo: "promo", alerte: "alerte", message: "message", autre: "autre" };
   // Mise à jour automatique quand la lecture automatique trouve de nouveaux paiements
   useEffect(() => {
@@ -95,6 +98,22 @@ export default function LectureSms() {
         {etat?.erreur && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-900">{etat.erreur}</p>}
         {etat?.lus !== undefined && <p className="text-sm text-gray-600">{etat.lus} SMS lus · {etat.nouvelles} nouveau(x) paiement(s) enregistré(s).</p>}
 
+        {energie.length > 0 && (
+          <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3" data-testid="energie-par-mois">
+            <h3 className="flex items-center gap-2 font-semibold text-amber-900">⚡ Énergie (SONABEL) — dépenses par mois</h3>
+            <ul className="space-y-1 text-sm">
+              {energie.map((m) => (
+                <li key={m.mois} className="flex flex-wrap items-baseline justify-between gap-2" data-testid={`energie-${m.mois}`}>
+                  <span className="capitalize">{libelleMois(m.mois)}</span>
+                  <span className="text-xs text-gray-600">{m.nb} recharge{m.nb > 1 ? "s" : ""}</span>
+                  <b className="tabular-nums text-red-700">↑ {fcfa(m.total)}</b>
+                </li>
+              ))}
+            </ul>
+            {energie.length > 1 && <p className="text-xs text-amber-900">Moyenne par mois : <b className="tabular-nums">{fcfa(moyenneEnergie)}</b></p>}
+          </div>
+        )}
+
         {lignes.length > 0 && (
           <div className="space-y-2 rounded-xl bg-gray-50 p-3" data-testid="filtres-sms">
             <div className="grid gap-2 sm:grid-cols-2">
@@ -129,7 +148,7 @@ export default function LectureSms() {
                   <span>{dateHeure(l.quand)}</span>
                   {estTransaction(l)
                     ? <span className={`rounded-full px-2 py-0.5 font-semibold ${l.genre === "RECETTE" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-700"}`}>{l.genre === "RECETTE" ? "↓ Reçu" : "↑ Payé"}</span>
-                    : <span className="rounded-full bg-gray-200 px-2 py-0.5 font-semibold text-gray-700" title="Ce SMS n'est pas une transaction : il n'est pas compté">{LIBELLE_CATEGORIE[l.categorie] || l.categorie}</span>}
+                    : <span className="rounded-full bg-gray-200 px-2 py-0.5 font-semibold text-gray-700" title={l.doublon ? "Détail d'un achat déjà compté par la confirmation de l'opérateur : il n'est pas compté une 2e fois" : "Ce SMS n'est pas une transaction : il n'est pas compté"}>{l.doublon ? "doublon (déjà compté)" : LIBELLE_CATEGORIE[l.categorie] || l.categorie}</span>}
                   {estTransaction(l) && numeroDe(l) && carnet.pret && (
                     <button type="button" className="rounded-full border border-gray-300 px-2 py-0.5 font-semibold text-primary" onClick={() => versCarnet(l)}
                             title={trouverContact(carnet.contacts, numeroDe(l)) ? "Ouvrir ce contact" : "Ajouter au carnet de contacts"} aria-label="Carnet de contacts">

@@ -11,7 +11,7 @@ const MONTANT_AVANT = new RegExp(`(?:fcfa|f\\s?cfa|xof|cfa)\\s*:?\\s*(${NOMBRE})
 const SOLDE = new RegExp(`(?:nouveau\\s+)?solde(?:\\s+(?:actuel|disponible|est|apr[eè]s))?(?:\\s*(?:est|:|de|=))*\\s*(${NOMBRE})`, "i");
 const REFERENCE = /([A-Z]{2}\d{6}\.\d{4}\.\d+)/;
 const DATE_REFERENCE = /^[A-Z]{2}(\d{2})(\d{2})(\d{2})\.(\d{2})(\d{2})\./;
-const MOTS_DEPENSE = ["vous avez payé", "vous avez paye", "votre paiement", "paiement", "payé", "achat", "retrait", "vous avez envoyé", "vous avez envoye", "envoi de", "transfert de", "transfert vers", "facture", "débit", "debit", "vous avez transféré", "vous avez transfere", "vous avez recharge", "vous avez rechargé"];
+const MOTS_DEPENSE = ["vous avez payé", "vous avez paye", "votre paiement", "paiement", "payé", "payée", "payee", "achat", "retrait", "vous avez envoyé", "vous avez envoye", "envoi de", "transfert de", "transfert vers", "facture", "débit", "debit", "vous avez transféré", "vous avez transfere", "vous avez recharge", "vous avez rechargé"];
 const MOTS_RECETTE = ["vous avez reçu", "vous avez recu", "reçu de", "recu de", "dépôt", "depot", "crédit de", "credit de", "versement", "transfert reçu"];
 const MOTS_PROMO = ["gagnez", "gagner", "promo", "offre", "bonus", "félicitations", "felicitations", "tentez", "jeu concours", "cliquez"];
 
@@ -159,6 +159,49 @@ export function categorieSms({ adresse, corps }) {
  * Un SMS qui n'est pas une TRANSACTION (promo, alerte de banque, message de personne) est GARDÉ avec sa `categorie` (pastille grise à l'écran) et le sens « AUTRE » :
  * il ne compte jamais comme paiement (voir estTransaction). Les mots promotionnels explicites (« gagnez », « jeu concours »…) donnent aussi « promo ».
  */
+// ---- Énergie (SONABEL) : recharge de courant électrique ----
+// Demande du propriétaire (17/11/2026) : « je veux savoir combien je dépense par mois en énergie payée, donc recharge de courant électrique, donc SONABEL ».
+// Une facture SONABEL liste « Tsdaae », « Tde », « TVA » et « Cout energie » (+ « Energie payee : N Kwh ») : le montant payé est leur SOMME (ex. 160,30 + 53 + 0 + 2 636,70 = 2 850 FCFA).
+const RE_ENERGIE = /sonabel|cout energie|energie payee|\bkwh\b|no\.?\s?compteur/;
+const RE_RECU_ENERGIE = /cout energie|\bkwh\b/;                       // le SMS DÉTAILLÉ de la SONABEL (pas la confirmation de l'opérateur)
+const decimal = (t, re) => { const m = re.exec(t); const n = m ? parseFloat(m[1].replace(/\s/g, "").replace(",", ".")) : NaN; return Number.isFinite(n) ? n : 0; };
+/** Montant payé d'une facture d'énergie : la ligne « Total » si elle existe, sinon la somme coût de l'énergie + taxes ; null si le SMS n'a pas cette forme. */
+export function montantEnergie(texte) {
+  const t = sansAccents(texte);
+  const total = decimal(t, /\btotal\s*(?:a payer|paye)?\s*:\s*([\d][\d.,\s]*)/);
+  if (total > 0) return Math.round(total);
+  const cout = decimal(t, /cout energie\s*:\s*([\d][\d.,]*)/);
+  if (!(cout > 0)) return null;
+  return Math.round(cout + decimal(t, /tsdaae\s*:\s*([\d][\d.,]*)/) + decimal(t, /\btde\s*:\s*([\d][\d.,]*)/) + decimal(t, /\btva\s*:\s*([\d][\d.,]*)/));
+}
+
+/**
+ * Évite le DOUBLE COMPTE : pour un même achat de courant, l'opérateur peut envoyer sa propre confirmation ET la SONABEL son détail. Le SMS détaillé de la SONABEL
+ * (`recu_energie`) est marqué `doublon` quand une autre dépense de même montant a été reçue à moins de 15 minutes : la confirmation de l'opérateur reste seule comptée.
+ * Se recalcule à chaque lecture sur l'ensemble des lignes ; rend de NOUVELLES lignes (rien n'est modifié sur place).
+ */
+export function marquerDoublonsEnergie(lignes) {
+  const depenses = lignes.filter((l) => l.genre === "DEPENSE" && !l.recu_energie);
+  return lignes.map((l) => {
+    if (!l.recu_energie) return l;
+    const doublon = depenses.some((o) => o.id !== l.id && o.montant === l.montant && Math.abs(o.quand - l.quand) <= 15 * 60_000);
+    return doublon === !!l.doublon ? l : { ...l, doublon };
+  });
+}
+
+/** Dépenses d'énergie par mois : [{ mois: "AAAA-MM", total, nb }] du plus récent au plus ancien (transactions comptées seulement, doublons exclus). */
+export function energieParMois(lignes) {
+  const par = {};
+  for (const l of lignes) {
+    if (l.rubrique !== "energie" || !estTransaction(l) || l.genre !== "DEPENSE") continue;
+    const d = new Date(l.quand);
+    const mois = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    par[mois] = par[mois] || { mois, total: 0, nb: 0 };
+    par[mois].total += l.montant; par[mois].nb += 1;
+  }
+  return Object.values(par).sort((a, b) => b.mois.localeCompare(a.mois));
+}
+
 /** Les 10 PREMIERS caractères du SMS (espaces réduits) : ils servent à RETROUVER un SMS en tapant son début. Jamais le texte complet : le reste du SMS n'est pas gardé. */
 export const debutDuSms = (corps) => String(corps || "").replace(/\s+/g, " ").trim().slice(0, 10);
 
@@ -168,9 +211,10 @@ export function analyserSms({ adresse, recu_le: recuLe, corps }) {
   // Un SMS qui porte un NUMÉRO DE TRANSACTION de l'opérateur est une transaction, même si l'opérateur y ajoute une phrase commerciale
   // (« Vous avez recharge 1,000 FCFA… Gagnez 100% de bonus… TRANS ID: RC261115… ») : les mots promotionnels ne s'appliquent qu'aux SMS SANS numéro de transaction.
   if (categorie === "transaction" && !REFERENCE.test(corps || "") && MOTS_PROMO.some((m) => t.includes(m))) categorie = "promo";
-  const montant = montantDe(corps);
+  const energie = RE_ENERGIE.test(sansAccents(corps));
+  const montant = (energie && RE_RECU_ENERGIE.test(sansAccents(corps)) ? montantEnergie(corps) : null) || montantDe(corps);
   if (!montant) return null;
-  const sens = MOTS_RECETTE.some((m) => t.includes(m)) ? "RECETTE" : MOTS_DEPENSE.some((m) => t.includes(m)) ? "DEPENSE" : null;
+  const sens = MOTS_RECETTE.some((m) => t.includes(m)) ? "RECETTE" : MOTS_DEPENSE.some((m) => t.includes(m)) ? "DEPENSE" : (energie ? "DEPENSE" : null);
   // Sens indéterminé (ex. facture SONABEL : « Energie payee », sans « payé » ni « reçu ») : on ne devine pas le sens, mais le SMS n'est PLUS ignoré (17/11/2026) :
   // il est GARDÉ hors décompte (catégorie « autre », pastille grise) pour pouvoir être retrouvé par la recherche (« sonabel », début du SMS) sans fausser le portefeuille.
   if (categorie === "transaction" && !sens) categorie = "autre";
@@ -178,11 +222,13 @@ export function analyserSms({ adresse, recu_le: recuLe, corps }) {
   const ref = (REFERENCE.exec(corps) || [])[1] || null;
   const soldeM = SOLDE.exec(corps);
   const quand = dateDeReference(ref) || recuLe;
-  return { id: ref || `${adresse}|${recuLe}|${montant}`, adresse, quand, genre, categorie, montant, tiers: tiersDe(corps, genre), tel: genre === "RECETTE" ? undefined : numeroDuTiers(corps), solde: soldeM ? lireNombre(soldeM[1]) : null, reference: ref, debut: debutDuSms(corps) };
+  const detailEnergie = energie && RE_RECU_ENERGIE.test(sansAccents(corps));
+  const tiers = tiersDe(corps, genre) || (energie ? "SONABEL" : "");
+  return { id: ref || `${adresse}|${recuLe}|${montant}`, adresse, quand, genre, categorie, montant, tiers, tel: genre === "RECETTE" ? undefined : numeroDuTiers(corps), solde: soldeM ? lireNombre(soldeM[1]) : null, reference: ref, debut: debutDuSms(corps), ...(energie ? { rubrique: "energie" } : {}), ...(detailEnergie ? { recu_energie: true } : {}) };
 }
 
 /** Vrai pour une vraie transaction du portefeuille mobile (les lignes anciennes, sans catégorie, en sont). Les autres sont hors décompte. */
-export const estTransaction = (ligne) => !ligne?.categorie || ligne.categorie === "transaction";
+export const estTransaction = (ligne) => (!ligne?.categorie || ligne.categorie === "transaction") && !ligne?.doublon;      // un doublon (SMS détaillé d'un achat déjà compté) ne compte jamais
 
 /** Les deux noms désignent-ils le même marchand ? Sans accents ni casse ; l'un contient l'autre, ou tous les mots (3 lettres et plus) du plus court figurent dans l'autre. */
 export function memeMarchand(nomSms, nomEnregistre) {
