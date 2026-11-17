@@ -135,13 +135,30 @@ ok("transfert : autre montant refusé", !confirmePaiement(smsTransfert, { montan
 ok("transfert : SMS antérieur à l'envoi refusé", !confirmePaiement(smsTransfert, { montant: 25000, envoyeLe: T + 3_600_000, telephone: "54144722" }));
 ok("marchand : inchangé (montant seul ne suffit pas)", !confirmePaiement({ adresse: "OrangeMoney", recu_le: T, corps: "Votre paiement de 50 FCFA a PHARMACIE DU MARCHE a ete effectue avec succes." }, { montant: 50, codeMarchand: "6557908", libelle: "La Ménagère", envoyeLe: T - 1000 }));
 
-// ---- Facture SONABEL (17/11/2026) : un SMS à montant mais SANS sens (ni « payé » ni « reçu ») est GARDÉ hors décompte, donc retrouvable par la recherche ----
+// ---- Énergie SONABEL (17/11/2026) : « payée » est une dépense ; la facture SONABEL compte pour son TOTAL ; dépenses d'énergie par mois ; pas de double compte ----
+import { energieParMois, marquerDoublonsEnergie, montantEnergie } from "../src/lib/smsPaiements.js";
 const sonabel = "SONABEL\nAbonne : WP 0020 0006 0002\nNom : OUOBA JEAN FRANCOIS\nNo.Compteur: 14332645937\n Tsdaae: 160.30 FCFA\n Tde: 53.00 FCFA\nTVA : 0.0F\nCout energie: 2636.7F\nEnergie payee: 27 Kwh";
-const ligneSonabel = analyserSms({ adresse: "SONABEL", recu_le: T, corps: sonabel });
-ok("SONABEL : le SMS est gardé (plus ignoré)", ligneSonabel !== null && ligneSonabel.categorie === "autre" && ligneSonabel.genre === "AUTRE");
-ok("SONABEL : hors décompte (jamais compté comme paiement)", !estTransaction(ligneSonabel));
-ok("SONABEL : « sonabel » retrouve le SMS", filtrerLignes([ligneSonabel], { texte: "sonabel" }).length === 1);
-ok("SONABEL : « sonab » (début du mot) aussi", filtrerLignes([ligneSonabel], { texte: "sonab" }).length === 1);
-ok("SONABEL : son début est gardé (10 caractères), jamais le texte complet", ligneSonabel.debut === "SONABEL Ab" && !JSON.stringify(ligneSonabel).includes("14332645937"));
-const smsNumeroIdentique = analyserSms({ adresse: "OrangeMoney", recu_le: T, corps: "Vous avez recu 5000 FCFA de Awa. TRANS ID: PP261115.1234.A12345" });
-ok("un vrai paiement reste compté", smsNumeroIdentique !== null && estTransaction(smsNumeroIdentique));
+ok("montant d'une facture SONABEL = énergie + taxes (160,30 + 53 + 0 + 2 636,70)", montantEnergie(sonabel) === 2850);
+ok("la ligne « Total » prime quand elle existe", montantEnergie(sonabel + "\nTotal: 3000 FCFA") === 3000);
+ok("SMS sans coût d'énergie : pas un montant d'énergie", montantEnergie("Vous avez recu 5000 FCFA") === null);
+const ligneSonabel = analyserSms({ adresse: "OrangeMoney", recu_le: T, corps: sonabel });
+ok("SONABEL : une dépense COMPTÉE (« payée »), montant 2 850", ligneSonabel !== null && estTransaction(ligneSonabel) && ligneSonabel.genre === "DEPENSE" && ligneSonabel.montant === 2850);
+ok("SONABEL : rubrique énergie, bénéficiaire SONABEL", ligneSonabel.rubrique === "energie" && ligneSonabel.tiers === "SONABEL" && ligneSonabel.recu_energie === true);
+ok("SONABEL : retrouvée par « sonabel » et « sonab »", filtrerLignes([ligneSonabel], { texte: "sonabel" }).length === 1 && filtrerLignes([ligneSonabel], { texte: "sonab" }).length === 1);
+ok("SONABEL : seul le début du SMS est gardé (10 caractères), jamais le texte complet", ligneSonabel.debut === "SONABEL Ab" && !JSON.stringify(ligneSonabel).includes("14332645937"));
+ok("« payée » seul est une dépense", analyserSms({ adresse: "X", recu_le: T, corps: "Facture N 12 de 7500 FCFA payee avec succes" })?.genre === "DEPENSE");
+const vraiPaiement = analyserSms({ adresse: "OrangeMoney", recu_le: T, corps: "Vous avez recu 5000 FCFA de Awa. TRANS ID: PP261115.1234.A12345" });
+ok("un vrai paiement reçu reste une recette comptée", vraiPaiement !== null && estTransaction(vraiPaiement) && vraiPaiement.genre === "RECETTE");
+// Double compte : confirmation de l'opérateur + détail SONABEL pour le MÊME achat
+const confirmationOm = analyserSms({ adresse: "OrangeMoney", recu_le: T - 60_000, corps: "Paiement de 2850 FCFA effectue a SONABEL. TRANS ID: PP261113.1158.B99001" });
+const apres = marquerDoublonsEnergie([ligneSonabel, confirmationOm]);
+ok("double compte évité : le détail SONABEL est marqué doublon, la confirmation de l'opérateur reste comptée", apres[0].doublon === true && !estTransaction(apres[0]) && estTransaction(apres[1]));
+ok("sans confirmation de l'opérateur, le détail SONABEL reste compté", estTransaction(marquerDoublonsEnergie([ligneSonabel])[0]));
+ok("un achat d'un autre montant n'est pas un doublon", marquerDoublonsEnergie([ligneSonabel, { ...confirmationOm, montant: 5000 }])[0].doublon !== true);
+// Dépenses d'énergie par mois
+const nov = analyserSms({ adresse: "OrangeMoney", recu_le: new Date("2026-11-13T11:58:00").getTime(), corps: sonabel });
+const nov2 = { ...nov, id: "n2", quand: new Date("2026-11-27T09:00:00").getTime(), montant: 3000 };
+const oct = { ...nov, id: "o1", quand: new Date("2026-10-05T09:00:00").getTime(), montant: 2000 };
+const parMois = energieParMois([nov, nov2, oct, vraiPaiement]);
+ok("énergie par mois : novembre = 2 recharges, 5 850 FCFA ; octobre = 2 000", parMois.length === 2 && parMois[0].mois === "2026-11" && parMois[0].total === 5850 && parMois[0].nb === 2 && parMois[1].total === 2000);
+ok("énergie par mois : les doublons et les autres dépenses n'y sont pas", energieParMois([{ ...nov, doublon: true }, vraiPaiement]).length === 0);
