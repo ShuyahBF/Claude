@@ -7,6 +7,7 @@ import { apiClient, messageErreur } from "@/lib/api";
 import ChampMotDePasse from "@/components/ChampMotDePasse";
 import ChampTelephone from "@/components/ChampTelephone";
 import EmpreinteProfil from "@/components/EmpreinteProfil";   // connexion par l'empreinte (application Android)
+import NomMarchandProfil from "@/components/NomMarchandProfil";                // lot 190 : proposition du nom du marchand d'après le SMS
 import PinProfil from "@/components/PinProfil";                           // lot 130 : envoi du code secret par opérateur (application direct)
 import PortefeuillesProfil from "@/components/PortefeuillesProfil";   // lot 88 : opérateurs chez qui on a un portefeuille
 import { etatAutorisation, geolocalisationDisponible, positionActuelle } from "@/lib/geoloc";
@@ -156,6 +157,7 @@ export default function Profil() {
       <PortefeuillesProfil />
       <EmpreinteProfil />
       <PinProfil />
+      <NomMarchandProfil />
       <BlocSauvegarde />
 
       <section className="card space-y-2" data-testid="geolocalisation">
