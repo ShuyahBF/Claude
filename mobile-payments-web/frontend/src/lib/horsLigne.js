@@ -18,6 +18,16 @@ const PREFIXE = "mpw_hl_";
 const cleStock = (nom) => `${PREFIXE}${nom}${suffixeUtilisateur()}`;
 const stockageParDefaut = () => (typeof localStorage !== "undefined" ? localStorage : null);
 
+// ATTENTION (lot 193) : le cache ne doit JAMAIS retarder ni bloquer l'application. IndexedDB (où vit la clé de chiffrement) peut se figer dans la fenêtre intégrée d'Android
+// (constaté le 17/11/2026 : auRor restait figé à l'ouverture, même après avoir fermé l'application ; seul un redémarrage du téléphone l'a débloquée).
+// Toute attente de la clé est donc limitée dans le temps ; passé le délai, le cache est simplement ignoré (jamais d'erreur affichée, jamais d'attente infinie).
+export const DELAI_CLE_MS = 2500;
+const avecDelai = (promesse, ms) => new Promise((ok, ko) => {
+  const minuterie = setTimeout(() => ko(new Error("delai-cle")), ms);
+  Promise.resolve(promesse).then((v) => { clearTimeout(minuterie); ok(v); }, (e) => { clearTimeout(minuterie); ko(e); });
+});
+const obtenirCle = ({ cle, obtenirCle: fournisseur = cleDuJournal, delaiMs = DELAI_CLE_MS } = {}) => (cle ? Promise.resolve(cle) : avecDelai(fournisseur(), delaiMs));
+
 /** Vrai si l'échec vient du RÉSEAU (aucune réponse du serveur, ou serveur injoignable 502 / 503 / 504) : seul cas où le mode hors connexion prend le relais. */
 export const estErreurReseau = (erreur) => !erreur?.response || [502, 503, 504].includes(erreur.response.status);
 
@@ -25,21 +35,23 @@ export const estErreurReseau = (erreur) => !erreur?.response || [502, 503, 504].
 // 1. Cache chiffré
 // ---------------------------------------------------------------------------------------------------------------------------------------
 /** Écrit une valeur (JSON) dans le cache chiffré. N'échoue jamais : un cache indisponible ne doit jamais empêcher de payer. */
-export async function cacheEcrire(nom, valeur, { stockage = stockageParDefaut(), cle } = {}) {
+export async function cacheEcrire(nom, valeur, options = {}) {
+  const { stockage = stockageParDefaut() } = options;
   try {
-    const k = cle || await cleDuJournal();
+    const k = await obtenirCle(options);
     stockage.setItem(cleStock(nom), JSON.stringify({ t: Date.now(), p: await chiffrer(k, valeur) }));
     return true;
   } catch { return false; }
 }
 
 /** Lit le cache : { valeur, t } (t = instant de la dernière mise à jour), ou null s'il est absent, abîmé ou chiffré avec une autre clé. */
-export async function cacheLire(nom, { stockage = stockageParDefaut(), cle } = {}) {
+export async function cacheLire(nom, options = {}) {
+  const { stockage = stockageParDefaut() } = options;
   try {
     const brut = stockage.getItem(cleStock(nom));
     if (!brut) return null;
     const { t, p } = JSON.parse(brut);
-    const valeur = await dechiffrer(cle || await cleDuJournal(), p);
+    const valeur = await dechiffrer(await obtenirCle(options), p);
     return valeur === null ? null : { valeur, t };
   } catch { return null; }
 }
@@ -51,7 +63,7 @@ export async function cacheLire(nom, { stockage = stockageParDefaut(), cle } = {
 export async function chargerAvecCache(nom, recuperer, options = {}) {
   try {
     const data = await recuperer();
-    await cacheEcrire(nom, data, options);
+    cacheEcrire(nom, data, options);                  // sans attendre : les données fraîches s'affichent tout de suite, la copie se fait en arrière-plan
     return { data, horsLigne: false, depuis: null };
   } catch (erreur) {
     if (!estErreurReseau(erreur)) throw erreur;
