@@ -50,3 +50,23 @@ await enregistrerEntree(cleLocaleB, { id: idJ, quand: 1000, humeur: "triste", te
 await S.restaurerInstantane(relu, cleLocaleB, localStorage);
 ok("la version locale n'est jamais écrasée", (await chargerEntrees(cleLocaleB))[0].texte === "Version locale plus récente");
 ok("instantané vide", S.instantaneVide({ journal: [], carnet: [], sms: [] }));
+
+// ---- Contrôles de la sauvegarde (17/11/2026, après l'incident de Personnel de maison 1.35) ----
+globalThis.localStorage = faux();
+pourUtilisateur("compte-C");
+const cleC = await nouvelleCle();
+await enregistrerEntree(cleC, { quand: 1, humeur: "ok", texte: "a" });
+await enregistrerEntree(cleC, { quand: 2, humeur: "ok", texte: "b" });
+await enregistrerContact(cleC, { nom: "Awa", tel: "70 00 00 00", operateur: "Orange", montant: 0, note: "" });
+const instC = await S.construireInstantane(cleC);
+let passe = true; try { S.verifierCompletude(instC); } catch { passe = false; }
+ok("complétude : instantané complet accepté", passe && S.totalComptes(S.comptesInstantane(instC)) === 3);
+// Même données lues avec une MAUVAISE clé locale : les entrées illisibles sont ignorées en silence par le chargement -> le contrôle doit refuser
+const instPartiel = await S.construireInstantane(await nouvelleCle());
+let refuseP = false; try { S.verifierCompletude(instPartiel); } catch (e) { refuseP = e.name === "SauvegardeRefusee" && /REFUSÉE/.test(e.message); }
+ok("complétude : sauvegarde partielle (entrées illisibles) REFUSÉE", refuseP && S.totalComptes(S.comptesInstantane(instPartiel)) === 0);
+ok("résumé lisible", S.resumeComptes({ journal: 2, carnet: 1, sms: 0 }) === "2 page(s) de journal, 1 contact(s), 0 ligne(s) de SMS");
+ok("total des comptes", S.totalComptes({ journal: 2, carnet: 1, sms: 4 }) === 7 && S.totalComptes(null) === 0);
+S.enregistrerResultat("h", "2026-11-17T07:00:00Z", { journal: 2, carnet: 1, sms: 0 });
+ok("comptes de la dernière sauvegarde mémorisés", S.comptesMemorises().journal === 2);
+S.poserAlerte("test"); ok("alerte posée", S.alerteSauvegarde() === "test"); S.effacerAlerte(); ok("alerte effacée", S.alerteSauvegarde() === null);

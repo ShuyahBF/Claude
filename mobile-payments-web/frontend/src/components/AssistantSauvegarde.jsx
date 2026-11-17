@@ -8,7 +8,7 @@ import { cleDuJournal, lireCleCoffre, pourUtilisateur } from "@/lib/journalIntim
 import { cleCourante } from "@/lib/archiveCrypto";
 import {
   choixReporte, definirModeServeur, derniereSauvegardeLocale, lireEtatServeur, lireInstantane, memoriserCoffreOuvert, reporterChoix, restaurerInstantane,
-  sauvegarder, telechargerSauvegarde,
+  sauvegarder, telechargerSauvegarde, instantaneVide, comptesInstantane, resumeComptes,
 } from "@/lib/sauvegarde";
 import { VERSION } from "@/version";
 
@@ -81,14 +81,21 @@ export default function AssistantSauvegarde() {
           toast.info("Restauration de votre sauvegarde en cours…");
           try { inst = await lireInstantane((await telechargerSauvegarde(false)).contenu, cleCourante()); }
           catch { if (e.versions > 1) inst = await lireInstantane((await telechargerSauvegarde(true)).contenu, cleCourante()); else throw new Error("Cette sauvegarde ne s'ouvre pas avec ce secret."); }
+          if (instantaneVide(inst) && e.versions > 1) {      // la dernière sauvegarde est vide : on essaie la précédente avant de conclure
+            toast.info("La dernière sauvegarde est vide : essai de la version précédente…");
+            inst = await lireInstantane((await telechargerSauvegarde(true)).contenu, cleCourante());
+          }
+          if (instantaneVide(inst)) throw new Error("Cette sauvegarde est VIDE : rien à retrouver. Vos données actuelles n'ont pas été touchées.");
           const r = await restaurerInstantane(inst, cleLocale);
-          toast.succes(`Données retrouvées : ${r.journal} page(s) de journal, ${r.carnet} contact(s), ${r.sms} ligne(s) de SMS.`);
+          toast.succes(`La sauvegarde contenait ${resumeComptes(comptesInstantane(inst))}. Ajoutés sur ce téléphone : ${r.journal} page(s) de journal, ${r.carnet} contact(s), ${r.sms} ligne(s) de SMS (rien n'est écrasé).`);
         } else toast.info("Aucune sauvegarde en ligne à restaurer.");
       }
       toast.info("Sauvegarde en cours…");
       await definirModeServeur("cloud");
-      await sauvegarder(cleLocale, { force: true, app: String(VERSION) }).catch(() => null);
-      toast.succes("Sauvegarde en ligne chiffrée activée.");
+      const sv = await sauvegarder(cleLocale, { force: true, app: String(VERSION) }).catch((err) => ({ fait: false, raison: "erreur", message: err?.message }));
+      if (sv.fait) toast.succes(`Sauvegarde en ligne chiffrée activée et vérifiée : ${resumeComptes(sv.comptes)}.`);
+      else if (sv.raison === "vide" || sv.raison === "rien") toast.info("Sauvegarde en ligne activée. Rien à sauvegarder pour l'instant : une sauvegarde existante n'a PAS été remplacée.");
+      else toast.erreur(`Sauvegarde en ligne activée, mais la première sauvegarde n'a pas été faite : ${sv.message || "contrôles non satisfaits"}`);
       window.dispatchEvent(new Event(EVENEMENT_MAJ));
       if (resultat?.codeSecours) { setCode({ code: resultat.codeSecours, confirme: false }); setEtape("secours"); } else fermer();
     } catch (err) { toast.erreur(messageErreur(err, err?.message || "Opération impossible")); fermer(); }

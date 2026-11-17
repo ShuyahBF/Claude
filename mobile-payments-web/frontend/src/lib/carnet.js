@@ -67,6 +67,8 @@ export function corpsRappel(c, { frequence, echeance, rappel_jours = 1 }) {
 
 // ---- Stockage chiffré (même clé que le journal) ----
 const lirePaquets = (st) => { try { return JSON.parse(st.getItem(CLE()) || "[]"); } catch { return []; } };
+/** Nombre de contacts STOCKÉS (lisibles ou non) : sert à vérifier qu'une sauvegarde n'en ignore aucun. */
+export const nombreContactsStockes = (stockage = localStorage) => lirePaquets(stockage).length;
 export async function chargerContacts(cle, stockage = localStorage) {
   const sortie = [];
   for (const p of lirePaquets(stockage)) { const c = await dechiffrer(cle, p); if (c) sortie.push({ ...c, id: p.id }); }

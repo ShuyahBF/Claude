@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { EVENEMENT_MAJ } from "@/components/AssistantSauvegarde";
 import { cleDuJournal, pourUtilisateur } from "@/lib/journalIntime";
-import { lireEtatServeur, sauvegarder } from "@/lib/sauvegarde";
+import { lireEtatServeur, poserAlerte, resumeComptes, sauvegarder } from "@/lib/sauvegarde";
 import { VERSION } from "@/version";
 
 // Sauvegarde AUTOMATIQUE (lot 168), sans écran : si l'utilisateur a choisi la sauvegarde en ligne ET que ce téléphone connaît la clé de son coffre,
@@ -26,7 +26,15 @@ export default function SauvegardeAuto() {
         if (!e || e.mode !== "cloud") return;
         const r = await sauvegarder(await cleDuJournal(), { app: String(VERSION) });
         if (r.fait) window.dispatchEvent(new Event(EVENEMENT_MAJ));
-      } catch { /* réessai à la prochaine échéance */ } finally { enCours.current = false; }
+        else if (r.raison === "moins" || r.raison === "vide") {      // les contrôles protègent la bonne sauvegarde : on suspend et on le DIT dans le profil
+          poserAlerte(r.raison === "vide" ? "La sauvegarde automatique est suspendue : ce téléphone ne contient aucune donnée alors qu'une sauvegarde existe en ligne. Utilisez « Retrouver mes données »."
+            : `La sauvegarde automatique est suspendue : elle contiendrait moins de données (${resumeComptes(r.comptes)}) que la dernière sauvegarde vérifiée (${resumeComptes(r.ancien)}).`);
+          window.dispatchEvent(new Event(EVENEMENT_MAJ));
+        }
+      } catch (err) {
+        if (err?.name === "SauvegardeRefusee") { poserAlerte(err.message); window.dispatchEvent(new Event(EVENEMENT_MAJ)); }   // refus des contrôles : visible, jamais silencieux
+        /* autre échec (réseau…) : réessai à la prochaine échéance */
+      } finally { enCours.current = false; }
     };
     const debut = setTimeout(lancer, 8000);
     const minuterie = setInterval(lancer, PERIODE_MS);
