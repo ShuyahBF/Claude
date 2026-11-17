@@ -123,6 +123,8 @@ export const HUMEURS = [
 const lirePaquets = (st) => { try { return JSON.parse(st.getItem(cleEntrees()) || "[]"); } catch { return []; } };
 
 /** Toutes les entrées déchiffrées, les plus récentes d'abord. */
+/** Nombre d'entrées STOCKÉES (lisibles ou non) : sert à vérifier qu'une sauvegarde n'ignore aucune entrée. */
+export const nombreEntreesStockees = (stockage = localStorage) => lirePaquets(stockage).length;
 export async function chargerEntrees(cle, stockage = localStorage) {
   const sortie = [];
   for (const p of lirePaquets(stockage)) { const e = await dechiffrer(cle, p); if (e) sortie.push({ ...e, id: p.id }); }

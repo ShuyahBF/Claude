@@ -7,7 +7,7 @@ import { useToast } from "@/components/Toast";
 import { messageErreur } from "@/lib/api";
 import { cleCourante } from "@/lib/archiveCrypto";
 import { cleDuJournal, lireCleCoffre, oublierCleCoffre, pourUtilisateur } from "@/lib/journalIntime";
-import { definirModeServeur, effacerSauvegardeServeur, lireEtatServeur, oublierResultat, sauvegarder } from "@/lib/sauvegarde";
+import { alerteSauvegarde, definirModeServeur, effacerAlerte, effacerSauvegardeServeur, lireEtatServeur, oublierResultat, resumeComptes, sauvegarder } from "@/lib/sauvegarde";
 import { VERSION } from "@/version";
 
 // Bloc « Sécurité et sauvegarde » du profil (lot 168) : l'utilisateur voit et CHANGE son mode (en ligne chiffrée / ce téléphone seulement),
@@ -20,7 +20,8 @@ export default function BlocSauvegarde() {
   const { user } = useAuth();
   const [e, setE] = useState(undefined);              // undefined = lecture ; null = indisponible
   const [cleAppareil, setCleAppareil] = useState(false);
-  const [confirm, setConfirm] = useState(null);       // null | "local" | "effacer" | "oublier"
+  const [confirm, setConfirm] = useState(null);       // null | "local" | "effacer" | "oublier" | "moins"
+  const [refus, setRefus] = useState(null);           // { raison, comptes, ancien } : sauvegarde retenue par les contrôles, en attente de décision
   const [occupe, setOccupe] = useState(false);
 
   const charger = useCallback(async () => {
@@ -32,14 +33,16 @@ export default function BlocSauvegarde() {
 
   const demander = (action) => window.dispatchEvent(new CustomEvent(EVENEMENT_ASSISTANT, { detail: { action } }));
   const changerMode = (mode) => { if (mode === "cloud") demander("activer"); else setConfirm("local"); };
-  const maintenant = async () => {
-    setOccupe(true); toast.info("Sauvegarde en cours…");
+  const maintenant = async (confirmerMoins = false) => {
+    setOccupe(true); toast.info("Sauvegarde et vérification en cours…");
     try {
       pourUtilisateur(user?.id);
-      const r = await sauvegarder(await cleDuJournal(), { force: true, app: String(VERSION) });
-      if (r.fait) toast.succes("Sauvegarde terminée (chiffrée)."); else if (r.raison === "coffre_ferme") { toast.info("Remettez votre secret pour sauvegarder."); demander("activer"); }
+      const r = await sauvegarder(await cleDuJournal(), { force: true, app: String(VERSION), confirmerMoins });
+      if (r.fait) toast.succes(`Sauvegarde terminée et VÉRIFIÉE : ${resumeComptes(r.comptes)} (chiffrées).`);
+      else if (r.raison === "coffre_ferme") { toast.info("Remettez votre secret pour sauvegarder."); demander("activer"); }
+      else if (r.raison === "moins" || r.raison === "vide") { setRefus(r); setConfirm("moins"); }      // protège la bonne sauvegarde : on demande avant de la remplacer
       await charger();
-    } catch (err) { toast.erreur(messageErreur(err, "Sauvegarde impossible")); } finally { setOccupe(false); }
+    } catch (err) { toast.erreur(err?.name === "SauvegardeRefusee" ? err.message : messageErreur(err, "Sauvegarde impossible")); } finally { setOccupe(false); }
   };
   const passerLocal = async (effacer) => {
     setOccupe(true); toast.info("Changement de mode en cours…");
@@ -73,12 +76,15 @@ export default function BlocSauvegarde() {
           </select>
           {!e.mode && <p className="mt-1 text-xs text-amber-700">⏳ Vous n'avez pas encore choisi : choisissez ci-dessus.</p>}
         </div>
+        {cloud && alerteSauvegarde() && (
+          <p className="rounded-lg bg-red-50 p-3 text-sm text-red-900" data-testid="alerte-sauvegarde">⚠️ {alerteSauvegarde()} <button type="button" className="underline" onClick={() => { effacerAlerte(); charger(); }}>Masquer</button></p>
+        )}
         {cloud && (
           <div className="space-y-2 rounded-xl bg-gray-50 p-3 text-sm" data-testid="etat-sauvegarde">
             <p>{e.existe ? <>✅ Dernière sauvegarde : <b>{dateFr(e.maj_le)}</b> ({taille(e.taille)})</> : "⏳ Aucune sauvegarde envoyée pour l'instant."}</p>
             <p className={cleAppareil ? "text-green-800" : "text-amber-800"}>{cleAppareil ? "🔓 Ce téléphone sauvegarde automatiquement." : "🔒 Ce téléphone ne connaît pas votre clé : votre secret est nécessaire pour sauvegarder."}</p>
             <div className="flex flex-wrap gap-2">
-              <button type="button" className="btn-primary btn-sm" disabled={occupe} onClick={maintenant}>💾 Sauvegarder maintenant</button>
+              <button type="button" className="btn-primary btn-sm" disabled={occupe} onClick={() => maintenant()}>💾 Sauvegarder maintenant</button>
               <button type="button" className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold" onClick={() => demander("restaurer")}>📲 Retrouver mes données</button>
               {cleAppareil && <button type="button" className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold" onClick={() => setConfirm("oublier")}>🔒 Oublier ma clé sur ce téléphone</button>}
               {e.existe && <button type="button" className="rounded-lg border border-red-300 px-3 py-1.5 text-sm font-semibold text-red-700" onClick={() => setConfirm("effacer")}>🗑️ Effacer la sauvegarde en ligne</button>}
@@ -88,6 +94,15 @@ export default function BlocSauvegarde() {
         <p className="text-xs text-gray-500">Votre secret (code PIN ou phrase), votre code de secours et l'application d'authentification se gèrent dans <Link to="/archives" className="underline">Archives</Link> : c'est le même coffre. Secret et code de secours perdus = données en ligne irrécupérables.</p>
       </>)}
 
+      <Modal ouvert={confirm === "moins"} titre="Remplacer la sauvegarde par une version plus petite ?" onFermer={() => setConfirm(null)}>
+        <p className="text-sm">{refus?.raison === "vide" ? "Ce téléphone ne contient AUCUNE donnée alors qu'une sauvegarde existe en ligne. Pour la récupérer, utilisez « Retrouver mes données »."
+          : <>La nouvelle sauvegarde contiendrait <b>{refus?.comptes && resumeComptes(refus.comptes)}</b>, alors que la dernière sauvegarde vérifiée contenait <b>{refus?.ancien && resumeComptes(refus.ancien)}</b>.</>}</p>
+        <p className="mt-2 text-sm text-red-800">La sauvegarde précédente est gardée une fois, puis remplacée à la sauvegarde suivante.</p>
+        <div className="mt-3 flex flex-wrap justify-end gap-2">
+          <button type="button" className="btn-primary" onClick={() => setConfirm(null)}>↩️ Ne pas remplacer</button>
+          <button type="button" className="rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-700" disabled={occupe} onClick={() => { setConfirm(null); maintenant(true); }}>💾 Remplacer quand même</button>
+        </div>
+      </Modal>
       <Modal ouvert={confirm === "local"} titre="Garder mes données sur ce téléphone seulement ?" onFermer={() => setConfirm(null)}>
         <p className="text-sm">La sauvegarde en ligne ne sera plus mise à jour. Que faire de celle qui existe déjà ?</p>
         <div className="mt-3 flex flex-wrap justify-end gap-2">
