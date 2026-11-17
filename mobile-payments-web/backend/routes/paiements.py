@@ -26,7 +26,7 @@ import re
 import secrets
 import uuid
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -70,9 +70,9 @@ def _avec_lien(p: dict) -> dict:
     return {**p, "lien_tel": lien_tel(p["code_ussd"]) if p.get("code_ussd") and "PIN" not in p["code_ussd"] else None}
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
-async def preparer(data: Preparation, request: Request, user: dict = Depends(get_current_user)):
-    direct = est_direct(request)                      # application Android « direct » : les services à code secret sont permis (lot 120)
+async def _creer_paiement(data: "Preparation", user: dict, direct: bool, *, paiement_id: Optional[str] = None, cree_le: Optional[str] = None) -> dict:
+    """Prépare ET enregistre un paiement (logique commune au paiement en ligne et au rattrapage d'un paiement préparé hors connexion, lot 192).
+    Le code USSD est TOUJOURS recalculé ici d'après le service : jamais repris d'un téléphone."""
     service = await db.services.find_one({"id": data.service_id, "actif": True, **filtre_services(direct)}, SANS_ID)
     if not service:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Service introuvable ou désactivé")
@@ -97,10 +97,10 @@ async def preparer(data: Preparation, request: Request, user: dict = Depends(get
         marchand = {"code": valeurs[champ_marchand["key"]], "libelle": (doc or {}).get("libelle")}
     montant = int(valeurs["amount"]) if valeurs.get("amount", "").isdigit() else None
     paiement = {
-        "id": str(uuid.uuid4()), "user_id": user["id"], "service_id": service["id"],
+        "id": paiement_id or str(uuid.uuid4()), "user_id": user["id"], "service_id": service["id"],
         "operateur": service["operateur"], "service_nom": service["nom"], "categorie": service["categorie"],
         "valeurs": valeurs, "marchand": marchand, "montant": montant, "code_ussd": code, "statut": "prepare",
-        "cree_le": datetime.now(timezone.utc).isoformat(),
+        "cree_le": cree_le or datetime.now(timezone.utc).isoformat(),
     }
     # Géolocalisation (lot 49) : seulement si le compte l'a activée. La position est gardée dans l'historique de CE compte (arrondie à
     # environ 10 m) et sert à situer le marchand ; sans géolocalisation, toute position envoyée est ignorée.
@@ -109,7 +109,55 @@ async def preparer(data: Preparation, request: Request, user: dict = Depends(get
         if marchand:
             await lieux_marchands.noter(service["operateur"], marchand["code"], data.position.lat, data.position.lon, data.position.precision)
     await db.paiements.insert_one(paiement.copy())
-    return _avec_lien(paiement)
+    return paiement
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+async def preparer(data: Preparation, request: Request, user: dict = Depends(get_current_user)):
+    direct = est_direct(request)                      # application Android « direct » : les services à code secret sont permis (lot 120)
+    return _avec_lien(await _creer_paiement(data, user, direct))
+
+
+class PreparationHorsLigne(Preparation):
+    """Paiement PRÉPARÉ SUR LE TÉLÉPHONE sans connexion (lot 192), transmis dès que la connexion revient. L'identifiant est celui choisi par le téléphone
+    (il rend l'envoi répétable sans doublon) ; le code USSD n'est jamais accepté du téléphone : le serveur le recalcule."""
+    id: str = Field(pattern=r"^local-[0-9a-f-]{8,40}$")
+    cree_le: Optional[str] = Field(None, max_length=40)
+    statut: Literal["prepare", "envoye", "effectue", "abandonne"] = "prepare"
+
+
+DUREE_MAX_HORS_LIGNE = timedelta(days=30)
+
+
+def date_hors_ligne(brut: Optional[str], maintenant: datetime) -> str:
+    """Date de création déclarée par le téléphone, acceptée seulement si elle est plausible (ni dans le futur, ni vieille de plus de 30 jours) ; sinon : maintenant."""
+    try:
+        d = datetime.fromisoformat(str(brut).replace("Z", "+00:00"))
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return maintenant.isoformat()
+    return d.isoformat() if maintenant - DUREE_MAX_HORS_LIGNE <= d <= maintenant + timedelta(minutes=5) else maintenant.isoformat()
+
+
+@router.post("/hors-ligne", status_code=status.HTTP_201_CREATED)
+async def rattraper_hors_ligne(data: PreparationHorsLigne, request: Request, user: dict = Depends(get_current_user)):
+    """Enregistre un paiement préparé hors connexion. IDEMPOTENT : renvoyer le même identifiant ne crée rien de plus (le statut est seulement rattrapé)."""
+    maintenant = datetime.now(timezone.utc)
+    existant = await db.paiements.find_one({"id": data.id, "user_id": user["id"]}, SANS_PIECES)
+    if existant is None:
+        autre = await db.paiements.find_one({"id": data.id}, {"_id": 1})
+        if autre:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Identifiant déjà utilisé")
+        existant = await _creer_paiement(data, user, est_direct(request), paiement_id=data.id, cree_le=date_hors_ligne(data.cree_le, maintenant))
+        existant["hors_ligne"] = True
+        await db.paiements.update_one({"id": data.id}, {"$set": {"hors_ligne": True}})
+    # Statut rattrapé : jamais de retour en arrière (un paiement « effectué » ne redevient pas « préparé »)
+    ordre = {"prepare": 0, "abandonne": 1, "envoye": 1, "effectue": 2}
+    if ordre[data.statut] > ordre.get(existant.get("statut"), 0):
+        await db.paiements.update_one({"id": data.id, "user_id": user["id"]}, {"$set": {"statut": data.statut, "statut_le": maintenant.isoformat()}})
+        existant["statut"] = data.statut
+    return _avec_lien(existant)
 
 
 class DemandePispi(BaseModel):

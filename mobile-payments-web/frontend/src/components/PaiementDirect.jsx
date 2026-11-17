@@ -6,6 +6,7 @@ import { apiClient, fcfa, messageErreur } from "@/lib/api";
 import { exigeFenetrePin, sansPinSiImpose } from "@/lib/pinOperateurs";
 import { capacites, composer, lireSmsPaiements, payerDirectDialogue, journalUssd, payerDirectMontant } from "@/lib/pontAndroid";
 import { enLettres } from "@/lib/nombreEnLettres";
+import { estErreurReseau, fileMajStatut, fileSynchroniser } from "@/lib/horsLigne";      // lot 192 : connexion perdue → état gardé en file chiffrée
 import { analyserSms, chargerLignes, confirmePaiement, enregistrerLignes, fusionner, nomProposable, smsPourNommer } from "@/lib/smsPaiements";
 
 // Paiement DIRECT dans l'application Android « direct » (lot 120). Plus de QR code ni de légende :
@@ -32,8 +33,15 @@ export default function PaiementDirect({ paiement, onTermine }) {
   const lance = useRef(false);
   const sms = !!capacites()?.sms;
   const changerStatut = useCallback(async (statut) => {
+    // Lot 192 : un paiement préparé hors connexion (identifiant « local-… ») n'existe pas encore sur le serveur : son état est gardé en file chiffrée
+    // (fusionné avec le paiement en attente) puis tout est transmis dès que le réseau revient. Même chose si le réseau tombe en cours de route.
+    const enFile = async () => { await fileMajStatut(paiement.id, statut); fileSynchroniser(apiClient).catch(() => {}); return true; };
+    if (String(paiement.id).startsWith("local-")) return enFile();
     try { await apiClient.put(`/paiements/${paiement.id}/statut`, { statut }); return true; }
-    catch (err) { toast.erreur(messageErreur(err)); return false; }
+    catch (err) {
+      if (estErreurReseau(err)) { toast.info("Hors connexion : l'état du paiement sera transmis dès que le réseau revient."); return enFile(); }
+      toast.erreur(messageErreur(err)); return false;
+    }
   }, [paiement.id, toast]);
 
   // Transfert d'argent : numéro du bénéficiaire (chiffres) ; vide pour un paiement marchand
