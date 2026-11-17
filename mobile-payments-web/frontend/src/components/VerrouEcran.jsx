@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import ChampMotDePasse from "@/components/ChampMotDePasse";
 import { useAuth } from "@/context/AuthContext";
 import { apiClient, messageErreur } from "@/lib/api";
+import { empreinteConnexionMemorisee, empreinteConnexionRetrouver } from "@/lib/pontAndroid";
 
 // ============================================================================
 // VERROU DE L'ÉCRAN (lot 64) — téléphone laissé dans les mains des enfants.
@@ -96,6 +97,21 @@ export default function VerrouEcran() {
       setMdp("");
     } catch (err) { setErreur(messageErreur(err, "Mot de passe incorrect")); } finally { setEnvoi(false); }
   };
+  // Lot 120.6 — EMPREINTE : si le téléphone a l'empreinte de connexion activée (application Android), le doigt remplace le mot de passe. L'invite s'ouvre toute seule
+  // dès que l'écran se verrouille ; en cas d'échec ou d'annulation, le mot de passe reste possible juste en dessous.
+  const peutEmpreinte = verrouille && !!idUtilisateur && empreinteConnexionMemorisee();
+  const [empreinteEnCours, setEmpreinteEnCours] = useState(false);
+  const deverrouillerParEmpreinte = useCallback(async () => {
+    setErreur(""); setEmpreinteEnCours(true);
+    try {
+      const r = await empreinteConnexionRetrouver();
+      if (!r?.secret) { setErreur(r?.erreur || "Empreinte non reconnue : tapez votre mot de passe."); return; }
+      await apiClient.post("/auth/empreinte/deverrouiller", { id: r.id, secret: r.secret });
+      ecrireDrapeau(false); setVerrouille(false); setMdp("");
+    } catch (err) { setErreur(messageErreur(err, "Empreinte non reconnue : tapez votre mot de passe.")); } finally { setEmpreinteEnCours(false); }
+  }, []);
+  useEffect(() => { if (peutEmpreinte) deverrouillerParEmpreinte(); /* une seule fois à chaque verrouillage */ // eslint-disable-next-line
+  }, [peutEmpreinte]);
   const quitter = async () => {
     ecrireDrapeau(false);
     try { await deconnexion(); } catch { /* session déjà fermée */ }
@@ -109,7 +125,12 @@ export default function VerrouEcran() {
       <form onSubmit={deverrouiller} className="w-full max-w-sm space-y-3 rounded-2xl bg-white p-5 shadow-2xl">
         <p className="text-center text-3xl" aria-hidden="true">🔒</p>
         <h2 className="text-center text-lg font-bold">Écran verrouillé</h2>
-        <p className="text-center text-sm text-gray-600">Vous avez quitté la page. Saisissez le mot de passe de votre compte pour continuer.</p>
+        <p className="text-center text-sm text-gray-600">Vous avez quitté la page. {peutEmpreinte ? "Posez votre doigt ou saisissez" : "Saisissez"} le mot de passe de votre compte pour continuer.</p>
+        {peutEmpreinte && (
+          <button type="button" className="btn-primary w-full inline-flex items-center justify-center gap-2" disabled={empreinteEnCours} onClick={deverrouillerParEmpreinte} data-testid="deverrouiller-empreinte">
+            <span aria-hidden="true">🖐️</span> {empreinteEnCours ? "Patientez…" : "Déverrouiller avec l'empreinte"}
+          </button>
+        )}
         <ChampMotDePasse className="input" autoFocus required autoComplete="current-password" placeholder="Mot de passe" value={mdp} onChange={(e) => setMdp(e.target.value)} aria-label="Mot de passe du compte" />
         {erreur && <p className="text-sm text-red-700" role="alert">{erreur}</p>}
         <button type="submit" className="btn-primary w-full" disabled={envoi || !mdp}>{envoi ? "Patientez…" : "Déverrouiller"}</button>
