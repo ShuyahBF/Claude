@@ -257,6 +257,8 @@ class FenetrePaiement(private val activite: Activity) {
 
         dialogue.setContentView(ScrollView(activite).apply { addView(racine); isFillViewport = false })
         dialogue.window?.apply {
+            // Montant retapé et code secret : cette fenêtre apparaît NOIRE dans toute capture ou enregistrement d'écran (y compris l'enregistrement de débogage)
+            setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             setLayout((activite.resources.displayMetrics.widthPixels * 0.94f).toInt(), WindowManager.LayoutParams.WRAP_CONTENT)
             setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)

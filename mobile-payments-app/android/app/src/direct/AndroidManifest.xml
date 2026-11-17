@@ -9,7 +9,15 @@
     <!-- Lire les SMS de paiement dans la boîte de réception (jamais envoyés ailleurs) -->
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <!-- Enregistrement d'écran de débogage (icône discrète) : service au premier plan de type « capture d'écran » + notification pendant l'enregistrement -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application>
+        <service
+            android:name="com.ouoba.mobilepay.util.ServiceEnregistrementEcran"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
         <!-- Service d'accessibilité : tape le code secret dans la fenêtre de l'opérateur pendant un paiement validé (à activer une fois dans Réglages → Accessibilité) -->
         <service
             android:name="com.ouoba.mobilepay.util.ServiceSaisieUssd"
