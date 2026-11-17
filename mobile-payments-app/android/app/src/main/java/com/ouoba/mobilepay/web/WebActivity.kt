@@ -268,24 +268,24 @@ class WebActivity : FragmentActivity() {
         EnregistreurEcran.nettoyer(this)                                    // vieilles vidéos (plus de 7 jours) effacées
         val d = resources.displayMetrics.density
         val icone = TextView(this).apply {
-            text = "●"; textSize = 14f; gravity = Gravity.CENTER; setTextColor(Color.WHITE)
+            text = "●"; textSize = 22f; gravity = Gravity.CENTER; setTextColor(Color.WHITE)
             contentDescription = "Enregistrer l'écran pour le débogage"
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.parseColor("#66000000")) }
-            alpha = 0.35f
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.parseColor("#E60B1F3A")) }
+            alpha = 0.92f
             setOnClickListener { basculerEnregistrement() }
         }
-        zone.addView(icone, FrameLayout.LayoutParams((30 * d).toInt(), (30 * d).toInt(), Gravity.BOTTOM or Gravity.START).apply { leftMargin = (6 * d).toInt(); bottomMargin = (96 * d).toInt() })
+        zone.addView(icone, FrameLayout.LayoutParams((46 * d).toInt(), (46 * d).toInt(), Gravity.BOTTOM or Gravity.START).apply { leftMargin = (10 * d).toInt(); bottomMargin = (96 * d).toInt() })
         iconeEnregistrement = icone
         EnregistreurEcran.auChangement = { actif, fichier ->
             // Aspect : rouge et clignotant pendant l'enregistrement ; discret sinon. À la fin, la feuille de partage s'ouvre toute seule.
             clignotement?.cancel()
             if (actif) {
                 icone.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.parseColor("#DC2626")) }
-                clignotement = ObjectAnimator.ofFloat(icone, "alpha", 1f, 0.35f).apply { duration = 900; repeatCount = ObjectAnimator.INFINITE; repeatMode = ObjectAnimator.REVERSE; start() }
+                clignotement = ObjectAnimator.ofFloat(icone, "alpha", 1f, 0.45f).apply { duration = 900; repeatCount = ObjectAnimator.INFINITE; repeatMode = ObjectAnimator.REVERSE; start() }
                 icone.contentDescription = "Arrêter l'enregistrement d'écran et envoyer la vidéo"
             } else {
-                icone.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.parseColor("#66000000")) }
-                icone.alpha = 0.35f; icone.contentDescription = "Enregistrer l'écran pour le débogage"
+                icone.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.parseColor("#E60B1F3A")) }
+                icone.alpha = 0.92f; icone.contentDescription = "Enregistrer l'écran pour le débogage"
                 if (fichier != null) EnregistreurEcran.partager(this, fichier)
             }
         }
