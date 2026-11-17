@@ -377,7 +377,8 @@ async def evaluation_terme(terme: str = Query(..., min_length=2, max_length=80),
         "par_mois": sorted(par_mois.values(), key=lambda x: x["mois"]),
         "par_operateur": sorted(par_op.values(), key=lambda x: -x["montant"]),
         "operations": [{"id": p["id"], "cree_le": p["cree_le"], "operateur": p["operateur"], "service": p.get("service_nom"),
-                        "beneficiaire": beneficiaire(p)["libelle"], "montant": p.get("montant"), "statut": p.get("statut")} for p in docs[:1000]],
+                        "beneficiaire": beneficiaire(p)["libelle"], "montant": p.get("montant"), "statut": p.get("statut"),
+                        "reference_operateur": p.get("reference_operateur")} for p in docs[:1000]],
     })
     return rep
 
