@@ -39,6 +39,7 @@ ok("cache altéré : null (jamais de donnée fausse)", (await cacheLire("service
 const o = { stockage: memoire(), cle };
 const r1 = await chargerAvecCache("ops", async () => ["Orange", "Moov"], o);
 ok("en ligne : données fraîches et copie gardée", r1.horsLigne === false && r1.data.length === 2);
+await new Promise((r) => setTimeout(r, 30));                                   // la copie se fait en arrière-plan : on lui laisse un instant
 const r2 = await chargerAvecCache("ops", async () => { throw reseau; }, o);
 ok("réseau perdu : la copie répond", r2.horsLigne === true && r2.data[1] === "Moov" && r2.depuis > 0);
 let levee = null; try { await chargerAvecCache("ops", async () => { throw refus(403); }, o); } catch (e) { levee = e; }
@@ -72,3 +73,18 @@ ok("réseau perdu : on s'arrête, tout reste en file", s.envoyes === 0 && s.rest
 const mixte = { post: async (u, c) => { if (c.id === "local-2") throw refus(400); }, put: async () => {} };
 s = await fileSynchroniser(mixte, f);
 ok("refus définitif : abandonné ; le reste part", s.abandonnes === 1 && s.envoyes === 1 && s.restants === 0);
+
+// --- Le cache ne bloque JAMAIS l'application (lot 193) : clé inaccessible = cache ignoré, sans attente infinie
+const fige = { stockage: memoire(), obtenirCle: () => new Promise(() => {}), delaiMs: 60 };         // IndexedDB figé : la promesse ne se termine jamais
+let t0 = Date.now();
+const en_ligne = await chargerAvecCache("x", async () => ["Orange"], fige);
+ok("en ligne : les données arrivent tout de suite même si le cache est figé", en_ligne.data[0] === "Orange" && Date.now() - t0 < 40);
+t0 = Date.now();
+ok("lecture du cache avec une clé figée : null après le délai, pas d'attente infinie", (await cacheLire("x", fige)) === null && Date.now() - t0 < 500);
+t0 = Date.now();
+ok("écriture avec une clé figée : false après le délai", (await cacheEcrire("x", [1], fige)) === false && Date.now() - t0 < 500);
+let sansCopie = null; try { await chargerAvecCache("y", async () => { throw reseau; }, fige); } catch (e) { sansCopie = e; }
+ok("hors connexion et cache figé : l'erreur réseau remonte (le paiement local prend le relais)", sansCopie === reseau);
+t0 = Date.now();
+const s2 = await fileSynchroniser({ post: async () => {}, put: async () => {} }, fige);
+ok("la synchronisation ne reste pas bloquée non plus", s2.envoyes === 0 && Date.now() - t0 < 500);
