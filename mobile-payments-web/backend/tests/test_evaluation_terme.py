@@ -24,3 +24,15 @@ def test_evaluation_par_mois(client, utilisateur):
     assert [(m["mois"], m["nombre"], m["montant"]) for m in e["par_mois"]] == [("2026-09", 2, 3000), ("2026-10", 1, 4000)]
     assert e["plus_gros"] == 4000 and e["moyenne_mensuelle"] == 3500
     assert client.get("/api/paiements/evaluation-terme", params={"terme": "introuvable"}, headers=h).json()["occurrences"] == 0
+
+
+def test_evaluation_sur_une_periode(client, utilisateur):
+    user, h, _ = utilisateur
+    for d in (_paiement(user, "2022-06-03T10:00:00", 1000, "effectue", "SONABEL"),
+              _paiement(user, "2023-02-03T10:00:00", 2000, "effectue", "SONABEL"),
+              _paiement(user, "2024-02-03T10:00:00", 4000, "effectue", "SONABEL")):
+        client.portal.call(db.paiements.insert_one, d)
+    tout = client.get("/api/paiements/evaluation-terme", params={"terme": "sonabel", "evaluer": True}, headers=h).json()
+    assert tout["montant_total"] == 7000 and len(tout["par_mois"]) == 3
+    p = client.get("/api/paiements/evaluation-terme", params={"terme": "sonabel", "evaluer": True, "du": "2022-01-01", "au": "2023-12-31"}, headers=h).json()
+    assert p["montant_total"] == 3000 and [m["mois"] for m in p["par_mois"]] == ["2022-06", "2023-02"]
