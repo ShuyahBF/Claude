@@ -36,7 +36,7 @@ export default function LectureSms() {
   // Seules les vraies transactions comptent ; promo, alerte de banque et message de personne restent affichés avec une pastille grise
   const nbTransactions = lignes.filter(estTransaction).length;
   const nbHorsDecompte = lignes.length - nbTransactions;
-  const LIBELLE_CATEGORIE = { promo: "promo", alerte: "alerte", message: "message" };
+  const LIBELLE_CATEGORIE = { promo: "promo", alerte: "alerte", message: "message", autre: "autre" };
   // Mise à jour automatique quand la lecture automatique trouve de nouveaux paiements
   useEffect(() => {
     const maj = () => { setLignes(chargerLignes()); setResume(lireResume()); };

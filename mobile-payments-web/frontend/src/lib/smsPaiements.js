@@ -171,7 +171,9 @@ export function analyserSms({ adresse, recu_le: recuLe, corps }) {
   const montant = montantDe(corps);
   if (!montant) return null;
   const sens = MOTS_RECETTE.some((m) => t.includes(m)) ? "RECETTE" : MOTS_DEPENSE.some((m) => t.includes(m)) ? "DEPENSE" : null;
-  if (categorie === "transaction" && !sens) return null;          // prudence : sens indéterminé = ignoré plutôt que mal classé
+  // Sens indéterminé (ex. facture SONABEL : « Energie payee », sans « payé » ni « reçu ») : on ne devine pas le sens, mais le SMS n'est PLUS ignoré (17/11/2026) :
+  // il est GARDÉ hors décompte (catégorie « autre », pastille grise) pour pouvoir être retrouvé par la recherche (« sonabel », début du SMS) sans fausser le portefeuille.
+  if (categorie === "transaction" && !sens) categorie = "autre";
   const genre = sens || "AUTRE";
   const ref = (REFERENCE.exec(corps) || [])[1] || null;
   const soldeM = SOLDE.exec(corps);
