@@ -58,3 +58,8 @@ Les règles générales (livraison, version et lot, tableaux, HFSQL, chargement 
 ## Énergie SONABEL et publication dans ShuyahStore (17/11/2026)
 - « Payée » (et « payee ») compte comme une dépense ; la facture SONABEL (« Tsdaae », « Tde », « TVA », « Cout energie ») compte pour son TOTAL (somme de l'énergie et des taxes, ou la ligne « Total ») ; rubrique « énergie » ; carte « ⚡ Énergie (SONABEL) — dépenses par mois » dans « Lecture des SMS » (`energieParMois`). Le SMS détaillé de la SONABEL n'est pas compté une 2e fois quand l'opérateur a envoyé sa propre confirmation du même montant à moins de 15 minutes (`marquerDoublonsEnergie`). Seuls les 10 premiers caractères d'un SMS sont gardés.
 - Règle du propriétaire (17/11/2026) : publier l'APK dans ShuyahStore à CHAQUE livraison (`POST https://shuyahstore-api.onrender.com/api/dev/depot`, jeton injecté par le secret réseau, clé de signature PERMANENTE), sauf indication contraire.
+
+## Avant toute livraison du site auRor (17/11/2026, après la page blanche du lot 190)
+- `cd mobile-payments-web/frontend && npm test` : logique des SMS, calcul local du code USSD, cache chiffré hors connexion et **rendu des écrans de paiement** (`tests/rendu.test.mjs` : chaque écran est dessiné une fois ; il détecte un écran qui plante à l'affichage). `npm run build` seul ne le voit pas.
+- `npm run lint:paiement` : ordre des déclarations de l'écran de paiement direct.
+- Hors connexion (lot 192) : cache chiffré des opérateurs / services / marchands, paiement préparé sur le téléphone (`lib/ussdLocal.js`, même calcul que `backend/ussd.py`), file d'attente chiffrée envoyée par `POST /api/paiements/hors-ligne` (idempotent, le serveur recalcule le code, jamais de code secret gardé).

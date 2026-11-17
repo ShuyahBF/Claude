@@ -1,5 +1,6 @@
 import AssistantSauvegarde from "@/components/AssistantSauvegarde";   // lot 168 : choix au premier lancement, nouveau téléphone
 import SauvegardeAuto from "@/components/SauvegardeAuto";
+import SynchroHorsLigne from "@/components/SynchroHorsLigne";      // lot 192 : envoi des paiements préparés hors connexion
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import AlerteRenforcee from "@/components/AlerteRenforcee";
@@ -144,6 +145,7 @@ export default function Layout() {
         <LectureSmsAuto />
         <AssistantSauvegarde />
         <SauvegardeAuto />
+        <SynchroHorsLigne />
         <AlerteRenforcee />
       </main>
 

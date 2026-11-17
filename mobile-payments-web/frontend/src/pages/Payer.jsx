@@ -19,6 +19,9 @@ import { apiClient, CATEGORIES, couleurOperateur, messageErreur } from "@/lib/ap
 import { analyserQr } from "@/lib/qrOperateurs";
 import { capacites, lireMontantPhoto, dicterMontantVoix } from "@/lib/pontAndroid";
 import { montantsParles } from "@/lib/montantParle";
+import { chargerAvecCache, estErreurReseau, fileAjouterPaiement } from "@/lib/horsLigne";      // lot 192 : paiement quand la connexion est perdue (copie chiffrée + file d'attente)
+import { pourUtilisateur } from "@/lib/journalIntime";
+import { ErreurSaisie, preparerPaiementLocal } from "@/lib/ussdLocal";
 import { enLettres } from "@/lib/nombreEnLettres";
 
 // Parcours de paiement, comme l'app Android :
@@ -27,6 +30,8 @@ import { enLettres } from "@/lib/nombreEnLettres";
 export default function Payer() {
   const toast = useToast();
   const { user } = useAuth();
+  pourUtilisateur(user?.id);                                // la copie chiffrée hors connexion est propre à chaque compte
+  const [horsLigne, setHorsLigne] = useState(null);         // null = en ligne ; { depuis } = les informations viennent de la copie chiffrée du téléphone
   const [params, setParams] = useSearchParams();
 
   const [numeroFige, setNumeroFige] = useState(false);       // venu d'une fiche de rappel : le numéro du contact est grisé, le montant reste modifiable
@@ -82,7 +87,9 @@ export default function Payer() {
 
   // Liste des opérateurs au chargement
   useEffect(() => {
-    apiClient.get("/operateurs").then(({ data }) => setOperateurs(data)).catch(() => setOperateurs([]));
+    chargerAvecCache("operateurs", () => apiClient.get("/operateurs").then((r) => r.data))
+      .then(({ data, horsLigne: hl, depuis }) => { setOperateurs(data); if (hl) setHorsLigne({ depuis }); })
+      .catch(() => setOperateurs([]));
   }, []);
 
   // Choix d'un opérateur : chargement de ses services et des marchands déjà connus
@@ -91,13 +98,15 @@ export default function Payer() {
     setService(null);
     setPaiement(null);
     try {
-      const [{ data: svc }, { data: mch }] = await Promise.all([
-        apiClient.get("/services", { params: { operateur: nom } }),
-        apiClient.get("/marchands", { params: { operateur: nom } }),
+      // Chaque liste est gardée en copie chiffrée sur le téléphone : sans réseau, c'est la copie qui répond
+      const [rs, rm] = await Promise.all([
+        chargerAvecCache(`services_${nom}`, () => apiClient.get("/services", { params: { operateur: nom } }).then((r) => r.data)),
+        chargerAvecCache(`marchands_${nom}`, () => apiClient.get("/marchands", { params: { operateur: nom } }).then((r) => r.data)).catch(() => ({ data: [], horsLigne: true })),
       ]);
-      setServices(svc);
-      setMarchandsConnus(mch);
-      return svc;
+      setServices(rs.data);
+      setMarchandsConnus(rm.data);
+      if (rs.horsLigne) setHorsLigne({ depuis: rs.depuis });
+      return rs.data;
     } catch (err) {
       toast.erreur(messageErreur(err, "Chargement des services impossible"));
       return [];
@@ -205,14 +214,25 @@ export default function Payer() {
       }
       // Géolocalisation (si le compte l'a activée) : la position part avec la demande ; 4 s au plus d'attente, jamais bloquant
       const position = user?.geoloc ? await positionActuelle({ delaiMs: 4000 }) : null;
-      const { data } = await apiClient.post("/paiements", { service_id: service.id, valeurs, ...(position ? { position } : {}) });
+      let data;
+      try {
+        ({ data } = await apiClient.post("/paiements", { service_id: service.id, valeurs, ...(position ? { position } : {}) }));
+      } catch (echec) {
+        // Réseau perdu : le paiement est préparé SUR LE TÉLÉPHONE (le code USSD part par le réseau mobile, pas par Internet) et mis en file chiffrée ;
+        // le serveur le reçoit dès que la connexion revient. Une erreur du serveur (saisie refusée…) reste affichée comme avant.
+        if (!estErreurReseau(echec)) throw echec;
+        data = preparerPaiementLocal(service, valeurs, { marchandsConnus });
+        await fileAjouterPaiement(data);
+        setHorsLigne((h) => h || { depuis: null });
+        toast.info("Hors connexion : paiement préparé sur le téléphone. Il sera transmis au serveur dès que le réseau revient.");
+      }
       // Application « direct » + paiement chez un marchand : l'application envoie elle-même la séquence (fenêtre de sécurité : montant retapé + code secret),
       // SANS QR code ni légende. Les autres services (transfert, crédit…) gardent l'écran habituel.
       // Transfert d'argent : MÊME flux que le paiement marchand (fenêtre de sécurité, Orange en deux temps sans code secret dans la séquence, SMS de confirmation)
       if (directEligible) setPaiementDirect({ ...data, confirmation_lettres: montantVocal !== null && Number(data.montant) === montantVocal }); else setPaiement(data);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
-      toast.erreur(messageErreur(err, "Préparation impossible"));
+      toast.erreur(err instanceof ErreurSaisie ? err.message : messageErreur(err, "Préparation impossible"));
     } finally {
       setEnvoi(false);
     }
@@ -266,6 +286,13 @@ export default function Payer() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
+      {/* Lot 192 : mode hors connexion — dit clairement d'où viennent les informations (jamais de couleur seule : pictogramme + texte) */}
+      {horsLigne && (
+        <p role="status" className="rounded-lg border-2 border-amber-400 bg-amber-50 p-3 text-sm text-amber-950" data-testid="bandeau-hors-ligne">
+          <b>📴 Hors connexion.</b> Les opérateurs, services et marchands viennent de la copie chiffrée gardée sur ce téléphone{horsLigne.depuis ? ` (mise à jour le ${new Date(horsLigne.depuis).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })})` : ""}.
+          Vous pouvez payer : le paiement sera transmis au serveur dès que le réseau revient.
+        </p>
+      )}
       {/* Widget « Aujourd'hui » : météo, prochaine prise, paiements et anniversaires proches (lot 41) */}
       <WidgetAujourdhui />
       {/* Annonces de la régie SAWALI (carrousel) */}
