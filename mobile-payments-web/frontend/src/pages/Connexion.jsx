@@ -1,5 +1,5 @@
 import { estInstallee } from "@/lib/installation";   // page d'installation
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import ChampMotDePasse from "@/components/ChampMotDePasse";
 import ChampTelephone, { SelecteurPays } from "@/components/ChampTelephone";
@@ -9,6 +9,8 @@ import SupportSawali from "@/components/SupportSawali";
 import { useAuth } from "@/context/AuthContext";
 import { messageErreur, MOTIF_DECONNEXION_KEY } from "@/lib/api";
 import { assembler, PAYS_DEFAUT, trouverPays } from "@/lib/pays";
+import { apiClient } from "@/lib/api";
+import { empreinteConnexionDisponible, empreinteConnexionMemoriser, empreinteConnexionMemorisee, empreinteConnexionRetrouver } from "@/lib/pontAndroid";
 import { LIBELLE_VERSION } from "@/version";
 import { EXEMPLE_EMAIL } from "@/lib/exemplesIdentite";   // exemples locaux (règle 13)
 
@@ -17,7 +19,7 @@ import { EXEMPLE_EMAIL } from "@/lib/exemplesIdentite";   // exemples locaux (r�
 // Mise en page (règles du propriétaire) : carte centrée avec le logo, état du
 // serveur, version déployée, œil sur le mot de passe, « Patientez… » pendant l'envoi.
 export default function Connexion({ mode = "connexion" }) {
-  const { user, connexion, inscription } = useAuth();
+  const { user, connexion, connexionEmpreinte, inscription } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   // Page à rouvrir après la connexion (ex. QR code d'un marchand scanné)
@@ -33,6 +35,24 @@ export default function Connexion({ mode = "connexion" }) {
     try { return sessionStorage.getItem(MOTIF_DECONNEXION_KEY); } catch { return null; }
   });
   const [envoi, setEnvoi] = useState(false);
+  // Empreinte du téléphone (application Android) : se connecter sans taper le mot de passe, ou l'activer à la prochaine connexion
+  const [retenirEmpreinte, setRetenirEmpreinte] = useState(true);
+  const [empreinteEnCours, setEmpreinteEnCours] = useState(false);
+  const peutMemoriser = !inscrire && empreinteConnexionDisponible() && !empreinteConnexionMemorisee();
+  const peutOuvrir = !inscrire && empreinteConnexionMemorisee();
+  const ouvrirParEmpreinte = async () => {
+    setErreur(""); setEmpreinteEnCours(true);
+    try {
+      const r = await empreinteConnexionRetrouver();
+      if (!r?.secret) { setErreur(r?.erreur || "Empreinte non reconnue : tapez votre mot de passe."); return; }
+      await connexionEmpreinte(r.id, r.secret);
+      navigate(suite, { replace: true });
+    } catch (err) {
+      setErreur(messageErreur(err, "Empreinte non reconnue : tapez votre mot de passe."));
+    } finally { setEmpreinteEnCours(false); }
+  };
+  // Au premier affichage de la page : l'empreinte est demandée tout de suite (sinon le bouton reste disponible)
+  useEffect(() => { if (peutOuvrir && !user) ouvrirParEmpreinte(); /* eslint-disable-next-line */ }, []);
   const champ = (cle) => (e) => setForm({ ...form, [cle]: e.target.value });
 
   if (user) return <Navigate to={suite} replace />;
@@ -53,6 +73,13 @@ export default function Connexion({ mode = "connexion" }) {
         await connexion(saisie.includes("@") || international ? saisie : assembler(p.indicatif, saisie, !!p.zero) || saisie, form.mot_de_passe);
       }
       try { sessionStorage.removeItem(MOTIF_DECONNEXION_KEY); } catch { /* stockage indisponible */ }
+      // Activation de l'empreinte demandée : le serveur fabrique le secret, le téléphone le range après reconnaissance du doigt
+      if (!inscrire && peutMemoriser && retenirEmpreinte) {
+        try {
+          const { data } = await apiClient.post("/auth/empreinte/activer", { mot_de_passe: form.mot_de_passe, appareil: navigator.userAgent.slice(0, 60) });
+          await empreinteConnexionMemoriser(data.id, data.secret);
+        } catch { /* l'activation pourra être refaite plus tard : la connexion reste valable */ }
+      }
       navigate(suite, { replace: true });
     } catch (err) {
       setErreur(messageErreur(err, inscrire ? "Inscription impossible" : "Connexion impossible"));
@@ -120,6 +147,18 @@ export default function Connexion({ mode = "connexion" }) {
         </div>
 
         {erreur && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{erreur}</p>}
+        {peutOuvrir && (
+          <button type="button" className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-600 bg-emerald-50 px-3 py-3 text-sm font-semibold text-emerald-900"
+            disabled={empreinteEnCours || envoi} onClick={ouvrirParEmpreinte} data-testid="connexion-empreinte">
+            🖐️ Se connecter avec l'empreinte
+          </button>
+        )}
+        {peutMemoriser && (
+          <label className="flex items-start gap-2 text-sm text-gray-800">
+            <input type="checkbox" className="mt-1 h-5 w-5" checked={retenirEmpreinte} onChange={(e) => setRetenirEmpreinte(e.target.checked)} data-testid="case-empreinte" />
+            <span>🖐️ Me connecter ensuite avec <b>l'empreinte du téléphone</b> (retirable à tout moment dans le profil).</span>
+          </label>
+        )}
         <button type="submit" className="btn-primary w-full py-3" disabled={envoi}>
           {envoi ? "Patientez…" : inscrire ? "Créer mon compte →" : "Se connecter →"}
         </button>

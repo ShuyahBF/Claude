@@ -30,6 +30,7 @@ import org.json.JSONObject
  *  - paiement direct et lecture des SMS n'existent que dans la version « direct » (autorisations absentes de la version du Play Store).
  */
 class PontAuRor(private val activite: WebActivity) {
+    private companion object { const val CLE_CONNEXION = "connexion_site" }
 
     private val contexte: Context get() = activite
 
@@ -115,6 +116,32 @@ class PontAuRor(private val activite: WebActivity) {
     /** Oublie le secret mémorisé. */
     @JavascriptInterface
     fun coffreOublier() { Biometrie.coffreOublier(contexte) }
+
+    // ---- Connexion au SITE par l'empreinte : secret propre au téléphone rangé sous la clé « connexion_site » (jamais le mot de passe)
+    /** Vrai si une empreinte de connexion est déjà enregistrée sur ce téléphone. */
+    @JavascriptInterface
+    fun empreinteConnexionMemorisee(): Boolean = Biometrie.codeMemorise(contexte, CLE_CONNEXION)
+
+    /** Range {id, secret} (JSON) après reconnaissance du doigt. Réponse : { ok } ou { erreur }. */
+    @JavascriptInterface
+    fun empreinteConnexionMemoriser(id: String, json: String) {
+        activite.runOnUiThread { Biometrie.memoriser(activite, CLE_CONNEXION, json, { activite.retour(id, JSONObject().put("ok", true)) }, { activite.retour(id, JSONObject().put("erreur", it)) }) }
+    }
+
+    /** Demande le doigt puis rend {id, secret} au site (ou { erreur }). */
+    @JavascriptInterface
+    fun empreinteConnexionRetrouver(id: String) {
+        activite.runOnUiThread {
+            Biometrie.retrouver(activite, CLE_CONNEXION, { texte ->
+                val rep = try { JSONObject(texte) } catch (_: Exception) { JSONObject().put("erreur", "Empreinte illisible : tapez votre mot de passe.") }
+                activite.retour(id, rep)
+            }, { activite.retour(id, JSONObject().put("erreur", it)) })
+        }
+    }
+
+    /** Oublie l'empreinte de connexion de ce téléphone. */
+    @JavascriptInterface
+    fun empreinteConnexionOublier() { Biometrie.oublier(contexte, CLE_CONNEXION) }
 
     @JavascriptInterface
     fun payerDirect(id: String, operateur: String, code: String, resume: String) = fenetrePaiement(id, operateur, code, resume, null)

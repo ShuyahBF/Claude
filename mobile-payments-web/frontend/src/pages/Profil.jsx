@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { apiClient, messageErreur } from "@/lib/api";
 import ChampMotDePasse from "@/components/ChampMotDePasse";
 import ChampTelephone from "@/components/ChampTelephone";
+import EmpreinteProfil from "@/components/EmpreinteProfil";   // connexion par l'empreinte (application Android)
 import PinProfil from "@/components/PinProfil";                           // lot 130 : envoi du code secret par opérateur (application direct)
 import PortefeuillesProfil from "@/components/PortefeuillesProfil";   // lot 88 : opérateurs chez qui on a un portefeuille
 import { etatAutorisation, geolocalisationDisponible, positionActuelle } from "@/lib/geoloc";
@@ -153,6 +154,7 @@ export default function Profil() {
       {/* Géolocalisation du compte (lot 49) */}
       {/* Lot 88 : opérateurs cochés = portefeuilles suivis dans l'Historique */}
       <PortefeuillesProfil />
+      <EmpreinteProfil />
       <PinProfil />
       <BlocSauvegarde />
 

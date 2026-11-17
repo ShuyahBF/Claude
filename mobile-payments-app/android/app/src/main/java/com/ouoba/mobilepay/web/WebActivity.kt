@@ -175,7 +175,7 @@ class WebActivity : FragmentActivity() {
                 ouvrirAilleurs(u); return true
             }
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) { progression.visibility = android.view.View.VISIBLE }
-            override fun onPageFinished(view: WebView, url: String?) { progression.visibility = android.view.View.GONE }
+            override fun onPageFinished(view: WebView, url: String?) { progression.visibility = android.view.View.GONE; CookieManager.getInstance().flush() }
             // Pas de connexion : page locale avec un bouton « Réessayer » (seulement pour la page principale, pas pour une image)
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 if (request.isForMainFrame) view.loadUrl("file:///android_asset/hors_ligne.html")
@@ -229,7 +229,9 @@ class WebActivity : FragmentActivity() {
             surOk = { verrouEnCours = false; derniereOuverture = System.currentTimeMillis(); web.visibility = View.VISIBLE },
             surEchec = { message -> verrouEnCours = false; Toast.makeText(this, "auRor est verrouillé : $message", Toast.LENGTH_LONG).show(); finish() })
     }
-    override fun onStop() { super.onStop(); if (!verrouEnCours) derniereOuverture = System.currentTimeMillis() }
+    // Le cookie de session du site est écrit sur le disque dès que l'application quitte l'écran : sans cela, Android peut l'oublier et la page de connexion réapparaît
+    override fun onPause() { CookieManager.getInstance().flush(); super.onPause() }
+    override fun onStop() { CookieManager.getInstance().flush(); super.onStop(); if (!verrouEnCours) derniereOuverture = System.currentTimeMillis() }
     override fun onStart() { super.onStart(); verrouiller() }
 
     override fun onResume() { super.onResume(); PresenceSawali.signaler(this) }   // règle 4 : présence auprès de SAWALI
