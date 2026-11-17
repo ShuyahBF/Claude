@@ -31,4 +31,15 @@ try {
     ok(`${nom} : s'affiche sans erreur${erreur ? ` — ${erreur.message}` : ""}`, !erreur);
     if (!erreur && nom.startsWith("PaiementDirect")) ok(`${nom} : montre le paiement`, html.includes("Paiement direct") && html.includes("Orange"));
   }
+
+  // Lot 199 : l'avatar de Liluvine (portrait « dessin animé réaliste ») s'affiche dans tous ses états et toutes ses émotions
+  {
+    const Avatar = (await serveur.ssrLoadModule("/src/components/AvatarLiluvine.jsx")).default;
+    let tout = true, motif = "";
+    for (const etat of ["repos", "reflexion", "parle"]) for (const emotion of ["calme", "joie", "encouragement", "empathie", "surprise", "urgence"]) {
+      try { const html = renderToString(h(Avatar, { etat, emotion, taille: 84 })); if (!html.includes('data-testid="avatar-liluvine"') || !html.includes("<svg")) { tout = false; motif = `${etat}/${emotion}`; } }
+      catch (e) { tout = false; motif = `${etat}/${emotion} : ${e.message}`; }
+    }
+    ok(`AvatarLiluvine : 18 combinaisons état / émotion s'affichent${motif ? ` — ${motif}` : ""}`, tout);
+  }
 } finally { await serveur.close(); }
