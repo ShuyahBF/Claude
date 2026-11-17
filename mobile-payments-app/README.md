@@ -172,3 +172,9 @@ Les SMS lus restent sur le téléphone. Hors connexion : page « Pas de connexio
 **Paiement chez un marchand dans l'application direct (lot 123)** : dès qu'un marchand est choisi (liste, « Nouveau », QR ou marchands proches), il n'y a **ni QR code ni légende** : l'application ouvre sa fenêtre de sécurité,
 qui affiche le montant en chiffres ET en toutes lettres (« 200 000 FCFA (deux cent mille francs) », pour repérer 20 000 au lieu de 200 000), demande de le **retaper**, puis le code secret, et envoie la séquence.
 Si la séquence du service ne contient pas `{pin}`, le code secret est **ajouté en dernier élément avant le `#`** (`*144*10*code*montant*PIN#`) : à vérifier avec l'opérateur ; sinon définir le gabarit exact dans l'administration.
+
+## Enregistrement d'écran de débogage (version « direct » seulement, 17/11/2026)
+- Une **petite icône ronde translucide** (en bas à gauche, au-dessus du site, donc aussi sur la page de connexion) lance l'enregistrement VIDÉO de tout l'écran. Pendant l'enregistrement elle devient rouge et clignote ; la toucher arrête et ouvre « Partager » (WhatsApp, e-mail…). Une notification propose aussi « Arrêter et envoyer ».
+- Garde-fous : accord d'Android demandé à chaque fois ; 3 minutes au plus ; pas de son ; la fenêtre de paiement (montant + code secret) est protégée (FLAG_SECURE) et apparaît **noire** dans la vidéo ; la vidéo reste sur le téléphone (rien n'est envoyé automatiquement) et est effacée au bout de 7 jours. Absente de la version Play Store.
+- Code : `util/EnregistreurEcran.kt` (service au premier plan + MediaProjection), `util/EnregistreurEcranLogique.kt` (calculs testés), icône dans `web/WebActivity.kt`.
+- Pour analyser une vidéo reçue, on en extrait des images (`ffmpeg -i video.mp4 -vf fps=2 image-%03d.png`) : donner aussi l'heure et ce qui était attendu.

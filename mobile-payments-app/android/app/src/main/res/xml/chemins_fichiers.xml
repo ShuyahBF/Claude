@@ -2,4 +2,6 @@
 <!-- Dossier temporaire des photos de montant (afficheur, facture) : lues puis effacées, jamais envoyées -->
 <paths>
     <cache-path name="montants" path="montants/" />
+    <!-- Vidéos de l'enregistrement d'écran de débogage (version direct) : partagées une à une, effacées au bout de 7 jours -->
+    <external-files-path name="enregistrements" path="Movies/enregistrements/" />
 </paths>
