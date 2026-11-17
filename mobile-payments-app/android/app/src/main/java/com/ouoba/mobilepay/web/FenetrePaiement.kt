@@ -20,6 +20,7 @@ import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.Toast
+import androidx.core.view.ViewCompat
 import androidx.fragment.app.FragmentActivity
 import com.ouoba.mobilepay.util.Biometrie
 import android.widget.LinearLayout
@@ -75,6 +76,9 @@ class FenetrePaiement(private val activite: Activity) {
         filters = arrayOf(InputFilter.LengthFilter(if (motDePasse) 8 else 12))
         background = forme(Color.WHITE, 12, couleurCadre, 3); setPadding(dp(12), dp(10), dp(12), dp(10))
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) }
+        // Le gestionnaire de mots de passe de Google ne doit JAMAIS proposer d'enregistrer cette saisie : il prenait le montant retapé pour un « nom d'utilisateur »
+        // et le code secret pour un « mot de passe ». Le code secret et le montant ne sont jamais mémorisés par le téléphone.
+        ViewCompat.setImportantForAutofill(this, View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS)
     }
 
     /**
@@ -109,6 +113,8 @@ class FenetrePaiement(private val activite: Activity) {
         val dialogue = Dialog(activite)
         dialogue.requestWindowFeature(Window.FEATURE_NO_TITLE)
         val racine = LinearLayout(activite).apply { orientation = LinearLayout.VERTICAL; background = forme(Color.WHITE, 20) }
+        // Toute la fenêtre est exclue de l'autoremplissage et de l'enregistrement de mots de passe (voir champ())
+        ViewCompat.setImportantForAutofill(racine, View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS)
 
         // Bandeau du haut : « Paiement sécurisé » + opérateur
         val bandeau = LinearLayout(activite).apply {

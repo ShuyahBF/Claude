@@ -224,6 +224,18 @@ async def pin_simultane(data: PinSimultane, user: dict = Depends(get_current_use
     return utilisateur_public(await db.users.find_one({"id": user["id"]}, SANS_ID))
 
 
+class ProposerNomMarchand(BaseModel):
+    actif: bool
+
+
+@router.put("/proposer-nom-marchand")
+async def proposer_nom_marchand(data: ProposerNomMarchand, user: dict = Depends(get_current_user)):
+    """Réglage PROPRE À CE COMPTE (paiement direct) : après le SMS de l'opérateur, proposer de corriger le nom du marchand enregistré quand il est
+    vide ou différent de celui du SMS. Actif par défaut (champ absent = actif) ; ne change jamais le nom sans l'accord de l'utilisateur."""
+    await db.users.update_one({"id": user["id"]}, {"$set": {"proposer_nom_marchand": data.actif}})
+    return utilisateur_public(await db.users.find_one({"id": user["id"]}, SANS_ID))
+
+
 class DebugChaine(BaseModel):
     actif: bool
 

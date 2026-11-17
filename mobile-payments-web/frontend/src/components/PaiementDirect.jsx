@@ -6,7 +6,7 @@ import { apiClient, fcfa, messageErreur } from "@/lib/api";
 import { exigeFenetrePin, sansPinSiImpose } from "@/lib/pinOperateurs";
 import { capacites, composer, lireSmsPaiements, payerDirectDialogue, journalUssd, payerDirectMontant } from "@/lib/pontAndroid";
 import { enLettres } from "@/lib/nombreEnLettres";
-import { analyserSms, chargerLignes, confirmePaiement, enregistrerLignes, fusionner } from "@/lib/smsPaiements";
+import { analyserSms, chargerLignes, confirmePaiement, enregistrerLignes, fusionner, nomProposable, smsPourNommer } from "@/lib/smsPaiements";
 
 // Paiement DIRECT dans l'application Android « direct » (lot 120). Plus de QR code ni de légende :
 //  1. une fenêtre de SÉCURITÉ de l'application demande de RETAPER le montant et de saisir le code secret, puis envoie la séquence USSD ;
@@ -31,6 +31,15 @@ export default function PaiementDirect({ paiement, onTermine }) {
   const envoyeLe = useRef(0);
   const lance = useRef(false);
   const sms = !!capacites()?.sms;
+  // Lot 190 : après le SMS de l'opérateur, proposition de CORRIGER le nom du marchand (vide ou différent de celui du SMS, nom non doublé).
+  // Réglage du Profil (actif par défaut). Une seule proposition par paiement ; le nom n'est jamais changé sans l'accord de l'utilisateur.
+  const [proposition, setProposition] = useState(null);       // { nom, ancien, etat: "attente" | "enregistre" | "refuse" }
+  const dejaPropose = useRef(false);
+  const proposerNom = useCallback((nomSms) => {
+    if (dejaPropose.current || user?.proposer_nom_marchand === false || !paiement.marchand?.code || telephone) return;
+    const nom = nomProposable(nomSms, paiement.marchand.libelle);
+    if (nom) { dejaPropose.current = true; setProposition({ nom, ancien: paiement.marchand.libelle || "", etat: "attente" }); }
+  }, [user, paiement.marchand, telephone]);
 
   const changerStatut = useCallback(async (statut) => {
     try { await apiClient.put(`/paiements/${paiement.id}/statut`, { statut }); return true; }
@@ -88,6 +97,9 @@ export default function PaiementDirect({ paiement, onTermine }) {
       if (arrete || !r.sms) return;
       const critere = { montant: paiement.montant, codeMarchand: paiement.marchand?.code, libelle: paiement.marchand?.libelle, envoyeLe: envoyeLe.current, telephone };
       const trouve = r.sms.find((x) => confirmePaiement(x, critere));
+      // Un SMS de dépense du même montant qui porte un nom : on PROPOSE ce nom (il ne confirme rien par lui-même)
+      const nommant = trouve ? analyserSms(trouve)?.tiers : smsPourNommer(r.sms, { montant: paiement.montant, envoyeLe: envoyeLe.current })?.nom;
+      if (nommant) proposerNom(nommant);
       if (trouve && await changerStatut("effectue")) {
         // La ligne du SMS est aussi gardée sur le téléphone (historique des SMS de paiement)
         const ligne = analyserSms(trouve);
@@ -98,7 +110,7 @@ export default function PaiementDirect({ paiement, onTermine }) {
     const t = setInterval(verifier, PAS_MS);
     verifier();
     return () => { arrete = true; clearInterval(t); };
-  }, [etat, sms, paiement.montant, changerStatut, toast]);
+  }, [etat, sms, paiement.montant, changerStatut, toast, proposerNom]);
 
   /** Débogage : copie dans le presse-papiers tout ce qu'il faut pour comprendre un paiement (version, mode, chaîne SANS code secret, message, journal). */
   const copierInfos = async () => {
@@ -118,6 +130,15 @@ export default function PaiementDirect({ paiement, onTermine }) {
     }
     toast.succes("Informations copiées (code secret masqué) : collez-les dans votre message");
   };
+
+  /** Enregistre le nom proposé dans l'annuaire des marchands (seul l'auteur du marchand ou l'administrateur peut le modifier : sinon le message du serveur s'affiche). */
+  const accepterNom = async () => {
+    try {
+      await apiClient.put(`/marchands/${encodeURIComponent(paiement.operateur)}/${paiement.marchand.code}`, { libelle: proposition.nom });
+      setProposition({ ...proposition, etat: "enregistre" }); toast.succes(`Nom du marchand enregistré : « ${proposition.nom} »`);
+    } catch (err) { toast.erreur(messageErreur(err, "Nom non enregistré")); }
+  };
+  const refuserNom = () => { setProposition({ ...proposition, etat: "refuse" }); toast.succes("Nom du marchand inchangé"); };
 
   const jAiPaye = async () => { if (await changerStatut("effectue")) { setEtat("confirme"); toast.succes("Paiement noté comme effectué"); } };
   const abandonner = async () => { if (await changerStatut("abandonne")) onTermine(); };
@@ -174,6 +195,17 @@ export default function PaiementDirect({ paiement, onTermine }) {
             <div className="flex flex-wrap gap-2">
               <button type="button" className="btn-primary flex-1" onClick={payer}>🔁 Réessayer</button>
               <button type="button" className="btn-outline flex-1" onClick={abandonner}>✖ Abandonner ce paiement</button>
+            </div>
+          </div>
+        )}
+
+        {proposition && proposition.etat === "attente" && (etat === "envoye" || etat === "confirme") && (
+          <div className="space-y-2 rounded-lg border-2 border-sky-300 bg-sky-50 p-3 text-sm text-sky-950" data-testid="proposition-nom-marchand">
+            <p><b>🏪 Le SMS de l'opérateur donne le nom du marchand : « {proposition.nom} ».</b>{" "}
+              {proposition.ancien ? <>Dans auRor, il s'appelle « {proposition.ancien} ».</> : <>Dans auRor, ce marchand n'a pas de nom.</>} Voulez-vous enregistrer ce nom ?</p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="btn-primary flex-1" onClick={accepterNom}>✅ Enregistrer ce nom</button>
+              <button type="button" className="btn-outline flex-1" onClick={refuserNom}>✖ Garder le nom actuel</button>
             </div>
           </div>
         )}

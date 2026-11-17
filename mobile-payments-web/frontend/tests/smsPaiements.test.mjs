@@ -1,6 +1,6 @@
 // Test des lignes de paiement des SMS (logique pure). Lancer : cd frontend && node tests/smsPaiements.test.mjs (Node 20+, aucune installation).
 // Données FICTIVES : aucun vrai numéro de transaction, nom ni solde.
-import { analyserSms, categorieSms, estTransaction, confirmePaiement, fusionner, lireNombre, memeMarchand, montantDe, sansRepetition, telephoneDe } from "../src/lib/smsPaiements.js";
+import { analyserSms, categorieSms, estTransaction, confirmePaiement, fusionner, lireNombre, memeMarchand, montantDe, nomProposable, sansRepetition, smsPourNommer, telephoneDe } from "../src/lib/smsPaiements.js";
 const ok = (n, v) => { console.log((v ? "OK  " : "ECHEC ") + n); if (!v) process.exitCode = 1; };
 const T = 1_800_000_000_000;
 
@@ -162,3 +162,19 @@ const oct = { ...nov, id: "o1", quand: new Date("2026-10-05T09:00:00").getTime()
 const parMois = energieParMois([nov, nov2, oct, vraiPaiement]);
 ok("énergie par mois : novembre = 2 recharges, 5 850 FCFA ; octobre = 2 000", parMois.length === 2 && parMois[0].mois === "2026-11" && parMois[0].total === 5850 && parMois[0].nb === 2 && parMois[1].total === 2000);
 ok("énergie par mois : les doublons et les autres dépenses n'y sont pas", energieParMois([{ ...nov, doublon: true }, vraiPaiement]).length === 0);
+
+// --- Nom de marchand à PROPOSER d'après le SMS (lot 190) : jamais doublé, seulement s'il est différent ou absent
+ok("nom doublé → une seule fois", nomProposable("ALIMENTATION LA MENAGERE ALIMENTATION LA MENAGERE", "") === "ALIMENTATION LA MENAGERE");
+ok("nom non renseigné → proposé", nomProposable("LA MENAGERE", null) === "LA MENAGERE" && nomProposable("LA MENAGERE", "   ") === "LA MENAGERE");
+ok("même nom (accents, casse, ponctuation) → rien", nomProposable("ALIMENTATION LA MENAGERE", "Alimentation la Ménagère") === null && nomProposable("LA MENAGERE", "la-menagere") === null);
+ok("nom différent → proposé", nomProposable("ALIMENTATION LA MENAGERE", "Boutique du coin") === "ALIMENTATION LA MENAGERE");
+ok("même nom écrit deux fois côté SMS et une fois enregistré → rien", nomProposable("LA MENAGERE LA MENAGERE", "La Ménagère") === null);
+ok("caractères refusés par l'annuaire retirés", nomProposable("CHEZ & FILS / SARL", "") === "CHEZ FILS SARL");
+ok("SMS sans nom exploitable → rien", nomProposable("", "X") === null && nomProposable("#", "") === null);
+ok("nom limité à 60 caractères", nomProposable("A".repeat(100), "").length === 60);
+// SMS qui peut nommer le marchand : dépense du même montant, après l'envoi, avec un nom (il ne CONFIRME rien)
+const smsNom = { adresse: "OrangeMoney", recu_le: T, corps: "Paiement de 50 FCFA a LA MENAGERE LA MENAGERE effectue. Trans id: MP261113.1400.33333333" };
+ok("SMS qui nomme le marchand", smsPourNommer([smsNom], { montant: 50, envoyeLe: T - 1000 })?.nom === "LA MENAGERE");
+ok("montant différent → personne", smsPourNommer([smsNom], { montant: 75, envoyeLe: T - 1000 }) === null);
+ok("SMS antérieur à l'envoi → personne", smsPourNommer([{ ...smsNom, recu_le: T - 3_600_000 }], { montant: 50, envoyeLe: T }) === null);
+ok("argent reçu → personne", smsPourNommer([{ ...smsNom, corps: "Vous avez reçu 50 FCFA de LA MENAGERE." }], { montant: 50, envoyeLe: T - 1000 }) === null);

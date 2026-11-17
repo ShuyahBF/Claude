@@ -261,6 +261,32 @@ export function confirmePaiement(sms, { montant, codeMarchand, libelle, envoyeLe
   return !!libelle && memeMarchand(ligne.tiers, libelle);                                                       // sinon : le nom du marchand
 }
 
+/**
+ * NOM DE MARCHAND À PROPOSER d'après le SMS de l'opérateur (lot 190). Le nom du SMS est nettoyé : NON doublé (Orange l'écrit deux fois), caractères admis
+ * par l'annuaire seulement, 60 au plus. On ne propose rien si le SMS n'en donne pas, ou si le nom enregistré est déjà le même (sans accents, casse ni ponctuation).
+ * Rend le nom proposé, ou null.
+ */
+export function nomProposable(nomSms, nomEnregistre) {
+  const nom = sansRepetition(nomSms).replace(/[^0-9A-Za-zÀ-ÖØ-öø-ÿ ._'-]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+  if (nom.length < 2) return null;
+  if (!String(nomEnregistre || "").trim()) return nom;                                              // nom non renseigné : on propose celui du SMS
+  const norme = (t) => sansAccents(sansRepetition(t)).replace(/[^a-z0-9]+/g, "");
+  return norme(nom) === norme(nomEnregistre) ? null : nom;
+}
+
+/**
+ * Parmi les SMS lus, celui qui peut NOMMER le marchand : une dépense du même montant arrivée après l'envoi (une minute de marge), avec un nom de bénéficiaire.
+ * Ce SMS ne CONFIRME rien (voir confirmePaiement) : il sert seulement à PROPOSER un nom, que l'utilisateur accepte ou refuse. Rend { nom, sms } ou null.
+ */
+export function smsPourNommer(listeSms, { montant, envoyeLe }) {
+  for (const sms of listeSms || []) {
+    if (!sms || (envoyeLe && sms.recu_le < envoyeLe - 60000)) continue;
+    const ligne = analyserSms(sms);
+    if (ligne && estTransaction(ligne) && ligne.genre === "DEPENSE" && ligne.montant === montant && ligne.tiers) return { nom: ligne.tiers, sms };
+  }
+  return null;
+}
+
 // ---- Stockage local (téléphone) ----
 const CLE = "auror_sms_lignes";
 const MAX = 3000;
