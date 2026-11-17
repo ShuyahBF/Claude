@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useToast } from "@/components/Toast";
 import { apiClient, dateHeure, fcfa, messageErreur } from "@/lib/api";
+import { chargerLignes, estTransaction, filtrerLignes } from "@/lib/smsPaiements";
 
 // Bloc « Évaluer un terme » de l'Historique : on tape N'IMPORTE QUEL terme (bénéficiaire, marchand, service, motif, code, numéro…),
 // 1) le nombre d'occurrences s'affiche, 2) « Évaluer » calcule les statistiques MENSUELLES et trace les graphiques, 3) export CSV et impression.
@@ -49,6 +50,38 @@ function bornesPeriode(choix, perso) {
   return {};                                                  // toute la période
 }
 
+/**
+ * SMS de paiement lus sur CE téléphone (« Lecture des SMS ») qui contiennent le terme, dans la période : dépenses comptées seulement (les SMS hors décompte
+ * et les doublons sont exclus, comme dans la Lecture des SMS). Ils vivent sur le téléphone, jamais sur le serveur : l'évaluation du serveur ne peut pas les voir.
+ */
+function smsDuTerme(terme, bornes) {
+  return filtrerLignes(chargerLignes(), { texte: terme, du: bornes.du, au: bornes.au }).filter((l) => estTransaction(l) && l.genre === "DEPENSE");
+}
+
+/** Réunit le résultat du serveur et les SMS du téléphone (un SMS dont la référence est déjà dans l'historique du serveur n'est pas compté deux fois). */
+function fusionnerSms(serveur, sms, terme) {
+  const deja = new Set((serveur?.operations || []).map((o) => o.reference_operateur).filter(Boolean));
+  const utiles = sms.filter((l) => !(l.reference && deja.has(l.reference)));
+  const base = serveur?.par_mois ? serveur : { terme, occurrences: 0, payes: 0, non_payes: 0, montant_total: 0, plus_gros: 0, par_mois: [], par_operateur: [], operations: [] };
+  const mois = new Map(base.par_mois.map((m) => [m.mois, { ...m, sms_nombre: 0, sms_montant: 0 }]));
+  for (const l of utiles) {
+    const d = new Date(l.quand);
+    const cle = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const m = mois.get(cle) || { mois: cle, occurrences: 0, nombre: 0, montant: 0, sms_nombre: 0, sms_montant: 0 };
+    m.occurrences += 1; m.nombre += 1; m.montant += l.montant; m.sms_nombre += 1; m.sms_montant += l.montant;
+    mois.set(cle, m);
+  }
+  const par_mois = [...mois.values()].sort((a, b) => a.mois.localeCompare(b.mois));
+  const montants = [...(serveur?.operations || []).filter((o) => o.statut === "effectue").map((o) => o.montant || 0), ...utiles.map((l) => l.montant)];
+  const actifs = par_mois.filter((m) => m.nombre).length;
+  const dates = [...(serveur?.operations || []).map((o) => String(o.cree_le).slice(0, 10)), ...utiles.map((l) => new Date(l.quand).toISOString().slice(0, 10))].sort();
+  const total = montants.reduce((a, b) => a + b, 0);
+  const ops = utiles.map((l) => ({ id: `sms-${l.id}`, cree_le: new Date(l.quand).toISOString(), operateur: l.adresse || "SMS", service: "SMS du téléphone", beneficiaire: l.tiers || "", montant: l.montant, statut: "effectue" }));
+  return { ...base, terme, par_mois, occurrences: base.occurrences + utiles.length, payes: montants.length, montant_total: total, plus_gros: Math.max(0, ...montants),
+    montant_moyen: montants.length ? Math.round(total / montants.length) : 0, moyenne_mensuelle: actifs ? Math.round(total / actifs) : 0,
+    premiere: dates[0], derniere: dates[dates.length - 1], sms_nombre: utiles.length, sms_montant: utiles.reduce((a, l) => a + l.montant, 0), operations: [...base.operations, ...ops] };
+}
+
 export default function EvaluationTerme() {
   const toast = useToast();
   const [terme, setTerme] = useState("");
@@ -58,6 +91,7 @@ export default function EvaluationTerme() {
   const [periode, setPeriode] = useState("tout");              // choix de la période évaluée
   const [perso, setPerso] = useState({ du: "", au: "" });       // dates de la période personnalisée (AAAA-MM-JJ)
   const bornes = bornesPeriode(periode, perso);
+  const [avecSms, setAvecSms] = useState(true);                 // inclure les SMS lus sur ce téléphone
 
   // 1. Le terme tapé est cherché après une courte pause : seul le NOMBRE d'occurrences est demandé
   useEffect(() => {
@@ -71,11 +105,15 @@ export default function EvaluationTerme() {
   }, [terme, periode, perso.du, perso.au]);
 
   // 2. « Évaluer » : statistiques mensuelles
+  const nbSms = avecSms ? smsDuTerme(terme.trim(), bornes).length : 0;     // occurrences trouvées dans les SMS du téléphone
   const evaluer = async () => {
     setOccupe(true); toast.info(`Évaluation de « ${terme.trim()} » en cours…`);
     try {
-      const { data } = await apiClient.get("/paiements/evaluation-terme", { params: { terme: terme.trim(), evaluer: true, ...bornes } });
-      setResultat(data); toast.succes(`Évaluation terminée : ${data.occurrences} occurrence(s) sur ${data.par_mois.length} mois.`);
+      let data = null;
+      try { data = (await apiClient.get("/paiements/evaluation-terme", { params: { terme: terme.trim(), evaluer: true, ...bornes } })).data; }
+      catch (err) { if (!avecSms) throw err; toast.erreur("Historique du serveur indisponible : seuls les SMS du téléphone sont évalués."); }
+      const r = fusionnerSms(data, avecSms ? smsDuTerme(terme.trim(), bornes) : [], terme.trim());
+      setResultat(r); toast.succes(`Évaluation terminée : ${r.occurrences} occurrence(s) sur ${r.par_mois.length} mois${r.sms_nombre ? ` (dont ${r.sms_nombre} SMS du téléphone)` : ""}.`);
     } catch (err) { toast.erreur(messageErreur(err, "Évaluation impossible")); } finally { setOccupe(false); }
   };
   const max = resultat ? Math.max(1, ...resultat.par_mois.map((m) => m.montant)) : 1;
@@ -101,10 +139,14 @@ export default function EvaluationTerme() {
           <div><label className="label" htmlFor="ev-au">Au</label><input id="ev-au" type="date" className="input" value={perso.au} onChange={(e) => setPerso({ ...perso, au: e.target.value })} /></div>
         </>)}
       </div>
-      {compte === 0 && <p className="text-sm text-gray-500">Aucune occurrence de « {terme.trim()} ».</p>}
-      {compte > 0 && !resultat && (
+      <label className="flex items-start gap-2 text-sm text-gray-700">
+        <input type="checkbox" className="mt-1 h-5 w-5" checked={avecSms} onChange={(e) => { setAvecSms(e.target.checked); setResultat(null); }} data-testid="avec-sms" />
+        <span>Inclure les <b>SMS de paiement lus sur ce téléphone</b> (Lecture des SMS) : ils ne sont pas dans l'historique du serveur.</span>
+      </label>
+      {compte === 0 && nbSms === 0 && <p className="text-sm text-gray-500">Aucune occurrence de « {terme.trim()} ».</p>}
+      {((compte || 0) + nbSms > 0) && !resultat && (
         <div className="flex flex-wrap items-center gap-3">
-          <span className="badge bg-sky-100 text-sky-900">{compte} occurrence{compte > 1 ? "s" : ""}</span>
+          <span className="badge bg-sky-100 text-sky-900">{(compte || 0) + nbSms} occurrence{(compte || 0) + nbSms > 1 ? "s" : ""}{nbSms > 0 && ` (dont ${nbSms} SMS du téléphone)`}</span>
           <button type="button" className="btn-primary btn-sm" disabled={occupe} onClick={evaluer} data-testid="evaluer">📊 Évaluer</button>
         </div>
       )}
@@ -115,6 +157,7 @@ export default function EvaluationTerme() {
               <div key={t} className="rounded-lg bg-gray-50 p-3"><p className="text-xs font-semibold uppercase text-gray-500">{t}</p><p className="text-lg font-bold tabular-nums">{v}</p></div>
             ))}
           </div>
+          {resultat.sms_nombre > 0 && <p className="text-xs text-gray-500">Dont {resultat.sms_nombre} SMS lus sur ce téléphone, pour {fcfa(resultat.sms_montant)}.</p>}
           {resultat.non_payes > 0 && <p className="text-xs text-gray-500">{resultat.non_payes} occurrence(s) non payée(s) (préparées ou abandonnées) : comptées à part, hors montants.</p>}
           {/* Graphique : une barre par mois (montant payé) */}
           <div className="space-y-1" data-testid="graphique-terme">
