@@ -72,6 +72,20 @@ async def ouvrir(data: Ouverture, request: Request, response: Response):
     return _session(response, user, sid)
 
 
+@router.post("/deverrouiller")
+async def deverrouiller_par_empreinte(data: Ouverture, user: dict = Depends(get_current_user)):
+    """Écran verrouillé (lot 64) : l'empreinte du téléphone remplace le mot de passe. Le téléphone envoie (id, secret) rangés dans son coffre (le secret ne sort
+    qu'après reconnaissance de l'empreinte) ; le serveur vérifie qu'ils appartiennent bien au compte CONNECTÉ. Mêmes essais limités que le déverrouillage par mot de passe."""
+    cle = f"verrou:{user['id']}"
+    await verifier_non_bloque(cle)
+    fiche = next((f for f in (user.get("empreintes_connexion") or []) if f.get("id") == data.id), None)
+    if not fiche or not hmac.compare_digest(fiche["empreinte"], _empreinte(data.secret)):
+        await noter_echec(cle)
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Empreinte non reconnue : tapez votre mot de passe")
+    await effacer_echecs(cle)
+    return {"ok": True}
+
+
 @router.post("/retirer")
 async def retirer(user: dict = Depends(get_current_user)):
     """Retire toutes les empreintes enregistrées du compte (tous les téléphones)."""
