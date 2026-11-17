@@ -31,6 +31,16 @@ export default function PaiementDirect({ paiement, onTermine }) {
   const envoyeLe = useRef(0);
   const lance = useRef(false);
   const sms = !!capacites()?.sms;
+  const changerStatut = useCallback(async (statut) => {
+    try { await apiClient.put(`/paiements/${paiement.id}/statut`, { statut }); return true; }
+    catch (err) { toast.erreur(messageErreur(err)); return false; }
+  }, [paiement.id, toast]);
+
+  // Transfert d'argent : numéro du bénéficiaire (chiffres) ; vide pour un paiement marchand
+  const telephone = paiement.categorie === "money_transfer" ? String(paiement.valeurs?.phone || "").replace(/\D/g, "") : "";
+
+  // ATTENTION (lot 191) : ce bloc doit rester APRÈS la déclaration de `telephone` — placé avant, il lisait une variable pas encore déclarée et faisait
+  // planter l'écran de paiement (page blanche) dès son affichage.
   // Lot 190 : après le SMS de l'opérateur, proposition de CORRIGER le nom du marchand (vide ou différent de celui du SMS, nom non doublé).
   // Réglage du Profil (actif par défaut). Une seule proposition par paiement ; le nom n'est jamais changé sans l'accord de l'utilisateur.
   const [proposition, setProposition] = useState(null);       // { nom, ancien, etat: "attente" | "enregistre" | "refuse" }
@@ -40,14 +50,6 @@ export default function PaiementDirect({ paiement, onTermine }) {
     const nom = nomProposable(nomSms, paiement.marchand.libelle);
     if (nom) { dejaPropose.current = true; setProposition({ nom, ancien: paiement.marchand.libelle || "", etat: "attente" }); }
   }, [user, paiement.marchand, telephone]);
-
-  const changerStatut = useCallback(async (statut) => {
-    try { await apiClient.put(`/paiements/${paiement.id}/statut`, { statut }); return true; }
-    catch (err) { toast.erreur(messageErreur(err)); return false; }
-  }, [paiement.id, toast]);
-
-  // Transfert d'argent : numéro du bénéficiaire (chiffres) ; vide pour un paiement marchand
-  const telephone = paiement.categorie === "money_transfer" ? String(paiement.valeurs?.phone || "").replace(/\D/g, "") : "";
 
   /** Ouvre la fenêtre de sécurité de l'application puis envoie le code. */
   const payer = useCallback(async () => {
