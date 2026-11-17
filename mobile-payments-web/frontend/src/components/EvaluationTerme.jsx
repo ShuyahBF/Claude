@@ -38,28 +38,43 @@ function imprimer(r) {
   return true;
 }
 
+// Périodes proposées (liste déroulante, règle 10) : « Toute la période » par défaut ; « Personnalisée » ouvre deux dates.
+const iso = (d) => d.toISOString().slice(0, 10);
+function bornesPeriode(choix, perso) {
+  const auj = new Date(), an = auj.getFullYear();
+  if (choix === "12m") { const d = new Date(auj); d.setFullYear(an - 1); return { du: iso(d), au: iso(auj) }; }
+  if (choix === "annee") return { du: `${an}-01-01`, au: iso(auj) };
+  if (choix === "annee_prec") return { du: `${an - 1}-01-01`, au: `${an - 1}-12-31` };
+  if (choix === "perso") return { du: perso.du || undefined, au: perso.au || undefined };
+  return {};                                                  // toute la période
+}
+
 export default function EvaluationTerme() {
   const toast = useToast();
   const [terme, setTerme] = useState("");
   const [compte, setCompte] = useState(null);      // nombre d'occurrences du terme tapé (null = pas encore cherché)
   const [resultat, setResultat] = useState(null);
   const [occupe, setOccupe] = useState(false);
+  const [periode, setPeriode] = useState("tout");              // choix de la période évaluée
+  const [perso, setPerso] = useState({ du: "", au: "" });       // dates de la période personnalisée (AAAA-MM-JJ)
+  const bornes = bornesPeriode(periode, perso);
 
   // 1. Le terme tapé est cherché après une courte pause : seul le NOMBRE d'occurrences est demandé
   useEffect(() => {
     setResultat(null); setCompte(null);
     if (terme.trim().length < 2) return undefined;
     const t = setTimeout(async () => {
-      try { const { data } = await apiClient.get("/paiements/evaluation-terme", { params: { terme: terme.trim() } }); setCompte(data.occurrences); } catch { setCompte(null); }
+      try { const { data } = await apiClient.get("/paiements/evaluation-terme", { params: { terme: terme.trim(), ...bornes } }); setCompte(data.occurrences); } catch { setCompte(null); }
     }, 400);
     return () => clearTimeout(t);
-  }, [terme]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [terme, periode, perso.du, perso.au]);
 
   // 2. « Évaluer » : statistiques mensuelles
   const evaluer = async () => {
     setOccupe(true); toast.info(`Évaluation de « ${terme.trim()} » en cours…`);
     try {
-      const { data } = await apiClient.get("/paiements/evaluation-terme", { params: { terme: terme.trim(), evaluer: true } });
+      const { data } = await apiClient.get("/paiements/evaluation-terme", { params: { terme: terme.trim(), evaluer: true, ...bornes } });
       setResultat(data); toast.succes(`Évaluation terminée : ${data.occurrences} occurrence(s) sur ${data.par_mois.length} mois.`);
     } catch (err) { toast.erreur(messageErreur(err, "Évaluation impossible")); } finally { setOccupe(false); }
   };
@@ -70,6 +85,22 @@ export default function EvaluationTerme() {
       <p className="text-sm text-gray-600">Tapez un mot (bénéficiaire, marchand, service, motif, code ou numéro) : auRor retrouve ses occurrences dans tout votre historique,
         puis « Évaluer » calcule les montants mois par mois.</p>
       <input className="input" placeholder="Ex. : Pharmacie, SONABEL, 445566" value={terme} onChange={(e) => setTerme(e.target.value)} data-testid="terme" />
+      <div className="grid gap-2 sm:grid-cols-3">
+        <div>
+          <label className="label" htmlFor="ev-periode">Période</label>
+          <select id="ev-periode" className="input" value={periode} onChange={(e) => setPeriode(e.target.value)} data-testid="periode-terme">
+            <option value="tout">Toute la période</option>
+            <option value="12m">12 derniers mois</option>
+            <option value="annee">Année en cours</option>
+            <option value="annee_prec">Année précédente</option>
+            <option value="perso">Personnalisée…</option>
+          </select>
+        </div>
+        {periode === "perso" && (<>
+          <div><label className="label" htmlFor="ev-du">Du</label><input id="ev-du" type="date" className="input" value={perso.du} onChange={(e) => setPerso({ ...perso, du: e.target.value })} /></div>
+          <div><label className="label" htmlFor="ev-au">Au</label><input id="ev-au" type="date" className="input" value={perso.au} onChange={(e) => setPerso({ ...perso, au: e.target.value })} /></div>
+        </>)}
+      </div>
       {compte === 0 && <p className="text-sm text-gray-500">Aucune occurrence de « {terme.trim()} ».</p>}
       {compte > 0 && !resultat && (
         <div className="flex flex-wrap items-center gap-3">
