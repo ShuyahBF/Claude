@@ -295,15 +295,23 @@ class WebActivity : FragmentActivity() {
         if (EnregistreurEcran.enCours) {
             startService(Intent(this, ServiceEnregistrementEcran::class.java).setAction(ServiceEnregistrementEcran.ACTION_ARRETER)); return
         }
+        // Lot 2.29 : l'explication n'est montrée qu'UNE SEULE FOIS (première utilisation) ; ensuite le rond lance DIRECTEMENT l'enregistrement
+        // (il ne reste que la fenêtre de consentement d'Android, que le système impose à chaque enregistrement).
+        val prefs = getSharedPreferences("enregistrement_ecran", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("explication_vue", false)) { lancerEnregistrement(); return }
         AlertDialog.Builder(this).setTitle("Enregistrer l'écran")
             .setMessage("Tout ce qui s'affiche à l'écran sera filmé (3 minutes au plus, sans le son), même sur la page de connexion. La fenêtre de paiement (montant et code secret) apparaît noire dans la vidéo.\n\n" +
-                "Ne tapez pas de mot de passe ni de code secret en clair pendant l'enregistrement.\n\nLa vidéo reste sur ce téléphone : vous choisissez à qui l'envoyer à la fin ; elle est effacée au bout de 7 jours.")
-            .setPositiveButton("Commencer") { _, _ ->
-                val lancer = { demandeEnregistrement.launch(getSystemService(Context.MEDIA_PROJECTION_SERVICE).let { (it as MediaProjectionManager).createScreenCaptureIntent() }) }
-                // Android 13 et plus : la notification « enregistrement en cours » doit être autorisée (on continue quoi qu'il arrive)
-                if (android.os.Build.VERSION.SDK_INT >= 33) demanderAutorisations(arrayOf(Manifest.permission.POST_NOTIFICATIONS)) { lancer() } else lancer()
-            }
+                "Ne tapez pas de mot de passe ni de code secret en clair pendant l'enregistrement.\n\nLa vidéo reste sur ce téléphone : vous choisissez à qui l'envoyer à la fin ; elle est effacée au bout de 7 jours.\n\n" +
+                "Cette explication ne sera plus affichée : ensuite, toucher le rond lance directement l'enregistrement.")
+            .setPositiveButton("Commencer") { _, _ -> prefs.edit().putBoolean("explication_vue", true).apply(); lancerEnregistrement() }
             .setNegativeButton("Annuler", null).show()
+    }
+
+    /** Demande l'accord d'Android (fenêtre du système) puis démarre le service d'enregistrement. */
+    private fun lancerEnregistrement() {
+        val lancer = { demandeEnregistrement.launch(getSystemService(Context.MEDIA_PROJECTION_SERVICE).let { (it as MediaProjectionManager).createScreenCaptureIntent() }) }
+        // Android 13 et plus : la notification « enregistrement en cours » doit être autorisée (on continue quoi qu'il arrive)
+        if (android.os.Build.VERSION.SDK_INT >= 33) demanderAutorisations(arrayOf(Manifest.permission.POST_NOTIFICATIONS)) { lancer() } else lancer()
     }
 
     /** Recharge le site (bouton « Réessayer » de la page « Pas de connexion »). */
