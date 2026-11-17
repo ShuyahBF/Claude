@@ -1,7 +1,7 @@
 // Lecture des paiements PARTAGÉE (écran Historique et lecture automatique) : lit les SMS par le pont Android ET les notifications reçues application fermée, les transforme
 // en lignes gardées sur le téléphone et met à jour le récapitulatif. Seuls les 10 premiers caractères de chaque SMS sont gardés (pour le retrouver en tapant son début), jamais le texte complet ; rien n'est envoyé à auRor.
 import { capacites, lireSmsPaiements, notificationsEnAttente } from "@/lib/pontAndroid";
-import { analyserSms, chargerLignes, enregistrerLignes, estTransaction, fusionner } from "@/lib/smsPaiements";
+import { analyserSms, chargerLignes, enregistrerLignes, estTransaction, fusionner, marquerDoublonsEnergie } from "@/lib/smsPaiements";
 
 export const CLE_RESUME = "auror_sms_resume";
 export const EVENEMENT_MAJ = "auror-sms-maj";          // annonce aux écrans ouverts que de nouvelles lignes ont été enregistrées
@@ -27,7 +27,9 @@ export async function synchroniserSms(jours, { lireSms = true } = {}) {
   const connues = [...existantes, ...duSms];
   const desNotifs = notifs.map(analyserSms).filter(Boolean).filter((n) => !connues.some((l) => l.montant === n.montant && Math.abs(l.quand - n.quand) < 120_000));
   // Chaque SMS ou notification devient une ligne ; les lignes déjà connues ne sont pas dupliquées
-  const { lignes, nouvelles: toutesNouvelles } = fusionner(existantes, [...duSms, ...desNotifs]);
+  const fusion = fusionner(existantes, [...duSms, ...desNotifs]);
+  const lignes = marquerDoublonsEnergie(fusion.lignes);                  // un achat de courant n'est compté qu'UNE fois (confirmation de l'opérateur + détail SONABEL)
+  const toutesNouvelles = fusion.nouvelles;
   // Les compteurs ne comptent que les vraies TRANSACTIONS : promo, alerte de banque et message de personne sont gardés (pastille grise) mais hors décompte
   const idsConnus = new Set(existantes.map((l) => l.id));
   const nouvelles = lignes.filter((l) => !idsConnus.has(l.id) && estTransaction(l)).length;
