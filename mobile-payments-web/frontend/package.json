@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build && node -e \"require('fs').copyFileSync('dist/index.html','dist/404.html')\"",
     "lint": "oxlint",
+    "lint:paiement": "oxlint -D no-use-before-define src/components/PaiementDirect.jsx src/pages/Payer.jsx",
     "preview": "vite preview"
   },
   "dependencies": {
