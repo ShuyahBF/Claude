@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import CarteCodeUssd from "@/components/CarteCodeUssd";
 import Chargement from "@/components/Chargement";
 import DetailsDepense from "@/components/DetailsDepense";
+import Pliable from "@/components/Pliable";   // blocs repliés à l'affichage
+import EvaluationTerme from "@/components/EvaluationTerme";   // évaluation mensuelle d'un terme quelconque
 import FlechesDefilement from "@/components/FlechesDefilement";         // lot 99 : flèches haut / bas pour parcourir la page
 import Camembert from "@/components/Camembert";                    // lot 98 : répartition des bénéficiaires par opérateur
 import HistogrammePaiements from "@/components/HistogrammePaiements";   // lot 98 : histogramme en montant, par jour ou par mois
@@ -207,10 +209,10 @@ export default function Historique() {
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <h1 className="text-2xl font-bold">Historique</h1>
-      <LectureSms />
+      <Pliable titre="SMS de paiement" pictogramme="💬"><LectureSms /></Pliable>
 
       {/* Filtres : période, opérateur, statut, recherche de bénéficiaire */}
-      <section className="card space-y-3" data-testid="filtres">
+      <Pliable titre="Filtres" pictogramme="🔎" testid="filtres"><div className="space-y-3">
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="label" htmlFor="f-periode">Période</label>
@@ -255,27 +257,29 @@ export default function Historique() {
             </button>
           )}
         </div>
-      </section>
+      </div></Pliable>
+
+      {/* Nouveau bloc : évaluation mensuelle d'un terme quelconque */}
+      <Pliable titre="Évaluer un terme" pictogramme="📊"><EvaluationTerme /></Pliable>
 
       {/* Lot 86 : soldes des deux portefeuilles, courbe d'évolution (lot 103 : elle suit la période choisie ci-dessus), retraits et dépôts (se recalcule quand un paiement change de statut) */}
-      <Portefeuilles rafraichir={`${paiements ? paiements.map((p) => `${p.id}${p.statut}`).join("|") : ""}#${actualisation}`} onActualiser={actualiser} du={bornes(filtres).du} au={bornes(filtres).au} />
+      <Pliable titre="Mes portefeuilles" pictogramme="💼"><Portefeuilles rafraichir={`${paiements ? paiements.map((p) => `${p.id}${p.statut}`).join("|") : ""}#${actualisation}`} onActualiser={actualiser} du={bornes(filtres).du} au={bornes(filtres).au} /></Pliable>
 
 
       {stats.tronque && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Résultats limités aux 5 000 paiements les plus récents : affinez la période.</p>}
 
       {/* Chiffres clés */}
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3" data-testid="chiffres">
+      <Pliable titre="Chiffres clés" pictogramme="🔢" testid="chiffres"><div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Chiffre titre="Paiements effectués" valeur={t.nombre ?? 0} detail={`Non comptés : ${t.prepares ?? 0} préparé${(t.prepares ?? 0) > 1 ? "s" : ""} · ${t.abandonnes ?? 0} abandonné${(t.abandonnes ?? 0) > 1 ? "s" : ""}`} />
         <Chiffre titre="Montant payé" valeur={fcfa(t.montant_paye ?? 0)} detail={`Payés sur l'ensemble des codes : ${t.taux_payes ?? 0} %`} />
                 <Chiffre titre="Montant moyen" valeur={fcfa(t.montant_moyen ?? 0)} />
         <Chiffre titre="Plus gros paiement" valeur={fcfa(t.plus_gros ?? 0)} />
         <Chiffre titre="Opérateurs payés" valeur={stats.par_operateur.length} />
-      </section>
+      </div></Pliable>
 
       {/* Une carte par opérateur */}
       {stats.par_operateur.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-lg font-bold">Par opérateur</h2>
+        <Pliable titre="Par opérateur" pictogramme="📱"><div className="space-y-2">
           <div className="grid gap-3 sm:grid-cols-3" data-testid="cartes-operateurs">
             {stats.par_operateur.map((o) => (
               <div key={o.operateur} className="card space-y-2 p-4">
@@ -291,16 +295,16 @@ export default function Historique() {
               </div>
             ))}
           </div>
-        </section>
+        </div></Pliable>
       )}
 
       {/* Activité par jour ou par mois, en montant ou en nombre (lot 98) */}
-      <HistogrammePaiements parJour={stats.par_jour} parMois={stats.par_mois || []} />
+      <Pliable titre="Activité" pictogramme="📈"><HistogrammePaiements parJour={stats.par_jour} parMois={stats.par_mois || []} /></Pliable>
 
       {/* Classements : Top 10 des montants et des bénéficiaires */}
-      <section className="space-y-3">
+      <Pliable titre="Classements" pictogramme="🏆"><div className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <h2 className="text-lg font-bold">Classements</h2>
+          <span />
           <div>
             <label className="label" htmlFor="f-classement">Classer sur</label>
             <select id="f-classement" className="input" value={filtres.classement} onChange={(e) => modifier("classement", e.target.value)}>
@@ -364,12 +368,12 @@ export default function Historique() {
             {stats.par_service.slice(0, 4).map((s) => `${s.service} (${s.operateur}) × ${s.nombre}`).join(" · ")}
           </p>
         )}
-      </section>
+      </div></Pliable>
 
       {/* Liste des paiements */}
-      <section className="space-y-2">
+      <Pliable titre={`Paiements (${paiements.length})`} pictogramme="🧾"><div className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-bold">Paiements ({paiements.length})</h2>
+          <span />
           <div className="flex flex-wrap gap-2">
             <button type="button" className="btn-outline btn-sm" onClick={() => setImportOuvert(true)} data-testid="ouvrir-import">⬆ Importer un journal</button>
             {paiements.length > 0 && <button type="button" className="btn-outline btn-sm" onClick={() => exporterCsv(paiements)}>⬇ Exporter en CSV</button>}
@@ -409,7 +413,7 @@ export default function Historique() {
             Afficher plus ({paiements.length - nbAffiches} restants)
           </button>
         )}
-      </section>
+      </div></Pliable>
 
       {/* Lot 99 : flèches haut / bas, utiles quand l'historique est long */}
       <FlechesDefilement />

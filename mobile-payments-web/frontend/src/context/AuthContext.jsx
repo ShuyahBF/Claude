@@ -25,6 +25,13 @@ export function AuthProvider({ children }) {
     return data.user;
   }, []);
 
+  // Connexion par l'empreinte du téléphone (application Android) : le secret du coffre remplace le mot de passe
+  const connexionEmpreinte = useCallback(async (id, secret) => {
+    const { data } = await apiClient.post("/auth/empreinte", { id, secret });
+    setUser(data.user);
+    return data.user;
+  }, []);
+
   const inscription = useCallback(async (champs) => {
     const { data } = await apiClient.post("/auth/inscription", champs);
     setUser(data.user);
@@ -35,8 +42,8 @@ export function AuthProvider({ children }) {
     try { await apiClient.post("/auth/deconnexion"); } finally { setUser(null); }
   }, []);
 
-  const valeur = useMemo(() => ({ user, setUser, connexion, inscription, deconnexion }),
-    [user, connexion, inscription, deconnexion]);
+  const valeur = useMemo(() => ({ user, setUser, connexion, connexionEmpreinte, inscription, deconnexion }),
+    [user, connexion, connexionEmpreinte, inscription, deconnexion]);
   return <AuthContext.Provider value={valeur}>{children}</AuthContext.Provider>;
 }
 

@@ -150,3 +150,30 @@ export function coffreTelephoneRetrouver() {
 export function coffreTelephoneOublier() {
   try { if (dansApplication()) window.AuRorAndroid.coffreOublier(); } catch { /* sans importance */ }
 }
+
+// ---- Connexion au SITE par l'empreinte du téléphone ----
+// Un secret propre à ce téléphone (fabriqué par le serveur) est rangé dans le coffre Android ; il ne ressort qu'après reconnaissance de l'empreinte.
+/** Vrai si l'application peut ranger le secret de connexion (version de l'application récente + verrouillage d'écran). */
+export function empreinteConnexionDisponible() {
+  try { return dansApplication() && !!window.AuRorAndroid.empreinteConnexionMemorisee && coffreTelephoneDisponible(); } catch { return false; }
+}
+/** Vrai si une empreinte de connexion est déjà enregistrée sur ce téléphone. */
+export function empreinteConnexionMemorisee() {
+  try { return empreinteConnexionDisponible() && !!window.AuRorAndroid.empreinteConnexionMemorisee(); } catch { return false; }
+}
+/** Range { id, secret } après reconnaissance du téléphone. Rend { ok } ou { erreur }. */
+export function empreinteConnexionMemoriser(id, secret) {
+  const [num, promesse] = attendreRetour();
+  window.AuRorAndroid.empreinteConnexionMemoriser(num, JSON.stringify({ id, secret }));
+  return promesse;
+}
+/** Demande l'empreinte et rend { id, secret } (ou { erreur }). */
+export function empreinteConnexionRetrouver() {
+  const [num, promesse] = attendreRetour();
+  window.AuRorAndroid.empreinteConnexionRetrouver(num);
+  return promesse;
+}
+/** Oublie l'empreinte de connexion de ce téléphone. */
+export function empreinteConnexionOublier() {
+  try { if (dansApplication() && window.AuRorAndroid.empreinteConnexionOublier) window.AuRorAndroid.empreinteConnexionOublier(); } catch { /* sans importance */ }
+}

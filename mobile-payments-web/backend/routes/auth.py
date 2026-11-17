@@ -255,5 +255,6 @@ async def changer_mot_de_passe(data: ChangementMotDePasse, response: Response, u
     # Nouvelle version de session : les autres appareils sont déconnectés
     version = int(user.get("version_session", 0)) + 1
     await db.users.update_one({"id": user["id"]}, {"$set": {
-        "password_hash": hash_password(data.nouveau), "version_session": version}})
+        "password_hash": hash_password(data.nouveau), "version_session": version},
+        "$unset": {"empreintes_connexion": ""}})   # empreintes de téléphone annulées (règle 21)
     return _session(response, {**user, "version_session": version})

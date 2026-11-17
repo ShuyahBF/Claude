@@ -340,6 +340,48 @@ async def statistiques(du: Optional[str] = None, au: Optional[str] = None, opera
     return {"periode": {"du": du, "au": au}, **calculer_statistiques(docs, classement)}
 
 
+@router.get("/evaluation-terme")
+async def evaluation_terme(terme: str = Query(..., min_length=2, max_length=80), evaluer: bool = False,
+                           du: Optional[str] = None, au: Optional[str] = None, user: dict = Depends(get_current_user)):
+    """Évaluation d'un TERME QUELCONQUE (bénéficiaire, marchand, service, motif, code, numéro…) sur tout l'historique de l'utilisateur.
+    1. `evaluer=false` : compte seulement les occurrences (rapide) pour proposer le bouton « Évaluer » ;
+    2. `evaluer=true`  : calcule les statistiques MENSUELLES (nombre et montant des paiements « Payé »), le total, la moyenne,
+       le plus gros paiement, la répartition par opérateur et rend les opérations trouvées (pour l'export et l'impression)."""
+    docs = [p for p in await _charger(user, du, au, None, None, terme) if p.get("sens") != "entree"]   # l'argent reçu n'est jamais une dépense
+    rep: dict = {"terme": terme.strip(), "occurrences": len(docs)}
+    if not evaluer or not docs:
+        return rep
+    payes = [p for p in docs if p.get("statut") == "effectue"]
+    par_mois: dict[str, dict] = {}
+    par_op: dict[str, dict] = {}
+    for p in docs:
+        mois = str(p.get("cree_le", ""))[:7]
+        m = par_mois.setdefault(mois, {"mois": mois, "occurrences": 0, "nombre": 0, "montant": 0})
+        m["occurrences"] += 1
+        if p.get("statut") == "effectue":
+            montant = p.get("montant") or 0
+            m["nombre"] += 1
+            m["montant"] += montant
+            o = par_op.setdefault(p["operateur"], {"operateur": p["operateur"], "nombre": 0, "montant": 0})
+            o["nombre"] += 1
+            o["montant"] += montant
+    montants = [p.get("montant") or 0 for p in payes]
+    dates = sorted(str(p.get("cree_le", ""))[:10] for p in docs)
+    nb_mois = len([m for m in par_mois.values() if m["nombre"]])
+    rep.update({
+        "premiere": dates[0], "derniere": dates[-1],
+        "payes": len(payes), "non_payes": len(docs) - len(payes),
+        "montant_total": sum(montants), "montant_moyen": round(sum(montants) / len(montants)) if montants else 0,
+        "plus_gros": max(montants) if montants else 0,
+        "moyenne_mensuelle": round(sum(montants) / nb_mois) if nb_mois else 0,
+        "par_mois": sorted(par_mois.values(), key=lambda x: x["mois"]),
+        "par_operateur": sorted(par_op.values(), key=lambda x: -x["montant"]),
+        "operations": [{"id": p["id"], "cree_le": p["cree_le"], "operateur": p["operateur"], "service": p.get("service_nom"),
+                        "beneficiaire": beneficiaire(p)["libelle"], "montant": p.get("montant"), "statut": p.get("statut")} for p in docs[:1000]],
+    })
+    return rep
+
+
 @router.put("/{paiement_id}/statut")
 async def changer_statut(paiement_id: str, data: Statut, user: dict = Depends(get_current_user)):
     # PI-SPI (lot 58) : seul le MARCHAND confirme la réception ; le client peut seulement abandonner un paiement non encore confirmé
