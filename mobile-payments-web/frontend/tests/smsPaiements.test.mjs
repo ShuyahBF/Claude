@@ -134,3 +134,14 @@ ok("transfert : autre numéro refusé", !confirmePaiement(smsTransfert, { montan
 ok("transfert : autre montant refusé", !confirmePaiement(smsTransfert, { montant: 20000, envoyeLe: T - 1000, telephone: "54144722" }));
 ok("transfert : SMS antérieur à l'envoi refusé", !confirmePaiement(smsTransfert, { montant: 25000, envoyeLe: T + 3_600_000, telephone: "54144722" }));
 ok("marchand : inchangé (montant seul ne suffit pas)", !confirmePaiement({ adresse: "OrangeMoney", recu_le: T, corps: "Votre paiement de 50 FCFA a PHARMACIE DU MARCHE a ete effectue avec succes." }, { montant: 50, codeMarchand: "6557908", libelle: "La Ménagère", envoyeLe: T - 1000 }));
+
+// ---- Facture SONABEL (17/11/2026) : un SMS à montant mais SANS sens (ni « payé » ni « reçu ») est GARDÉ hors décompte, donc retrouvable par la recherche ----
+const sonabel = "SONABEL\nAbonne : WP 0020 0006 0002\nNom : OUOBA JEAN FRANCOIS\nNo.Compteur: 14332645937\n Tsdaae: 160.30 FCFA\n Tde: 53.00 FCFA\nTVA : 0.0F\nCout energie: 2636.7F\nEnergie payee: 27 Kwh";
+const ligneSonabel = analyserSms({ adresse: "SONABEL", recu_le: T, corps: sonabel });
+ok("SONABEL : le SMS est gardé (plus ignoré)", ligneSonabel !== null && ligneSonabel.categorie === "autre" && ligneSonabel.genre === "AUTRE");
+ok("SONABEL : hors décompte (jamais compté comme paiement)", !estTransaction(ligneSonabel));
+ok("SONABEL : « sonabel » retrouve le SMS", filtrerLignes([ligneSonabel], { texte: "sonabel" }).length === 1);
+ok("SONABEL : « sonab » (début du mot) aussi", filtrerLignes([ligneSonabel], { texte: "sonab" }).length === 1);
+ok("SONABEL : son début est gardé (10 caractères), jamais le texte complet", ligneSonabel.debut === "SONABEL Ab" && !JSON.stringify(ligneSonabel).includes("14332645937"));
+const smsNumeroIdentique = analyserSms({ adresse: "OrangeMoney", recu_le: T, corps: "Vous avez recu 5000 FCFA de Awa. TRANS ID: PP261115.1234.A12345" });
+ok("un vrai paiement reste compté", smsNumeroIdentique !== null && estTransaction(smsNumeroIdentique));
