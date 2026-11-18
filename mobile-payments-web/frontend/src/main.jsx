@@ -1,6 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
+import { installerDefilementTableaux } from "./lib/defilementTableaux.js";   // règle du 18/11/2026 : tableaux de plus de 30 lignes
+
+installerDefilementTableaux();
 import App from "./App.jsx";
 import FrontiereErreur from "./components/FrontiereErreur.jsx";
 
