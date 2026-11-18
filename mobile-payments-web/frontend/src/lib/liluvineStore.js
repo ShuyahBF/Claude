@@ -6,6 +6,7 @@ import { apiClient } from "@/lib/api";
 import { emotionDeTexte, bonjourDuMatin } from "@/lib/liluvineEmotion";
 import { echangesPourLiluvine, VERSION_MENTIONS, accordDonne, pourUtilisateur } from "@/lib/journalIntime";
 import { jouerBulle } from "@/lib/sonBulle";
+import { etatLiluvine, lireReglage } from "@/lib/liluvineReglage";
 
 let etat = { utilisateur: null, messages: [], attente: false, nonLus: 0, essais: null, refus: null, surLiluvine: false, bulle: null };
 const abonnes = new Set();
@@ -47,6 +48,7 @@ export function verifierBonjour(idUtilisateur, maintenant = new Date()) {
   lierUtilisateur(idUtilisateur);
   pourUtilisateur(idUtilisateur);
   if (!accordDonne("liluvine")) return;
+  if (etatLiluvine(lireReglage(idUtilisateur)) !== "active") return;          // réglage du profil : silencieuse ou désactivée = pas de bonjour, pas de pastille
   // 1. bonjour non lu mémorisé : on le remet dans la conversation (sans son), la pastille s'allume
   if (!etat.messages.some((m) => m.initiative)) {
     let attente = null; try { attente = JSON.parse(lireLS(cleBonjourNonLu(idUtilisateur)) || "null"); } catch { /* sans importance */ }
@@ -64,11 +66,22 @@ export function verifierBonjour(idUtilisateur, maintenant = new Date()) {
 }
 export function fermerBulle() { emettre({ bulle: null }); }
 
+/** État du réglage du profil pour le compte connecté : « active », « silence » ou « off » (voir liluvineReglage.js). */
+export const etatReglage = () => etatLiluvine(lireReglage(etat.utilisateur));
+
+/** Le réglage du profil vient de changer : une Liluvine désactivée ou silencieuse n'a plus de bulle ni de pastille ni de bonjour en attente. */
+export function appliquerReglageLiluvine(idUtilisateur, maintenant = new Date()) {
+  lierUtilisateur(idUtilisateur);
+  if (etatLiluvine(lireReglage(idUtilisateur)) !== "active") { oublierBonjourNonLu(); emettre({ bulle: null, nonLus: 0, messages: etat.messages.filter((m) => !m.initiative) }); }
+  else verifierBonjour(idUtilisateur, maintenant);
+}
+
 function ajouter(m) {
   const message = { id: `m${++compteur}`, quand: Date.now(), ...m };
   const hors = m.role === "assistant" && !etat.surLiluvine;                   // arrivé alors que l'écran de Liluvine n'est pas affiché
-  emettre({ messages: [...etat.messages, message], nonLus: etat.nonLus + (hors ? 1 : 0), bulle: hors ? { id: message.id, texte: String(m.content).slice(0, 90) } : etat.bulle });
-  if (m.role === "assistant") jouerBulle();
+  const muette = etatReglage() !== "active";                                   // silencieuse : la réponse à une question de l'utilisateur est gardée (pastille) mais sans bulle ni son
+  emettre({ messages: [...etat.messages, message], nonLus: etat.nonLus + (hors ? 1 : 0), bulle: hors && !muette ? { id: message.id, texte: String(m.content).slice(0, 90) } : etat.bulle });
+  if (m.role === "assistant" && !muette) jouerBulle();
   return message;
 }
 
