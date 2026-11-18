@@ -10,6 +10,7 @@ import {
 } from "@/lib/journalIntime";
 import { useAuth } from "@/context/AuthContext";
 import { initiativeDuMoment } from "@/lib/liluvineEmotion";
+import { etatLiluvine, lireReglage } from "@/lib/liluvineReglage";
 import { effacerConversation, envoyerALiluvine, fermerBulle, initiativeDeLiluvine, lierUtilisateur, lireLiluvine, surLiluvine, useLiluvine } from "@/lib/liluvineStore";
 import { jouerBulle, reglerSon, sonActif } from "@/lib/sonBulle";
 
@@ -52,12 +53,13 @@ export default function Journal() {
   const toast = useToast();
   const { user } = useAuth();
   pourUtilisateur(user?.id);
-  const { nonLus: nonLusLiluvine } = useLiluvine();           // messages non lus de Liluvine : pastille sur son onglet
+  const { nonLus: nonLusLiluvine } = useLiluvine();
+  const liluvineMasquee = etatLiluvine(lireReglage(user?.id)) === "off";          // désactivée dans le profil : son onglet disparaît           // messages non lus de Liluvine : pastille sur son onglet
   lierUtilisateur(user?.id);          // la conversation de Liluvine (en mémoire) est celle du compte connecté seulement          // journal, accords et clé propres au compte connecté (un téléphone peut servir à plusieurs comptes)
   const [accordJournal, setAccordJournal] = useState(() => accordDonne("journal"));
   const [accordLiluvine, setAccordLiluvine] = useState(() => accordDonne("liluvine"));
   const [params] = useSearchParams();
-  const [onglet, setOnglet] = useState(params.get("onglet") === "liluvine" ? "liluvine" : "journal");   // journal | liluvine
+  const [onglet, setOnglet] = useState(params.get("onglet") === "liluvine" && etatLiluvine(lireReglage(user?.id)) !== "off" ? "liluvine" : "journal");   // journal | liluvine
   const [cle, setCle] = useState(null);
   const [erreurCle, setErreurCle] = useState("");
   const [entrees, setEntrees] = useState([]);
@@ -108,7 +110,7 @@ export default function Journal() {
         <h1 className="text-xl font-bold">📔 Mon Journal Intime</h1>
         <div className="flex gap-2" role="tablist">
           <button type="button" role="tab" aria-selected={onglet === "journal"} className={`rounded-lg px-3 py-2 text-sm font-semibold ${onglet === "journal" ? "bg-primary text-white" : "border border-gray-300"}`} onClick={() => setOnglet("journal")}>📖 Mon journal</button>
-          <button type="button" role="tab" aria-selected={onglet === "liluvine"} className={`rounded-lg px-3 py-2 text-sm font-semibold ${onglet === "liluvine" ? "bg-primary text-white" : "border border-gray-300"}`} onClick={() => setOnglet("liluvine")}>💬 Liluvine, ma coach{onglet !== "liluvine" && nonLusLiluvine > 0 && <span className="ml-2 inline-grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white" data-testid="pastille-onglet-liluvine" aria-label={`${nonLusLiluvine} message(s) non lu(s)`}>{nonLusLiluvine}</span>}</button>
+          {!liluvineMasquee && <button type="button" role="tab" aria-selected={onglet === "liluvine"} className={`rounded-lg px-3 py-2 text-sm font-semibold ${onglet === "liluvine" ? "bg-primary text-white" : "border border-gray-300"}`} onClick={() => setOnglet("liluvine")}>💬 Liluvine, ma coach{onglet !== "liluvine" && nonLusLiluvine > 0 && <span className="ml-2 inline-grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white" data-testid="pastille-onglet-liluvine" aria-label={`${nonLusLiluvine} message(s) non lu(s)`}>{nonLusLiluvine}</span>}</button>}
         </div>
       </div>
       {erreurCle && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-900">{erreurCle}</p>}
@@ -215,6 +217,7 @@ function Liluvine({ cle, derniereEntree, onGardee }) {
   // Liluvine écrit PARFOIS la première (au plus une fois toutes les 8 heures, une fois sur deux et demie), une phrase locale : aucun envoi au serveur
   useEffect(() => {
     if (lireLiluvine().messages.length) return;
+    if (etatLiluvine(lireReglage(lireLiluvine().utilisateur)) !== "active") return;          // réglage du profil : pas d'initiative si silencieuse ou désactivée
     let derniere = null; try { derniere = Number(localStorage.getItem("mpw_liluvine_initiative")) || null; } catch { /* sans importance */ }
     const i = initiativeDuMoment({ derniereEntree, derniereInitiative: derniere });
     if (i) { initiativeDeLiluvine(i.texte, i.emotion); try { localStorage.setItem("mpw_liluvine_initiative", String(Date.now())); } catch { /* sans importance */ } }

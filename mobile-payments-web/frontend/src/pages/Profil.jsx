@@ -8,6 +8,7 @@ import ChampMotDePasse from "@/components/ChampMotDePasse";
 import ChampTelephone from "@/components/ChampTelephone";
 import EmpreinteProfil from "@/components/EmpreinteProfil";   // connexion par l'empreinte (application Android)
 import NomMarchandProfil from "@/components/NomMarchandProfil";                // lot 190 : proposition du nom du marchand d'après le SMS
+import LiluvineProfil from "@/components/LiluvineProfil";   // réglage de Liluvine (présente, silencieuse, désactivée)
 import PinProfil from "@/components/PinProfil";                           // lot 130 : envoi du code secret par opérateur (application direct)
 import PortefeuillesProfil from "@/components/PortefeuillesProfil";   // lot 88 : opérateurs chez qui on a un portefeuille
 import { etatAutorisation, geolocalisationDisponible, positionActuelle } from "@/lib/geoloc";
@@ -159,6 +160,8 @@ export default function Profil() {
       <PinProfil />
       <NomMarchandProfil />
       <BlocSauvegarde />
+
+      <LiluvineProfil />
 
       <section className="card space-y-2" data-testid="geolocalisation">
         <h2 className="text-lg font-bold">📍 Géolocalisation des paiements</h2>
