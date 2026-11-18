@@ -52,6 +52,7 @@ export default function Journal() {
   const toast = useToast();
   const { user } = useAuth();
   pourUtilisateur(user?.id);
+  const { nonLus: nonLusLiluvine } = useLiluvine();           // messages non lus de Liluvine : pastille sur son onglet
   lierUtilisateur(user?.id);          // la conversation de Liluvine (en mémoire) est celle du compte connecté seulement          // journal, accords et clé propres au compte connecté (un téléphone peut servir à plusieurs comptes)
   const [accordJournal, setAccordJournal] = useState(() => accordDonne("journal"));
   const [accordLiluvine, setAccordLiluvine] = useState(() => accordDonne("liluvine"));
@@ -107,7 +108,7 @@ export default function Journal() {
         <h1 className="text-xl font-bold">📔 Mon Journal Intime</h1>
         <div className="flex gap-2" role="tablist">
           <button type="button" role="tab" aria-selected={onglet === "journal"} className={`rounded-lg px-3 py-2 text-sm font-semibold ${onglet === "journal" ? "bg-primary text-white" : "border border-gray-300"}`} onClick={() => setOnglet("journal")}>📖 Mon journal</button>
-          <button type="button" role="tab" aria-selected={onglet === "liluvine"} className={`rounded-lg px-3 py-2 text-sm font-semibold ${onglet === "liluvine" ? "bg-primary text-white" : "border border-gray-300"}`} onClick={() => setOnglet("liluvine")}>💬 Liluvine, ma coach</button>
+          <button type="button" role="tab" aria-selected={onglet === "liluvine"} className={`rounded-lg px-3 py-2 text-sm font-semibold ${onglet === "liluvine" ? "bg-primary text-white" : "border border-gray-300"}`} onClick={() => setOnglet("liluvine")}>💬 Liluvine, ma coach{onglet !== "liluvine" && nonLusLiluvine > 0 && <span className="ml-2 inline-grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white" data-testid="pastille-onglet-liluvine" aria-label={`${nonLusLiluvine} message(s) non lu(s)`}>{nonLusLiluvine}</span>}</button>
         </div>
       </div>
       {erreurCle && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-900">{erreurCle}</p>}

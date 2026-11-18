@@ -10,7 +10,7 @@ import MenuLateral from "@/components/MenuLateral";
 import SupportSawali from "@/components/SupportSawali";
 import VerrouEcran from "@/components/VerrouEcran";
 import BulleLiluvine from "@/components/BulleLiluvine";
-import { useLiluvine } from "@/lib/liluvineStore";
+import { useLiluvine, verifierBonjour } from "@/lib/liluvineStore";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/components/Toast";
 import { apiClient, definirCouleursOperateurs } from "@/lib/api";
@@ -29,6 +29,17 @@ const MENUS = [
 export default function Layout() {
   const { user, deconnexion } = useAuth();
   const { nonLus: liluvineNonLus } = useLiluvine();          // messages de Liluvine non lus : pastille du menu « Mon Journal Intime »
+  // BONJOUR DU MATIN de Liluvine : vérifié à l'ouverture, toutes les 10 minutes et au retour sur l'application (sans avoir à ouvrir le Journal) ;
+  // il allume la pastille « non lu » du menu « Mon Journal Intime », avec une bulle et un son.
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    const verifier = () => verifierBonjour(user.id);
+    verifier();
+    const minuteur = setInterval(verifier, 10 * 60 * 1000);
+    const retour = () => { if (document.visibilityState === "visible") verifier(); };
+    document.addEventListener("visibilitychange", retour);
+    return () => { clearInterval(minuteur); document.removeEventListener("visibilitychange", retour); };
+  }, [user?.id]);
   const appli = capacites();   // null hors de l'application Android
   const navigate = useNavigate();
   const [menuOuvert, setMenuOuvert] = useState(false);   // menu latéral glissant (lot 33)

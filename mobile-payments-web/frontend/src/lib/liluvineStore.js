@@ -3,8 +3,8 @@
 // pendant qu'elle réfléchit : le message arrive alors « hors page », un son et une bulle le signalent, et le menu affiche le nombre de messages non lus.
 import { useSyncExternalStore } from "react";
 import { apiClient } from "@/lib/api";
-import { emotionDeTexte } from "@/lib/liluvineEmotion";
-import { echangesPourLiluvine, VERSION_MENTIONS } from "@/lib/journalIntime";
+import { emotionDeTexte, bonjourDuMatin } from "@/lib/liluvineEmotion";
+import { echangesPourLiluvine, VERSION_MENTIONS, accordDonne, pourUtilisateur } from "@/lib/journalIntime";
 import { jouerBulle } from "@/lib/sonBulle";
 
 let etat = { utilisateur: null, messages: [], attente: false, nonLus: 0, essais: null, refus: null, surLiluvine: false, bulle: null };
@@ -22,7 +22,46 @@ export const lireLiluvine = () => etat;
 export function lierUtilisateur(id) { if (etat.utilisateur !== (id || null)) emettre({ utilisateur: id || null, messages: [], nonLus: 0, essais: null, refus: null, bulle: null, attente: false }); }
 
 /** L'onglet « Liluvine » est affiché (vrai) ou quitté (faux) : l'afficher remet le compteur de messages non lus à zéro. */
-export function surLiluvine(vu) { emettre(vu ? { surLiluvine: true, nonLus: 0, bulle: null } : { surLiluvine: false }); }
+export function surLiluvine(vu) {
+  if (vu) oublierBonjourNonLu();                                                // le bonjour en attente est lu
+  emettre(vu ? { surLiluvine: true, nonLus: 0, bulle: null } : { surLiluvine: false });
+}
+
+// ---- Bonjour du matin ----
+// La conversation reste en mémoire (confidences), MAIS le bonjour du matin n'est pas une confidence (phrase locale) : il est gardé sur le téléphone
+// jusqu'à sa lecture, pour que la pastille « non lu » du menu survive à la fermeture de l'application.
+const cleBonjour = (id) => `mpw_liluvine_bonjour_${id}`;          // jour local du dernier bonjour
+const cleBonjourNonLu = (id) => `mpw_liluvine_bonjour_nonlu_${id}`;   // { texte, emotion, quand } tant que non lu
+const lireLS = (c) => { try { return localStorage.getItem(c); } catch { return null; } };
+const ecrireLS = (c, v) => { try { localStorage.setItem(c, v); } catch { /* sans importance */ } };
+function oublierBonjourNonLu() { if (etat.utilisateur) { try { localStorage.removeItem(cleBonjourNonLu(etat.utilisateur)); } catch { /* sans importance */ } } }
+
+/**
+ * À appeler pour le compte connecté (à l'ouverture, toutes les 10 minutes et au retour sur l'application) :
+ *  1. remet à l'écran un bonjour déjà envoyé mais pas encore lu (pastille du menu) ;
+ *  2. si c'est le matin et qu'aucun bonjour n'a été dit aujourd'hui, Liluvine écrit la première (bulle + son + pastille).
+ * Rien n'est dit avant que l'utilisateur ait approuvé les mentions de Liluvine.
+ */
+export function verifierBonjour(idUtilisateur, maintenant = new Date()) {
+  if (!idUtilisateur) return;
+  lierUtilisateur(idUtilisateur);
+  pourUtilisateur(idUtilisateur);
+  if (!accordDonne("liluvine")) return;
+  // 1. bonjour non lu mémorisé : on le remet dans la conversation (sans son), la pastille s'allume
+  if (!etat.messages.some((m) => m.initiative)) {
+    let attente = null; try { attente = JSON.parse(lireLS(cleBonjourNonLu(idUtilisateur)) || "null"); } catch { /* sans importance */ }
+    if (attente?.texte && !etat.surLiluvine) {
+      const message = { id: `m${++compteur}`, quand: attente.quand || Date.now(), role: "assistant", content: attente.texte, emotion: attente.emotion || "joie", initiative: true };
+      emettre({ messages: [...etat.messages, message], nonLus: etat.nonLus + 1 });
+    }
+  }
+  // 2. nouveau bonjour du matin
+  const b = bonjourDuMatin({ maintenant, dernierBonjour: lireLS(cleBonjour(idUtilisateur)) });
+  if (!b) return;
+  ecrireLS(cleBonjour(idUtilisateur), b.jour);
+  initiativeDeLiluvine(b.texte, b.emotion);
+  if (!etat.surLiluvine) ecrireLS(cleBonjourNonLu(idUtilisateur), JSON.stringify({ texte: b.texte, emotion: b.emotion, quand: Date.now() }));
+}
 export function fermerBulle() { emettre({ bulle: null }); }
 
 function ajouter(m) {

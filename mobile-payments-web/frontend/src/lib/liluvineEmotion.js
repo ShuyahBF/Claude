@@ -30,6 +30,31 @@ export function emotionDeTexte(texte, urgence = false) {
   return meilleure;
 }
 
+/** Jour local « AAAA-MM-JJ » (celui de l'utilisateur, pas UTC). */
+export const jourLocal = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+const BONJOURS = [
+  "Bonjour ! Comment démarre votre journée ? Dites-moi ce qui vous attend aujourd'hui.",
+  "Bonjour et belle journée à vous ! Comment vous sentez-vous ce matin ?",
+  "Bonjour ! Bien dormi ? Racontez-moi comment commence cette journée.",
+  "Bonjour ! Une nouvelle journée commence : qu'aimeriez-vous y réussir aujourd'hui ?",
+  "Bonjour ! Je suis là pour vous écouter ce matin. Comment allez-vous ?",
+];
+
+/**
+ * BONJOUR DU MATIN : tous les matins (de 5 h à 11 h, heure du téléphone), Liluvine écrit la première, UNE SEULE fois par jour.
+ * `dernierBonjour` = jour local « AAAA-MM-JJ » du dernier bonjour. La phrase change d'un jour à l'autre. Phrase locale : aucun appel au serveur.
+ * Rend { texte, emotion, jour } ou null (hors du matin, ou bonjour déjà dit aujourd'hui).
+ */
+export function bonjourDuMatin({ maintenant = new Date(), dernierBonjour = null } = {}) {
+  const h = maintenant.getHours();
+  if (h < 5 || h >= 11) return null;
+  const jour = jourLocal(maintenant);
+  if (dernierBonjour === jour) return null;
+  const rang = Math.floor(maintenant.getTime() / 86400000) % BONJOURS.length;
+  return { texte: BONJOURS[rang], emotion: "joie", jour };
+}
+
 const HUIT_HEURES = 8 * 3600 * 1000;
 const TROIS_JOURS = 3 * 24 * 3600 * 1000;
 
