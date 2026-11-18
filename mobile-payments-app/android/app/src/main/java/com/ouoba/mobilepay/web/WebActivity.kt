@@ -306,7 +306,7 @@ class WebActivity : FragmentActivity() {
         val prefs = getSharedPreferences("enregistrement_ecran", Context.MODE_PRIVATE)
         if (prefs.getBoolean("explication_vue", false)) { lancerEnregistrement(); return }
         AlertDialog.Builder(this).setTitle("Enregistrer l'écran")
-            .setMessage("Tout ce qui s'affiche à l'écran sera filmé (3 minutes au plus, sans le son), même sur la page de connexion. La fenêtre de paiement (montant et code secret) apparaît noire dans la vidéo.\n\n" +
+            .setMessage("Tout ce qui s'affiche à l'écran sera filmé (10 minutes au plus, sans le son), même sur la page de connexion. La fenêtre de paiement (montant et code secret) apparaît noire dans la vidéo.\n\n" +
                 "Ne tapez pas de mot de passe ni de code secret en clair pendant l'enregistrement.\n\nLa vidéo reste sur ce téléphone : vous choisissez à qui l'envoyer à la fin ; elle est effacée au bout de 7 jours.\n\n" +
                 "Cette explication ne sera plus affichée : ensuite, toucher le rond lance directement l'enregistrement.")
             .setPositiveButton("Commencer") { _, _ -> prefs.edit().putBoolean("explication_vue", true).apply(); lancerEnregistrement() }
