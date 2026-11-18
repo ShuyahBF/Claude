@@ -14,6 +14,42 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&family=Sora:wght@600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <title>auRor</title>
+    <!-- Lot 200 — SECOURS AU DÉMARRAGE : si le site n'a pas démarré au bout de 12 secondes (fichier introuvable ou corrompu en mémoire, réseau coupé au lancement),
+         au lieu d'un écran blanc muet on montre une carte avec « Réessayer » et « Vider la mémoire du site et réessayer ». Elle disparaît toute seule dès que le site démarre. -->
+    <script>
+      (function () {
+        var essais = 0, carte = null;
+        function vide() { var r = document.getElementById("root"); return !r || r.childElementCount === 0; }
+        function nettoyerPuisRecharger() {
+          var fin = function () { window.location.replace("/?r=" + Date.now()); };
+          try {
+            var taches = [];
+            if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) taches.push(navigator.serviceWorker.getRegistrations().then(function (l) { return Promise.all(l.map(function (x) { return x.unregister(); })); }));
+            if (window.caches && caches.keys) taches.push(caches.keys().then(function (k) { return Promise.all(k.map(function (n) { return caches.delete(n); })); }));
+            Promise.all(taches).then(fin, fin);
+          } catch (e) { fin(); }
+        }
+        function montrer() {
+          if (carte) return;
+          carte = document.createElement("div");
+          carte.setAttribute("role", "alert");
+          carte.style.cssText = "position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;padding:16px;background:#F7F5F3;font-family:system-ui,sans-serif;color:#111";
+          carte.innerHTML = '<div style="max-width:380px;background:#fff;border-radius:16px;padding:20px;box-shadow:0 4px 24px rgba(0,0,0,.14)">' +
+            '<p style="font-size:30px;margin:0">⏳</p><h1 style="font-size:18px;margin:8px 0">auRor n\'a pas pu démarrer</h1>' +
+            '<p style="font-size:14px;color:#444">Le site met trop de temps à s\'ouvrir (réseau coupé, fichier en mémoire abîmé…). Vos données ne sont pas perdues.</p>' +
+            '<div style="display:grid;gap:8px"><button id="mpw-r1" style="padding:12px;border-radius:10px;border:0;background:#0F6B4A;color:#fff;font-weight:700">🔄 Réessayer</button>' +
+            '<button id="mpw-r2" style="padding:12px;border-radius:10px;border:1px solid #999;background:#fff">🧹 Vider la mémoire du site et réessayer</button></div></div>';
+          document.body.appendChild(carte);
+          document.getElementById("mpw-r1").onclick = function () { window.location.reload(); };
+          document.getElementById("mpw-r2").onclick = nettoyerPuisRecharger;
+        }
+        var minuterie = setInterval(function () {
+          essais += 1;
+          if (!vide()) { clearInterval(minuterie); if (carte) { carte.remove(); carte = null; } return; }
+          if (essais >= 12) montrer();                                   // 12 secondes sans rien d'affiché
+        }, 1000);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
