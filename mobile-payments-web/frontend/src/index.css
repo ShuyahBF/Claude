@@ -112,3 +112,19 @@ img, video, picture, canvas {
 }
 .alerte-renforcee { animation: alerte-flash 0.5s steps(1, end) infinite; }
 @media (prefers-reduced-motion: reduce) { .alerte-renforcee { animation-duration: 1s; } }
+
+/* ===================================================================
+   Règle « tableaux de plus de 30 lignes » (18/11/2026) : le conteneur défile (module lib/defilementTableaux.js) ; l'en-tête reste visible en haut.
+   À l'impression, toutes les lignes sont imprimées.
+   =================================================================== */
+[data-defilement="oui"] thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+@media print {
+  [data-defilement="oui"] {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+}

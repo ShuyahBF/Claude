@@ -63,3 +63,8 @@ Les règles générales (livraison, version et lot, tableaux, HFSQL, chargement 
 - `cd mobile-payments-web/frontend && npm test` : logique des SMS, calcul local du code USSD, cache chiffré hors connexion et **rendu des écrans de paiement** (`tests/rendu.test.mjs` : chaque écran est dessiné une fois ; il détecte un écran qui plante à l'affichage). `npm run build` seul ne le voit pas.
 - `npm run lint:paiement` : ordre des déclarations de l'écran de paiement direct.
 - Hors connexion (lot 192) : cache chiffré des opérateurs / services / marchands, paiement préparé sur le téléphone (`lib/ussdLocal.js`, même calcul que `backend/ussd.py`), file d'attente chiffrée envoyée par `POST /api/paiements/hors-ligne` (idempotent, le serveur recalcule le code, jamais de code secret gardé).
+
+## Tableaux de plus de 30 lignes : barre de défilement (règle 24, 18/11/2026 : « C'est une règle à considérer partout sur toutes les plateformes »)
+- Tout tableau qui présente PLUS DE 30 LIGNES défile dans son cadre (hauteur = 30 lignes + l'en-tête) au lieu d'allonger la page ; l'en-tête reste visible en haut pendant le défilement ;
+  à l'impression, toutes les lignes sortent. Exception possible : `<table data-sans-defilement>`.
+- Mise en œuvre ici : module global `mobile-payments-web/frontend/src/lib/defilementTableaux.js` installé au démarrage du site (règles CSS dans `index.css`) : rien à ajouter tableau par tableau.
