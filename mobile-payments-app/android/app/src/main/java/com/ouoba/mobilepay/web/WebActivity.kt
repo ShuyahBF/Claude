@@ -197,7 +197,10 @@ class WebActivity : FragmentActivity() {
                 ouvrirAilleurs(u); return true
             }
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) { progression.visibility = android.view.View.VISIBLE }
-            override fun onPageFinished(view: WebView, url: String?) { progression.visibility = android.view.View.GONE; CookieManager.getInstance().flush() }
+            override fun onPageFinished(view: WebView, url: String?) {
+                progression.visibility = android.view.View.GONE; CookieManager.getInstance().flush()
+                surveillerDemarrageSite(url)
+            }
             // Pas de connexion : page locale avec un bouton « Réessayer » (seulement pour la page principale, pas pour une image)
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 if (request.isForMainFrame) view.loadUrl("file:///android_asset/hors_ligne.html")
@@ -236,6 +239,9 @@ class WebActivity : FragmentActivity() {
             override fun handleOnBackPressed() { if (web.canGoBack()) web.goBack() else finish() }
         })
 
+        // Lot 2.30 : à CHAQUE nouvelle version de l'application, la mémoire (cache) du site est vidée une fois : un ancien fichier gardé en mémoire ne peut plus bloquer le démarrage
+        val prefsCache = getSharedPreferences("demarrage_site", Context.MODE_PRIVATE)
+        if (prefsCache.getInt("version_cache", 0) != BuildConfig.VERSION_CODE) { web.clearCache(true); prefsCache.edit().putInt("version_cache", BuildConfig.VERSION_CODE).apply() }
         if (savedInstanceState != null) web.restoreState(savedInstanceState) else web.loadUrl(adresseSite.toString())
     }
 
@@ -312,6 +318,22 @@ class WebActivity : FragmentActivity() {
         val lancer = { demandeEnregistrement.launch(getSystemService(Context.MEDIA_PROJECTION_SERVICE).let { (it as MediaProjectionManager).createScreenCaptureIntent() }) }
         // Android 13 et plus : la notification « enregistrement en cours » doit être autorisée (on continue quoi qu'il arrive)
         if (android.os.Build.VERSION.SDK_INT >= 33) demanderAutorisations(arrayOf(Manifest.permission.POST_NOTIFICATIONS)) { lancer() } else lancer()
+    }
+
+    private var secoursCacheFait = false
+
+    /**
+     * SECOURS « ÉCRAN BLANC » (lot 2.30) : 12 secondes après la fin du chargement d'une page d'auRor, si le site n'a rien affiché (zone « root » vide), l'application vide
+     * UNE fois la mémoire du site et recharge. (Le site a aussi sa propre carte de secours avec « Réessayer ».) Observé le 18/11/2026 : écran blanc tenace jusqu'au « vider le cache ».
+     */
+    private fun surveillerDemarrageSite(url: String?) {
+        if (secoursCacheFait || url == null || !estAuror(Uri.parse(url))) return
+        web.postDelayed({
+            if (secoursCacheFait || isFinishing || isDestroyed) return@postDelayed
+            web.evaluateJavascript("(function(){var r=document.getElementById('root');return !!(r&&r.childElementCount>0)})()") { resultat ->
+                if (resultat == "false" && !secoursCacheFait) { secoursCacheFait = true; web.clearCache(true); web.loadUrl(adresseSite.toString()) }
+            }
+        }, 12_000)
     }
 
     /** Recharge le site (bouton « Réessayer » de la page « Pas de connexion »). */
