@@ -32,7 +32,7 @@ import java.util.Calendar
  * Garde-fous :
  *  - l'accord d'Android est redemandé À CHAQUE enregistrement (fenêtre du système) ; une notification reste affichée tant que l'enregistrement dure ;
  *  - la fenêtre de paiement (montant + code secret) est protégée (FLAG_SECURE) : elle apparaît NOIRE dans la vidéo ;
- *  - 3 minutes au plus ; vidéos effacées au bout de 7 jours ; jamais de son (pas de micro).
+ *  - 10 minutes au plus ; vidéos effacées au bout de 7 jours ; jamais de son (pas de micro).
  */
 object EnregistreurEcran {
     @Volatile var enCours: Boolean = false
@@ -122,7 +122,7 @@ class ServiceEnregistrementEcran : Service() {
             r.setVideoSource(MediaRecorder.VideoSource.SURFACE)      // jamais de son : pas de source audio
             r.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             r.setVideoEncoder(MediaRecorder.VideoEncoder.H264)
-            r.setVideoSize(l, h); r.setVideoFrameRate(30); r.setVideoEncodingBitRate(3_000_000)
+            r.setVideoSize(l, h); r.setVideoFrameRate(24); r.setVideoEncodingBitRate(1_500_000)
             r.setMaxDuration(EnregistreurEcranLogique.DUREE_MAX_MS)
             r.setOutputFile(f.absolutePath)
             r.setOnInfoListener { _, quoi, _ -> if (quoi == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) arreter() }
