@@ -7,8 +7,8 @@ import java.io.File
  * Pour un développeur WinDev : ce sont les petits calculs que l'on isole pour les tester sans téléphone.
  */
 object EnregistreurEcranLogique {
-    /** Durée maximale d'une vidéo (10 minutes) : au-delà l'enregistrement s'arrête tout seul (fichier léger, partage facile). */
-    const val DUREE_MAX_MS = 600_000
+    /** Durée maximale d'une vidéo (15 minutes, demande du propriétaire du 19/11/2026 ; 10 minutes avant) : au-delà l'enregistrement s'arrête tout seul (fichier léger, partage facile). */
+    const val DUREE_MAX_MS = 900_000
     /** Les vidéos non envoyées sont effacées au bout de ce nombre de jours (elles contiennent ce qui était à l'écran). */
     const val JOURS_CONSERVATION = 7
 
