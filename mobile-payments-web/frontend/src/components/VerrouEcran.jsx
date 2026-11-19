@@ -4,6 +4,7 @@ import ChampMotDePasse from "@/components/ChampMotDePasse";
 import { useAuth } from "@/context/AuthContext";
 import { apiClient, messageErreur } from "@/lib/api";
 import { empreinteConnexionMemorisee, empreinteConnexionRetrouver } from "@/lib/pontAndroid";
+import { ecrireDrapeau, lireDrapeau } from "@/lib/verrouEtat";
 
 // ============================================================================
 // VERROU DE L'ÉCRAN (lot 64) — téléphone laissé dans les mains des enfants.
@@ -11,17 +12,15 @@ import { empreinteConnexionMemorisee, empreinteConnexionRetrouver } from "@/lib/
 // Au RETOUR :
 //   - absence plus courte que le délai réglé par l'administrateur (Admin → Comptes, 30 s par défaut) : l'écran se rouvre tout seul ;
 //   - absence plus longue (ou délai 0 = toujours) : l'écran reste FLOUTÉ et le mot de passe du compte est redemandé.
+// Le drapeau du verrou est EFFACÉ à chaque connexion, inscription, déconnexion ou perte de session (lib/verrouEtat.js) : une session qui expire
+// pendant le verrou ne verrouille plus la connexion suivante.
 // Le verrou survit à un rechargement de la page (drapeau dans sessionStorage) : F5 ne le contourne pas. Pendant le verrou, tout le
 // contenu est inerte (ni toucher, ni clavier, ni lecteur d'écran). « Se déconnecter » reste possible.
 // Les fenêtres ouvertes par le site lui-même (confirmation, sélecteur de fichier) ne comptent PAS comme un départ : la tolérance
 // est partagée avec ProtectionCaptures (window.__mpwTolerance).
 // Monté une seule fois dans Layout (pages connectées) ; la page de connexion n'a pas de compte à protéger.
 // ============================================================================
-const CLE_VERROU = "mpw_verrou_ecran";
 const DELAI_DEFAUT_S = 30;
-
-const lireDrapeau = () => { try { return sessionStorage.getItem(CLE_VERROU) === "1"; } catch { return false; } };
-const ecrireDrapeau = (v) => { try { if (v) sessionStorage.setItem(CLE_VERROU, "1"); else sessionStorage.removeItem(CLE_VERROU); } catch { /* stockage indisponible */ } };
 
 export default function VerrouEcran() {
   const { user, deconnexion } = useAuth();
@@ -47,7 +46,8 @@ export default function VerrouEcran() {
   // Surveillance des départs et des retours
   useEffect(() => {
     if (!idUtilisateur) return undefined;
-    const depart = () => { if (parti.current === null) parti.current = Date.now(); };
+    // Un départ pendant une fenêtre du site ou du téléphone (empreinte, code) n'en est pas un : même tolérance pour le blur ET la visibilité
+    const depart = () => { if (Date.now() < (window.__mpwTolerance || 0)) return; if (parti.current === null) parti.current = Date.now(); };
     const retour = () => {
       if (parti.current === null) return;
       const absence = Date.now() - parti.current;

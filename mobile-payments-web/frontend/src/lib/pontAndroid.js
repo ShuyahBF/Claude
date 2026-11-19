@@ -1,3 +1,5 @@
+import { avecTolerance } from "@/lib/verrouEtat";
+
 // Pont entre le site auRor et l'application Android auRor (version hybride).
 //
 // Dans l'application, le site est affiché dans une fenêtre intégrée qui expose l'objet « window.AuRorAndroid » (code natif). Dans un navigateur ordinaire
@@ -138,13 +140,13 @@ export function coffreTelephoneMemorise() {
 export function coffreTelephoneMemoriser(secret) {
   const [id, promesse] = attendreRetour();
   window.AuRorAndroid.coffreMemoriser(id, String(secret));
-  return promesse;
+  return avecTolerance(promesse);                // la fenêtre d'empreinte du téléphone ne verrouille pas l'écran du site
 }
 /** Retrouve le secret mémorisé après empreinte / code du téléphone. Rend { secret } ou { erreur }. */
 export function coffreTelephoneRetrouver() {
   const [id, promesse] = attendreRetour();
   window.AuRorAndroid.coffreRetrouver(id);
-  return promesse;
+  return avecTolerance(promesse);                // la fenêtre d'empreinte du téléphone ne verrouille pas l'écran du site
 }
 /** Oublie le secret mémorisé sur ce téléphone. */
 export function coffreTelephoneOublier() {
@@ -165,13 +167,13 @@ export function empreinteConnexionMemorisee() {
 export function empreinteConnexionMemoriser(id, secret) {
   const [num, promesse] = attendreRetour();
   window.AuRorAndroid.empreinteConnexionMemoriser(num, JSON.stringify({ id, secret }));
-  return promesse;
+  return avecTolerance(promesse);                // la fenêtre d'empreinte du téléphone ne verrouille pas l'écran du site
 }
 /** Demande l'empreinte et rend { id, secret } (ou { erreur }). */
 export function empreinteConnexionRetrouver() {
   const [num, promesse] = attendreRetour();
   window.AuRorAndroid.empreinteConnexionRetrouver(num);
-  return promesse;
+  return avecTolerance(promesse);                // la fenêtre d'empreinte du téléphone ne verrouille pas l'écran du site
 }
 /** Oublie l'empreinte de connexion de ce téléphone. */
 export function empreinteConnexionOublier() {
