@@ -32,7 +32,7 @@ import java.util.Calendar
  * Garde-fous :
  *  - l'accord d'Android est redemandé À CHAQUE enregistrement (fenêtre du système) ; une notification reste affichée tant que l'enregistrement dure ;
  *  - la fenêtre de paiement (montant + code secret) est protégée (FLAG_SECURE) : elle apparaît NOIRE dans la vidéo ;
- *  - 10 minutes au plus ; vidéos effacées au bout de 7 jours ; jamais de son (pas de micro).
+ *  - 15 minutes au plus ; vidéos effacées au bout de 7 jours ; jamais de son (pas de micro).
  */
 object EnregistreurEcran {
     @Volatile var enCours: Boolean = false
