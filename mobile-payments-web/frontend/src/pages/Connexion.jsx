@@ -52,7 +52,13 @@ export default function Connexion({ mode = "connexion" }) {
     } finally { setEmpreinteEnCours(false); }
   };
   // Au premier affichage de la page : l'empreinte est demandée tout de suite (sinon le bouton reste disponible)
-  useEffect(() => { if (peutOuvrir && !user) ouvrirParEmpreinte(); /* eslint-disable-next-line */ }, []);
+  // Lot 208 : demandée APRÈS l'affichage de la page (le formulaire est déjà utilisable pendant que la fenêtre d'empreinte s'ouvre), jamais pendant le premier affichage.
+  useEffect(() => {
+    if (!(peutOuvrir && !user)) return undefined;
+    const t = setTimeout(ouvrirParEmpreinte, 800);
+    return () => clearTimeout(t);
+    /* eslint-disable-next-line */
+  }, []);
   const champ = (cle) => (e) => setForm({ ...form, [cle]: e.target.value });
 
   if (user) return <Navigate to={suite} replace />;

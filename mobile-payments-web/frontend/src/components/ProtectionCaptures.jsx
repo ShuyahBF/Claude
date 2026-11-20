@@ -40,6 +40,8 @@ import { useEffect, useRef, useState } from "react";
 
 // Durée maximale du flou « perte de focus » quand la page reste visible.
 const DUREE_MAX_FLOU_FOCUS_MS = 4000;
+// Filet de sécurité : durée maximale absolue du voile quand la page est visible (lot 208).
+const VOILE_MAX_MS = 8000;
 // Fréquence de vérification du retour du focus pendant le flou.
 const INTERVALLE_VERIFICATION_MS = 400;
 // Délai de tolérance après une fenêtre native ouverte par le site.
@@ -73,9 +75,18 @@ export default function ProtectionCaptures() {
       delaiMax = null;
     };
 
+    // FILET DE SÉCURITÉ (lot 208, constat du 20/11/2026 : écran vide pendant plusieurs minutes après l'identification, avec des fenêtres
+    // flottantes d'un outil d'enregistrement qui se disputent le focus) : quelle que soit la cause, le voile ne reste JAMAIS plus de
+    // VOILE_MAX_MS tant que la page est visible. Un voile « page masquée » (aperçu des applications) n'est pas concerné : la page n'est alors pas visible.
+    let filet = null;
+    const armerFiletVoile = () => {
+      clearTimeout(filet);
+      filet = setTimeout(() => { if (document.visibilityState === "visible") demasquer(); }, VOILE_MAX_MS);
+    };
     // Floute / défloute tout le site (classe CSS définie dans index.css)
-    const masquer = () => racine.classList.add("masque-capture");
+    const masquer = () => { racine.classList.add("masque-capture"); armerFiletVoile(); };
     const demasquer = () => {
+      clearTimeout(filet);
       arreterMinuteries();
       if (!racine.classList.contains("masque-capture")) return;
       racine.classList.remove("masque-capture");
@@ -202,6 +213,9 @@ export default function ProtectionCaptures() {
       if (e.target?.closest?.("img, video, canvas, picture")) e.preventDefault();
     };
 
+    // Un toucher de l'écran prouve que la personne regarde la page : le voile « perte de focus » est retiré aussitôt
+    const surToucher = () => { if (document.visibilityState === "visible") demasquer(); };
+    document.addEventListener("pointerdown", surToucher, true);
     window.addEventListener("keydown", surTouche);
     window.addEventListener("keyup", surTouche);
     window.addEventListener("blur", surPerteFocus);
@@ -214,6 +228,7 @@ export default function ProtectionCaptures() {
     document.addEventListener("change", surFinSelection, true);
     document.addEventListener("cancel", surFinSelection, true);
     return () => {
+      document.removeEventListener("pointerdown", surToucher, true);
       window.removeEventListener("keydown", surTouche);
       window.removeEventListener("keyup", surTouche);
       window.removeEventListener("blur", surPerteFocus);
