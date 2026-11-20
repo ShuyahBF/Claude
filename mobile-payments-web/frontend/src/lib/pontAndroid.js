@@ -173,8 +173,13 @@ export function empreinteConnexionMemoriser(id, secret) {
 export function empreinteConnexionRetrouver() {
   const [num, promesse] = attendreRetour();
   window.AuRorAndroid.empreinteConnexionRetrouver(num);
-  return avecTolerance(promesse);                // la fenêtre d'empreinte du téléphone ne verrouille pas l'écran du site
+  // Attente LIMITÉE (lot 208) : si la fenêtre d'empreinte du téléphone ne répond pas (autre fenêtre par-dessus, application en arrière-plan),
+  // la page rend la main au bout de DELAI_EMPREINTE_MS et propose le mot de passe, au lieu d'attendre indéfiniment.
+  const limite = new Promise((resoudre) => setTimeout(() => { try { delete window.auRorRetour[num]; } catch { /* déjà retiré */ } resoudre({ erreur: "L'empreinte n'a pas répondu : tapez votre mot de passe." }); }, DELAI_EMPREINTE_MS));
+  return avecTolerance(Promise.race([promesse, limite]));                // la fenêtre d'empreinte du téléphone ne verrouille pas l'écran du site
 }
+/** Attente maximale de la fenêtre d'empreinte à la connexion (ms). */
+export const DELAI_EMPREINTE_MS = 20000;
 /** Oublie l'empreinte de connexion de ce téléphone. */
 export function empreinteConnexionOublier() {
   try { if (dansApplication() && window.AuRorAndroid.empreinteConnexionOublier) window.AuRorAndroid.empreinteConnexionOublier(); } catch { /* sans importance */ }

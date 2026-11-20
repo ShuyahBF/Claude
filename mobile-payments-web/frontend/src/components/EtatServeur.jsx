@@ -10,7 +10,7 @@ const DELAI_MAX_MS = 10000;   // au-delà : injoignable
 const ETATS = {
   verification: { texte: "Vérification du serveur…", couleur: "bg-gray-400" },
   actif: { texte: "Serveur actif", couleur: "bg-green-500" },
-  lent: { texte: "Serveur lent", couleur: "bg-amber-500" },
+  lent: { texte: "Réseau lent", couleur: "bg-amber-500" },
   injoignable: { texte: "Serveur injoignable", couleur: "bg-red-500" },
 };
 
@@ -30,8 +30,10 @@ export default function EtatServeur() {
         // Adresse IP du visiteur (affichée en petit, en gris, au-dessus de l'état)
         try { const j = await r.clone().json(); if (!fini && j?.ip) setIp(j.ip); } catch { /* sans importance */ }
         if (!fini) setEtat(!r.ok ? "injoignable" : duree > SEUIL_LENT_MS ? "lent" : "actif");
-      } catch {
-        if (!fini) setEtat("injoignable");
+      } catch (e) {
+        // Lot 208 : une vérification coupée par le délai (aucune réponse en 10 s) n'est PAS une panne prouvée du serveur (réseau du téléphone lent,
+        // fenêtre en arrière-plan) : « Réseau lent ». « Injoignable » seulement si la connexion échoue franchement ou si le serveur répond par une erreur.
+        if (!fini) setEtat(e?.name === "AbortError" ? "lent" : "injoignable");
       } finally {
         clearTimeout(minuteur);
       }
