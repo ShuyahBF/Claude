@@ -1,5 +1,5 @@
 import { estInstallee } from "@/lib/installation";   // page d'installation
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import ChampMotDePasse from "@/components/ChampMotDePasse";
 import ChampTelephone, { SelecteurPays } from "@/components/ChampTelephone";
@@ -44,21 +44,16 @@ export default function Connexion({ mode = "connexion" }) {
     setErreur(""); setEmpreinteEnCours(true);
     try {
       const r = await empreinteConnexionRetrouver();
-      if (!r?.secret) { setErreur(r?.erreur || "Empreinte non reconnue : tapez votre mot de passe."); return; }
+      // Message du téléphone traduit : « Identification impossible » = le téléphone a validé le doigt sans remettre la clé du coffre
+      if (!r?.secret) { setErreur((r?.erreur || "").startsWith("Identification impossible") ? "Le téléphone n'a pas pu confirmer l'empreinte : tapez votre mot de passe." : (r?.erreur || "Empreinte non reconnue : tapez votre mot de passe.")); return; }
       await connexionEmpreinte(r.id, r.secret);
       navigate(suite, { replace: true });
     } catch (err) {
       setErreur(messageErreur(err, "Empreinte non reconnue : tapez votre mot de passe."));
     } finally { setEmpreinteEnCours(false); }
   };
-  // Au premier affichage de la page : l'empreinte est demandée tout de suite (sinon le bouton reste disponible)
-  // Lot 208 : demandée APRÈS l'affichage de la page (le formulaire est déjà utilisable pendant que la fenêtre d'empreinte s'ouvre), jamais pendant le premier affichage.
-  useEffect(() => {
-    if (!(peutOuvrir && !user)) return undefined;
-    const t = setTimeout(ouvrirParEmpreinte, 800);
-    return () => clearTimeout(t);
-    /* eslint-disable-next-line */
-  }, []);
+  // Lot 213 : l'empreinte n'est PLUS demandée toute seule à l'ouverture de la page (constat du 21/11/2026 : la fenêtre du téléphone s'ouvrait par-dessus la saisie des
+  // identifiants, bloquait l'écran, puis « Identification impossible. » s'affichait avant toute connexion). Elle ne se lance que par le bouton « Se connecter avec l'empreinte ».
   const champ = (cle) => (e) => setForm({ ...form, [cle]: e.target.value });
 
   if (user) return <Navigate to={suite} replace />;
