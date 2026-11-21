@@ -19,8 +19,8 @@ android {
         // versionName : numéro affiché à l'utilisateur (et envoyé à SAWALI dans le signal de présence)
         // Téléphones ARM seulement : la lecture de texte (ML Kit) embarque des bibliothèques natives par architecture ; ignorer x86 (émulateurs) allège l'application
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
-        versionCode = 46
-        versionName = "2.35.0"
+        versionCode = 47
+        versionName = "2.36.0"
 
         // Adresse du site auRor affiché dans l'application (version hybride, lot 18) : TOUT auRor (marchands, QR codes, géolocalisation, historique…).
         // Surcharge possible pour un essai : -PsiteUrl=https://autre-adresse/
@@ -134,4 +134,5 @@ dependencies {
     // Lecture optique du montant (texte lu SUR le téléphone, image jamais envoyée)
     implementation("com.google.mlkit:text-recognition:16.0.1")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")   // org.json réel pour les tests JVM
 }
