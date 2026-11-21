@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icône carrée de la version « direct » pour Android 7 (pas d'icône adaptative) : superposition du fond et du glyphe. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_launcher_direct_fond" />
+    <item android:drawable="@drawable/ic_launcher_direct_avant" />
+</layer-list>
