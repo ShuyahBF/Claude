@@ -83,6 +83,17 @@ export default function ProtectionCaptures() {
       clearTimeout(filet);
       filet = setTimeout(() => { if (document.visibilityState === "visible") demasquer(); }, VOILE_MAX_MS);
     };
+    // Lot 212 : le WebView Android peut garder une page VIDE affichée après le retrait du voile, jusqu'au changement d'application (constat du 21/11/2026 :
+    // la page apparaissait en entier dès qu'on quittait puis revenait). Un petit changement visuel d'une image, puis son retrait, oblige le WebView à tout redessiner.
+    const forcerRedessin = () => {
+      const corps = document.body;
+      if (!corps) return;
+      corps.style.opacity = "0.999";
+      requestAnimationFrame(() => {
+        corps.style.opacity = "";
+        window.dispatchEvent(new Event("resize"));
+      });
+    };
     // Floute / défloute tout le site (classe CSS définie dans index.css)
     const masquer = () => { racine.classList.add("masque-capture"); armerFiletVoile(); };
     const demasquer = () => {
@@ -93,6 +104,7 @@ export default function ProtectionCaptures() {
       // Force le navigateur à redessiner tout de suite (Safari iOS gardait
       // parfois l'image floutée affichée jusqu'au prochain toucher).
       void document.body?.offsetHeight;
+      forcerRedessin();
     };
 
     // Flou TEMPORAIRE : retiré automatiquement dès que la page est de nouveau
