@@ -20,6 +20,7 @@
 
     <!-- Android 11+ : déclare qu'on ouvre le composeur, la messagerie et le navigateur -->
     <queries>
+        <package android:name="com.shuyah.store" />   <!-- bouton « Mettre à jour » : ShuyahStore installée -->
         <intent><action android:name="android.intent.action.DIAL" /><data android:scheme="tel" /></intent>
         <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="https" /></intent>
         <intent><action android:name="android.intent.action.SENDTO" /><data android:scheme="mailto" /></intent>

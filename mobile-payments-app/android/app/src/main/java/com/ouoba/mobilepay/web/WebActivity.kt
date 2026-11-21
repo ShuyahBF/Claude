@@ -165,6 +165,7 @@ class WebActivity : FragmentActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#F3F7FC"))
             addView(bandeHaut, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0))
+            addView(BandeauMiseAJourVue.creer(this@WebActivity), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))   // nouvelle version dans ShuyahStore (2.36.0, version « direct » seulement)
             addView(zoneSite, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
         setContentView(racine)
