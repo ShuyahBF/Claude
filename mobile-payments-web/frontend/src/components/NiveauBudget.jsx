@@ -28,16 +28,16 @@ export default function NiveauBudget({ n, detail = false }) {
       ) : (
         <p>{n.deja ? <b>Budget dépassé de {fcfa(n.depense - n.montant)}.</b> : <>Il vous reste <b className="tabular-nums">{fcfa(n.reste)}</b> {p.court}.</>}</p>
       )}
-      {/* Budgets par opérateur (lot 219) : une barre par opérateur qui a son plafond ; celui du paiement préparé montre l'effet de ce paiement */}
-      {n.operateurs?.length > 0 && (
-        <ul className="space-y-1.5 border-t border-black/10 pt-2 text-xs" data-testid="budget-operateurs">
-          {n.operateurs.map((o) => (
-            <li key={o.cle} className={o.depasse || o.deja ? "font-semibold text-red-800" : ""}>
-              <div className="flex flex-wrap justify-between gap-2"><span>{STYLES[o.niveau].icone} {o.cle}</span>
-                <span className="tabular-nums">{fcfa(o.prepare > 0 ? o.apres : o.depense)} / {fcfa(o.montant)} ({o.prepare > 0 ? o.pctApres : o.pct} %)</span></div>
-              <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-white/70" aria-hidden="true"><div className={`h-full ${STYLES[o.niveau].barre}`} style={{ width: `${Math.min(100, o.prepare > 0 ? o.pctApres : o.pct)}%` }} /></div>
-              {o.depasse && <p>Ce paiement dépasserait le budget {o.cle} de {fcfa(o.exces)}.</p>}
-              {!o.depasse && o.deja && <p>Budget {o.cle} dépassé de {fcfa(o.depense - o.montant)}.</p>}
+      {/* Limites par bénéficiaire (lot 220) : une barre par bénéficiaire qui a sa limite ; celui du paiement préparé montre l'effet de ce paiement */}
+      {n.beneficiaires?.length > 0 && (
+        <ul className="space-y-1.5 border-t border-black/10 pt-2 text-xs" data-testid="budget-beneficiaires">
+          {n.beneficiaires.map((x) => (
+            <li key={x.libelle} className={x.depasse || x.deja ? "font-semibold text-red-800" : ""}>
+              <div className="flex flex-wrap justify-between gap-2"><span>{STYLES[x.niveau].icone} 👤 {x.libelle}</span>
+                <span className="tabular-nums">{fcfa(x.prepare > 0 ? x.apres : x.depense)} / {fcfa(x.montant)} ({x.prepare > 0 ? x.pctApres : x.pct} %)</span></div>
+              <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-white/70" aria-hidden="true"><div className={`h-full ${STYLES[x.niveau].barre}`} style={{ width: `${Math.min(100, x.prepare > 0 ? x.pctApres : x.pct)}%` }} /></div>
+              {x.depasse && <p>Ce paiement dépasserait la limite de {x.libelle} de {fcfa(x.exces)}.</p>}
+              {!x.depasse && x.deja && <p>Limite de {x.libelle} dépassée de {fcfa(x.depense - x.montant)}.</p>}
             </li>
           ))}
         </ul>

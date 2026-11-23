@@ -65,13 +65,17 @@ ok("solde total : premier point = solde du premier SMS, puis somme des derniers 
 ok("dernier point : 50 000 (Orange) + 3 000 (Moov)", sr.points.at(-1).total === 53000);
 ok("entrée d'argent repérée", sr.entrees.length === 1 && sr.entrees[0].montant === 20000);
 ok("sans solde dans les SMS : pas de courbe", B.serieSolde([ligne("z", "DEPENSE", 1, t(3))], 0, t(25)).aSolde === false);
-// ---- Lot 219 : budget par opérateur ----
-const bo = { actif: true, montant: 65000, periode: "mois", depuis: 0, operateurs: { OrangeMoney: 30000, "Moov Africa": 0, "": 5 } };
-ok("opérateurs : clés unifiées, montants nuls retirés", JSON.stringify(B.normaliser(bo).operateurs) === '{"Orange":30000}');
-const nb = B.niveauBudget(lignes, bo, 0, maintenant);
-ok("dépenses d'Orange comptées sous la clé « Orange »", nb.operateurs.length === 1 && nb.operateurs[0].cle === "Orange" && nb.operateurs[0].depense === 25000 && nb.operateurs[0].reste === 5000);
-const nb2 = B.niveauBudget(lignes, bo, 6000, maintenant, "Orange");
-ok("paiement Orange qui dépasse le budget Orange (mais pas le global)", nb2.opDepasse && !nb2.depasse && nb2.operateurs[0].exces === 1000);
-const nb3 = B.niveauBudget(lignes, bo, 6000, maintenant, "Moov Africa");
-ok("paiement Moov : le budget Orange n'est pas touché", !nb3.opDepasse && nb3.operateurs[0].prepare === 0);
-ok("sans budget par opérateur : liste vide", B.niveauBudget(lignes, { ...bo, operateurs: {} }, 0, maintenant).operateurs.length === 0);
+// ---- Lot 220 : limites par bénéficiaire ----
+const bb = { actif: true, montant: 65000, periode: "mois", depuis: 0, beneficiaires: [{ nom: "Awa Ouédraogo", tel: "", montant: 30000 }, { nom: "", tel: "+226 70 12 34 56", montant: 20000 }, { nom: "x", tel: "", montant: 0 }] };
+ok("bénéficiaires nettoyés (montant nul retiré)", B.normaliser(bb).beneficiaires.length === 2);
+ok("doublon (même numéro) retiré", B.normaliserBeneficiaires([{ tel: "70123456", montant: 5 }, { tel: "+226 70 12 34 56", montant: 9 }]).length === 1);
+ok("correspondance par numéro (8 derniers chiffres)", B.correspond({ nom: "", tel: "+226 70 12 34 56" }, "", "70123456") && !B.correspond({ nom: "", tel: "70123456" }, "", "70123457"));
+ok("correspondance par nom (sans accents ni casse, l'un contient l'autre)", B.correspond({ nom: "Awa Ouédraogo" }, "AWA OUEDRAOGO", "") && B.correspond({ nom: "Sandaga" }, "MARCHE SANDAGA", "") && !B.correspond({ nom: "Awa" }, "Abdou", ""));
+const lb = [ligne("b1", "DEPENSE", 12000, t(10), "OrangeMoney", { tiers: "AWA OUEDRAOGO", tel: "70999999" }), ligne("b2", "DEPENSE", 9000, t(12), "Moov Money", { tiers: "", tel: "+22670123456" }), ligne("b3", "RECETTE", 40000, t(13), "OrangeMoney", { tiers: "AWA OUEDRAOGO" }), ligne("b4", "DEPENSE", 500, t(14), "OrangeMoney", { tiers: "PHARMACIE" })];
+const nbn = B.niveauBudget(lb, bb, 0, maintenant);
+ok("dépenses par bénéficiaire (recette ignorée)", nbn.beneficiaires[0].depense === 12000 && nbn.beneficiaires[0].reste === 18000 && nbn.beneficiaires[1].depense === 9000);
+const nb2 = B.niveauBudget(lb, bb, 19000, maintenant, { nom: "Awa Ouédraogo", tel: "" });
+ok("paiement vers Awa qui dépasse sa limite (pas le global)", nb2.benefDepasse && !nb2.depasse && nb2.beneficiaires[0].exces === 1000 && nb2.beneficiaires[1].prepare === 0);
+ok("paiement vers un autre : aucune limite touchée", !B.niveauBudget(lb, bb, 19000, maintenant, { nom: "Pharmacie", tel: "" }).benefDepasse);
+ok("bénéficiaires connus d'après les SMS", B.beneficiairesConnus(lb).length === 3);
+ok("sans limite par bénéficiaire : liste vide", B.niveauBudget(lb, { ...bb, beneficiaires: [] }, 0, maintenant).beneficiaires.length === 0);
