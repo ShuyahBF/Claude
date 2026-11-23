@@ -184,3 +184,31 @@ export const DELAI_EMPREINTE_MS = 20000;
 export function empreinteConnexionOublier() {
   try { if (dansApplication() && window.AuRorAndroid.empreinteConnexionOublier) window.AuRorAndroid.empreinteConnexionOublier(); } catch { /* sans importance */ }
 }
+
+
+/**
+ * Copie de sécurité (v2.38) : fait enregistrer un FICHIER par le téléphone (sélecteur de fichiers : Documents, carte SD…). Le texte (déjà chiffré) est transmis en base64.
+ * Rend { ok: true, nom } ou { erreur }. Hors application : { indisponible: true } (le site télécharge alors le fichier comme un navigateur).
+ */
+export function enregistrerFichier(nom, texte) {
+  if (!dansApplication()) return Promise.resolve({ indisponible: true });
+  if (!window.AuRorAndroid.enregistrerFichier) return Promise.resolve({ ancienne: true });          // application d'avant la 2.38 : elle ne sait pas enregistrer de fichier
+  const [id, promesse] = attendreRetour();
+  const octets = new TextEncoder().encode(texte);
+  let s = "";
+  for (let i = 0; i < octets.length; i += 0x8000) s += String.fromCharCode(...octets.subarray(i, i + 0x8000));
+  window.AuRorAndroid.enregistrerFichier(id, nom, btoa(s));
+  return promesse;
+}
+
+/** Fait choisir un fichier par le téléphone et rend { nom, texte } (contenu lu en texte) ou { erreur } ; hors application : { indisponible: true }. */
+export function choisirFichier() {
+  if (!dansApplication()) return Promise.resolve({ indisponible: true });
+  if (!window.AuRorAndroid.choisirFichier) return Promise.resolve({ ancienne: true });
+  const [id, promesse] = attendreRetour();
+  window.AuRorAndroid.choisirFichier(id);
+  return promesse.then((r) => {
+    if (r?.contenu) { try { const bin = atob(r.contenu); const o = Uint8Array.from(bin, (c) => c.charCodeAt(0)); return { nom: r.nom, texte: new TextDecoder().decode(o) }; } catch { return { erreur: "Fichier illisible." }; } }
+    return r;
+  });
+}

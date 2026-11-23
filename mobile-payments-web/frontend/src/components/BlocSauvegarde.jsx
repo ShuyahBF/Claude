@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { EVENEMENT_ASSISTANT, EVENEMENT_MAJ } from "@/components/AssistantSauvegarde";
@@ -8,6 +8,8 @@ import { messageErreur } from "@/lib/api";
 import { cleCourante } from "@/lib/archiveCrypto";
 import { cleDuJournal, lireCleCoffre, oublierCleCoffre, pourUtilisateur } from "@/lib/journalIntime";
 import { alerteSauvegarde, definirModeServeur, effacerAlerte, effacerSauvegardeServeur, lireEtatServeur, oublierResultat, resumeComptes, sauvegarder } from "@/lib/sauvegarde";
+import { choisirFichier, dansApplication, enregistrerFichier } from "@/lib/pontAndroid";
+import { lireCopie, preparerCopie, restaurerCopie, telechargerNavigateur } from "@/lib/copieLocale";
 import { VERSION } from "@/version";
 
 // Bloc « Sécurité et sauvegarde » du profil (lot 168) : l'utilisateur voit et CHANGE son mode (en ligne chiffrée / ce téléphone seulement),
@@ -23,6 +25,8 @@ export default function BlocSauvegarde() {
   const [confirm, setConfirm] = useState(null);       // null | "local" | "effacer" | "oublier" | "moins"
   const [refus, setRefus] = useState(null);           // { raison, comptes, ancien } : sauvegarde retenue par les contrôles, en attente de décision
   const [occupe, setOccupe] = useState(false);
+  const [aperCopie, setAperCopie] = useState(null);   // copie de sécurité lue et VÉRIFIÉE, en attente de confirmation : { inst, resume }
+  const refFichier = useRef(null);
 
   const charger = useCallback(async () => {
     pourUtilisateur(user?.id);
@@ -60,6 +64,47 @@ export default function BlocSauvegarde() {
   };
   const oublier = async () => { await oublierCleCoffre(); toast.succes("Ce téléphone ne connaît plus votre clé : votre secret sera redemandé pour sauvegarder."); setConfirm(null); await charger(); };
 
+  // ---- Copie de sécurité chiffrée EN FICHIER sur le téléphone (v2.38) ----
+  const faireCopie = async () => {
+    setOccupe(true); toast.info("Préparation de la copie chiffrée en cours…");
+    try {
+      pourUtilisateur(user?.id);
+      const r = await preparerCopie(await cleDuJournal());
+      if (!r.ok) { if (r.raison === "coffre_ferme") demander("activer"); toast.info(r.message); return; }
+      const e2 = await enregistrerFichier(r.nom, r.texte);
+      if (e2?.ancienne) toast.erreur("Cette version de l'application ne sait pas enregistrer de fichier : mettez auRor à jour depuis ShuyahStore (version 2.38 ou plus).");
+      else if (e2?.indisponible) { telechargerNavigateur(r.nom, r.texte); toast.succes(`Copie chiffrée téléchargée : ${r.resume}.`); }
+      else if (e2?.erreur) toast.erreur(e2.erreur);
+      else toast.succes(`Copie chiffrée enregistrée (${e2?.nom || r.nom}) : ${r.resume}. Gardez ce fichier en lieu sûr.`);
+    } catch (err) { toast.erreur(messageErreur(err, "Copie impossible")); } finally { setOccupe(false); }
+  };
+  const lireTexteCopie = async (texte) => {
+    setOccupe(true); toast.info("Lecture et vérification de la copie en cours…");
+    try {
+      const r = await lireCopie(texte);
+      if (!r.ok) { if (r.raison === "coffre_ferme") demander("activer"); toast.erreur(r.message); return; }
+      setAperCopie(r);
+    } finally { setOccupe(false); }
+  };
+  const choisirCopie = async () => {
+    if (dansApplication()) {
+      const f = await choisirFichier();
+      if (f?.ancienne) toast.erreur("Cette version de l'application ne sait pas lire de fichier : mettez auRor à jour depuis ShuyahStore (version 2.38 ou plus).");
+      else if (f?.texte) await lireTexteCopie(f.texte); else if (f?.erreur) toast.erreur(f.erreur);
+    } else refFichier.current?.click();
+  };
+  const confirmerRestaurationCopie = async () => {
+    const inst = aperCopie?.inst; setAperCopie(null);
+    if (!inst) return;
+    setOccupe(true); toast.info("Restauration en cours…");
+    try {
+      pourUtilisateur(user?.id);
+      const a = await restaurerCopie(inst, await cleDuJournal());
+      toast.succes(`Copie restaurée sans rien écraser : ${a.journal} page(s) de journal, ${a.carnet} contact(s) et ${a.sms} ligne(s) de SMS ajoutés.`);
+      window.dispatchEvent(new CustomEvent(EVENEMENT_MAJ));
+    } catch (err) { toast.erreur(messageErreur(err, "Restauration impossible")); } finally { setOccupe(false); }
+  };
+
   if (e === undefined) return <section className="card"><p className="text-sm text-gray-600">⏳ Lecture de votre sauvegarde…</p></section>;
   const cloud = e?.mode === "cloud";
   return (
@@ -91,9 +136,26 @@ export default function BlocSauvegarde() {
             </div>
           </div>
         )}
+        <div className="space-y-2 rounded-xl bg-gray-50 p-3 text-sm" data-testid="copie-locale">
+          <p className="font-semibold">📁 Copie de sécurité sur ce téléphone (fichier chiffré)</p>
+          <p className="text-gray-600">Enregistre votre journal, votre carnet et vos lignes de SMS dans un <b>fichier chiffré</b> (avec votre secret), à l'endroit de votre choix (Documents, carte SD…). Il reste même si l'application est désinstallée. La restauration n'écrase rien : seuls les éléments absents sont ajoutés.</p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn-primary btn-sm" disabled={occupe} onClick={faireCopie}>💾 Enregistrer une copie chiffrée</button>
+            <button type="button" className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold" disabled={occupe} onClick={choisirCopie}>📂 Restaurer depuis un fichier</button>
+            <input ref={refFichier} type="file" className="hidden" accept=".aursauv,application/octet-stream,text/plain" onChange={async (ev) => { const f = ev.target.files?.[0]; ev.target.value = ""; if (f) await lireTexteCopie(await f.text()); }} />
+          </div>
+        </div>
         <p className="text-xs text-gray-500">Votre secret (code PIN ou phrase), votre code de secours et l'application d'authentification se gèrent dans <Link to="/archives" className="underline">Archives</Link> : c'est le même coffre. Secret et code de secours perdus = données en ligne irrécupérables.</p>
       </>)}
 
+      <Modal ouvert={!!aperCopie} titre="Restaurer cette copie de sécurité ?" onFermer={() => setAperCopie(null)}>
+        <p className="text-sm">La copie contient : <b>{aperCopie?.resume}</b>.</p>
+        <p className="mt-2 text-sm text-gray-700">Rien n'est écrasé : seuls les éléments absents de ce téléphone sont ajoutés.</p>
+        <div className="mt-3 flex flex-wrap justify-end gap-2">
+          <button type="button" className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold" onClick={() => setAperCopie(null)}>↩️ Annuler</button>
+          <button type="button" className="btn-primary" disabled={occupe} onClick={confirmerRestaurationCopie}>📲 Restaurer</button>
+        </div>
+      </Modal>
       <Modal ouvert={confirm === "moins"} titre="Remplacer la sauvegarde par une version plus petite ?" onFermer={() => setConfirm(null)}>
         <p className="text-sm">{refus?.raison === "vide" ? "Ce téléphone ne contient AUCUNE donnée alors qu'une sauvegarde existe en ligne. Pour la récupérer, utilisez « Retrouver mes données »."
           : <>La nouvelle sauvegarde contiendrait <b>{refus?.comptes && resumeComptes(refus.comptes)}</b>, alors que la dernière sauvegarde vérifiée contenait <b>{refus?.ancien && resumeComptes(refus.ancien)}</b>.</>}</p>

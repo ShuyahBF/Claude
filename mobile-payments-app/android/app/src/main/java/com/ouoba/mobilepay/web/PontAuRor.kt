@@ -76,6 +76,14 @@ class PontAuRor(private val activite: WebActivity) {
     @JavascriptInterface
     fun dicterMontant(id: String) { activite.runOnUiThread { activite.dicterMontant(id) } }
 
+    /** Copie de sécurité : fait enregistrer un fichier (contenu chiffré en base64) dans l'emplacement choisi par l'utilisateur ; rend { ok, nom } ou { erreur } au site (numéro `id`). */
+    @JavascriptInterface
+    fun enregistrerFichier(id: String, nom: String, base64: String) { activite.runOnUiThread { activite.enregistrerFichier(id, nom, base64) } }
+
+    /** Copie de sécurité : fait choisir un fichier de copie ; rend { nom, contenu (base64) } ou { erreur } au site (numéro `id`). */
+    @JavascriptInterface
+    fun choisirFichier(id: String) { activite.runOnUiThread { activite.choisirFichier(id) } }
+
     /** Ouvre la page des réglages d'auRor dans le téléphone (Autorisations : micro, caméra, position…) pour accorder un accès refusé. */
     @JavascriptInterface
     fun ouvrirReglagesApplication() {

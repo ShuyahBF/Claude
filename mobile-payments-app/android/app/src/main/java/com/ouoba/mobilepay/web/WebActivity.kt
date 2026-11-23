@@ -115,6 +115,41 @@ class WebActivity : FragmentActivity() {
         }
     }
 
+    // ---- COPIE DE SÉCURITÉ CHIFFRÉE (2.38.0) : le site fait ENREGISTRER un fichier (déjà chiffré) ou CHOISIR un fichier de copie, par le sélecteur de fichiers d'Android
+    // (Documents, carte SD…). Aucune autorisation de stockage n'est nécessaire. Le résultat revient au site sous `id`.
+    private var retourFichier: String? = null
+    private var octetsFichier: ByteArray? = null
+    private val creationFichier = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        val id = retourFichier; retourFichier = null
+        val octets = octetsFichier; octetsFichier = null
+        if (id == null) return@registerForActivityResult
+        if (uri == null || octets == null) { retour(id, JSONObject().put("erreur", "Enregistrement annulé : aucune copie n'a été faite.")); return@registerForActivityResult }
+        try {
+            contentResolver.openOutputStream(uri)?.use { it.write(octets) } ?: throw java.io.IOException("emplacement illisible")
+            retour(id, JSONObject().put("ok", true).put("nom", uri.lastPathSegment?.substringAfterLast('/') ?: ""))
+        } catch (e: Exception) { retour(id, JSONObject().put("erreur", "Enregistrement du fichier impossible : " + (e.message ?: "erreur"))) }
+    }
+    private val choixFichierCopie = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val id = retourFichier; retourFichier = null
+        if (id == null) return@registerForActivityResult
+        if (uri == null) { retour(id, JSONObject().put("erreur", "Aucun fichier choisi.")); return@registerForActivityResult }
+        try {
+            val octets = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw java.io.IOException("fichier illisible")
+            if (octets.size > 60 * 1024 * 1024) throw java.io.IOException("fichier trop gros pour une copie d'auRor")
+            retour(id, JSONObject().put("nom", uri.lastPathSegment?.substringAfterLast('/') ?: "").put("contenu", android.util.Base64.encodeToString(octets, android.util.Base64.NO_WRAP)))
+        } catch (e: Exception) { retour(id, JSONObject().put("erreur", "Lecture du fichier impossible : " + (e.message ?: "erreur"))) }
+    }
+
+    /** Fait enregistrer `base64` (contenu déjà chiffré) dans un fichier choisi par l'utilisateur ; le nom proposé est `nom`. */
+    fun enregistrerFichier(id: String, nom: String, base64: String) {
+        try { octetsFichier = android.util.Base64.decode(base64, android.util.Base64.DEFAULT); retourFichier = id; creationFichier.launch(nom) }
+        catch (e: Exception) { retour(id, JSONObject().put("erreur", "Enregistrement impossible : " + (e.message ?: "erreur"))) }
+    }
+    /** Fait choisir un fichier de copie : rend { nom, contenu (base64) } ou { erreur } au site. */
+    fun choisirFichier(id: String) {
+        try { retourFichier = id; choixFichierCopie.launch(arrayOf("*/*")) } catch (e: Exception) { retour(id, JSONObject().put("erreur", "Choix du fichier impossible : " + (e.message ?: "erreur"))) }
+    }
+
     // ---- SAISIE VOCALE DU MONTANT : la reconnaissance vocale du téléphone (français) rend jusqu'à 5 transcriptions ; le site en tire le montant
     private var retourVoix: String? = null
     private val selecteurVoix = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
