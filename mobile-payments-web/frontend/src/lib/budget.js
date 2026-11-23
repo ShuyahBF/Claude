@@ -21,7 +21,7 @@ export const PERIODES = [
 export const libellePeriode = (cle) => (PERIODES.find((p) => p.cle === cle) || PERIODES[3]);
 
 /** Budget vide : désactivé, mensuel, sans montant. */
-export const BUDGET_VIDE = { actif: false, montant: 0, periode: "mois", depuis: 0, operateurs: {} };
+export const BUDGET_VIDE = { actif: false, montant: 0, periode: "mois", depuis: 0, beneficiaires: [] };
 
 /** Clé d'un opérateur : « OrangeMoney » et « Orange » donnent « Orange », « Moov Money » et « Moov Africa » donnent « Moov Africa » ; un expéditeur inconnu reste tel quel. */
 export const cleOperateur = (nom) => operateurDeAdresse(nom) || String(nom || "Autre").trim() || "Autre";
@@ -47,10 +47,7 @@ export const debutEffectif = (budget, maintenant = Date.now()) => Math.max(debut
 export function normaliser(b) {
   const montant = Math.max(0, Math.round(Number(b?.montant) || 0));
   const periode = PERIODES.some((p) => p.cle === b?.periode) ? b.periode : "mois";
-  // Budgets PAR OPÉRATEUR (lot 219) : { "Orange": 30000, … } ; montants nuls retirés ; même période que le budget global
-  const operateurs = {};
-  for (const [k, v] of Object.entries(b?.operateurs || {})) { const m = Math.max(0, Math.round(Number(v) || 0)); if (m > 0 && String(k).trim()) operateurs[cleOperateur(k)] = m; }
-  return { actif: !!b?.actif && montant > 0, montant, periode, depuis: Math.max(0, Number(b?.depuis) || 0), operateurs };
+  return { actif: !!b?.actif && montant > 0, montant, periode, depuis: Math.max(0, Number(b?.depuis) || 0), beneficiaires: normaliserBeneficiaires(b?.beneficiaires) };
 }
 
 export function chargerBudget(stockage = (typeof localStorage !== "undefined" ? localStorage : null)) {
@@ -59,6 +56,42 @@ export function chargerBudget(stockage = (typeof localStorage !== "undefined" ? 
 /** Garde le budget ; faux si le stockage est indisponible. */
 export function enregistrerBudget(budget, stockage = (typeof localStorage !== "undefined" ? localStorage : null)) {
   try { stockage.setItem(CLE, JSON.stringify(normaliser(budget))); return true; } catch { return false; }
+}
+
+// ---------- Limites par BÉNÉFICIAIRE (lot 220) : une personne ou un marchand, reconnu par son numéro ou son nom ----------
+const sansAcc = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+const huit = (t) => { const c = String(t || "").replace(/\D/g, ""); return c.length >= 8 ? c.slice(-8) : ""; };   // 8 derniers chiffres : « +226 70 12 34 56 » = « 70123456 »
+export const BENEFICIAIRES_MAX = 20;
+/** Libellé d'un bénéficiaire : son nom, et son numéro s'il en a un. */
+export const libelleBeneficiaire = (b) => [b?.nom, b?.tel].filter(Boolean).join(" · ") || "Bénéficiaire";
+/** Nettoie la liste : nom (80 car.) et/ou numéro (8 chiffres au moins), montant entier > 0, sans doublon (même numéro ou même nom), 20 au plus. */
+export function normaliserBeneficiaires(liste) {
+  const vus = new Set(), r = [];
+  for (const x of Array.isArray(liste) ? liste : []) {
+    const nom = String(x?.nom || "").trim().slice(0, 80), tel = huit(x?.tel) ? String(x.tel).replace(/[^\d+ ]/g, "").trim() : "", montant = Math.max(0, Math.round(Number(x?.montant) || 0));
+    if ((!nom && !tel) || montant <= 0) continue;
+    const cle = huit(tel) || sansAcc(nom);
+    if (vus.has(cle)) continue;
+    vus.add(cle); r.push({ nom, tel, montant });
+  }
+  return r.slice(0, BENEFICIAIRES_MAX);
+}
+/** Un paiement (nom du bénéficiaire, numéro) est-il destiné à ce bénéficiaire ? Même numéro (8 derniers chiffres) OU même nom (égal, ou l'un contient l'autre, 3 caractères au moins). */
+export function correspond(b, nom, tel) {
+  if (huit(b.tel) && huit(b.tel) === huit(tel)) return true;
+  const a = sansAcc(b.nom), c = sansAcc(nom);
+  return a.length >= 3 && c.length >= 3 && (a === c || a.includes(c) || c.includes(a));
+}
+/** Bénéficiaires déjà payés (d'après les SMS) : { nom, tel } distincts, pour les proposer dans la liste d'ajout. */
+export function beneficiairesConnus(lignes) {
+  const m = new Map();
+  for (const l of lignes || []) {
+    if (!l || l.genre !== "DEPENSE" || !estTransaction(l)) continue;
+    const nom = l.tiers && !/\d{6}/.test(l.tiers) ? l.tiers : "", tel = l.tel || "";
+    const cle = huit(tel) || sansAcc(nom);
+    if (cle && !m.has(cle)) m.set(cle, { nom, tel });
+  }
+  return [...m.values()].sort((a, b) => libelleBeneficiaire(a).localeCompare(libelleBeneficiaire(b), "fr"));
 }
 
 /** Dépenses de la période en cours : vraies transactions payées, tous opérateurs confondus ; { total, nb, parOperateur: [{ adresse, total }] } (du plus gros au plus petit). */
@@ -82,23 +115,23 @@ export function depensesDeLaPeriode(lignes, budget, maintenant = Date.now()) {
  *  - apres : dépenses si le paiement préparé est fait ; depasse : ce paiement ferait dépasser le budget ; deja : le budget est déjà dépassé ;
  *  - exces : montant au-dessus du budget après le paiement ; niveau : "ok" (< 80 %), "attention" (≥ 80 %), "depasse" (> 100 %).
  */
-export function niveauBudget(lignes, budget, prepare = 0, maintenant = Date.now(), operateur = "") {
+export function niveauBudget(lignes, budget, prepare = 0, maintenant = Date.now(), beneficiaire = null) {
   const b = normaliser(budget);
   if (!b.actif) return null;
   const d = depensesDeLaPeriode(lignes, b, maintenant);
   const p = Math.max(0, Math.round(Number(prepare) || 0));
   const apres = d.total + p;
   const pctApres = Math.round((apres / b.montant) * 100);
-  // Budgets par opérateur : le paiement préparé ne compte que pour SON opérateur
-  const cleP = operateur ? cleOperateur(operateur) : "";
-  const depParOp = new Map(d.parOperateur.map((o) => [o.adresse, o.total]));
-  const operateurs = Object.entries(b.operateurs).map(([cle, montant]) => {
-    const dep = depParOp.get(cle) || 0, prep = cle === cleP ? p : 0, ap = dep + prep;
-    return { cle, montant, depense: dep, reste: Math.max(0, montant - dep), pct: Math.round((dep / montant) * 100), prepare: prep, apres: ap, pctApres: Math.round((ap / montant) * 100),
-      deja: dep > montant, depasse: prep > 0 && ap > montant, exces: Math.max(0, ap - montant), niveau: ap > montant ? "depasse" : Math.round((ap / montant) * 100) >= 80 ? "attention" : "ok" };
+  // Limites PAR BÉNÉFICIAIRE (lot 220) : dépenses déjà faites vers ce bénéficiaire ; le paiement préparé ne compte que s'il lui est destiné
+  const beneficiaires = b.beneficiaires.map((x) => {
+    let dep = 0, nb = 0;
+    for (const l of lignes || []) { if (l && l.genre === "DEPENSE" && estTransaction(l) && l.quand >= d.debut && l.quand <= maintenant + 60_000 && correspond(x, l.tiers, l.tel)) { dep += l.montant; nb += 1; } }
+    const prep = correspond(x, beneficiaire?.nom, beneficiaire?.tel) ? p : 0, ap = dep + prep, pc = Math.round((ap / x.montant) * 100);
+    return { ...x, libelle: libelleBeneficiaire(x), depense: dep, nb, reste: Math.max(0, x.montant - dep), pct: Math.round((dep / x.montant) * 100), prepare: prep, apres: ap, pctApres: pc,
+      deja: dep > x.montant, depasse: prep > 0 && ap > x.montant, exces: Math.max(0, ap - x.montant), niveau: ap > x.montant ? "depasse" : pc >= 80 ? "attention" : "ok" };
   });
   return {
-    operateurs, opDepasse: operateurs.some((o) => o.depasse),
+    beneficiaires, benefDepasse: beneficiaires.some((x) => x.depasse),
     montant: b.montant, periode: b.periode, depense: d.total, nb: d.nb, parOperateur: d.parOperateur, debut: d.debut,
     reste: Math.max(0, b.montant - d.total), pct: Math.round((d.total / b.montant) * 100),
     prepare: p, apres, pctApres, deja: d.total > b.montant, depasse: p > 0 && apres > b.montant, exces: Math.max(0, apres - b.montant),
