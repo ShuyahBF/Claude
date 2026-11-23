@@ -210,11 +210,11 @@ export default function Payer() {
   const budget = useMemo(() => chargerBudget(), []);
   const lignesBudget = useMemo(() => chargerLignes(), []);
   const montantSaisi = parseInt(String(valeurs.amount || "").replace(/\D/g, ""), 10) || 0;
-  const niveau = niveauBudget(lignesBudget, budget, montantSaisi);
+  const niveau = niveauBudget(lignesBudget, budget, montantSaisi, Date.now(), operateur);
   const preparer = async (e, forcer = false) => {
     e?.preventDefault?.();
     // Le paiement ferait dépasser le budget : on prévient, l'utilisateur décide de forcer ou d'annuler
-    if (!forcer && niveau?.depasse) { setAlerteBudget(niveau); return; }
+    if (!forcer && (niveau?.depasse || niveau?.opDepasse)) { setAlerteBudget(niveau); return; }
     setAlerteBudget(null);
     setEnvoi(true);
     try {

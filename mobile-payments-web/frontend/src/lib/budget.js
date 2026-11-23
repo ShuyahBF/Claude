@@ -5,6 +5,7 @@
 // (estTransaction : ni promo, ni doublon). Le budget est gardé SUR LE TÉLÉPHONE (aucun envoi au serveur).
 // L'utilisateur peut le MODIFIER, le DÉSACTIVER (réglage conservé) ou le RÉINITIALISER (le compteur repart de zéro à l'instant du clic).
 import { estTransaction } from "@/lib/smsPaiements";
+import { operateurDeAdresse } from "@/lib/carnet";
 
 const CLE = "auror_budget";
 
@@ -20,7 +21,10 @@ export const PERIODES = [
 export const libellePeriode = (cle) => (PERIODES.find((p) => p.cle === cle) || PERIODES[3]);
 
 /** Budget vide : désactivé, mensuel, sans montant. */
-export const BUDGET_VIDE = { actif: false, montant: 0, periode: "mois", depuis: 0 };
+export const BUDGET_VIDE = { actif: false, montant: 0, periode: "mois", depuis: 0, operateurs: {} };
+
+/** Clé d'un opérateur : « OrangeMoney » et « Orange » donnent « Orange », « Moov Money » et « Moov Africa » donnent « Moov Africa » ; un expéditeur inconnu reste tel quel. */
+export const cleOperateur = (nom) => operateurDeAdresse(nom) || String(nom || "Autre").trim() || "Autre";
 
 /** Début CALENDAIRE de la période qui contient « maintenant » (heure locale) : minuit, lundi, 1er / 16 du mois, 1er du mois, du trimestre, de l'année. */
 export function debutPeriode(periode, maintenant = Date.now()) {
@@ -43,7 +47,10 @@ export const debutEffectif = (budget, maintenant = Date.now()) => Math.max(debut
 export function normaliser(b) {
   const montant = Math.max(0, Math.round(Number(b?.montant) || 0));
   const periode = PERIODES.some((p) => p.cle === b?.periode) ? b.periode : "mois";
-  return { actif: !!b?.actif && montant > 0, montant, periode, depuis: Math.max(0, Number(b?.depuis) || 0) };
+  // Budgets PAR OPÉRATEUR (lot 219) : { "Orange": 30000, … } ; montants nuls retirés ; même période que le budget global
+  const operateurs = {};
+  for (const [k, v] of Object.entries(b?.operateurs || {})) { const m = Math.max(0, Math.round(Number(v) || 0)); if (m > 0 && String(k).trim()) operateurs[cleOperateur(k)] = m; }
+  return { actif: !!b?.actif && montant > 0, montant, periode, depuis: Math.max(0, Number(b?.depuis) || 0), operateurs };
 }
 
 export function chargerBudget(stockage = (typeof localStorage !== "undefined" ? localStorage : null)) {
@@ -62,7 +69,8 @@ export function depensesDeLaPeriode(lignes, budget, maintenant = Date.now()) {
   for (const l of lignes || []) {
     if (!l || l.genre !== "DEPENSE" || !estTransaction(l) || !(l.quand >= debut) || l.quand > maintenant + 60_000) continue;
     total += l.montant; nb += 1;
-    par.set(l.adresse || "Autre", (par.get(l.adresse || "Autre") || 0) + l.montant);
+    const cle = cleOperateur(l.adresse);                                   // « OrangeMoney » et « Orange » comptent ensemble
+    par.set(cle, (par.get(cle) || 0) + l.montant);
   }
   return { total, nb, debut, parOperateur: [...par].map(([adresse, t]) => ({ adresse, total: t })).sort((a, b) => b.total - a.total) };
 }
@@ -74,14 +82,23 @@ export function depensesDeLaPeriode(lignes, budget, maintenant = Date.now()) {
  *  - apres : dépenses si le paiement préparé est fait ; depasse : ce paiement ferait dépasser le budget ; deja : le budget est déjà dépassé ;
  *  - exces : montant au-dessus du budget après le paiement ; niveau : "ok" (< 80 %), "attention" (≥ 80 %), "depasse" (> 100 %).
  */
-export function niveauBudget(lignes, budget, prepare = 0, maintenant = Date.now()) {
+export function niveauBudget(lignes, budget, prepare = 0, maintenant = Date.now(), operateur = "") {
   const b = normaliser(budget);
   if (!b.actif) return null;
   const d = depensesDeLaPeriode(lignes, b, maintenant);
   const p = Math.max(0, Math.round(Number(prepare) || 0));
   const apres = d.total + p;
   const pctApres = Math.round((apres / b.montant) * 100);
+  // Budgets par opérateur : le paiement préparé ne compte que pour SON opérateur
+  const cleP = operateur ? cleOperateur(operateur) : "";
+  const depParOp = new Map(d.parOperateur.map((o) => [o.adresse, o.total]));
+  const operateurs = Object.entries(b.operateurs).map(([cle, montant]) => {
+    const dep = depParOp.get(cle) || 0, prep = cle === cleP ? p : 0, ap = dep + prep;
+    return { cle, montant, depense: dep, reste: Math.max(0, montant - dep), pct: Math.round((dep / montant) * 100), prepare: prep, apres: ap, pctApres: Math.round((ap / montant) * 100),
+      deja: dep > montant, depasse: prep > 0 && ap > montant, exces: Math.max(0, ap - montant), niveau: ap > montant ? "depasse" : Math.round((ap / montant) * 100) >= 80 ? "attention" : "ok" };
+  });
   return {
+    operateurs, opDepasse: operateurs.some((o) => o.depasse),
     montant: b.montant, periode: b.periode, depense: d.total, nb: d.nb, parOperateur: d.parOperateur, debut: d.debut,
     reste: Math.max(0, b.montant - d.total), pct: Math.round((d.total / b.montant) * 100),
     prepare: p, apres, pctApres, deja: d.total > b.montant, depasse: p > 0 && apres > b.montant, exces: Math.max(0, apres - b.montant),
