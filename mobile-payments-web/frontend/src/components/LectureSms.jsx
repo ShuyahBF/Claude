@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { EVENEMENT_MAJ, lireResume, synchroniserSms } from "@/lib/lectureSms";
 import { capacites, notificationsActives, ouvrirReglagesNotifications } from "@/lib/pontAndroid";
 import { chargerLignes, enregistrerLignes, estTransaction, filtrerLignes, energieParMois, filtreActif } from "@/lib/smsPaiements";
+import RechercheRubriques from "@/components/RechercheRubriques";   // lot 218 : recherche plein texte dans les rubriques
 import DetailsLigneSms from "@/components/DetailsLigneSms";   // lot 217 : motif, détail des achats et photos d'une ligne
 import { aDesDetails, avecDetails, remplacerLigne } from "@/lib/budget";
 import FenetreContact, { useCarnet } from "@/components/FenetreContact";   // lot 167 : « ➕ Carnet » depuis un SMS
@@ -123,6 +124,7 @@ export default function LectureSms() {
           </div>
         )}
 
+        {lignes.some((l) => l.articles?.length || l.motif || l.details) && <RechercheRubriques lignes={lignes} onOuvrir={(id) => setDetailsDe(lignes.find((l) => l.id === id) || null)} />}
         {lignes.length > 0 && (
           <div className="space-y-2 rounded-xl bg-gray-50 p-3" data-testid="filtres-sms">
             <div className="grid gap-2 sm:grid-cols-2">

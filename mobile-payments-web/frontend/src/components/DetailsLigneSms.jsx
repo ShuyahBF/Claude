@@ -4,7 +4,8 @@
 import { useEffect, useRef, useState } from "react";
 import Modal from "@/components/Modal";
 import { useToast } from "@/components/Toast";
-import { DETAILS_MAX, MOTIFS_DEPENSE, MOTIFS_RECETTE, MOTIF_MAX, PIECES_MAX } from "@/lib/budget";
+import CalculetteMontant from "@/components/CalculetteMontant";
+import { ARTICLES_MAX, CATEGORIES_RUBRIQUE, DETAILS_MAX, MOTIFS_DEPENSE, MOTIFS_RECETTE, MOTIF_MAX, PIECES_MAX, normaliserArticles, totalArticles } from "@/lib/budget";
 import { ajouterPiece, lirePiece, supprimerPiece } from "@/lib/piecesSms";
 
 const fcfa = (n) => `${Number(n).toLocaleString("fr-FR")} FCFA`;
@@ -35,15 +36,17 @@ export default function DetailsLigneSms({ ligne, onFermer, onEnregistrer }) {
   const [motif, setMotif] = useState("");
   const [details, setDetails] = useState("");
   const [pieces, setPieces] = useState([]);
+  const [articles, setArticles] = useState([]);                 // rubriques de la dépense : { rubrique, montant, categorie }
+  const [calcul, setCalcul] = useState(null);                   // index de la rubrique dont on calcule le montant
   const [type, setType] = useState("Ticket de caisse");
   const [occupe, setOccupe] = useState(false);
   const [libre, setLibre] = useState(false);                 // « Autre… » : saisie libre du motif
   const photo = useRef(null), fichier = useRef(null);
   // Chargement à l'ouverture (ou quand on change de ligne)
-  useEffect(() => { if (ligne) { setMotif(ligne.motif || ""); setDetails(ligne.details || ""); setPieces(ligne.pieces || []); setLibre(!!ligne.motif && !liste.includes(ligne.motif)); } }, [ligne]);  // eslint-disable-line
+  useEffect(() => { if (ligne) { setMotif(ligne.motif || ""); setDetails(ligne.details || ""); setPieces(ligne.pieces || []); setArticles((ligne.articles || []).map((a) => ({ ...a }))); setLibre(!!ligne.motif && !liste.includes(ligne.motif)); } }, [ligne]);  // eslint-disable-line
   if (!ligne) return null;
   // Un motif déjà enregistré mais absent de la liste s'affiche en saisie libre (« Autre… ») : jamais de perte à l'édition
-  const modifie = motif !== (ligne.motif || "") || details !== (ligne.details || "") || JSON.stringify(pieces) !== JSON.stringify(ligne.pieces || []);
+  const modifie = motif !== (ligne.motif || "") || details !== (ligne.details || "") || JSON.stringify(pieces) !== JSON.stringify(ligne.pieces || []) || JSON.stringify(normaliserArticles(articles)) !== JSON.stringify(ligne.articles || []);
 
   const choisir = async (f) => {
     if (!f) return;
@@ -57,7 +60,7 @@ export default function DetailsLigneSms({ ligne, onFermer, onEnregistrer }) {
     // Les photos retirées ne sont effacées du téléphone qu'à l'enregistrement (on peut renoncer en fermant)
     const gardees = new Set(pieces.map((p) => p.id));
     await Promise.all((ligne.pieces || []).filter((p) => !gardees.has(p.id)).map((p) => supprimerPiece(p.id).catch(() => {})));
-    onEnregistrer({ motif, details, pieces });
+    onEnregistrer({ motif, details, pieces, articles });
     toast.succes("Détails enregistrés sur ce téléphone");
     onFermer();
   };
@@ -69,6 +72,7 @@ export default function DetailsLigneSms({ ligne, onFermer, onEnregistrer }) {
   };
 
   return (
+    <>
     <Modal ouvert titre={depense ? "Détails de la dépense" : "Motif du paiement reçu"} onFermer={fermer}>
       <div className="space-y-3 text-sm" data-testid="details-ligne-sms">
         <p className="rounded-lg bg-gray-50 p-2">
@@ -83,11 +87,35 @@ export default function DetailsLigneSms({ ligne, onFermer, onEnregistrer }) {
           </select>
           {libre && <input className="input mt-2" maxLength={MOTIF_MAX} placeholder="Votre motif" aria-label="Motif libre" value={motif} onChange={(e) => setMotif(e.target.value)} autoFocus />}
         </div>
+        {depense && (
+          <div className="space-y-2" data-testid="rubriques-ligne">
+            <p className="label">Détail des achats (rubrique, montant, catégorie)</p>
+            {articles.length > 0 && (
+              <div className="overflow-x-auto"><table className="w-full min-w-[26rem] text-xs">
+                <thead><tr className="text-left text-gray-600"><th className="p-1">Rubrique</th><th className="p-1 text-right">Montant (FCFA)</th><th className="p-1">Catégorie</th><th className="p-1" /></tr></thead>
+                <tbody>
+                  {articles.map((a, i) => (
+                    <tr key={i}>
+                      <td className="p-1"><input className="input" maxLength={80} aria-label={`Rubrique ${i + 1}`} placeholder="Ex. : riz 25 kg" value={a.rubrique} onChange={(e) => setArticles((l) => l.map((x, k) => (k === i ? { ...x, rubrique: e.target.value } : x)))} /></td>
+                      <td className="p-1"><div className="flex gap-1"><input className="input min-w-0 text-right tabular-nums" inputMode="numeric" aria-label={`Montant ${i + 1}`} value={a.montant ? Number(a.montant).toLocaleString("fr-FR") : ""} onChange={(e) => setArticles((l) => l.map((x, k) => (k === i ? { ...x, montant: e.target.value.replace(/\D/g, "") } : x)))} />
+                        <button type="button" className="rounded-lg border border-gray-300 px-2" onClick={() => setCalcul(i)} title="Calculer le montant" aria-label={`Calculette pour la rubrique ${i + 1}`}>🧮</button></div></td>
+                      <td className="p-1"><select className="input" aria-label={`Catégorie ${i + 1}`} value={a.categorie || ""} onChange={(e) => setArticles((l) => l.map((x, k) => (k === i ? { ...x, categorie: e.target.value } : x)))}>
+                        <option value="">—</option>{CATEGORIES_RUBRIQUE.map((c) => <option key={c} value={c}>{c}</option>)}{a.categorie && !CATEGORIES_RUBRIQUE.includes(a.categorie) && <option value={a.categorie}>{a.categorie}</option>}</select></td>
+                      <td className="p-1"><button type="button" className="rounded-lg border border-red-200 px-2 py-1 text-red-700" onClick={() => setArticles((l) => l.filter((_, k) => k !== i))} title="Retirer cette rubrique" aria-label={`Retirer la rubrique ${i + 1}`}>🗑️</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot><tr className="border-t font-semibold"><td className="p-1">{articles.length} rubrique(s)</td><td className="p-1 text-right tabular-nums" data-testid="total-rubriques">{totalArticles(normaliserArticles(articles)).toLocaleString("fr-FR")}</td><td colSpan={2} className="p-1 text-gray-600">
+                  {(() => { const e = ligne.montant - totalArticles(normaliserArticles(articles)); return e === 0 ? "✅ égal au paiement" : e > 0 ? `reste ${e.toLocaleString("fr-FR")} à détailler` : `⚠️ ${(-e).toLocaleString("fr-FR")} de plus que le paiement`; })()}</td></tr></tfoot>
+              </table></div>
+            )}
+            <button type="button" className="btn-secondary" disabled={articles.length >= ARTICLES_MAX} onClick={() => setArticles((l) => [...l, { rubrique: "", montant: "", categorie: "" }])}>➕ Ajouter une rubrique</button>
+          </div>
+        )}
         <div>
-          <label className="label" htmlFor="ds-details">{depense ? "Détail des achats" : "Note"}</label>
-          <textarea id="ds-details" className="input min-h-[5rem]" maxLength={DETAILS_MAX} value={details} onChange={(e) => setDetails(e.target.value)}
-            placeholder={depense ? "Ex. : 2 sacs de riz, 1 huile, savon…" : "Ex. : paie d'octobre, remboursement de Awa…"} />
-          <p className="text-right text-xs text-gray-500">{details.length} / {DETAILS_MAX}</p>
+          <label className="label" htmlFor="ds-details">Note (facultatif)</label>
+          <textarea id="ds-details" className="input min-h-[4rem]" maxLength={DETAILS_MAX} value={details} onChange={(e) => setDetails(e.target.value)}
+            placeholder={depense ? "Ex. : achats du week-end chez le grossiste" : "Ex. : paie d'octobre, remboursement de Awa…"} />
         </div>
         {depense && (
           <div className="space-y-2" data-testid="pieces-ligne">
@@ -112,5 +140,8 @@ export default function DetailsLigneSms({ ligne, onFermer, onEnregistrer }) {
         </div>
       </div>
     </Modal>
+    <CalculetteMontant ouvert={calcul !== null} titre="Montant de la rubrique" initial={calcul !== null ? articles[calcul]?.montant || "" : ""} onFermer={() => setCalcul(null)}
+        onValider={(v) => { setArticles((l) => l.map((x, k) => (k === calcul ? { ...x, montant: String(v) } : x))); setCalcul(null); }} />
+    </>
   );
 }

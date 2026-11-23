@@ -100,8 +100,9 @@ export const MOTIFS_DEPENSE = ["Courses / alimentation", "Transport", "Santé / 
 export const MOTIFS_RECETTE = ["Salaire", "Vente / commerce", "Remboursement", "Aide familiale", "Prêt reçu", "Cadeau", "Autre…"];
 
 /** Applique les détails à UNE ligne (copie) : champs vides retirés, longueurs bornées. */
-export function avecDetails(ligne, { motif = "", details = "", pieces } = {}) {
+export function avecDetails(ligne, { motif = "", details = "", pieces, articles } = {}) {
   const r = { ...ligne, motif: String(motif).trim().slice(0, MOTIF_MAX), details: String(details).trim().slice(0, DETAILS_MAX) };
+  if (Array.isArray(articles)) { r.articles = normaliserArticles(articles); if (!r.articles.length) delete r.articles; }
   if (Array.isArray(pieces)) r.pieces = pieces.slice(0, PIECES_MAX);
   if (!r.motif) delete r.motif;
   if (!r.details) delete r.details;
@@ -113,4 +114,76 @@ export function avecDetails(ligne, { motif = "", details = "", pieces } = {}) {
 export const remplacerLigne = (lignes, id, f) => lignes.map((l) => (l.id === id ? f(l) : l));
 
 /** Une ligne a-t-elle des détails saisis ? */
-export const aDesDetails = (l) => !!(l?.motif || l?.details || l?.pieces?.length);
+export const aDesDetails = (l) => !!(l?.motif || l?.details || l?.pieces?.length || l?.articles?.length);
+
+// ---------- Détail des achats en TABLEAU (lot 218) : rubrique, montant, catégorie ----------
+export const ARTICLES_MAX = 30;
+/** Catégories d'une rubrique de dépense (liste finie) : les motifs usuels, sans « Autre… » (une catégorie vide reste possible). */
+export const CATEGORIES_RUBRIQUE = MOTIFS_DEPENSE.slice(0, -1);
+
+/** Nettoie un tableau de rubriques : intitulé borné, montant entier ≥ 0, lignes vides retirées, 30 au plus. */
+export function normaliserArticles(articles) {
+  return (Array.isArray(articles) ? articles : [])
+    .map((a) => ({ rubrique: String(a?.rubrique || "").trim().slice(0, 80), montant: Math.max(0, Math.round(Number(a?.montant) || 0)), categorie: String(a?.categorie || "").trim().slice(0, 60) }))
+    .filter((a) => a.rubrique || a.montant)
+    .slice(0, ARTICLES_MAX);
+}
+export const totalArticles = (articles) => (articles || []).reduce((t, a) => t + (Number(a.montant) || 0), 0);
+
+// ---------- Recherche plein texte dans les rubriques et détails ----------
+const sansAccents = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+/**
+ * Recherche générique (sans accents ni majuscules ; plusieurs mots = tous doivent se retrouver) dans les rubriques, catégories, motifs, détails, bénéficiaires et opérateurs.
+ * Rend une ligne par RUBRIQUE trouvée : { id, quand, adresse, intitule, montant, categorie, montantSms }.
+ * Un SMS sans tableau de rubriques qui correspond sur son motif / détail / bénéficiaire donne une ligne avec le motif (ou « Paiement ») comme intitulé et le montant du SMS.
+ * Texte vide : aucune ligne (la recherche n'affiche rien tant qu'on n'a rien cherché).
+ */
+export function rechercherRubriques(lignes, texte) {
+  const mots = sansAccents(texte).split(/\s+/).filter(Boolean);
+  if (!mots.length) return [];
+  const toutDedans = (s) => mots.every((m) => s.includes(m));
+  const r = [];
+  for (const l of lignes || []) {
+    if (!l || !estTransactionLigne(l)) continue;
+    const contexte = sansAccents(`${l.motif || ""} ${l.details || ""} ${l.tiers || ""} ${l.adresse || ""} ${l.id || ""}`);
+    const arts = l.articles?.length ? l.articles : null;
+    if (arts) {
+      for (const a of arts) if (toutDedans(`${sansAccents(`${a.rubrique} ${a.categorie}`)} ${contexte}`)) r.push({ id: l.id, quand: l.quand, adresse: l.adresse, intitule: a.rubrique || "(sans intitulé)", montant: a.montant, categorie: a.categorie || "", montantSms: l.montant });
+    } else if (aDesDetails(l) || l.tiers) {
+      if (toutDedans(contexte)) r.push({ id: l.id, quand: l.quand, adresse: l.adresse, intitule: l.motif || l.details || l.tiers || "Paiement", montant: l.montant, categorie: "", montantSms: l.montant });
+    }
+  }
+  return r.sort((a, b) => b.quand - a.quand);
+}
+// (même définition de « vraie transaction » que smsPaiements.estTransaction, sans dépendance circulaire)
+const estTransactionLigne = (l) => estTransaction(l);
+
+// ---------- Évolution du solde et entrées d'argent ----------
+/**
+ * Évolution du SOLDE TOTAL (tous portefeuilles) sur [debut, fin] d'après les soldes que les SMS annoncent après chaque opération.
+ *  - Chaque portefeuille (opérateur) garde son DERNIER solde connu ; le total à un instant = somme de ces derniers soldes.
+ *  - Point de départ : le dernier solde connu de chaque portefeuille AVANT « debut » (s'il y en a).
+ *  - Rend { points: [{ t, total }], entrees: [{ id, quand, adresse, tiers, montant }], sorties: nb, aSolde }.
+ *    Les ENTRÉES D'ARGENT = lignes « reçu » (vraies transactions) de la période : elles marquent le graphique.
+ */
+export function serieSolde(lignes, debut, fin = Date.now()) {
+  const tri = (lignes || []).filter((l) => l && l.quand <= fin).sort((a, b) => a.quand - b.quand);
+  const dernier = new Map();
+  const points = [];
+  const somme = () => [...dernier.values()].reduce((t, v) => t + v, 0);
+  for (const l of tri) {
+    if (l.solde == null || !Number.isFinite(l.solde)) continue;
+    dernier.set(l.adresse || "Autre", l.solde);
+    if (l.quand < debut) continue;
+    if (points.length === 0 && dernier.size) {
+      // point de départ de la période : les soldes connus juste avant la première opération
+      const avant = new Map(dernier); avant.delete(l.adresse || "Autre");
+      const prec = [...avant.values()].reduce((t, v) => t + v, 0);
+      if (avant.size) points.push({ t: debut, total: prec });
+    }
+    points.push({ t: l.quand, total: somme() });
+  }
+  const entrees = tri.filter((l) => l.genre === "RECETTE" && estTransaction(l) && l.quand >= debut).map((l) => ({ id: l.id, quand: l.quand, adresse: l.adresse, tiers: l.tiers || "", montant: l.montant }));
+  return { points, entrees, aSolde: points.length > 0 };
+}

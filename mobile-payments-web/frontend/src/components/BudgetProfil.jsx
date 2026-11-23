@@ -3,6 +3,8 @@
 // Les dépenses viennent des SMS de paiement lus sur ce téléphone (application Android « direct ») ; rien n'est envoyé au serveur.
 // Rien n'est enregistré « en silence » : bouton Enregistrer (actif si modifié, « modifié, non enregistré ») puis toast.
 import { useEffect, useState } from "react";
+import CalculetteMontant from "@/components/CalculetteMontant";   // lot 218 : calcul / estimation du montant
+import GraphiqueSolde from "@/components/GraphiqueSolde";       // lot 218 : évolution du solde et entrées d'argent
 import NiveauBudget from "@/components/NiveauBudget";
 import { useToast } from "@/components/Toast";
 import { EVENEMENT_MAJ } from "@/lib/lectureSms";
@@ -15,6 +17,7 @@ export default function BudgetProfil() {
   const [saisie, setSaisie] = useState(() => ({ ...BUDGET_VIDE, ...chargerBudget() }));   // formulaire (montant en texte)
   const [lignes, setLignes] = useState(() => chargerLignes());
   const [confirmerRaz, setConfirmerRaz] = useState(false);
+  const [calculette, setCalculette] = useState(false);              // calculette ouverte depuis le champ du montant
   // Les dépenses se mettent à jour quand la lecture automatique des SMS trouve de nouveaux paiements
   useEffect(() => {
     const maj = () => setLignes(chargerLignes());
@@ -45,8 +48,11 @@ export default function BudgetProfil() {
       <div className="grid gap-2 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="budget-montant">Montant maximum (FCFA)</label>
-          <input id="budget-montant" className="input tabular-nums" inputMode="numeric" placeholder="65 000" value={saisie.montant ? Number(montantSaisi).toLocaleString("fr-FR") : ""}
-            onChange={(e) => setSaisie({ ...saisie, montant: e.target.value.replace(/\D/g, "") })} />
+          <div className="flex gap-2">
+            <input id="budget-montant" className="input min-w-0 flex-1 tabular-nums" inputMode="numeric" placeholder="65 000" value={saisie.montant ? Number(montantSaisi).toLocaleString("fr-FR") : ""}
+              onChange={(e) => setSaisie({ ...saisie, montant: e.target.value.replace(/\D/g, "") })} />
+            <button type="button" className="btn-secondary shrink-0" onClick={() => setCalculette(true)} title="Calculer ou estimer le montant" aria-label="Ouvrir la calculette">🧮 Calculer</button>
+          </div>
         </div>
         <div>
           <label className="label" htmlFor="budget-periode">Période</label>
@@ -70,6 +76,9 @@ export default function BudgetProfil() {
       )}
       {budget.montant > 0 && !budget.actif && <p className="text-sm text-gray-500">⏸️ Budget désactivé : {budget.montant.toLocaleString("fr-FR")} FCFA {libellePeriode(budget.periode).libelle} (réglage conservé).</p>}
       <NiveauBudget n={n} detail />
+      {n && <GraphiqueSolde lignes={lignes} debut={n.debut} />}
+      <CalculetteMontant ouvert={calculette} titre="Montant du budget" initial={montantSaisi || ""} onFermer={() => setCalculette(false)}
+        onValider={(v) => { setSaisie((x) => ({ ...x, montant: String(v) })); setCalculette(false); toast.info(`Montant ${v.toLocaleString("fr-FR")} FCFA placé dans le champ : cliquez sur « Enregistrer le budget ».`); }} />
       {n && lignes.length === 0 && <p className="text-xs text-gray-500">Aucun SMS de paiement lu pour l'instant : le niveau se calcule à partir des SMS de vos opérateurs (application Android « direct »).</p>}
     </section>
   );
