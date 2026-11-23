@@ -8,7 +8,7 @@ import GraphiqueSolde from "@/components/GraphiqueSolde";       // lot 218 : év
 import NiveauBudget from "@/components/NiveauBudget";
 import { useToast } from "@/components/Toast";
 import { EVENEMENT_MAJ } from "@/lib/lectureSms";
-import { BUDGET_VIDE, PERIODES, chargerBudget, enregistrerBudget, libellePeriode, niveauBudget, normaliser, reinitialiser } from "@/lib/budget";
+import { BUDGET_VIDE, PERIODES, cleOperateur, chargerBudget, enregistrerBudget, libellePeriode, niveauBudget, normaliser, reinitialiser } from "@/lib/budget";
 import { chargerLignes } from "@/lib/smsPaiements";
 
 export default function BudgetProfil() {
@@ -17,7 +17,8 @@ export default function BudgetProfil() {
   const [saisie, setSaisie] = useState(() => ({ ...BUDGET_VIDE, ...chargerBudget() }));   // formulaire (montant en texte)
   const [lignes, setLignes] = useState(() => chargerLignes());
   const [confirmerRaz, setConfirmerRaz] = useState(false);
-  const [calculette, setCalculette] = useState(false);              // calculette ouverte depuis le champ du montant
+  const [calculette, setCalculette] = useState(false);
+  const [calculOp, setCalculOp] = useState(null);                  // opérateur dont on calcule le plafond (calculette)              // calculette ouverte depuis le champ du montant
   // Les dépenses se mettent à jour quand la lecture automatique des SMS trouve de nouveaux paiements
   useEffect(() => {
     const maj = () => setLignes(chargerLignes());
@@ -26,7 +27,10 @@ export default function BudgetProfil() {
   }, []);
 
   const montantSaisi = Math.round(Number(String(saisie.montant).replace(/\D/g, "")) || 0);
-  const modifie = montantSaisi !== budget.montant || saisie.periode !== budget.periode || !!saisie.actif !== budget.actif;
+  // Opérateurs proposés : ceux des SMS lus, ceux qui ont déjà un plafond et les deux opérateurs usuels
+  const operateursListe = [...new Set([...Object.keys(budget.operateurs || {}), ...lignes.map((l) => cleOperateur(l.adresse)), "Orange", "Moov Africa"])].filter(Boolean).sort();
+  const opsSaisis = Object.fromEntries(Object.entries(saisie.operateurs || {}).map(([k, v]) => [k, Math.round(Number(String(v).replace(/\D/g, "")) || 0)]).filter(([, v]) => v > 0));
+  const modifie = montantSaisi !== budget.montant || saisie.periode !== budget.periode || !!saisie.actif !== budget.actif || JSON.stringify(opsSaisis) !== JSON.stringify(budget.operateurs || {});
   const garder = (b, message) => {
     const n = normaliser(b);
     if (!enregistrerBudget(n)) { toast.erreur("Impossible de garder le budget sur ce téléphone."); return; }
@@ -34,7 +38,7 @@ export default function BudgetProfil() {
   };
   const enregistrer = () => {
     if (saisie.actif && montantSaisi <= 0) { toast.erreur("Indiquez un montant supérieur à 0 pour activer le budget."); return; }
-    garder({ ...budget, ...saisie, montant: montantSaisi, depuis: saisie.periode !== budget.periode ? budget.depuis : budget.depuis },
+    garder({ ...budget, ...saisie, montant: montantSaisi, operateurs: opsSaisis, depuis: saisie.periode !== budget.periode ? budget.depuis : budget.depuis },
       saisie.actif ? `Budget enregistré : ${montantSaisi.toLocaleString("fr-FR")} FCFA ${libellePeriode(saisie.periode).libelle}` : "Budget enregistré (désactivé)");
   };
   const basculer = () => garder({ ...budget, actif: !budget.actif && budget.montant > 0 }, budget.actif ? "Budget désactivé (réglage conservé)" : budget.montant > 0 ? "Budget réactivé" : "Indiquez d'abord un montant");
@@ -61,6 +65,18 @@ export default function BudgetProfil() {
           </select>
         </div>
       </div>
+      {/* Budget par opérateur (lot 219) : un plafond facultatif pour chaque opérateur, sur la même période */}
+      <div className="space-y-2 rounded-xl bg-gray-50 p-3" data-testid="budget-par-operateur">
+        <p className="text-sm font-semibold">💼 Budget par opérateur <span className="font-normal text-gray-500">(facultatif, même période)</span></p>
+        {operateursListe.map((op) => (
+          <div key={op} className="flex items-center gap-2">
+            <label className="w-28 shrink-0 text-sm" htmlFor={`budget-op-${op}`}>{op}</label>
+            <input id={`budget-op-${op}`} className="input min-w-0 flex-1 text-right tabular-nums" inputMode="numeric" placeholder="Pas de plafond"
+              value={opsSaisis[op] ? opsSaisis[op].toLocaleString("fr-FR") : ""} onChange={(e) => setSaisie((x) => ({ ...x, operateurs: { ...(x.operateurs || {}), [op]: e.target.value.replace(/\D/g, "") } }))} />
+            <button type="button" className="rounded-lg border border-gray-300 px-2 py-2" onClick={() => setCalculOp(op)} title={`Calculer le plafond ${op}`} aria-label={`Calculette pour ${op}`}>🧮</button>
+          </div>
+        ))}
+      </div>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!saisie.actif} onChange={(e) => setSaisie({ ...saisie, actif: e.target.checked })} /> Budget activé</label>
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className="btn-primary" disabled={!modifie} onClick={enregistrer}>💾 Enregistrer le budget</button>
@@ -77,6 +93,8 @@ export default function BudgetProfil() {
       {budget.montant > 0 && !budget.actif && <p className="text-sm text-gray-500">⏸️ Budget désactivé : {budget.montant.toLocaleString("fr-FR")} FCFA {libellePeriode(budget.periode).libelle} (réglage conservé).</p>}
       <NiveauBudget n={n} detail />
       {n && <GraphiqueSolde lignes={lignes} debut={n.debut} />}
+      <CalculetteMontant ouvert={calculOp !== null} titre={`Plafond ${calculOp || ""}`} initial={calculOp ? opsSaisis[calculOp] || "" : ""} onFermer={() => setCalculOp(null)}
+        onValider={(v) => { setSaisie((x) => ({ ...x, operateurs: { ...(x.operateurs || {}), [calculOp]: String(v) } })); setCalculOp(null); }} />
       <CalculetteMontant ouvert={calculette} titre="Montant du budget" initial={montantSaisi || ""} onFermer={() => setCalculette(false)}
         onValider={(v) => { setSaisie((x) => ({ ...x, montant: String(v) })); setCalculette(false); toast.info(`Montant ${v.toLocaleString("fr-FR")} FCFA placé dans le champ : cliquez sur « Enregistrer le budget ».`); }} />
       {n && lignes.length === 0 && <p className="text-xs text-gray-500">Aucun SMS de paiement lu pour l'instant : le niveau se calcule à partir des SMS de vos opérateurs (application Android « direct »).</p>}

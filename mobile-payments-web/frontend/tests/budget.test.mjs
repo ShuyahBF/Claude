@@ -22,7 +22,7 @@ const lignes = [
 const b = { actif: true, montant: 65000, periode: "mois", depuis: 0 };
 const d = B.depensesDeLaPeriode(lignes, b, maintenant);
 ok("dépenses du mois : payées seulement, sans recette, doublon, promo ni futur", d.total === 40000 && d.nb === 3);
-ok("détail par opérateur, du plus gros au plus petit", d.parOperateur[0].adresse === "OrangeMoney" && d.parOperateur[0].total === 25000 && d.parOperateur[1].total === 15000);
+ok("détail par opérateur, du plus gros au plus petit", d.parOperateur[0].adresse === "Orange" && d.parOperateur[0].total === 25000 && d.parOperateur[1].total === 15000);
 ok("semaine : seulement depuis lundi", B.depensesDeLaPeriode(lignes, { ...b, periode: "semaine" }, maintenant).total === 20000);
 const n = B.niveauBudget(lignes, b, 0, maintenant);
 ok("niveau : reste, pourcentage, ok", n.reste === 25000 && n.pct === 62 && n.niveau === "ok" && !n.depasse);
@@ -65,3 +65,13 @@ ok("solde total : premier point = solde du premier SMS, puis somme des derniers 
 ok("dernier point : 50 000 (Orange) + 3 000 (Moov)", sr.points.at(-1).total === 53000);
 ok("entrée d'argent repérée", sr.entrees.length === 1 && sr.entrees[0].montant === 20000);
 ok("sans solde dans les SMS : pas de courbe", B.serieSolde([ligne("z", "DEPENSE", 1, t(3))], 0, t(25)).aSolde === false);
+// ---- Lot 219 : budget par opérateur ----
+const bo = { actif: true, montant: 65000, periode: "mois", depuis: 0, operateurs: { OrangeMoney: 30000, "Moov Africa": 0, "": 5 } };
+ok("opérateurs : clés unifiées, montants nuls retirés", JSON.stringify(B.normaliser(bo).operateurs) === '{"Orange":30000}');
+const nb = B.niveauBudget(lignes, bo, 0, maintenant);
+ok("dépenses d'Orange comptées sous la clé « Orange »", nb.operateurs.length === 1 && nb.operateurs[0].cle === "Orange" && nb.operateurs[0].depense === 25000 && nb.operateurs[0].reste === 5000);
+const nb2 = B.niveauBudget(lignes, bo, 6000, maintenant, "Orange");
+ok("paiement Orange qui dépasse le budget Orange (mais pas le global)", nb2.opDepasse && !nb2.depasse && nb2.operateurs[0].exces === 1000);
+const nb3 = B.niveauBudget(lignes, bo, 6000, maintenant, "Moov Africa");
+ok("paiement Moov : le budget Orange n'est pas touché", !nb3.opDepasse && nb3.operateurs[0].prepare === 0);
+ok("sans budget par opérateur : liste vide", B.niveauBudget(lignes, { ...bo, operateurs: {} }, 0, maintenant).operateurs.length === 0);
