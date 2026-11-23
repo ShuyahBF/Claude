@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { EVENEMENT_MAJ, lireResume, synchroniserSms } from "@/lib/lectureSms";
 import { capacites, notificationsActives, ouvrirReglagesNotifications } from "@/lib/pontAndroid";
-import { chargerLignes, estTransaction, filtrerLignes, energieParMois, filtreActif } from "@/lib/smsPaiements";
+import { chargerLignes, enregistrerLignes, estTransaction, filtrerLignes, energieParMois, filtreActif } from "@/lib/smsPaiements";
+import DetailsLigneSms from "@/components/DetailsLigneSms";   // lot 217 : motif, détail des achats et photos d'une ligne
+import { aDesDetails, avecDetails, remplacerLigne } from "@/lib/budget";
 import FenetreContact, { useCarnet } from "@/components/FenetreContact";   // lot 167 : « ➕ Carnet » depuis un SMS
 import { normaliserNumero, operateurDeAdresse, trouverContact } from "@/lib/carnet";
 
@@ -29,6 +31,13 @@ export default function LectureSms() {
   const versCarnet = (l) => {
     const n = numeroDe(l), connu = trouverContact(carnet.contacts, n);
     setNouveauContact(connu || { nom: l.tiers && !/\d{6}/.test(l.tiers) ? l.tiers : "", tel: n, operateur: operateurDeAdresse(l.adresse), montant: l.montant, note: "" });
+  };
+  // Lot 217 : détails (motif, achats, photos) d'une ligne, gardés dans la ligne sur le téléphone
+  const [detailsDe, setDetailsDe] = useState(null);                // ligne dont on édite les détails
+  const garderDetails = (id, d) => {
+    const suite = remplacerLigne(chargerLignes(), id, (l) => avecDetails(l, d));         // relue juste avant : une lecture automatique a pu ajouter des lignes
+    if (!enregistrerLignes(suite)) { alert("Impossible de garder ces détails sur ce téléphone."); return; }
+    setLignes(suite);
   };
   const modif = (champ) => (e) => setFiltre((f) => ({ ...f, [champ]: e.target.value }));
   const affichees = filtrerLignes(lignes, filtre);
@@ -156,6 +165,16 @@ export default function LectureSms() {
                   )}
                   <span className={`ml-auto text-base font-bold ${!estTransaction(l) ? "text-gray-500" : l.genre === "RECETTE" ? "text-green-700" : "text-red-700"}`}>{fcfa(l.montant)}</span>
                 </div>
+                {estTransaction(l) && (
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs" data-testid="sms-details">
+                    <button type="button" className="rounded-full border border-gray-300 px-2 py-0.5 font-semibold text-primary" onClick={() => setDetailsDe(l)}
+                            title={l.genre === "RECETTE" ? "Définir le motif de ce paiement reçu" : "Motif, détail des achats, photos de ticket ou de facture"} aria-label="Détails du paiement">
+                      {aDesDetails(l) ? "📝 Modifier les détails" : l.genre === "RECETTE" ? "📝 Motif" : "📝 Détails"}</button>
+                    {l.motif && <span className="rounded-full bg-blue-50 px-2 py-0.5 font-semibold text-blue-800">{l.motif}</span>}
+                    {l.pieces?.length > 0 && <span className="text-gray-600">📷 {l.pieces.length} photo{l.pieces.length > 1 ? "s" : ""}</span>}
+                    {l.details && <span className="text-gray-700">{l.details.length > 80 ? `${l.details.slice(0, 80)}…` : l.details}</span>}
+                  </div>
+                )}
                 {l.debut && <p className="mt-1 text-xs text-gray-500" data-testid="sms-debut">✉️ Début du SMS : <span className="font-mono text-gray-700">« {l.debut}{l.debut.length >= 10 ? "…" : ""} »</span></p>}
                 {(l.tiers || l.tel || l.reference || l.solde != null) && (
                   <p className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-gray-700">
@@ -168,6 +187,7 @@ export default function LectureSms() {
           </ul>
         )}
       </div>
+      {detailsDe && <DetailsLigneSms ligne={detailsDe} onFermer={() => setDetailsDe(null)} onEnregistrer={(d) => garderDetails(detailsDe.id, d)} />}
       <FenetreContact contact={nouveauContact} onFermer={() => setNouveauContact(null)} carnet={carnet} />
     </details>
   );

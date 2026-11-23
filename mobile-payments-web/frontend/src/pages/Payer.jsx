@@ -23,6 +23,10 @@ import { chargerAvecCache, estErreurReseau, fileAjouterPaiement } from "@/lib/ho
 import { pourUtilisateur } from "@/lib/journalIntime";
 import { ErreurSaisie, preparerPaiementLocal } from "@/lib/ussdLocal";
 import { enLettres } from "@/lib/nombreEnLettres";
+import NiveauBudget from "@/components/NiveauBudget";   // lot 217 : niveau du budget à chaque paiement préparé
+import Modal from "@/components/Modal";
+import { chargerBudget, niveauBudget } from "@/lib/budget";
+import { chargerLignes } from "@/lib/smsPaiements";
 
 // Parcours de paiement, comme l'app Android :
 // Opérateur -> Service -> Formulaire (avec résolution du code marchand) -> Code USSD + QR.
@@ -201,8 +205,17 @@ export default function Payer() {
   };
 
   // Préparation du paiement : le serveur construit et vérifie le code USSD
-  const preparer = async (e) => {
-    e.preventDefault();
+  // Lot 217 : budget de dépenses (Profil). Le niveau est calculé sur les SMS de paiement lus (téléphone), avec le montant saisi.
+  const [alerteBudget, setAlerteBudget] = useState(null);          // niveau de budget quand le paiement le ferait dépasser (attend « Forcer » ou « Annuler »)
+  const budget = useMemo(() => chargerBudget(), []);
+  const lignesBudget = useMemo(() => chargerLignes(), []);
+  const montantSaisi = parseInt(String(valeurs.amount || "").replace(/\D/g, ""), 10) || 0;
+  const niveau = niveauBudget(lignesBudget, budget, montantSaisi);
+  const preparer = async (e, forcer = false) => {
+    e?.preventDefault?.();
+    // Le paiement ferait dépasser le budget : on prévient, l'utilisateur décide de forcer ou d'annuler
+    if (!forcer && niveau?.depasse) { setAlerteBudget(niveau); return; }
+    setAlerteBudget(null);
     setEnvoi(true);
     try {
       // PI-SPI : bloc de paiement du marchand (QR de sa banque) au lieu du code USSD
@@ -465,12 +478,25 @@ export default function Payer() {
             </fieldset>
           )}
 
+          {/* Lot 217 : où j'en suis par rapport à mon budget, avec ce paiement (affiché seulement si le budget est activé) */}
+          <NiveauBudget n={niveau} detail />
           <button type="submit" className="btn-primary w-full py-3 text-base" disabled={envoi}>
             {envoi ? "Préparation…" : mode === "pispi" ? "Payer par PI-SPI →" : directEligible ? "💳 Payer maintenant →" : "Préparer le paiement →"}
           </button>
         </form>
       )}
 
+      {/* Lot 217 : alerte de dépassement du budget — forcer ou annuler */}
+      <Modal ouvert={!!alerteBudget} titre="⛔ Ce paiement dépasserait votre budget" onFermer={() => setAlerteBudget(null)}>
+        <div className="space-y-3 text-sm" data-testid="alerte-budget">
+          <NiveauBudget n={alerteBudget} detail />
+          <p>Voulez-vous quand même faire ce paiement ? Il sera compté dans votre budget.</p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn-primary" onClick={() => preparer(null, true)}>⚠️ Forcer le paiement</button>
+            <button type="button" className="btn-secondary" onClick={() => setAlerteBudget(null)}>✖ Annuler</button>
+          </div>
+        </div>
+      </Modal>
       <PaiementPispi donnees={pispiOuvert} onFermer={() => setPispiOuvert(null)} onTermine={() => { /* le paiement reste dans l'historique */ }} />
       <ScannerQr ouvert={scannerOuvert} onFermer={fermerScanner} onResultat={surScan} />
       {/* QR d'une plaque d'opérateur : code marchand mémorisé ou à saisir une fois */}
