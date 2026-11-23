@@ -305,6 +305,9 @@ export function fusionner(existantes, nouvelles) {
     let r = o;
     if (n && n.tel && (o.tel !== n.tel || o.tiers !== n.tiers)) r = { ...r, tel: n.tel, tiers: n.tiers };
     if (n && n.debut && !o.debut) r = { ...r, debut: n.debut };                 // anciennes lignes : le début du SMS est ajouté à la relecture
+    // Lot 217 : motif et détails saisis par l'utilisateur (ex. restauration d'une sauvegarde) ne sont repris que si la ligne locale n'en a pas : jamais d'écrasement
+    if (n && !o.motif && n.motif) r = { ...r, motif: n.motif };
+    if (n && !o.details && n.details) r = { ...r, details: n.details };
     return r;
   });
   const ids = new Set(existantes.map((l) => l.id));
