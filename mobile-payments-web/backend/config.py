@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     # Adresse de l'API SAWALI (sans « /api » final)
     sawali_url: str = "https://api.sawalismartsystems.com"
 
+    # --- Connexion par compte Google (lot 222) : identifiant client (non secret) et SECRET du client, saisis dans Render ; vide = fonction inactive ---
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    # Adresse de retour déclarée chez Google (facultatif : déduite de la requête si vide), ex. https://<api>/api/auth/google/retour
+    google_redirect_uri: str = ""
+
     # --- Limitation des appels publics (app Android, visites) : nombre max par minute et par adresse IP ---
     limite_publique_par_minute: int = 60
 

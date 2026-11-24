@@ -25,6 +25,7 @@ import AdminMarchands from "@/pages/AdminMarchands";
 import MonMarchand from "@/pages/MonMarchand";
 import Confidentialite from "@/pages/Confidentialite";
 import Connexion from "@/pages/Connexion";
+import ConnexionGoogle from "@/pages/ConnexionGoogle";   // lot 222 : retour de Google
 import Garde from "@/pages/Garde";
 import Historique from "@/pages/Historique";
 import Marchands from "@/pages/Marchands";
@@ -52,6 +53,7 @@ export default function App() {
           <MiseAJourSite />
           <Routes>
             <Route path="/connexion" element={<Connexion />} />
+            <Route path="/connexion-google" element={<ConnexionGoogle />} />
             <Route path="/inscription" element={<Connexion mode="inscription" />} />
             {/* Page publique déclarée dans la Play Console (lot 16) */}
             <Route path="/confidentialite" element={<Confidentialite />} />

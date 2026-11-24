@@ -1,5 +1,5 @@
 import { estInstallee } from "@/lib/installation";   // page d'installation
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import ChampMotDePasse from "@/components/ChampMotDePasse";
 import ChampTelephone, { SelecteurPays } from "@/components/ChampTelephone";
@@ -11,6 +11,7 @@ import { messageErreur, MOTIF_DECONNEXION_KEY } from "@/lib/api";
 import { assembler, PAYS_DEFAUT, trouverPays } from "@/lib/pays";
 import { apiClient } from "@/lib/api";
 import { empreinteConnexionDisponible, empreinteConnexionMemoriser, empreinteConnexionMemorisee, empreinteConnexionRetrouver } from "@/lib/pontAndroid";
+import { googleDisponible, ouvrirGoogle, urlConnexionGoogle } from "@/lib/google";   // lot 222 : connexion par Google
 import { LIBELLE_VERSION } from "@/version";
 import { EXEMPLE_EMAIL } from "@/lib/exemplesIdentite";   // exemples locaux (règle 13)
 
@@ -35,6 +36,8 @@ export default function Connexion({ mode = "connexion" }) {
     try { return sessionStorage.getItem(MOTIF_DECONNEXION_KEY); } catch { return null; }
   });
   const [envoi, setEnvoi] = useState(false);
+  const [google, setGoogle] = useState(false);          // le serveur est-il configuré pour Google ?
+  useEffect(() => { googleDisponible().then(setGoogle); }, []);
   // Empreinte du téléphone (application Android) : se connecter sans taper le mot de passe, ou l'activer à la prochaine connexion
   const [retenirEmpreinte, setRetenirEmpreinte] = useState(true);
   const [empreinteEnCours, setEmpreinteEnCours] = useState(false);
@@ -177,6 +180,16 @@ export default function Connexion({ mode = "connexion" }) {
           <SupportSawali variante="carte" />
         </div>
       </form>
+      {/* Lot 222 : connexion par compte Google (seulement si le serveur est configuré ; compte déjà lié depuis le Profil) */}
+      {google && !inscrire && (
+        <div className="mx-auto mt-4 max-w-md px-1" data-testid="connexion-google-bouton">
+          <button type="button" className="flex w-full items-center justify-center gap-3 rounded-full border border-gray-300 bg-white py-3 font-semibold text-gray-800 shadow-sm"
+            onClick={() => { if (!ouvrirGoogle(urlConnexionGoogle())) setErreur("Mettez à jour l'application auRor pour utiliser Google."); }}>
+            <svg viewBox="0 0 48 48" className="h-5 w-5" aria-hidden="true"><path fill="#4285F4" d="M45 24.5c0-1.6-.1-2.7-.4-3.9H24v7.3h12c-.2 1.8-1.5 4.5-4.4 6.3l-.1.5 6.4 5 .4.1C43 35.9 45 30.7 45 24.5z"/><path fill="#34A853" d="M24 46c5.9 0 10.8-1.9 14.4-5.3l-6.9-5.4c-1.8 1.3-4.3 2.2-7.5 2.2-5.7 0-10.6-3.8-12.3-9.1l-.3 0-6.6 5.1-.1.2C8.600 41.600 15.700 46 24 46z"/><path fill="#FBBC05" d="M11.700 28.400c-.4-1.300-.7-2.700-.7-4.400s.3-3.100.7-4.400l-.1-.3-6.700-5.200-.2.100C3.300 17 2.500 20.400 2.500 24s.8 7 2.200 9.800l7-5.400z"/><path fill="#EA4335" d="M24 10.500c4.100 0 6.800 1.800 8.400 3.200l6.100-6C34.800 4.400 29.900 2 24 2 15.700 2 8.600 6.400 5 13.300l7.700 6c1.800-5.300 6.700-8.800 11.300-8.800z"/></svg>
+            Se connecter avec Google
+          </button>
+        </div>
+      )}
       {/* Page d'installation (publique) : proposée tant que l'application n'est pas déjà installée sur cet appareil */}
       {!estInstallee(window) && (
         <p className="mt-5 text-center">

@@ -92,6 +92,20 @@ class PontAuRor(private val activite: WebActivity) {
         }
     }
 
+    /**
+     * Connexion par Google (lot 222) : Google interdit sa page de connexion dans une fenêtre intégrée ; on l'ouvre donc dans le NAVIGATEUR du téléphone.
+     * Seules sont acceptées les adresses https de Google ou de la connexion Google d'auRor (« …/api/auth/google/… ») : le site ne peut pas ouvrir n'importe quoi.
+     */
+    @JavascriptInterface
+    fun ouvrirNavigateur(adresse: String) {
+        val u = try { android.net.Uri.parse(adresse) } catch (_: Exception) { return }
+        val permis = u.scheme == "https" && (u.host == "accounts.google.com" || (u.path ?: "").startsWith("/api/auth/google/"))
+        if (!permis) return
+        activite.runOnUiThread {
+            try { contexte.startActivity(Intent(Intent.ACTION_VIEW, u).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+        }
+    }
+
     /** Page « Pas de connexion » : bouton « Réessayer ». */
     @JavascriptInterface
     fun reessayer() { activite.runOnUiThread { activite.recharger() } }
