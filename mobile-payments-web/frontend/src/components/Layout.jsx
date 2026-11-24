@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import AlerteRenforcee from "@/components/AlerteRenforcee";
 import ArriveeMarchand from "@/components/ArriveeMarchand";
+import SynchroAuto from "@/components/SynchroAuto";                    // lot 223 : synchronisation en temps réel entre appareils
 import LectureSmsAuto from "@/components/LectureSmsAuto";            // lecture automatique des SMS de paiement (application direct)
 import MenuLateral from "@/components/MenuLateral";
 import SupportSawali from "@/components/SupportSawali";
@@ -154,6 +155,7 @@ export default function Layout() {
         <VerrouEcran />
         <ArriveeMarchand />
         <LectureSmsAuto />
+        <SynchroAuto />
         <AssistantSauvegarde />
         <SauvegardeAuto />
         <SynchroHorsLigne />

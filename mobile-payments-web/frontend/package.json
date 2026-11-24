@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build && node -e \"require('fs').copyFileSync('dist/index.html','dist/404.html')\"",
     "lint": "oxlint",
-    "test": "node tests/calcul.test.mjs && node tests/budget.test.mjs && node tests/copieLocale.test.mjs && node tests/smsPaiements.test.mjs && node tests/ussdLocal.test.mjs && node tests/horsLigne.test.mjs && node tests/rendu.test.mjs && node tests/liluvineEmotion.test.mjs && node tests/liluvineBonjour.test.mjs && node tests/liluvineReglage.test.mjs && node tests/verrouEtat.test.mjs",
+    "test": "node tests/synchro.test.mjs && node tests/calcul.test.mjs && node tests/budget.test.mjs && node tests/copieLocale.test.mjs && node tests/smsPaiements.test.mjs && node tests/ussdLocal.test.mjs && node tests/horsLigne.test.mjs && node tests/rendu.test.mjs && node tests/liluvineEmotion.test.mjs && node tests/liluvineBonjour.test.mjs && node tests/liluvineReglage.test.mjs && node tests/verrouEtat.test.mjs",
     "lint:paiement": "oxlint -D no-use-before-define src/components/PaiementDirect.jsx",
     "preview": "vite preview"
   },

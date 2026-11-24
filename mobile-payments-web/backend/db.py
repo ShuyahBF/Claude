@@ -47,6 +47,8 @@ async def ensure_indexes() -> None:
     await db.users.create_index("id", unique=True)
     await db.users.create_index("telephone", unique=True)
     await db.users.create_index("email", unique=True, partialFilterExpression={"email": {"$type": "string"}})
+    # Synchronisation en temps réel (lot 223) : un changement chiffré par compte et par numéro de séquence
+    await db.flux.create_index([("user_id", 1), ("seq", 1)], unique=True)
     # Connexion par Google (lot 222) : une identité Google ne peut être liée qu'à UN compte
     await db.users.create_index("google.sub", unique=True, partialFilterExpression={"google.sub": {"$type": "string"}})
     # Catalogue : un service par opérateur, pays et nom
