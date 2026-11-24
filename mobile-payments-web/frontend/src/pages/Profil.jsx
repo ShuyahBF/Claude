@@ -10,6 +10,7 @@ import EmpreinteProfil from "@/components/EmpreinteProfil";   // connexion par l
 import NomMarchandProfil from "@/components/NomMarchandProfil";                // lot 190 : proposition du nom du marchand d'après le SMS
 import LiluvineProfil from "@/components/LiluvineProfil";   // réglage de Liluvine (présente, silencieuse, désactivée)
 import BudgetProfil from "@/components/BudgetProfil";   // lot 217 : budget de dépenses (tous opérateurs)
+import GoogleProfil from "@/components/GoogleProfil";   // lot 222 : compte Google
 import PinProfil from "@/components/PinProfil";                           // lot 130 : envoi du code secret par opérateur (application direct)
 import PortefeuillesProfil from "@/components/PortefeuillesProfil";   // lot 88 : opérateurs chez qui on a un portefeuille
 import { etatAutorisation, geolocalisationDisponible, positionActuelle } from "@/lib/geoloc";
@@ -159,6 +160,7 @@ export default function Profil() {
       <PortefeuillesProfil />
       <BudgetProfil />
       <EmpreinteProfil />
+      <GoogleProfil />
       <PinProfil />
       <NomMarchandProfil />
       <BlocSauvegarde />

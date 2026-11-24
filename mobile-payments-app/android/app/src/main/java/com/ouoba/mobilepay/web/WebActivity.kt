@@ -278,7 +278,26 @@ class WebActivity : FragmentActivity() {
         // Lot 2.30 : à CHAQUE nouvelle version de l'application, la mémoire (cache) du site est vidée une fois : un ancien fichier gardé en mémoire ne peut plus bloquer le démarrage
         val prefsCache = getSharedPreferences("demarrage_site", Context.MODE_PRIVATE)
         if (prefsCache.getInt("version_cache", 0) != BuildConfig.VERSION_CODE) { web.clearCache(true); prefsCache.edit().putInt("version_cache", BuildConfig.VERSION_CODE).apply() }
-        if (savedInstanceState != null) web.restoreState(savedInstanceState) else web.loadUrl(adresseSite.toString())
+        // Lot 222 : lancée par le retour de la connexion Google (« auror://google?… » alors que l'application était fermée) : on ouvre directement la page d'échange du code
+        if (savedInstanceState != null) web.restoreState(savedInstanceState) else web.loadUrl(urlRetourGoogle(intent) ?: adresseSite.toString())
+    }
+
+    /**
+     * Connexion par Google (lot 222) : le navigateur du téléphone rappelle « auror://google?code=… » (ou « ?erreur=… », « ?lie=1 »).
+     * On transforme ce rappel en page du site « /connexion-google?… », qui échange le code contre la session. Rend null si l'intention n'est pas ce rappel.
+     */
+    private fun urlRetourGoogle(i: Intent?): String? {
+        val d = i?.data ?: return null
+        if (d.scheme != "auror" || d.host != "google") return null
+        val requete = d.encodedQuery ?: ""
+        return adresseSite.buildUpon().path("/connexion-google").encodedQuery(requete).build().toString()
+    }
+
+    /** L'application est déjà ouverte (launchMode singleTask) : le rappel de Google arrive ici. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        urlRetourGoogle(intent)?.let { web.loadUrl(it) }
     }
 
     // ---- VERROU BIOMÉTRIQUE (« à la connexion ») : le site est masqué tant que le téléphone n'a pas reconnu l'utilisateur.

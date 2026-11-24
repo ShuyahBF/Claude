@@ -47,6 +47,8 @@ async def ensure_indexes() -> None:
     await db.users.create_index("id", unique=True)
     await db.users.create_index("telephone", unique=True)
     await db.users.create_index("email", unique=True, partialFilterExpression={"email": {"$type": "string"}})
+    # Connexion par Google (lot 222) : une identité Google ne peut être liée qu'à UN compte
+    await db.users.create_index("google.sub", unique=True, partialFilterExpression={"google.sub": {"$type": "string"}})
     # Catalogue : un service par opérateur, pays et nom
     await db.services.create_index("id", unique=True)
     await db.services.create_index([("operateur", 1), ("pays", 1), ("nom", 1)], unique=True)
