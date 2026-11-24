@@ -3,6 +3,7 @@ import { useAuth } from "@/context/AuthContext";
 import { EVENEMENT_MAJ } from "@/components/AssistantSauvegarde";
 import { cleDuJournal, pourUtilisateur } from "@/lib/journalIntime";
 import { lireEtatServeur, poserAlerte, resumeComptes, sauvegarder } from "@/lib/sauvegarde";
+import { synchroPrete } from "@/lib/synchroTempsReel";   // lot 223
 import { VERSION } from "@/version";
 
 // Sauvegarde AUTOMATIQUE (lot 168), sans écran : si l'utilisateur a choisi la sauvegarde en ligne ET que ce téléphone connaît la clé de son coffre,
@@ -19,6 +20,8 @@ export default function SauvegardeAuto() {
     let arrete = false;
     const lancer = async () => {
       if (enCours.current || arrete) return;
+      // Lot 223 : la synchronisation active doit avoir fait un premier tour complet : une sauvegarde ne part jamais avec des données en retard sur un autre appareil
+      if (!synchroPrete()) return;
       enCours.current = true;
       try {
         pourUtilisateur(user.id);

@@ -9,6 +9,7 @@ import ChampTelephone from "@/components/ChampTelephone";
 import EmpreinteProfil from "@/components/EmpreinteProfil";   // connexion par l'empreinte (application Android)
 import NomMarchandProfil from "@/components/NomMarchandProfil";                // lot 190 : proposition du nom du marchand d'après le SMS
 import LiluvineProfil from "@/components/LiluvineProfil";   // réglage de Liluvine (présente, silencieuse, désactivée)
+import SynchroProfil from "@/components/SynchroProfil";   // lot 223 : synchronisation entre appareils
 import BudgetProfil from "@/components/BudgetProfil";   // lot 217 : budget de dépenses (tous opérateurs)
 import GoogleProfil from "@/components/GoogleProfil";   // lot 222 : compte Google
 import PinProfil from "@/components/PinProfil";                           // lot 130 : envoi du code secret par opérateur (application direct)
@@ -164,6 +165,7 @@ export default function Profil() {
       <PinProfil />
       <NomMarchandProfil />
       <BlocSauvegarde />
+      <SynchroProfil />
 
       <LiluvineProfil />
 
