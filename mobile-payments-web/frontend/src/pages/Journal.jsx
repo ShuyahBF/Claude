@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import AvatarLiluvine from "@/components/AvatarLiluvine";
+import BullesConversation from "@/components/BullesConversation";
 import Modal from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { apiClient, messageErreur } from "@/lib/api";
@@ -9,6 +10,7 @@ import {
   enregistrerEntree, filtrerEntrees, pourUtilisateur, retirerAccord, supprimerEntree, toutEffacer,
 } from "@/lib/journalIntime";
 import { useAuth } from "@/context/AuthContext";
+import { analyserConversation, resumeConversation } from "@/lib/conversationJournal";
 import { initiativeDuMoment } from "@/lib/liluvineEmotion";
 import { etatLiluvine, lireReglage } from "@/lib/liluvineReglage";
 import { effacerConversation, envoyerALiluvine, fermerBulle, initiativeDeLiluvine, lierUtilisateur, lireLiluvine, surLiluvine, useLiluvine } from "@/lib/liluvineStore";
@@ -136,14 +138,34 @@ export default function Journal() {
           )}
           {entrees.length === 0 && <p className="text-sm text-gray-600">Votre journal est vide. Appuyez sur « Écrire aujourd'hui » pour votre première page.</p>}
           <ul className="space-y-2" data-testid="entrees-journal">
-            {affichees.map((e) => (
+            {affichees.map((e) => {
+              const chat = analyserConversation(e.texte);
+              if (chat?.length) {
+                // Conversation avec Liluvine : bloc REPLIÉ à l'ouverture (il ne prend qu'une ligne), déployé en chat sur demande
+                return (
+                  <li key={e.id}>
+                    <details className="rounded-xl border border-sky-200 bg-sky-50 p-3" data-testid="entree-conversation">
+                      <summary className="flex cursor-pointer flex-wrap items-center gap-x-2 text-sm">
+                        <span className="text-base">💬</span><span className="font-semibold text-primary">{jourCourt(e.quand)}</span>
+                        <span className="font-semibold text-gray-800">Conversation avec Liluvine</span><span className="text-xs text-gray-600">{resumeConversation(chat)}</span>
+                      </summary>
+                      <div className="mt-3 space-y-2">
+                        <BullesConversation messages={chat} />
+                        <div className="flex justify-end"><button type="button" className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold" onClick={() => setEdition(e)} aria-label={`Ouvrir l'entrée du ${dateLongue(e.quand)}`}>✏️ Ouvrir / modifier</button></div>
+                      </div>
+                    </details>
+                  </li>
+                );
+              }
+              return (
               <li key={e.id}>
                 <button type="button" className="w-full rounded-xl border border-gray-200 p-3 text-left hover:bg-sky-50" onClick={() => setEdition(e)} aria-label={`Ouvrir l'entrée du ${dateLongue(e.quand)}`}>
                   <span className="flex items-center gap-2 text-xs text-gray-500"><span className="text-base">{humeurDe(e.humeur)?.icone || "📝"}</span><span className="font-semibold text-primary">{jourCourt(e.quand)}</span><span>{humeurDe(e.humeur)?.libelle}</span></span>
                   <span className="mt-1 line-clamp-2 block text-sm text-gray-800">{e.texte}</span>
                 </button>
               </li>
-            ))}
+              );
+            })}
           </ul>
           <details className="rounded-xl border border-gray-200 p-3 text-sm">
             <summary className="cursor-pointer font-semibold">⚙️ Mes accords et mon journal</summary>
@@ -176,8 +198,9 @@ export default function Journal() {
                 {HUMEURS.map((h) => <option key={h.id} value={h.id}>{h.icone} {h.libelle}</option>)}
               </select>
             </div>
+            {edition.id && analyserConversation(edition.texte)?.length > 0 && <BullesConversation messages={analyserConversation(edition.texte)} />}
             <div>
-              <label className="label" htmlFor="j-texte">Mon texte</label>
+              <label className="label" htmlFor="j-texte">{edition.id && analyserConversation(edition.texte)?.length > 0 ? "Texte de la conversation (modifiable)" : "Mon texte"}</label>
               <textarea id="j-texte" className="input min-h-[10rem]" maxLength={8000} placeholder="Écrivez librement, personne d'autre ne le lira…" value={edition.texte} onChange={(e) => setEdition({ ...edition, texte: e.target.value })} data-testid="texte-entree" />
             </div>
             <div className="flex flex-wrap justify-end gap-2">
