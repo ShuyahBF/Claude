@@ -234,7 +234,7 @@ function Liluvine({ cle, derniereEntree, onGardee }) {
   const { messages, attente, essais, refus } = useLiluvine();
   const [saisie, setSaisie] = useState("");
   const [son, setSon] = useState(sonActif());
-  const bas = useRef(null);
+  const fil = useRef(null);       // zone des messages (la SEULE à défiler : jamais toute la page)
   // L'écran de Liluvine est affiché : les messages non lus sont lus ; en le quittant, les suivants seront signalés par une bulle et un son
   useEffect(() => { surLiluvine(true); fermerBulle(); return () => surLiluvine(false); }, []);
   // Liluvine écrit PARFOIS la première (au plus une fois toutes les 8 heures, une fois sur deux et demie), une phrase locale : aucun envoi au serveur
@@ -245,7 +245,9 @@ function Liluvine({ cle, derniereEntree, onGardee }) {
     const i = initiativeDuMoment({ derniereEntree, derniereInitiative: derniere });
     if (i) { initiativeDeLiluvine(i.texte, i.emotion); try { localStorage.setItem("mpw_liluvine_initiative", String(Date.now())); } catch { /* sans importance */ } }
   }, [derniereEntree]);
-  useEffect(() => { bas.current?.scrollIntoView?.({ behavior: "smooth", block: "end" }); }, [messages, attente]);
+  // Dernier message visible : on fait défiler SEULEMENT la zone des messages (scrollTop). L'ancien scrollIntoView poussait toute la page
+  // vers le bas et la zone de saisie passait sous la barre de navigation (constat du 27/11/2026 : « plus de zone pour écrire »).
+  useEffect(() => { const z = fil.current; if (z) z.scrollTop = z.scrollHeight; }, [messages, attente]);
 
   const dernier = messages[messages.length - 1];
   const etat = attente ? "reflexion" : dernier?.role === "assistant" && Date.now() - dernier.quand < 4000 ? "parle" : "repos";
@@ -272,7 +274,7 @@ function Liluvine({ cle, derniereEntree, onGardee }) {
         </div>
         <button type="button" className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold" aria-pressed={son} onClick={basculerSon} title="Son des nouveaux messages">{son ? "🔔 Son activé" : "🔕 Son coupé"}</button>
       </div>
-      <div className="max-h-[50vh] space-y-2 overflow-y-auto rounded-xl border border-gray-200 p-3" aria-live="polite">
+      <div ref={fil} className="max-h-[45vh] space-y-2 overflow-y-auto rounded-xl border border-gray-200 p-3" aria-live="polite">
         {messages.length === 0 && <p className="text-sm text-gray-500">Dites-lui comment s'est passée votre journée, ce qui vous pèse ou ce qui vous rend heureux.</p>}
         {messages.map((m, i) => (
           <div key={m.id}>
@@ -285,7 +287,6 @@ function Liluvine({ cle, derniereEntree, onGardee }) {
           </div>
         ))}
         {attente && <p className="text-sm text-gray-500">⏳ Liluvine réfléchit…</p>}
-        <div ref={bas} />
       </div>
       {refus && (
         <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900" data-testid="abonnement-requis">
@@ -293,6 +294,8 @@ function Liluvine({ cle, derniereEntree, onGardee }) {
           <Link to="/abonnement" className="btn-primary btn-sm mt-2 inline-block">🎟️ Voir l'abonnement</Link>
         </div>
       )}
+      {/* Zone de saisie : collée en bas de l'écran, au-dessus de la barre de navigation, jamais cachée (lot 225) */}
+      <div className="sticky bottom-24 z-30 space-y-2 rounded-xl bg-white/95 pb-1 pt-2 backdrop-blur" data-testid="saisie-liluvine">
       <div className="flex gap-2">
         <textarea className="input min-h-[3rem] flex-1" maxLength={2000} placeholder="Écrivez à Liluvine…" aria-label="Message pour Liluvine" value={saisie} onChange={(e) => setSaisie(e.target.value)} />
         <button type="button" className="btn-primary self-end" disabled={attente || !saisie.trim()} onClick={envoyer} data-testid="envoyer-liluvine">📨 Envoyer</button>
@@ -301,6 +304,7 @@ function Liluvine({ cle, derniereEntree, onGardee }) {
         <button type="button" className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold" disabled={messages.length === 0}
                 onClick={() => onGardee(messages.map((m) => `[${new Date(m.quand).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}] ${m.role === "user" ? "Moi" : "Liluvine"} : ${m.content}`).join("\n\n"))}>📔 Garder dans mon journal</button>
         <button type="button" className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold" disabled={messages.length === 0} onClick={() => { effacerConversation(); toast.succes("Conversation effacée de l'écran."); }}>🧹 Effacer la conversation</button>
+      </div>
       </div>
     </div>
   );
