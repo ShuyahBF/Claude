@@ -1,4 +1,4 @@
-# GeMAO — GMAO multi-clients (ZandGo, ALBARKA…)
+# GeMAO — GMAO multi-clients
 
 Gestion de la maintenance assistée par ordinateur, **une plateforme, plusieurs clients étanches**, avec WhatsApp via SAWALI
 signé par une **clé HMAC propre à chaque client**. FastAPI + MongoDB (Atlas) + React, comme auRor.
@@ -21,9 +21,9 @@ Schéma identique aux autres plateformes (auRor) : `X-Emetteur`, `X-Timestamp` (
 - La clé (256 bits) n'est **montrée qu'une fois** à la création / rotation ; en base elle est **chiffrée** (Fernet, `CLE_MAITRE`) avec une empreinte de 8 caractères.
 - Message WhatsApp entrant : `PANNE <code équipement> <description>` depuis le numéro d'un utilisateur du client crée une intervention et répond avec son numéro.
 
-## Activer un nouveau client (ex. ZandGo)
-1. Super-admin → « Clients Et Clés HMAC » → créer le client (l'émetteur par défaut est `gemao-zandgo`).
-2. Noter la clé affichée ; dans SAWALI, déclarer l'émetteur `gemao-zandgo` avec cette clé, et pointer son webhook vers `https://<api>/api/webhooks/sawali`.
+## Activer un nouveau client (ex. Alpha)
+1. Super-admin → « Clients Et Clés HMAC » → créer le client (l'émetteur par défaut est `gemao-alpha`).
+2. Noter la clé affichée ; dans SAWALI, déclarer l'émetteur `gemao-alpha` avec cette clé, et pointer son webhook vers `https://<api>/api/webhooks/sawali`.
 3. Admin du client → « WhatsApp » → « Envoyer un essai » : le statut doit être « Envoyé ».
 
 ## Déploiement Render

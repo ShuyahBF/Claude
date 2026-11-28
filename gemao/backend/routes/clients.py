@@ -1,4 +1,4 @@
-"""CLIENTS (locataires : ZandGo, ALBARKA…) et leurs CLÉS HMAC SAWALI — réservé au super-administrateur.
+"""CLIENTS (locataires : Alpha, Beta…) et leurs CLÉS HMAC SAWALI — réservé au super-administrateur.
 
 Chaque client a son émetteur SAWALI (X-Emetteur) et sa clé HMAC : créée avec le client, visible UNE seule
 fois, remplaçable par rotation. Les données de chaque client sont isolées (toutes les collections portent client_id).
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/clients", tags=["clients"], dependencies=[Depends(ex
 
 class NouveauClient(BaseModel):
     nom: str = Field(min_length=2, max_length=80)
-    code: Optional[str] = None            # « zandgo » ; déduit du nom si absent
+    code: Optional[str] = None            # « alpha » ; déduit du nom si absent
     emetteur: Optional[str] = None        # émetteur SAWALI ; « gemao-<code> » si absent
     admin_nom: str
     admin_email: str

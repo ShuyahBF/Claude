@@ -1,7 +1,7 @@
-"""CLÉS HMAC SAWALI — une clé PAR CLIENT (ZandGo, ALBARKA…), pour WhatsApp.
+"""CLÉS HMAC SAWALI — une clé PAR CLIENT, pour WhatsApp.
 
 Même schéma de signature que les autres plateformes du propriétaire (auRor, signal_connexion.py) :
-    X-Emetteur  : identifiant de l'émetteur déclaré dans SAWALI (ex. « gemao-zandgo »)
+    X-Emetteur  : identifiant de l'émetteur déclaré dans SAWALI (ex. « gemao-alpha »)
     X-Timestamp : secondes depuis 1970
     X-Signature : HMAC-SHA256(clé, "<horodatage>.<corps brut>") en hexadécimal
 

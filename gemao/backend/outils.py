@@ -24,7 +24,7 @@ def maintenant() -> str:
 
 
 def slug(texte: str) -> str:
-    """« Zand Go » -> « zand-go » (code court d'un client, sans accents)."""
+    """« Société Alpha » -> « societe-alpha » (code court d'un client, sans accents)."""
     t = unicodedata.normalize("NFKD", texte).encode("ascii", "ignore").decode().lower()
     return re.sub(r"[^a-z0-9]+", "-", t).strip("-")
 

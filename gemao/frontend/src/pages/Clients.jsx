@@ -29,7 +29,7 @@ export default function Clients() {
       <Entete titre="Clients Et Clés HMAC" charger={charger} unite="client(s)" />
       {erreur && <p className="erreur">{erreur}</p>}
       <form className="ligne-form" onSubmit={creer}>
-        <input placeholder="Nom du client (ZandGo)" value={f.nom} onChange={(e) => setF({ ...f, nom: e.target.value })} required />
+        <input placeholder="Nom du client (Alpha)" value={f.nom} onChange={(e) => setF({ ...f, nom: e.target.value })} required />
         <input placeholder="Administrateur : BADINI Awa" value={f.admin_nom} onChange={(e) => setF({ ...f, admin_nom: e.target.value })} required />
         <input type="email" placeholder="awa.badini@gmail.com" value={f.admin_email} onChange={(e) => setF({ ...f, admin_email: e.target.value })} required />
         <input placeholder="Téléphone WhatsApp" value={f.admin_telephone} onChange={(e) => setF({ ...f, admin_telephone: e.target.value })} />

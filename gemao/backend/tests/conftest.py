@@ -45,11 +45,11 @@ def connecter(c, email, mdp):
 
 @pytest.fixture(scope="session")
 def monde(app_client, faux_sawali):
-    """Deux clients (ZandGo, ALBARKA) avec leur admin ; renvoie jetons, ids et clés HMAC (montrées une fois)."""
+    """Deux clients (Alpha, Beta) avec leur admin ; renvoie jetons, ids et clés HMAC (montrées une fois)."""
     c = app_client
     root = connecter(c, "root@test.bf", "root-motdepasse")
     m = {"root": root}
-    for nom, tel in (("ZandGo", "22670000001"), ("ALBARKA", "22670000002")):
+    for nom, tel in (("Alpha", "22670000001"), ("Beta", "22670000002")):
         r = c.post("/api/clients", headers=entete(root), json={
             "nom": nom, "admin_nom": f"Admin {nom}", "admin_email": f"admin@{nom.lower()}.bf",
             "admin_mot_de_passe": "motdepasse-ok", "admin_telephone": tel})
