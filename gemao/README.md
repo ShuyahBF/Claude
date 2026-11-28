@@ -15,8 +15,8 @@ signé par une **clé HMAC propre à chaque client**. FastAPI + MongoDB (Atlas) 
 Schéma identique aux autres plateformes (auRor) : `X-Emetteur`, `X-Timestamp` (secondes), `X-Signature = HMAC-SHA256(clé, "<horodatage>.<corps brut>")`.
 | Sens | Rôle de la clé du client |
 |---|---|
-| **Sortant** GeMAO → SAWALI (`POST {SAWALI_URL}{SAWALI_CHEMIN_ENVOI}`, corps `{"a","message","reference"}`) | signe l'envoi (technicien prévenu à l'affectation, demandeur à la clôture) |
-| **Entrant** SAWALI → GeMAO (`POST /api/webhooks/sawali`, corps `{"id","de","message"}`) | vérifie la signature : émetteur connu, horodatage < 5 min, comparaison en temps constant, rejeu de `id` ignoré |
+| **Sortant** GeMAO → SAWALI (`POST {LILUVINE_WA_URL}`, corps `{"id","to":"+226…","message","source"}`, un nouvel essai sur 5xx, même `id`) | signe l'envoi (technicien prévenu à l'affectation, demandeur à la clôture) |
+| **Entrant** SAWALI → GeMAO (`POST /api/webhooks/sawali`, corps `{"id","de","message"}` — à confirmer côté SAWALI) | vérifie la signature : émetteur connu, horodatage < 5 min, comparaison en temps constant, rejeu de `id` ignoré |
 
 - La clé (256 bits) n'est **montrée qu'une fois** à la création / rotation ; en base elle est **chiffrée** (Fernet, `CLE_MAITRE`) avec une empreinte de 8 caractères.
 - Message WhatsApp entrant : `PANNE <code équipement> <description>` depuis le numéro d'un utilisateur du client crée une intervention et répond avec son numéro.
@@ -27,7 +27,7 @@ Schéma identique aux autres plateformes (auRor) : `X-Emetteur`, `X-Timestamp` (
 3. Admin du client → « WhatsApp » → « Envoyer un essai » : le statut doit être « Envoyé ».
 
 ## Déploiement Render
-`gemao/render.yaml` (Blueprint). Secrets à saisir : `MONGO_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `SAWALI_URL`, `FRONTEND_ORIGIN` (+ `VITE_API_URL` côté site).
+`gemao/render.yaml` (Blueprint). Secrets à saisir : `MONGO_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `LILUVINE_WA_URL`, `FRONTEND_ORIGIN` (+ `VITE_API_URL` côté site).
 **Conserver `CLE_MAITRE`** : sans elle, les clés HMAC enregistrées ne se déchiffrent plus (il faudrait les renouveler).
 
 ## Lancer en local
@@ -38,5 +38,9 @@ cd gemao/frontend && npm install && npm run dev && npm test
 ```
 
 ## À confirmer côté SAWALI
-Le chemin d'envoi (`/api/webhook/gemao-message`) et les noms de champs du corps (`a`, `message`, `reference`) sont des hypothèses
-calquées sur le schéma d'auRor : à aligner avec l'API réelle de SAWALI (variable `SAWALI_CHEMIN_ENVOI`, `backend/whatsapp.py`).
+Le protocole d'envoi est celui de la « Transmission WA Universelle » déjà utilisée par ZandGo (URL, corps, signature, nouvel essai).
+Reste à confirmer : le **webhook entrant** (`/api/webhooks/sawali`, corps `{"id","de","message"}`) et l'enregistrement d'un émetteur par client (`gemao-<code>`) dans SAWALI.
+
+## Règles du propriétaire appliquées
+Voir `CLAUDE.md` : version/lot (`backend/lot.py`), nouveautés (`backend/nouveautes.py`), présence SAWALI, mesure des appels lents,
+envois externes en arrière-plan, tableaux (tri, survol, sélection, défilement), modale dimensionnée, œil sur les mots de passe, etc.

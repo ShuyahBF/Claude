@@ -8,7 +8,7 @@ import { useMoi } from "../App.jsx";
 
 const STATUTS = { envoye: "Envoyé", echec: "Échec", sans_cle: "Clé HMAC manquante", sans_numero: "Sans numéro", recu: "Reçu" };
 
-export default function WhatsApp() {
+export default function WhatsApp({ integre = false }) {
   const { lignes, charger, erreur } = useListe("/whatsapp/messages");
   const moi = useMoi(); const toast = useToast();
   const [tel, setTel] = useState("");
@@ -20,7 +20,8 @@ export default function WhatsApp() {
   };
   return (
     <>
-      <Entete titre="WhatsApp" charger={charger} unite="message(s)" />
+      {!integre && <Entete titre="WhatsApp" charger={charger} unite="message(s)" />}
+      {integre && <div className="actions"><button onClick={async () => { toast("Actualisation de « WhatsApp » en cours…"); try { toast(`WhatsApp : ${await charger()} message(s) relu(s).`, "ok"); } catch (e) { toast(e.message, "erreur"); } }}>🔄 Actualiser</button></div>}
       <p className="aide">Les messages passent par SAWALI, signés avec la clé HMAC de votre société. Pour signaler une panne, un utilisateur enregistré envoie : <code>PANNE &lt;code équipement&gt; &lt;description&gt;</code>.</p>
       {erreur && <p className="erreur">{erreur}</p>}
       {moi.role === "admin" && <form className="ligne-form" onSubmit={essayer}>

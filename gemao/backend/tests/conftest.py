@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 os.environ.update({"MONGO_URL": "mongomock://", "JWT_SECRET": "secret-de-test", "ADMIN_EMAIL": "root@test.bf",
-                   "ADMIN_PASSWORD": "root-motdepasse", "SAWALI_URL": "https://sawali.test"})
+                   "ADMIN_PASSWORD": "root-motdepasse", "LILUVINE_WA_URL": "https://sawali.test/api/wa", "PRESENCE_SAWALI": "0"})
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import httpx  # noqa: E402
@@ -17,6 +17,15 @@ def app_client():
     import server
     with TestClient(server.app) as c:
         yield c
+
+
+def attendre(recus, n=1, delai=3.0):
+    """L'envoi WhatsApp part en arrière-plan (règle 7) : on attend qu'il soit arrivé chez le faux SAWALI."""
+    import time
+    fin = time.time() + delai
+    while len(recus) < n and time.time() < fin:
+        time.sleep(0.02)
+    return recus
 
 
 @pytest.fixture(scope="session")

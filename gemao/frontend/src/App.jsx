@@ -12,6 +12,9 @@ import Preventif from "./pages/Preventif.jsx";
 import Utilisateurs from "./pages/Utilisateurs.jsx";
 import WhatsApp from "./pages/WhatsApp.jsx";
 import Clients from "./pages/Clients.jsx";
+import Parametres from "./pages/Parametres.jsx";
+import Version from "./components/Version.jsx";
+import { installerSecuriteEcran } from "./lib/securiteEcran.js";
 
 const Moi = createContext(null);
 export const useMoi = () => useContext(Moi);
@@ -24,7 +27,8 @@ const MENU = [
   ["/stock", "pièces et stock", ["admin", "technicien"]],
   ["/preventif", "maintenance préventive", ["admin", "technicien"]],
   ["/utilisateurs", "utilisateurs", ["admin"]],
-  ["/whatsapp", "whatsapp", ["admin", "technicien"]],
+  ["/whatsapp", "whatsapp", ["technicien"]],
+  ["/parametres", "paramètres", ["admin"]],
   ["/clients", "clients et clés hmac", ["super_admin"]],
 ];
 
@@ -55,7 +59,7 @@ function Cadre() {
             </select>) : moi.client?.nom}</div>
           <nav>{MENU.filter(([, , roles]) => roles.includes(moi.role)).map(([a, l]) =>
             <NavLink key={a} to={a} end={a === "/"}>{titreMenu(l)}</NavLink>)}</nav>
-          <div className="pied"><div>{moi.nom}</div><button onClick={sortir}>Déconnexion</button></div>
+          <div className="pied"><div>{moi.nom}</div><Version /><button onClick={sortir}>Déconnexion</button></div>
         </aside>
         <main><Outlet /></main>
       </div>
@@ -64,6 +68,7 @@ function Cadre() {
 }
 
 export default function App() {
+  useEffect(() => { installerSecuriteEcran(); }, []);
   return (
     <FournisseurToasts>
       <BrowserRouter>
@@ -78,6 +83,7 @@ export default function App() {
             <Route path="utilisateurs" element={<Utilisateurs />} />
             <Route path="whatsapp" element={<WhatsApp />} />
             <Route path="clients" element={<Clients />} />
+            <Route path="parametres" element={<Parametres />} />
           </Route>
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>

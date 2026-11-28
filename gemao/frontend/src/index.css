@@ -35,3 +35,34 @@ th { background:var(--carte); font-size:.85rem; color:var(--doux); user-select:n
 .toast { background:var(--carte); border:1px solid var(--bord); border-left:4px solid var(--accent); padding:.6rem .9rem; border-radius:8px; box-shadow:0 2px 8px #0003 } .toast.ok { border-left-color:var(--ok) } .toast.erreur { border-left-color:var(--err) }
 @media (max-width: 760px) { .mise-en-page { grid-template-columns: 1fr } aside { border-right:0; border-bottom:1px solid var(--bord) } nav { flex-direction:row; flex-wrap:wrap } main { padding:1rem 16px } }
 @media print { aside, .actions, .ligne-form { display:none } .cadre-tableau.defile { max-height:none } }
+/* --- Règle 3 : tableaux — survol bleu clair transparent, sélection orange clair avec police bleu nuit (contraste 7,7:1) --- */
+tbody tr:hover { background: rgba(56, 189, 248, 0.16); }
+tbody tr.ligne-selectionnee, tbody tr[aria-selected="true"] { background: #f6a35b; color: #0A1E3D; }
+tbody tr.ligne-selectionnee .ref, tbody tr.ligne-selectionnee .ok-texte, tbody tr.ligne-selectionnee .alerte-texte { color: #0A1E3D; }
+/* --- Règle 11 : modale dimensionnée (28 rem, 36 rem si large, 85 % de la hauteur, défilement dans la fenêtre) --- */
+.modale { background: var(--carte); width: min(28rem, 100%); max-height: 85dvh; overflow-y: auto; border-radius: 12px; }
+.modale.large { width: min(36rem, 100%); }
+.modale > .carte { border: 0; }
+@media (max-width: 760px) { .fenetre { align-items: end; padding: 0 } .modale { border-radius: 14px 14px 0 0 } }
+/* --- Règle 16 : couleurs sobres, jamais la couleur seule (texte ou pictogramme toujours présent) --- */
+.ref { color: #1d63c4 } .ok-texte { color: var(--ok); font-weight: 600 } @media (prefers-color-scheme: dark) { .ref { color: #6aa8ff } }
+.badge { padding: .1rem .55rem; border-radius: 999px; font-size: .8rem; font-weight: 600; background: var(--bord) }
+.s-demande { background: #dbeafe; color: #1e3a8a } .s-planifiee { background: #ede9fe; color: #4c1d95 } .s-en_cours { background: #ffedd5; color: #9a3412 }
+.s-terminee { background: #dcfce7; color: #14532d } .s-annulee { background: #e5e7eb; color: #374151 }
+.p-urgente { background: #fee2e2; color: #991b1b } .p-haute { background: #ffedd5; color: #9a3412 } .p-normale { background: #e0f2fe; color: #075985 } .p-basse { background: #e5e7eb; color: #374151 }
+/* --- Connexion : logo, état du serveur, version --- */
+.logo-rond { width: 56px; height: 56px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 800; font-size: 1.6rem; display: grid; place-items: center; margin: 0 auto }
+.etat-serveur, .version { color: var(--doux) }
+aside .version { font-size: .75rem }
+/* --- Attente : jauge circulaire transparente (arc qui tourne) --- */
+.attente { display: flex; gap: .6rem; align-items: center; justify-content: center; color: var(--doux) }
+.jauge { width: 22px; height: 22px; border-radius: 50%; border: 3px solid transparent; border-top-color: var(--accent); animation: tour .8s linear infinite }
+@keyframes tour { to { transform: rotate(360deg) } }
+/* --- Sécurité : contenu flouté quand la page perd le focus, impression bloquée --- */
+.flou-securite #root { filter: blur(14px); pointer-events: none }
+/* --- Paramètres --- */
+.rubrique { border: 1px solid var(--bord); border-radius: 10px; margin-bottom: .75rem; background: var(--carte) }
+.rubrique-titre { width: 100%; text-align: left; border: 0; font-weight: 700; background: transparent }
+.rubrique-corps { padding: .5rem 1rem 1rem }
+.cartes-nouveautes { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)) }
+.carte-nv { border: 1px solid var(--bord); border-left: 4px solid var(--accent); border-radius: 8px; padding: .75rem; display: flex; flex-direction: column; gap: .4rem }

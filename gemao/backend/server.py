@@ -10,7 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import get_settings
 from db import db, ensure_indexes
 from outils import maintenant, nouvel_id
-from routes import auth, clients, equipements, interventions, pieces, preventif, tableau, utilisateurs, whatsapp
+import asyncio
+import mesure
+import presence_sawali
+from routes import auth, clients, equipements, interventions, pieces, preventif, systeme, tableau, utilisateurs, whatsapp
 from securite import hacher_mot_de_passe
 
 settings = get_settings()
@@ -25,15 +28,20 @@ async def demarrage(_app: FastAPI):
         await db.users.insert_one({"id": nouvel_id(), "client_id": None, "nom": "Super administrateur",
                                    "email": settings.admin_email.lower(), "role": "super_admin", "telephone": None,
                                    "mdp": hacher_mot_de_passe(settings.admin_password), "actif": True, "cree_le": maintenant()})
+    # Présence auprès de SAWALI (règle 4) : au démarrage puis toutes les 5 minutes, en arrière-plan
+    tache = asyncio.create_task(presence_sawali.boucle()) if settings.presence_sawali != "0" else None
     yield
+    if tache:
+        tache.cancel()
 
 
 app = FastAPI(title="GeMAO API", version="1.0.0", lifespan=demarrage)
+app.middleware("http")(mesure.middleware)
 app.add_middleware(CORSMiddleware, allow_origins=settings.frontend_origins, allow_credentials=False,
                    allow_methods=["*"], allow_headers=["*"])
 
 api = APIRouter(prefix="/api")
-for module in (auth, clients, utilisateurs, equipements, pieces, interventions, preventif, tableau, whatsapp):
+for module in (auth, clients, utilisateurs, equipements, pieces, interventions, preventif, tableau, whatsapp, systeme):
     api.include_router(module.router)
 
 

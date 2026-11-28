@@ -26,11 +26,16 @@ class Settings(BaseSettings):
     admin_email: str = ""
     admin_password: str = ""
 
-    # --- Passerelle SAWALI (WhatsApp) ---
-    sawali_url: str = "https://sawali.example"   # adresse de SAWALI
-    sawali_chemin_envoi: str = "/api/webhook/gemao-message"   # POST signé : envoi d'un message WhatsApp
+    # --- Passerelle SAWALI : « Transmission WA Universelle » (même protocole que ZandGo et auRor) ---
+    # Adresse complète de la route d'envoi de SAWALI. La clé HMAC et l'émetteur sont PAR CLIENT (base de données).
+    liluvine_wa_url: str = ""
+    liluvine_wa_source: str = "GeMAO"             # champ « source » du message (provenance affichée chez SAWALI)
     sawali_delai_secondes: int = 8
     tolerance_horodatage_secondes: int = 300      # webhook entrant : décalage d'horloge accepté
+
+    # --- Présence auprès de SAWALI (règle 4) : signal au démarrage puis toutes les 5 minutes ---
+    presence_sawali: str = "1"                    # « 0 » = désactivée (tests, poste de développement)
+    presence_sawali_url: str = "https://api.sawalismartsystems.com/api/presence-logiciel"
 
     # --- Site (CORS) ---
     frontend_origin: str = "http://localhost:5173"

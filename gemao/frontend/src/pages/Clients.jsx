@@ -4,6 +4,8 @@ import { useListe } from "../lib/useListe.js";
 import { useToast } from "../components/Toasts.jsx";
 import Entete from "../components/Entete.jsx";
 import Tableau from "../components/Tableau.jsx";
+import { EXEMPLE_EMAIL, EXEMPLE_NOM } from "../lib/exemplesIdentite.js";
+import Modal from "../components/Modal.jsx";
 import ChampMotDePasse from "../components/ChampMotDePasse.jsx";
 
 export default function Clients() {
@@ -30,8 +32,8 @@ export default function Clients() {
       {erreur && <p className="erreur">{erreur}</p>}
       <form className="ligne-form" onSubmit={creer}>
         <input placeholder="Nom du client (Alpha)" value={f.nom} onChange={(e) => setF({ ...f, nom: e.target.value })} required />
-        <input placeholder="Administrateur : BADINI Awa" value={f.admin_nom} onChange={(e) => setF({ ...f, admin_nom: e.target.value })} required />
-        <input type="email" placeholder="awa.badini@gmail.com" value={f.admin_email} onChange={(e) => setF({ ...f, admin_email: e.target.value })} required />
+        <input placeholder={`Administrateur : ${EXEMPLE_NOM}`} value={f.admin_nom} onChange={(e) => setF({ ...f, admin_nom: e.target.value })} required />
+        <input type="email" placeholder={EXEMPLE_EMAIL} value={f.admin_email} onChange={(e) => setF({ ...f, admin_email: e.target.value })} required />
         <input placeholder="Téléphone WhatsApp" value={f.admin_telephone} onChange={(e) => setF({ ...f, admin_telephone: e.target.value })} />
         <ChampMotDePasse valeur={f.admin_mot_de_passe} onChange={(v) => setF({ ...f, admin_mot_de_passe: v })} placeholder="Mot de passe de l'admin (8 car. min.)" autoComplete="new-password" />
         <button className="primaire">➕ Créer le client</button>
@@ -43,13 +45,13 @@ export default function Clients() {
         { titre: "Actions", action: true, valeur: () => null, rendu: (c) => <span className="actions">
           <button onClick={() => rotation(c)}>🔑 Changer la clé</button><button onClick={() => basculer(c, "actif")}>{c.actif ? "⏸ Suspendre" : "▶ Réactiver"}</button>
           <button onClick={() => basculer(c, "wa_actif")}>{c.wa_actif ? "🔕 Couper WhatsApp" : "🔔 Activer WhatsApp"}</button></span> }]} />
-      {cle && <div className="fenetre"><div className="carte">
+      {cle && <Modal onFermer={() => setCle(null)}><div className="carte">
         <h2>Clé HMAC de {cle.nom}</h2>
         <p>Émetteur SAWALI : <code>{cle.emetteur}</code></p>
         <p className="cle">{cle.cle_hmac}</p>
         <p className="erreur">{cle.avertissement}</p>
         <div className="actions"><button onClick={copier}>📋 Copier</button><button className="primaire" onClick={() => setCle(null)}>J'ai noté la clé</button></div>
-      </div></div>}
+      </div></Modal>}
     </>
   );
 }

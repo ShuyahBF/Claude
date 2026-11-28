@@ -93,7 +93,7 @@ async def planifier(iid: str, p: Planification, cid: str = Depends(client_actif)
     if not tech:
         raise HTTPException(404, "Technicien introuvable.")
     r = await changer_statut(ot, "planifiee", {"technicien_id": p.technicien_id, "date_prevue": p.date_prevue})
-    await whatsapp.notifier_utilisateur(cid, p.technicien_id,
+    whatsapp.notifier_utilisateur(cid, p.technicien_id,
         f"GeMAO — {ot['numero']} vous est affecté : {ot['titre']} ({ot['equipement_nom']}), priorité {ot['priorite']}.", ot["numero"])
     return r
 
@@ -128,7 +128,7 @@ async def cloturer(iid: str, c: Cloture, cid: str = Depends(client_actif), _=Dep
                                               "cout_pieces": cout_pieces, "cout_main_oeuvre": c.cout_main_oeuvre,
                                               "cout_total": cout_pieces + c.cout_main_oeuvre})
     await db.equipements.update_one({"id": ot["equipement_id"], "etat": "en_panne"}, {"$set": {"etat": "en_service"}})
-    await whatsapp.notifier_utilisateur(cid, ot.get("demandeur_id"), f"GeMAO — {ot['numero']} terminée : {ot['titre']}. Merci.", ot["numero"])
+    whatsapp.notifier_utilisateur(cid, ot.get("demandeur_id"), f"GeMAO — {ot['numero']} terminée : {ot['titre']}. Merci.", ot["numero"])
     return r
 
 

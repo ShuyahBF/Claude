@@ -23,10 +23,8 @@ services:
         generateValue: true
       - key: CLE_MAITRE         # chiffre les clés HMAC des clients en base ; à CONSERVER : la perdre rend les clés illisibles
         generateValue: true
-      - key: SAWALI_URL         # adresse de SAWALI
+      - key: LILUVINE_WA_URL    # « Transmission WA Universelle » de SAWALI : adresse complète de la route d'envoi
         sync: false
-      - key: SAWALI_CHEMIN_ENVOI
-        value: /api/webhook/gemao-message
       - key: MONGO_DB_NAME
         value: gemao
       - key: FRONTEND_ORIGIN

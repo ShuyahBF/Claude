@@ -39,6 +39,7 @@ async def messages(cid: str = Depends(client_actif), _=Depends(exiger("admin", "
 @router.post("/whatsapp/test")
 async def essai(e: Essai, cid: str = Depends(client_actif), _=Depends(exiger("admin"))):
     client = await db.clients.find_one({"id": cid}, SANS_ID)
+    # Essai explicite : l'utilisateur attend le résultat (statut), c'est le seul envoi réalisé dans la requête
     return {"statut": await whatsapp.envoyer(client, e.telephone, e.texte, "essai")}
 
 
@@ -63,7 +64,7 @@ async def webhook(request: Request):
     await db.wa_messages.insert_one({"id": nouvel_id(), "client_id": client["id"], "sens": "entrant", "telephone": de,
                                      "texte": texte, "reference": mid, "statut": "recu", "le": maintenant()})
     reponse = await traiter(client, de, texte)
-    await whatsapp.envoyer(client, de, reponse, mid)
+    whatsapp.en_arriere_plan(whatsapp.envoyer(client, de, reponse, mid))   # règle 7 : la réponse WhatsApp part en arrière-plan
     return {"ok": True}
 
 

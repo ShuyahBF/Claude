@@ -4,7 +4,7 @@ import hmac
 import json
 import time
 
-from conftest import connecter, entete
+from conftest import attendre, connecter, entete
 
 
 def signer_webhook(cle, emetteur, corps, ts=None):
@@ -63,12 +63,14 @@ def test_intervention_cloture_stock_et_whatsapp(app_client, monde, faux_sawali):
 
     faux_sawali.clear()
     assert app_client.post(f"/api/interventions/{ot['id']}/planifier", headers=H, json={"technicien_id": tech["id"]}).status_code == 200
-    # WhatsApp sortant signé avec la clé de CE client, émetteur de CE client
-    wa = faux_sawali[-1]
+    # WhatsApp sortant (arrière-plan) signé avec la clé de CE client, émetteur de CE client
+    wa = attendre(faux_sawali)[-1]
+    assert wa["url"] == "https://sawali.test/api/wa"
     assert wa["entetes"]["x-emetteur"] == z["client"]["emetteur"]
     ts, sig = wa["entetes"]["x-timestamp"], wa["entetes"]["x-signature"]
     assert sig == hmac.new(z["cle"].encode(), f"{ts}.{wa['corps']}".encode(), hashlib.sha256).hexdigest()
-    assert json.loads(wa["corps"])["a"] == "22670111111"
+    corps_wa = json.loads(wa["corps"])
+    assert corps_wa["to"] == "+22670111111" and corps_wa["source"] == "GeMAO" and corps_wa["id"]   # protocole ZandGo
 
     # Transition interdite : clôturer sans avoir démarré
     assert app_client.post(f"/api/interventions/{ot['id']}/cloturer", headers=H, json={"rapport": "Rapport ok"}).status_code == 409
@@ -95,7 +97,7 @@ def test_webhook_whatsapp_cree_une_panne(app_client, monde, faux_sawali):
     faux_sawali.clear()
     r = app_client.post("/api/webhooks/sawali", content=corps, headers=h)
     assert r.status_code == 200, r.text
-    assert "OT-" in json.loads(faux_sawali[-1]["corps"])["message"]              # réponse WhatsApp avec le numéro
+    assert "OT-" in json.loads(attendre(faux_sawali)[-1]["corps"])["message"]    # réponse WhatsApp avec le numéro
     assert any(o["source"] == "whatsapp" and o["titre"] == "Fuite d'huile" for o in app_client.get("/api/interventions", headers=H).json())
     # Rejeu du même message : ignoré, pas de seconde intervention
     n = len(app_client.get("/api/interventions", headers=H).json())
@@ -123,7 +125,7 @@ def test_numero_inconnu_et_aide(app_client, monde, faux_sawali):
         corps = json.dumps({"id": mid, "de": de, "message": texte})
         faux_sawali.clear()
         assert app_client.post("/api/webhooks/sawali", content=corps, headers=signer_webhook(z["cle"], z["client"]["emetteur"], corps)).status_code == 200
-        assert attendu in json.loads(faux_sawali[-1]["corps"])["message"]
+        assert attendu in json.loads(attendre(faux_sawali)[-1]["corps"])["message"]
 
 
 def test_preventif_genere_les_ot_echus(app_client, monde):

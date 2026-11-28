@@ -5,6 +5,7 @@ import { useToast } from "../components/Toasts.jsx";
 import Entete from "../components/Entete.jsx";
 import Tableau from "../components/Tableau.jsx";
 import { useMoi } from "../App.jsx";
+import Modal from "../components/Modal.jsx";
 
 const STATUTS = { demande: "Demande", planifiee: "Planifiée", en_cours: "En cours", terminee: "Terminée", annulee: "Annulée" };
 
@@ -49,10 +50,10 @@ export default function Interventions() {
         <button className="primaire">➕ Déclarer</button>
       </form>
       <Tableau lignes={lignes} vide="Aucune intervention." colonnes={[
-        { titre: "N°", valeur: (o) => o.numero }, { titre: "Équipement", valeur: (o) => o.equipement_code },
-        { titre: "Titre", valeur: (o) => o.titre }, { titre: "Priorité", valeur: (o) => o.priorite },
-        { titre: "Statut", valeur: (o) => STATUTS[o.statut] }, { titre: "Créée le", valeur: (o) => o.cree_le, rendu: (o) => o.cree_le.slice(0, 10) },
-        { titre: "Coût (FCFA)", valeur: (o) => o.cout_total, nombre: true, rendu: (o) => o.cout_total?.toLocaleString("fr-FR") ?? "—" },
+        { titre: "N°", valeur: (o) => o.numero, rendu: (o) => <b className="ref">{o.numero}</b> }, { titre: "Équipement", valeur: (o) => o.equipement_code },
+        { titre: "Titre", valeur: (o) => o.titre }, { titre: "Priorité", valeur: (o) => o.priorite, rendu: (o) => <span className={`badge p-${o.priorite}`}>{o.priorite === "urgente" ? "🔥 " : ""}{o.priorite}</span> },
+        { titre: "Statut", valeur: (o) => STATUTS[o.statut], rendu: (o) => <span className={`badge s-${o.statut}`}>{STATUTS[o.statut]}</span> }, { titre: "Créée le", valeur: (o) => o.cree_le, rendu: (o) => o.cree_le.slice(0, 10) },
+        { titre: "Coût (FCFA)", valeur: (o) => o.cout_total, nombre: true, rendu: (o) => o.cout_total != null ? <span className="ok-texte">{o.cout_total.toLocaleString("fr-FR")}</span> : "—" },
         { titre: "Actions", action: true, valeur: () => null, rendu: (o) => !technique ? null : (
           <span className="actions">
             {o.statut === "demande" && <select defaultValue="" onChange={(e) => e.target.value && agir(o, "planifier", { technicien_id: e.target.value })}>
@@ -62,7 +63,7 @@ export default function Interventions() {
             {["demande", "planifiee", "en_cours"].includes(o.statut) && <button onClick={() => agir(o, "annuler")}>✖</button>}
           </span>) }]} />
       {cloture && (
-        <div className="fenetre"><form className="carte" onSubmit={(e) => { e.preventDefault(); agir(cloture.ot, "cloturer", { rapport: cloture.rapport, cout_main_oeuvre: Number(cloture.main_oeuvre) || 0, pieces: cloture.pieces }); }}>
+        <Modal onFermer={() => setCloture(null)}><form className="carte" onSubmit={(e) => { e.preventDefault(); agir(cloture.ot, "cloturer", { rapport: cloture.rapport, cout_main_oeuvre: Number(cloture.main_oeuvre) || 0, pieces: cloture.pieces }); }}>
           <h2>Clôturer {cloture.ot.numero}</h2>
           <textarea placeholder="Rapport d'intervention" value={cloture.rapport} onChange={(e) => setCloture({ ...cloture, rapport: e.target.value })} required minLength={3} />
           <div className="ligne-form">
@@ -74,7 +75,7 @@ export default function Interventions() {
           {cloture.pieces.map((p, i) => <div key={i} className="puce">{pieces.find((x) => x.id === p.piece_id)?.nom} × {p.quantite}</div>)}
           <input type="number" min="0" placeholder="Main d'œuvre (FCFA)" value={cloture.main_oeuvre} onChange={(e) => setCloture({ ...cloture, main_oeuvre: e.target.value })} />
           <div className="actions"><button className="primaire">Valider la clôture</button><button type="button" onClick={() => setCloture(null)}>Annuler</button></div>
-        </form></div>)}
+        </form></Modal>)}
     </>
   );
 }

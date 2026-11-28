@@ -6,6 +6,7 @@ import { sensSuivant, trierLignes } from "../lib/tri.js";
 export default function Tableau({ colonnes, lignes, vide = "Aucune donnée.", onClic }) {
   const [tri, setTri] = useState({ i: null, sens: null });
   const affichees = useMemo(() => (tri.i === null ? lignes : trierLignes(lignes, colonnes[tri.i].valeur, tri.sens)), [lignes, colonnes, tri]);
+  const [choisie, setChoisie] = useState(null);   // ligne sélectionnée : fond orange clair, police bleu nuit
   const clic = (i) => setTri({ i, sens: tri.i === i ? sensSuivant(tri.sens) : "asc" });
   if (!lignes.length) return <p className="vide">{vide}</p>;
   return (
@@ -16,7 +17,8 @@ export default function Tableau({ colonnes, lignes, vide = "Aucune donnée.", on
           : <th key={i} className={`triable ${c.nombre ? "nombre" : ""} ${tri.i === i && tri.sens ? "actif" : ""}`} onClick={() => clic(i)}>
               {c.titre} <span aria-hidden>{tri.i === i && tri.sens ? (tri.sens === "asc" ? "▲" : "▼") : "⇅"}</span></th>)}</tr></thead>
         <tbody>{affichees.map((l, k) => (
-          <tr key={l.id || k} onClick={onClic ? () => onClic(l) : undefined} className={onClic ? "cliquable" : ""}>
+          <tr key={l.id || k} aria-selected={choisie === (l.id || k)} className={`${choisie === (l.id || k) ? "ligne-selectionnee" : ""} ${onClic ? "cliquable" : ""}`}
+              onClick={() => { setChoisie(l.id || k); onClic?.(l); }}>
             {colonnes.map((c, i) => <td key={i} className={c.nombre ? "nombre" : ""}>{c.rendu ? c.rendu(l) : (c.valeur(l) ?? "—")}</td>)}
           </tr>))}</tbody>
       </table>

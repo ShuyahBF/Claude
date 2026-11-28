@@ -4,6 +4,7 @@ import { useListe } from "../lib/useListe.js";
 import { useToast } from "../components/Toasts.jsx";
 import Entete from "../components/Entete.jsx";
 import Tableau from "../components/Tableau.jsx";
+import { EXEMPLE_EMAIL, EXEMPLE_NOM } from "../lib/exemplesIdentite.js";
 import ChampMotDePasse from "../components/ChampMotDePasse.jsx";
 
 const ROLES = { admin: "Administrateur", technicien: "Technicien", demandeur: "Demandeur" };
@@ -27,8 +28,8 @@ export default function Utilisateurs() {
       <Entete titre="Utilisateurs" charger={charger} unite="utilisateur(s)" />
       {erreur && <p className="erreur">{erreur}</p>}
       <form className="ligne-form" onSubmit={ajouter}>
-        <input placeholder="BADINI Awa" value={f.nom} onChange={(e) => setF({ ...f, nom: e.target.value })} required />
-        <input type="email" placeholder="awa.badini@gmail.com" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} required />
+        <input placeholder={EXEMPLE_NOM} value={f.nom} onChange={(e) => setF({ ...f, nom: e.target.value })} required />
+        <input type="email" placeholder={EXEMPLE_EMAIL} value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} required />
         <input placeholder="Téléphone WhatsApp (22670123456)" value={f.telephone} onChange={(e) => setF({ ...f, telephone: e.target.value })} />
         <select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>{Object.entries(ROLES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
         <ChampMotDePasse valeur={f.mot_de_passe} onChange={(v) => setF({ ...f, mot_de_passe: v })} placeholder="Mot de passe (8 car. min.)" autoComplete="new-password" />
